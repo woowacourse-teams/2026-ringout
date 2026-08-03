@@ -17,4 +17,4 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
-/androidApp/release/androidApp-release.aab
+/client/androidApp/release/androidApp-release.aab
