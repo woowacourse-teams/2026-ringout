@@ -8,6 +8,7 @@ expect fun PlatformDestinationMap(
     initialLatitude: Double,
     initialLongitude: Double,
     cameraTarget: DestinationSelection?,
+    currentLocationRequestId: Int,
     onCameraMoveStarted: () -> Unit,
     onCameraIdle: (
         latitude: Double,
@@ -15,6 +16,8 @@ expect fun PlatformDestinationMap(
         placeName: String?,
         address: String?,
     ) -> Unit,
+    onCurrentLocationLoadingChange: (Boolean) -> Unit,
+    onCurrentLocationError: (String) -> Unit,
     onMapError: (String) -> Unit,
     modifier: Modifier = Modifier,
 )

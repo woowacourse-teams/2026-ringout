@@ -16,6 +16,7 @@ actual fun PlatformDestinationMap(
     initialLatitude: Double,
     initialLongitude: Double,
     cameraTarget: DestinationSelection?,
+    currentLocationRequestId: Int,
     onCameraMoveStarted: () -> Unit,
     onCameraIdle: (
         latitude: Double,
@@ -23,9 +24,18 @@ actual fun PlatformDestinationMap(
         placeName: String?,
         address: String?,
     ) -> Unit,
+    onCurrentLocationLoadingChange: (Boolean) -> Unit,
+    onCurrentLocationError: (String) -> Unit,
     onMapError: (String) -> Unit,
     modifier: Modifier,
 ) {
+    LaunchedEffect(currentLocationRequestId) {
+        if (currentLocationRequestId > 0) {
+            onCurrentLocationLoadingChange(false)
+            onCurrentLocationError("현재 위치 이동은 현재 Android에서 지원됩니다.")
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()

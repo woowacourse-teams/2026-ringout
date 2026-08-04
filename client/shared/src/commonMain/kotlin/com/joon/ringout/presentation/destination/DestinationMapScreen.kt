@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -42,6 +43,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,6 +90,9 @@ fun DestinationMapScreen(
     var isSearching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var cameraTarget by remember { mutableStateOf<DestinationSelection?>(null) }
+    var currentLocationRequestId by remember { mutableStateOf(0) }
+    var isLocatingCurrentLocation by remember { mutableStateOf(false) }
+    var currentLocationError by remember { mutableStateOf<String?>(null) }
     var pendingSelection by remember { mutableStateOf<DestinationSelection?>(null) }
 
     PlatformBackHandler(onBack = {
@@ -122,6 +130,8 @@ fun DestinationMapScreen(
             searchResults = searchResults,
             isSearching = isSearching,
             searchError = searchError,
+            isLocatingCurrentLocation = isLocatingCurrentLocation,
+            currentLocationError = currentLocationError,
             onSearchQueryChange = {
                 searchQuery = it
                 searchError = null
@@ -139,9 +149,15 @@ fun DestinationMapScreen(
             onSearchResultClick = { result ->
                 selection = result
                 cameraTarget = result
+                currentLocationError = null
                 isSearchOpen = false
                 searchResults = emptyList()
                 searchError = null
+            },
+            onCurrentLocationClick = {
+                currentLocationError = null
+                isLocatingCurrentLocation = true
+                currentLocationRequestId += 1
             },
             onConfirmClick = { pendingSelection = selection },
             modifier = Modifier.fillMaxSize(),
@@ -150,7 +166,11 @@ fun DestinationMapScreen(
                     initialLatitude = initialSelection.latitude,
                     initialLongitude = initialSelection.longitude,
                     cameraTarget = cameraTarget,
-                    onCameraMoveStarted = { isResolvingAddress = true },
+                    currentLocationRequestId = currentLocationRequestId,
+                    onCameraMoveStarted = {
+                        currentLocationError = null
+                        isResolvingAddress = true
+                    },
                     onCameraIdle = { latitude, longitude, placeName, address ->
                         val searchedTarget = cameraTarget?.takeIf {
                             abs(it.latitude - latitude) < 0.00001 &&
@@ -166,9 +186,17 @@ fun DestinationMapScreen(
                         cameraTarget = null
                         isResolvingAddress = false
                     },
+                    onCurrentLocationLoadingChange = {
+                        isLocatingCurrentLocation = it
+                    },
+                    onCurrentLocationError = { error ->
+                        currentLocationError = error
+                        isLocatingCurrentLocation = false
+                    },
                     onMapError = { error ->
                         mapError = error
                         isResolvingAddress = false
+                        isLocatingCurrentLocation = false
                     },
                     modifier = mapModifier,
                 )
@@ -202,11 +230,14 @@ private fun DestinationMapLayout(
     searchResults: List<DestinationSelection>,
     isSearching: Boolean,
     searchError: String?,
+    isLocatingCurrentLocation: Boolean,
+    currentLocationError: String?,
     onSearchQueryChange: (String) -> Unit,
     onSearchClick: () -> Unit,
     onSearchClose: () -> Unit,
     onSearchSubmit: () -> Unit,
     onSearchResultClick: (DestinationSelection) -> Unit,
+    onCurrentLocationClick: () -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
@@ -293,14 +324,27 @@ private fun DestinationMapLayout(
             )
         }
 
-        ConfirmDestinationButton(
-            enabled = !isResolvingAddress && mapError == null,
-            onClick = onConfirmClick,
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(start = 24.dp, end = 24.dp, bottom = 18.dp),
-        )
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            currentLocationError?.let {
+                CurrentLocationErrorMessage(message = it)
+            }
+            CurrentLocationButton(
+                enabled = mapError == null && !isResolvingAddress && !isLocatingCurrentLocation,
+                isLoading = isLocatingCurrentLocation,
+                onClick = onCurrentLocationClick,
+            )
+            ConfirmDestinationButton(
+                enabled = !isResolvingAddress && !isLocatingCurrentLocation && mapError == null,
+                onClick = onConfirmClick,
+            )
+        }
     }
 }
 
@@ -594,6 +638,66 @@ private fun CenterDestinationPin(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun CurrentLocationErrorMessage(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Text(
+        text = message,
+        modifier = modifier
+            .shadow(8.dp, shape)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = .94f), shape)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        color = MaterialTheme.colorScheme.onSurface,
+        style = MaterialTheme.typography.bodySmall.copy(
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+        ),
+    )
+}
+
+@Composable
+private fun CurrentLocationButton(
+    enabled: Boolean,
+    isLoading: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val iconColor = MaterialTheme.colorScheme.onSurface
+
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .shadow(8.dp, CircleShape)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = .94f), CircleShape)
+            .semantics {
+                contentDescription = "현재 위치로 이동"
+                if (isLoading) {
+                    stateDescription = "현재 위치 확인 중"
+                }
+            }
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClickLabel = "현재 위치로 이동",
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                color = Orange,
+                strokeWidth = 2.dp,
+            )
+        } else {
+            CurrentLocationIcon(color = iconColor)
+        }
+    }
+}
+
+@Composable
 private fun ConfirmDestinationButton(
     enabled: Boolean,
     onClick: () -> Unit,
@@ -640,6 +744,30 @@ private fun MiniPinIcon() = Canvas(Modifier.size(22.dp)) {
     drawLine(Orange, Offset(size.width / 2f, size.height * .62f), Offset(size.width / 2f, size.height * .88f), stroke, StrokeCap.Round)
 }
 
+@Composable
+private fun CurrentLocationIcon(color: Color) = Canvas(Modifier.size(22.dp)) {
+    val stroke = 1.8.dp.toPx()
+    val center = Offset(size.width / 2f, size.height / 2f)
+    val guideStart = size.minDimension * .04f
+    val guideEnd = size.minDimension * .22f
+
+    drawCircle(
+        color = color,
+        radius = size.minDimension * .28f,
+        center = center,
+        style = Stroke(stroke),
+    )
+    drawLine(color, Offset(center.x, guideStart), Offset(center.x, guideEnd), stroke, StrokeCap.Round)
+    drawLine(color, Offset(center.x, size.height - guideEnd), Offset(center.x, size.height - guideStart), stroke, StrokeCap.Round)
+    drawLine(color, Offset(guideStart, center.y), Offset(guideEnd, center.y), stroke, StrokeCap.Round)
+    drawLine(color, Offset(size.width - guideEnd, center.y), Offset(size.width - guideStart, center.y), stroke, StrokeCap.Round)
+    drawCircle(
+        color = Orange,
+        radius = size.minDimension * .1f,
+        center = center,
+    )
+}
+
 private val PrimaryText = Color(0xFF161A17)
 private val SecondaryText = Color(0xFF6E756F)
 private val Pale = Color(0xFFF5F6F2)
@@ -661,11 +789,14 @@ private fun DestinationMapScreenPreview() {
             searchResults = emptyList(),
             isSearching = false,
             searchError = null,
+            isLocatingCurrentLocation = false,
+            currentLocationError = null,
             onSearchQueryChange = {},
             onSearchClick = {},
             onSearchClose = {},
             onSearchSubmit = {},
             onSearchResultClick = {},
+            onCurrentLocationClick = {},
             onConfirmClick = {},
             mapContent = { mapModifier -> Box(mapModifier.background(MapFallback)) },
         )
