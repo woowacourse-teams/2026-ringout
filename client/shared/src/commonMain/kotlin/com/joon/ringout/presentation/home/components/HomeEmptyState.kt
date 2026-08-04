@@ -140,62 +140,35 @@ private fun EmptyAlarmPrompt(
     isDarkTheme: Boolean,
     onAddAlarm: () -> Unit,
 ) {
-    Row(
+    Column(
         modifier = Modifier
-            .width(313.dp)
-            .height(122.dp)
-            .padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .width(174.dp)
+            .height(65.dp)
+            .clickable(role = Role.Button, onClick = onAddAlarm),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
     ) {
-        Spacer(Modifier.weight(1f))
-
-        Image(
-            painter = painterResource(
-                if (isDarkTheme) {
-                    Res.drawable.home_empty_bell_dark
-                } else {
-                    Res.drawable.home_empty_bell_light
-                },
+        Text(
+            text = "생성된 알람이 없습니다.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 16.sp,
+                lineHeight = 19.2.sp,
+                fontWeight = FontWeight.Medium,
             ),
-            contentDescription = null,
-            modifier = Modifier.size(70.dp),
-            contentScale = ContentScale.Crop,
         )
-
-        Spacer(Modifier.width(10.dp))
-
-        Column(
-            modifier = Modifier
-                .width(174.dp)
-                .height(65.dp)
-                .clickable(role = Role.Button, onClick = onAddAlarm),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-        ) {
-            Text(
-                text = "생성된 알람이 없습니다.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 16.sp,
-                    lineHeight = 19.2.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = "알람 생성하기",
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 18.sp,
-                    lineHeight = 21.6.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
-        }
-
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "알람 생성하기",
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 18.sp,
+                lineHeight = 21.6.sp,
+                fontWeight = FontWeight.Bold,
+            ),
+        )
     }
 }
 
