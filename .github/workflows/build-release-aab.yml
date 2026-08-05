@@ -154,3 +154,11 @@ jobs:
         shell: bash
         run: |
           sha256sum "$AAB_PATH" | tee aab-sha256.txt
+
+      - name: Upload release AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: ringout-release-aab
+          path: client/androidApp/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 1
