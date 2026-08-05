@@ -1,0 +1,156 @@
+name: Build Signed Release AAB
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: client
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ringout-release-aab
+  cancel-in-progress: false
+
+jobs:
+  build-release-aab:
+    name: Build signed release AAB
+
+    if: github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    environment: production
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission to Gradle
+        run: chmod +x ./gradlew
+
+      - name: Validate release secrets
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64가 등록되지 않았습니다."
+            exit 1
+          fi
+
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::ANDROID_KEYSTORE_PASSWORD가 등록되지 않았습니다."
+            exit 1
+          fi
+
+          if [ -z "$KEY_ALIAS" ]; then
+            echo "::error::ANDROID_KEY_ALIAS가 등록되지 않았습니다."
+            exit 1
+          fi
+
+          if [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::ANDROID_KEY_PASSWORD가 등록되지 않았습니다."
+            exit 1
+          fi
+
+      - name: Restore upload keystore
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          KEYSTORE_PATH="$RUNNER_TEMP/ringout-upload-key.jks"
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode \
+            > "$KEYSTORE_PATH"
+
+          chmod 600 "$KEYSTORE_PATH"
+
+          if [ ! -s "$KEYSTORE_PATH" ]; then
+            echo "::error::JKS 파일 복원에 실패했습니다."
+            exit 1
+          fi
+
+          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Verify upload keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          keytool -list \
+            -keystore "$ANDROID_KEYSTORE_PATH" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            > /dev/null
+
+          echo "Upload keystore verification succeeded."
+
+      - name: Build signed release AAB
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew :androidApp:bundleRelease \
+            --no-daemon \
+            --stacktrace
+
+      - name: Find generated AAB
+        id: find-aab
+        shell: bash
+        run: |
+          AAB_PATH="$(find androidApp/build/outputs/bundle/release \
+            -type f \
+            -name '*.aab' \
+            | head -n 1)"
+
+          if [ -z "$AAB_PATH" ]; then
+            echo "::error::생성된 Release AAB를 찾을 수 없습니다."
+            exit 1
+          fi
+
+          echo "path=$AAB_PATH" >> "$GITHUB_OUTPUT"
+          echo "AAB_PATH=$AAB_PATH" >> "$GITHUB_ENV"
+
+          echo "Generated AAB: $AAB_PATH"
+          ls -lh "$AAB_PATH"
+
+      - name: Verify AAB signature
+        shell: bash
+        run: |
+          jarsigner \
+            -verify \
+            -verbose \
+            -certs \
+            "$AAB_PATH"
+
+      - name: Print AAB certificate
+        shell: bash
+        run: |
+          keytool \
+            -printcert \
+            -jarfile "$AAB_PATH"
+
+      - name: Generate SHA-256 checksum
+        shell: bash
+        run: |
+          sha256sum "$AAB_PATH" | tee aab-sha256.txt
