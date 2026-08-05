@@ -1,6 +1,12 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
+plugins {
+    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.composeMultiplatform)
+    alias(libs.plugins.composeCompiler)
+}
+
 val localProperties = Properties().apply {
     val localPropertiesFile = rootProject.file("local.properties")
     if (localPropertiesFile.exists()) {
@@ -19,11 +25,18 @@ val escapedKakaoNativeAppKey = kakaoNativeAppKey
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
-plugins {
-    alias(libs.plugins.androidApplication)
-    alias(libs.plugins.composeMultiplatform)
-    alias(libs.plugins.composeCompiler)
-}
+val releaseKeystorePath =
+    providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+
+val releaseKeystorePassword =
+    providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+
+val releaseKeyAlias =
+    providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+
+val releaseKeyPassword =
+    providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+
 
 kotlin {
     compilerOptions {
@@ -61,11 +74,23 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    signingConfigs {
+        create("release") {
+            storeFile = releaseKeystorePath?.let { file(it) }
+            storePassword = releaseKeystorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
+        }
+    }
+
     buildTypes {
         getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
