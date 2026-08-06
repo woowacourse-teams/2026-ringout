@@ -1,0 +1,155 @@
+name: Server CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - "server/**"
+      - ".github/workflows/server-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - ".github/workflows/server-ci.yml"
+
+concurrency:
+  group: server-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: server
+
+jobs:
+  # TODO: Checkstyle 설정을 추가한 뒤 아래 job을 활성화합니다.
+  # checkstyle:
+  #   name: Checkstyle
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v6
+  #     - name: Set up JDK 21
+  #       uses: actions/setup-java@v5
+  #       with:
+  #         distribution: temurin
+  #         java-version: "21"
+  #         cache: gradle
+  #         cache-dependency-path: server/**/*.gradle*
+  #     - name: Grant execute permission
+  #       run: chmod +x gradlew
+  #     - name: Run Checkstyle
+  #       run: ./gradlew checkstyleMain checkstyleTest --no-daemon
+
+  docker:
+    name: Docker build, smoke test, and push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Create smoke-test environment file
+        run: |
+          umask 077
+          printf '%s\n' \
+            'MYSQL_DATABASE=ringringring' \
+            'MYSQL_USER=ringringring' \
+            'MYSQL_PASSWORD=ringringring' \
+            'MYSQL_ROOT_PASSWORD=ringringring' \
+            'DB_URL=jdbc:mysql://ringout-mysql-smoke:3306/ringringring?serverTimezone=Asia/Seoul&characterEncoding=UTF-8' \
+            'DB_USERNAME=ringringring' \
+            'DB_PASSWORD=ringringring' \
+            'SPRING_PROFILES_ACTIVE=prod' \
+            > .env
+
+      - name: Build Docker image
+        run: docker build --tag ringout-server:${{ github.sha }} .
+
+      - name: Create smoke-test network
+        run: docker network create ringout-smoke
+
+      - name: Run MySQL container
+        run: |
+          docker run --detach \
+            --name ringout-mysql-smoke \
+            --network ringout-smoke \
+            --env-file .env \
+            mysql:8.4
+
+      - name: Wait for MySQL
+        run: |
+          for attempt in $(seq 1 30); do
+            if docker exec ringout-mysql-smoke \
+              sh -c 'mysqladmin ping --host=127.0.0.1 --user=root --password="$MYSQL_ROOT_PASSWORD" --silent'; then
+              exit 0
+            fi
+            echo "Waiting for MySQL... (${attempt}/30)"
+            sleep 2
+          done
+          docker logs ringout-mysql-smoke
+          exit 1
+
+      - name: Run server container
+        run: |
+          docker run --detach \
+            --name ringout-server-smoke \
+            --network ringout-smoke \
+            --publish 127.0.0.1:8080:8080 \
+            --env-file .env \
+            ringout-server:${{ github.sha }}
+
+      - name: Smoke test
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/actuator/health; then
+              exit 0
+            fi
+            echo "Waiting for server... (${attempt}/30)"
+            sleep 2
+          done
+          exit 1
+
+      - name: Print smoke-test logs
+        if: failure()
+        run: |
+          docker logs ringout-server-smoke 2>/dev/null || true
+          docker logs ringout-mysql-smoke 2>/dev/null || true
+
+      - name: Remove smoke-test resources
+        if: always()
+        run: |
+          docker rm --force ringout-server-smoke 2>/dev/null || true
+          docker rm --force ringout-mysql-smoke 2>/dev/null || true
+          docker network rm ringout-smoke 2>/dev/null || true
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        run: echo "${{ secrets.SERVER_DOCKERHUB_TOKEN }}" | docker login --username "${{ secrets.SERVER_DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Push commit image
+        if: github.event_name == 'push'
+        env:
+          IMAGE_REPOSITORY: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}/ringout-server
+        run: |
+          docker tag ringout-server:${{ github.sha }} "${IMAGE_REPOSITORY}:${{ github.sha }}"
+          docker push "${IMAGE_REPOSITORY}:${{ github.sha }}"
+
+      - name: Push branch image
+        if: github.event_name == 'push'
+        env:
+          IMAGE_REPOSITORY: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}/ringout-server
+        run: |
+          docker tag ringout-server:${{ github.sha }} "${IMAGE_REPOSITORY}:${{ github.ref_name }}"
+          docker push "${IMAGE_REPOSITORY}:${{ github.ref_name }}"
+
+      - name: Push latest image
+        if: github.event_name == 'push' && github.ref_name == 'main'
+        env:
+          IMAGE_REPOSITORY: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}/ringout-server
+        run: |
+          docker tag ringout-server:${{ github.sha }} "${IMAGE_REPOSITORY}:latest"
+          docker push "${IMAGE_REPOSITORY}:latest"
