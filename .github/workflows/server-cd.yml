@@ -27,7 +27,7 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main')
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, Linux, ARM64 ]
     timeout-minutes: 10
     environment: production
     steps:
@@ -44,122 +44,196 @@ jobs:
             echo "tag=$CI_COMMIT_SHA" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Prepare deployment environment file
-        id: environment
-        env:
-          SERVER_ENV_FILE: ${{ secrets.SERVER_ENV_FILE }}
-        run: |
-          test -n "$SERVER_ENV_FILE"
-          SERVER_ENV_FILE_BASE64=$(printf '%s' "$SERVER_ENV_FILE" | base64 --wrap=0)
-          echo "::add-mask::$SERVER_ENV_FILE_BASE64"
-          echo "env_file_base64=$SERVER_ENV_FILE_BASE64" >> "$GITHUB_OUTPUT"
+      #      - name: Prepare deployment environment file
+      #        id: environment
+      #        env:
+      #          SERVER_ENV_FILE: ${{ secrets.SERVER_ENV_FILE }}
+      #        run: |
+      #          test -n "$SERVER_ENV_FILE"
+      #          SERVER_ENV_FILE_BASE64=$(printf '%s' "$SERVER_ENV_FILE" | base64 --wrap=0)
+      #          echo "::add-mask::$SERVER_ENV_FILE_BASE64"
+      #          echo "env_file_base64=$SERVER_ENV_FILE_BASE64" >> "$GITHUB_OUTPUT"
 
-      - name: Debug connectivity
-        env:
-          SSH_HOST: ${{ secrets.SERVER_HOST }}
-          SSH_PORT: ${{ secrets.SERVER_SSH_PORT }}
-        run: |
-          echo "host length: ${#SSH_HOST}"
-          echo "port length: ${#SSH_PORT}"
-          echo "starts with 10.0: $(case "$SSH_HOST" in 10.0.*) echo YES;; *) echo NO;; esac)"
-          timeout 10 bash -c "</dev/tcp/$SSH_HOST/22" && echo "22 REACHABLE" || echo "22 UNREACHABLE"
-
-      - name: Deploy Docker container over SSH
-        uses: appleboy/ssh-action@v1.2.2
+      - name: Deploy Docker container
         env:
           IMAGE_REPOSITORY: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}/ringout-server
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
           DOCKERHUB_USERNAME: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.SERVER_DOCKERHUB_TOKEN }}
-          APP_ENV_FILE_BASE64: ${{ steps.environment.outputs.env_file_base64 }}
+          SERVER_ENV_FILE: ${{ secrets.SERVER_ENV_FILE }}
           APP_PORT: ${{ vars.SERVER_PORT || '8080' }}
-        with:
-          # SERVER_* SSH secrets point to the Spring application EC2, not the MySQL EC2.
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: ${{ secrets.SERVER_SSH_PORT || 22 }}
-          envs: IMAGE_REPOSITORY,IMAGE_TAG,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,APP_ENV_FILE_BASE64,APP_PORT
-          script_stop: true
-          script: |
-            set -eu
-
-            command -v docker >/dev/null 2>&1
-            command -v curl >/dev/null 2>&1
-
-            APP_DIRECTORY="$HOME/ringout"
-            APP_ENV_FILE="$APP_DIRECTORY/.env"
-            mkdir -p "$APP_DIRECTORY"
-            chmod 700 "$APP_DIRECTORY"
-            printf '%s' "$APP_ENV_FILE_BASE64" | base64 --decode > "$APP_ENV_FILE.tmp"
-            printf '\nSPRING_PROFILES_ACTIVE=prod\n' >> "$APP_ENV_FILE.tmp"
-            chmod 600 "$APP_ENV_FILE.tmp"
-            mv "$APP_ENV_FILE.tmp" "$APP_ENV_FILE"
-
-            wait_for_health() {
-              attempt=1
-              while [ "$attempt" -le 30 ]; do
-                if curl --fail --silent "http://127.0.0.1:$APP_PORT/actuator/health"; then
-                  return 0
-                fi
-                echo "Waiting for server... (${attempt}/30)"
-                attempt=$((attempt + 1))
-                sleep 2
-              done
-              return 1
-            }
-
-            start_server() {
-              docker run --detach \
-                --name ringout-server \
-                --restart unless-stopped \
-                --env-file "$APP_ENV_FILE" \
-                --publish "$APP_PORT:8080" \
-                "$1"
-            }
-
-            rollback() {
-              echo "Deployment failed. Rolling back to the previous image."
-              docker rm --force ringout-server 2>/dev/null || true
-
-              if [ -z "$PREVIOUS_IMAGE" ]; then
-                echo "No previous image is available for rollback."
-                return 1
-              fi
-
-              if ! start_server "$PREVIOUS_IMAGE"; then
-                echo "Failed to start the previous image."
-                return 1
-              fi
-
-              if wait_for_health; then
-                echo "Rollback completed successfully."
+        run: |
+          set -eu
+          
+          APP_DIRECTORY="$HOME/ringout"
+          APP_ENV_FILE="$APP_DIRECTORY/.env"
+          mkdir -p "$APP_DIRECTORY"
+          chmod 700 "$APP_DIRECTORY"
+          printf '%s\n' "$SERVER_ENV_FILE" > "$APP_ENV_FILE.tmp"
+          printf 'SPRING_PROFILES_ACTIVE=prod\n' >> "$APP_ENV_FILE.tmp"
+          chmod 600 "$APP_ENV_FILE.tmp"
+          mv "$APP_ENV_FILE.tmp" "$APP_ENV_FILE"
+          
+          wait_for_health() {
+            attempt=1
+            while [ "$attempt" -le 30 ]; do
+              if curl --fail --silent "http://127.0.0.1:$APP_PORT/actuator/health"; then
                 return 0
               fi
-
-              docker logs ringout-server 2>/dev/null || true
-              echo "The rollback container did not become healthy."
-              return 1
-            }
-
-            echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
-            trap 'docker logout >/dev/null 2>&1 || true' EXIT
-            docker pull "$IMAGE_REPOSITORY:$IMAGE_TAG"
-
-            PREVIOUS_IMAGE=$(docker inspect --format '{{.Image}}' ringout-server 2>/dev/null || true)
+              echo "Waiting for server... (${attempt}/30)"
+              attempt=$((attempt + 1))
+              sleep 2
+            done
+            return 1
+          }
+          
+          start_server() {
+            docker run --detach \
+              --name ringout-server \
+              --restart unless-stopped \
+              --env-file "$APP_ENV_FILE" \
+              --env JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
+              --publish "$APP_PORT:8080" \
+              "$1"
+          }
+          
+          rollback() {
+            echo "Deployment failed. Rolling back to the previous image."
             docker rm --force ringout-server 2>/dev/null || true
-
-            if ! start_server "$IMAGE_REPOSITORY:$IMAGE_TAG"; then
-              rollback || true
-              exit 1
+            if [ -z "$PREVIOUS_IMAGE" ]; then
+              echo "No previous image is available for rollback."
+              return 1
             fi
-
+            if ! start_server "$PREVIOUS_IMAGE"; then
+              echo "Failed to start the previous image."
+              return 1
+            fi
             if wait_for_health; then
-              echo "Deployment completed successfully."
-              docker image prune --force
-              exit 0
+              echo "Rollback completed successfully."
+              return 0
             fi
-
             docker logs ringout-server 2>/dev/null || true
+            return 1
+          }
+          
+          echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          trap 'docker logout >/dev/null 2>&1 || true' EXIT
+          docker pull "$IMAGE_REPOSITORY:$IMAGE_TAG"
+          
+          PREVIOUS_IMAGE=$(docker inspect --format '{{.Image}}' ringout-server 2>/dev/null || true)
+          docker rm --force ringout-server 2>/dev/null || true
+          
+          if ! start_server "$IMAGE_REPOSITORY:$IMAGE_TAG"; then
             rollback || true
             exit 1
+          fi
+          
+          if wait_for_health; then
+            echo "Deployment completed successfully."
+            docker image prune --force
+            exit 0
+          fi
+          
+          docker logs ringout-server 2>/dev/null || true
+          rollback || true
+          exit 1
+
+#      - name: Deploy Docker container over SSH
+#        uses: appleboy/ssh-action@v1.2.2
+#        env:
+#          IMAGE_REPOSITORY: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}/ringout-server
+#          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+#          DOCKERHUB_USERNAME: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}
+#          DOCKERHUB_TOKEN: ${{ secrets.SERVER_DOCKERHUB_TOKEN }}
+#          APP_ENV_FILE_BASE64: ${{ steps.environment.outputs.env_file_base64 }}
+#          APP_PORT: ${{ vars.SERVER_PORT || '8080' }}
+#        with:
+#          # SERVER_* SSH secrets point to the Spring application EC2, not the MySQL EC2.
+#          host: ${{ secrets.SERVER_HOST }}
+#          username: ${{ secrets.SERVER_USERNAME }}
+#          key: ${{ secrets.SERVER_SSH_KEY }}
+#          port: ${{ secrets.SERVER_SSH_PORT || 22 }}
+#          envs: IMAGE_REPOSITORY,IMAGE_TAG,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,APP_ENV_FILE_BASE64,APP_PORT
+#          script_stop: true
+#          script: |
+#            set -eu
+#
+#            command -v docker >/dev/null 2>&1
+#            command -v curl >/dev/null 2>&1
+#
+#            APP_DIRECTORY="$HOME/ringout"
+#            APP_ENV_FILE="$APP_DIRECTORY/.env"
+#            mkdir -p "$APP_DIRECTORY"
+#            chmod 700 "$APP_DIRECTORY"
+#            printf '%s' "$APP_ENV_FILE_BASE64" | base64 --decode > "$APP_ENV_FILE.tmp"
+#            printf '\nSPRING_PROFILES_ACTIVE=prod\n' >> "$APP_ENV_FILE.tmp"
+#            chmod 600 "$APP_ENV_FILE.tmp"
+#            mv "$APP_ENV_FILE.tmp" "$APP_ENV_FILE"
+#
+#            wait_for_health() {
+#              attempt=1
+#              while [ "$attempt" -le 30 ]; do
+#                if curl --fail --silent "http://127.0.0.1:$APP_PORT/actuator/health"; then
+#                  return 0
+#                fi
+#                echo "Waiting for server... (${attempt}/30)"
+#                attempt=$((attempt + 1))
+#                sleep 2
+#              done
+#              return 1
+#            }
+#
+#            start_server() {
+#              docker run --detach \
+#                --name ringout-server \
+#                --restart unless-stopped \
+#                --env-file "$APP_ENV_FILE" \
+#                --publish "$APP_PORT:8080" \
+#                "$1"
+#            }
+#
+#            rollback() {
+#              echo "Deployment failed. Rolling back to the previous image."
+#              docker rm --force ringout-server 2>/dev/null || true
+#
+#              if [ -z "$PREVIOUS_IMAGE" ]; then
+#                echo "No previous image is available for rollback."
+#                return 1
+#              fi
+#
+#              if ! start_server "$PREVIOUS_IMAGE"; then
+#                echo "Failed to start the previous image."
+#                return 1
+#              fi
+#
+#              if wait_for_health; then
+#                echo "Rollback completed successfully."
+#                return 0
+#              fi
+#
+#              docker logs ringout-server 2>/dev/null || true
+#              echo "The rollback container did not become healthy."
+#              return 1
+#            }
+#
+#            echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+#            trap 'docker logout >/dev/null 2>&1 || true' EXIT
+#            docker pull "$IMAGE_REPOSITORY:$IMAGE_TAG"
+#
+#            PREVIOUS_IMAGE=$(docker inspect --format '{{.Image}}' ringout-server 2>/dev/null || true)
+#            docker rm --force ringout-server 2>/dev/null || true
+#
+#            if ! start_server "$IMAGE_REPOSITORY:$IMAGE_TAG"; then
+#              rollback || true
+#              exit 1
+#            fi
+#
+#            if wait_for_health; then
+#              echo "Deployment completed successfully."
+#              docker image prune --force
+#              exit 0
+#            fi
+#
+#            docker logs ringout-server 2>/dev/null || true
+#            rollback || true
+#            exit 1
