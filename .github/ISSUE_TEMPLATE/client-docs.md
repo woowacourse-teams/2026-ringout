@@ -1,8 +1,8 @@
 ---
 name: "📝 Client Documentation"
 about: "클라이언트 문서 작업 이슈를 등록합니다."
-title: "[Client Docs] "
-labels: "client, documentation"
+title: "[Docs] "
+labels: "client"
 assignees: ""
 ---
 
