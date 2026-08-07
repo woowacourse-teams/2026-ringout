@@ -37,6 +37,7 @@ fun DestinationCard(
     modifier: Modifier = Modifier,
 ) {
     val colors = alarmSetupColors()
+    val destinationLabel = destination.ifBlank { UnsetDestinationLabel }
 
     Column(
         modifier = modifier
@@ -57,7 +58,11 @@ fun DestinationCard(
                 .clip(RoundedCornerShape(8.dp))
                 .clickable(
                     role = Role.Button,
-                    onClickLabel = "목적지 변경",
+                    onClickLabel = if (destination.isBlank()) {
+                        "목적지 설정"
+                    } else {
+                        "목적지 변경"
+                    },
                     onClick = onClick,
                 )
                 .padding(10.dp),
@@ -75,7 +80,7 @@ fun DestinationCard(
                 )
             }
             Text(
-                text = destination,
+                text = destinationLabel,
                 modifier = Modifier.weight(1f),
                 color = colors.primaryText,
                 maxLines = 1,
@@ -99,10 +104,22 @@ fun DestinationCard(
 
 @Preview(widthDp = 402)
 @Composable
-private fun DestinationCardPreview() {
+private fun DestinationCardUnsetPreview() {
+    RingoutTheme(themeMode = ThemeMode.Dark) {
+        AlarmSetupPreviewSurface {
+            DestinationCard(destination = "", onClick = {})
+        }
+    }
+}
+
+@Preview(widthDp = 402)
+@Composable
+private fun DestinationCardConfiguredPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         AlarmSetupPreviewSurface {
             DestinationCard(destination = "집 앞에 수원천", onClick = {})
         }
     }
 }
+
+private const val UnsetDestinationLabel = "목적지 설정하기"

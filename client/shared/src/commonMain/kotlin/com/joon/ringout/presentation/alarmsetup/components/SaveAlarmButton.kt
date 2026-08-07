@@ -21,6 +21,7 @@ import com.joon.ringout.ThemeMode
 
 @Composable
 fun SaveAlarmButton(
+    enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -30,8 +31,9 @@ fun SaveAlarmButton(
         modifier = modifier
             .size(width = 252.dp, height = 44.dp)
             .clip(RoundedCornerShape(500.dp))
-            .background(colors.accent)
+            .background(if (enabled) colors.accent else colors.supportingText)
             .clickable(
+                enabled = enabled,
                 role = Role.Button,
                 onClickLabel = "알람 저장",
                 onClick = onClick,
@@ -39,7 +41,7 @@ fun SaveAlarmButton(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "저장",
+            text = if (enabled) "저장" else "목적지를 설정해주세요",
             color = colors.selectedContent,
             style = MaterialTheme.typography.titleMedium.copy(
                 fontSize = 18.sp,
@@ -55,7 +57,17 @@ fun SaveAlarmButton(
 private fun SaveAlarmButtonPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         AlarmSetupPreviewSurface {
-            SaveAlarmButton(onClick = {})
+            SaveAlarmButton(enabled = true, onClick = {})
+        }
+    }
+}
+
+@Preview(widthDp = 292, showBackground = true)
+@Composable
+private fun SaveAlarmButtonDisabledPreview() {
+    RingoutTheme(themeMode = ThemeMode.Dark) {
+        AlarmSetupPreviewSurface {
+            SaveAlarmButton(enabled = false, onClick = {})
         }
     }
 }

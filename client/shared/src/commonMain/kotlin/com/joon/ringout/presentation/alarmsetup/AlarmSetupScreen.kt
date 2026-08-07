@@ -36,6 +36,7 @@ import com.joon.ringout.presentation.destination.PlatformBackHandler
 fun AlarmSetupScreen(
     destination: String,
     alarmSound: AlarmSoundSelection,
+    isDestinationSet: Boolean = destination.isNotBlank(),
     initialTime: String = "06:20",
     initialSelectedDays: List<String> = listOf("월", "화", "수", "목", "금", "토", "일"),
     initialLimitMinutes: Int = 13,
@@ -160,6 +161,7 @@ fun AlarmSetupScreen(
             contentAlignment = Alignment.Center,
         ) {
             SaveAlarmButton(
+                enabled = isDestinationSet,
                 onClick = {
                     onSaveClick(
                         alarmTime,
@@ -179,7 +181,7 @@ fun AlarmSetupScreen(
 private fun AlarmSetupScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         AlarmSetupScreen(
-            destination = "집 앞에 수원천",
+            destination = "",
             alarmSound = AlarmSoundSelection("Ring Ring Ring", null),
             onBackClick = {},
             onDestinationClick = {},
@@ -194,7 +196,7 @@ private fun AlarmSetupScreenDarkPreview() {
 private fun AlarmSetupScreenLightPreview() {
     RingoutTheme(themeMode = ThemeMode.Light) {
         AlarmSetupScreen(
-            destination = "집 앞에 수원천",
+            destination = "",
             alarmSound = AlarmSoundSelection("Ring Ring Ring", null),
             onBackClick = {},
             onDestinationClick = {},
