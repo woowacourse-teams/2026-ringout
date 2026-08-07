@@ -40,6 +40,7 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.google.maps.compose)
             implementation(libs.google.places)
+            implementation(libs.google.play.services.location)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

@@ -6,8 +6,9 @@ import android.location.Geocoder
 import android.os.Build
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.coroutines.resume
 
@@ -21,16 +22,18 @@ internal class AndroidDestinationReverseGeocoder(context: Context) {
         if (!Geocoder.isPresent()) return null
         val geocoder = Geocoder(applicationContext, Locale.KOREA)
 
-        val result = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                resolveAsync(geocoder, latitude, longitude)
-            } else {
-                resolveBlocking(geocoder, latitude, longitude)
+        val result = withTimeoutOrNull(ReverseGeocodeTimeoutMillis) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    resolveAsync(geocoder, latitude, longitude)
+                } else {
+                    resolveBlocking(geocoder, latitude, longitude)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
             }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            null
         } ?: return null
 
         val address = result.fullAddress() ?: return null
@@ -70,10 +73,12 @@ internal class AndroidDestinationReverseGeocoder(context: Context) {
         geocoder: Geocoder,
         latitude: Double,
         longitude: Double,
-    ): Address? = withContext(Dispatchers.IO) {
+    ): Address? = runInterruptible(Dispatchers.IO) {
         geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull()
     }
 }
+
+private const val ReverseGeocodeTimeoutMillis = 3_000L
 
 private fun Address.fullAddress(): String? =
     getAddressLine(0)?.takeIf(String::isNotBlank)

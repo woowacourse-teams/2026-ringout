@@ -15,6 +15,7 @@ kotlin = "2.4.0"
 material3 = "1.11.0-alpha07"
 google-maps-compose = "8.3.0"
 google-places = "5.3.0"
+google-play-services-location = "21.4.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -36,6 +37,7 @@ compose-components-resources = { module = "org.jetbrains.compose.components:comp
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
 google-maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = "google-maps-compose" }
 google-places = { module = "com.google.android.libraries.places:places", version.ref = "google-places" }
+google-play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "google-play-services-location" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
