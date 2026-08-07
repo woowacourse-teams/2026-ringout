@@ -1,3 +1,11 @@
+---
+name: "🐞 Client Bug"
+about: "클라이언트에서 발생한 버그를 등록합니다."
+title: "[Client Bug] "
+labels: "client, bug"
+assignees: ""
+---
+
 ## 🐞 어떤 버그인가요?
 
 > 어떤 상황에서 발생한 버그인가요? (육하원칙 👍)
