@@ -2,7 +2,7 @@ name: Server CI
 
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [develop, main]
     paths:
       - "server/**"
       - ".github/workflows/server-ci.yml"
