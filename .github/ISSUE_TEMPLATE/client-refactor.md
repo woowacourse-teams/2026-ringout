@@ -1,3 +1,11 @@
+---
+name: "🧩 Client Refactor"
+about: "클라이언트 리팩터링 이슈를 등록합니다."
+title: "[Client Refactor] "
+labels: "client, refactor"
+assignees: ""
+---
+
 ## 🧩 리팩터링 대상
 
 > 어떤 코드, 구조, 모듈을 개선하려는지 작성해주세요.
