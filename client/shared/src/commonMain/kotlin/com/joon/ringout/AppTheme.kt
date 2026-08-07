@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
@@ -24,6 +25,30 @@ private val RingoutLightBackground = Color(0xFFF5F5F5)
 private val RingoutLightContent = Color(0xFF111827)
 
 internal val LocalRingoutThemeMode = staticCompositionLocalOf { ThemeMode.Dark }
+
+@Immutable
+data class RingoutExtendedColors(
+    val primaryActionContent: Color,
+    val onboardingDescriptionContent: Color,
+)
+
+private val RingoutLightExtendedColors = RingoutExtendedColors(
+    primaryActionContent = Color.White,
+    onboardingDescriptionContent = Color.Black,
+)
+
+private val RingoutDarkExtendedColors = RingoutExtendedColors(
+    primaryActionContent = Color.White,
+    onboardingDescriptionContent = Color.White,
+)
+
+private val LocalRingoutExtendedColors = staticCompositionLocalOf {
+    RingoutDarkExtendedColors
+}
+
+internal val MaterialTheme.ringoutColors: RingoutExtendedColors
+    @Composable
+    get() = LocalRingoutExtendedColors.current
 
 private val RingoutLightColorScheme = lightColorScheme(
     primary = RingoutOrange,
@@ -94,7 +119,13 @@ fun RingoutTheme(
         labelSmall = defaults.labelSmall.copy(fontFamily = pretendard),
     )
 
-    CompositionLocalProvider(LocalRingoutThemeMode provides themeMode) {
+    CompositionLocalProvider(
+        LocalRingoutThemeMode provides themeMode,
+        LocalRingoutExtendedColors provides when (themeMode) {
+            ThemeMode.Dark -> RingoutDarkExtendedColors
+            ThemeMode.Light -> RingoutLightExtendedColors
+        },
+    ) {
         MaterialTheme(
             colorScheme = when (themeMode) {
                 ThemeMode.Dark -> RingoutDarkColorScheme

@@ -54,6 +54,16 @@ jobs:
           echo "::add-mask::$SERVER_ENV_FILE_BASE64"
           echo "env_file_base64=$SERVER_ENV_FILE_BASE64" >> "$GITHUB_OUTPUT"
 
+      - name: Debug connectivity
+        env:
+          SSH_HOST: ${{ secrets.SERVER_HOST }}
+          SSH_PORT: ${{ secrets.SERVER_SSH_PORT }}
+        run: |
+          echo "host length: ${#SSH_HOST}"
+          echo "port length: ${#SSH_PORT}"
+          echo "starts with 10.0: $(case "$SSH_HOST" in 10.0.*) echo YES;; *) echo NO;; esac)"
+          timeout 10 bash -c "</dev/tcp/$SSH_HOST/22" && echo "22 REACHABLE" || echo "22 UNREACHABLE"
+
       - name: Deploy Docker container over SSH
         uses: appleboy/ssh-action@v1.2.2
         env:
