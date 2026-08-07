@@ -309,7 +309,7 @@ private enum class AppScreen {
 }
 
 private const val DefaultAlarmTime = "06:20"
-private val DefaultSelectedDays = listOf("월", "화", "수", "금")
+private val DefaultSelectedDays = listOf("월", "화", "수", "목", "금", "토", "일")
 private const val DefaultLimitMinutes = 13
 private const val DefaultAlarmSoundName = "Ring Ring Ring"
 
