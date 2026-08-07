@@ -1,8 +1,8 @@
 ---
 name: "💡 Client Feature"
 about: "클라이언트 기능 개발 이슈를 등록합니다."
-title: "[Client Feature] "
-labels: "client, feature"
+title: "[Feature] "
+labels: "client"
 assignees: ""
 ---
 
