@@ -3,7 +3,7 @@ spring:
     name: ringout
 
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/ringringring}
+    url: ${DB_URL:jdbc:mysql://localhost:3306/ringout?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
     username: ${DB_USERNAME:ringringring}
     password: ${DB_PASSWORD:ringringring}
     driver-class-name: com.mysql.cj.jdbc.Driver
