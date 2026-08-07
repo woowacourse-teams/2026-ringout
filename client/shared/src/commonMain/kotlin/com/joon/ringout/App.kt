@@ -273,6 +273,7 @@ private fun RingoutAppContent(
             if (screen == AppScreen.Destination) {
                 DestinationMapScreen(
                     initialSelection = destination ?: DefaultDestinationSelection,
+                    requestCurrentLocationOnStart = destination == null,
                     onBackClick = { screenName = alarmSetupScreen.name },
                     onConfirmClick = { selectedDestination ->
                         destinationName = selectedDestination.name

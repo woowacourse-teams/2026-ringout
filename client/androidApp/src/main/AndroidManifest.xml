@@ -27,8 +27,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Ringout">
         <meta-data
-            android:name="com.joon.ringout.KAKAO_REST_API_KEY"
-            android:value="${kakaoRestApiKey}" />
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${mapsApiKey}" />
 
         <activity
             android:exported="true"

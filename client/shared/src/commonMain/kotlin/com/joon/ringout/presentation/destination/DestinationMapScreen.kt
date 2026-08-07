@@ -66,15 +66,16 @@ data class DestinationSelection(
 )
 
 val DefaultDestinationSelection = DestinationSelection(
-    name = "집 앞에 수원천",
-    address = "경기 수원시 팔달구 정조로 893",
-    latitude = 37.2875205998,
-    longitude = 127.0146478075,
+    name = "서울",
+    address = "서울특별시 중구 세종대로 110",
+    latitude = 37.5665851,
+    longitude = 126.9782038,
 )
 
 @Composable
 fun DestinationMapScreen(
     initialSelection: DestinationSelection,
+    requestCurrentLocationOnStart: Boolean = false,
     onBackClick: () -> Unit,
     onConfirmClick: (DestinationSelection) -> Unit,
     modifier: Modifier = Modifier,
@@ -90,8 +91,12 @@ fun DestinationMapScreen(
     var isSearching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var cameraTarget by remember { mutableStateOf<DestinationSelection?>(null) }
-    var currentLocationRequestId by remember { mutableStateOf(0) }
-    var isLocatingCurrentLocation by remember { mutableStateOf(false) }
+    var currentLocationRequestId by remember(initialSelection, requestCurrentLocationOnStart) {
+        mutableStateOf(if (requestCurrentLocationOnStart) InitialCurrentLocationRequestId else 0)
+    }
+    var isLocatingCurrentLocation by remember(initialSelection, requestCurrentLocationOnStart) {
+        mutableStateOf(requestCurrentLocationOnStart)
+    }
     var currentLocationError by remember { mutableStateOf<String?>(null) }
     var pendingSelection by remember { mutableStateOf<DestinationSelection?>(null) }
 
@@ -274,7 +279,7 @@ private fun DestinationMapLayout(
                         ),
                     )
                     Text(
-                        text = "카카오 플랫폼 설정을 확인해 주세요.",
+                        text = "지도 연결 상태와 API 설정을 확인해 주세요.",
                         color = SecondaryText,
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     )
@@ -774,6 +779,7 @@ private val Pale = Color(0xFFF5F6F2)
 private val MapFallback = Color(0xFFDCE8DF)
 private val Orange = Color(0xFFFF6B2C)
 private val DisabledButton = Color(0xFFB8BDB7)
+private const val InitialCurrentLocationRequestId = 1
 
 @Preview
 @Composable

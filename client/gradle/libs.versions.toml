@@ -13,7 +13,8 @@ composeMultiplatform = "1.11.1"
 junit = "4.13.2"
 kotlin = "2.4.0"
 material3 = "1.11.0-alpha07"
-kakao-maps = "2.14.0"
+google-maps-compose = "8.3.0"
+google-places = "5.3.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -33,7 +34,8 @@ compose-material3 = { module = "org.jetbrains.compose.material3:material3", vers
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
-kakao-maps = { module = "com.kakao.maps.open:android", version.ref = "kakao-maps" }
+google-maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = "google-maps-compose" }
+google-places = { module = "com.google.android.libraries.places:places", version.ref = "google-places" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
