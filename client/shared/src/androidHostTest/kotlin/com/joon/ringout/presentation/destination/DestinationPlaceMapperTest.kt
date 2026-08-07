@@ -35,6 +35,34 @@ class DestinationPlaceMapperTest {
     }
 
     @Test
+    fun fallsBackBetweenGooglePlaceNameAndAddress() {
+        val addressOnly = place(
+            name = "",
+            address = "경기 수원시 팔달구 덕영대로 924",
+            latitude = 37.2657,
+            longitude = 127.0001,
+        )
+        val nameOnly = place(
+            name = "수원역",
+            address = "",
+            latitude = 37.2658,
+            longitude = 127.0002,
+        )
+        val blank = place(
+            name = "",
+            address = "",
+            latitude = 37.2659,
+            longitude = 127.0003,
+        )
+
+        val results = listOf(addressOnly, nameOnly, blank).toDestinationSelections()
+
+        assertEquals(2, results.size)
+        assertEquals(results[0].name, results[0].address)
+        assertEquals(results[1].name, results[1].address)
+    }
+
+    @Test
     fun removesDuplicateCoordinates() {
         val results = listOf(
             place("첫 번째", "주소 1", 37.2657001, 127.0001001),
