@@ -133,7 +133,7 @@ internal fun DestinationNicknameDialogContent(
                 ),
             )
             Text(
-                text = "현재 선택된 주소: $address",
+                text = address,
                 color = NicknameDialogSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

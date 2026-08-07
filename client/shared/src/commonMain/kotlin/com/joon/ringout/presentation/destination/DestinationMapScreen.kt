@@ -55,7 +55,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
 import com.joon.ringout.presentation.destination.components.DestinationNicknameDialog
+import com.joon.ringout.presentation.destination.components.DestinationShortcutRow
 
 data class DestinationSelection(
     val name: String,
@@ -77,6 +79,9 @@ fun DestinationMapScreen(
     requestCurrentLocationOnStart: Boolean = false,
     onBackClick: () -> Unit,
     onConfirmClick: (DestinationSelection) -> Unit,
+    savedDestinations: List<DestinationSelection> = emptyList(),
+    onSavedDestinationEditClick: (DestinationSelection) -> Unit = {},
+    onSavedDestinationDeleteClick: (DestinationSelection) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
@@ -100,10 +105,12 @@ fun DestinationMapScreen(
     }
     var currentLocationError by remember { mutableStateOf<String?>(null) }
     var pendingSelection by remember { mutableStateOf<DestinationSelection?>(null) }
+    var isDestinationManagementOpen by remember { mutableStateOf(false) }
 
     PlatformBackHandler(onBack = {
         when {
             pendingSelection != null -> pendingSelection = null
+            isDestinationManagementOpen -> isDestinationManagementOpen = false
             isSearchOpen -> isSearchOpen = false
             else -> onBackClick()
         }
@@ -165,6 +172,10 @@ fun DestinationMapScreen(
                 currentLocationError = null
                 isLocatingCurrentLocation = true
                 currentLocationRequestId += 1
+            },
+            onDestinationManagementClick = {
+                isSearchOpen = false
+                isDestinationManagementOpen = true
             },
             onConfirmClick = {
                 currentLocationCancellationId += 1
@@ -241,6 +252,16 @@ fun DestinationMapScreen(
             },
         )
 
+        if (isDestinationManagementOpen) {
+            DestinationManagementDialog(
+                destinations = savedDestinations,
+                onDismissRequest = { isDestinationManagementOpen = false },
+                onEditClick = onSavedDestinationEditClick,
+                onDeleteClick = onSavedDestinationDeleteClick,
+                modifier = Modifier.zIndex(2f),
+            )
+        }
+
         pendingSelection?.let { selectedDestination ->
             DestinationNicknameDialog(
                 address = selectedDestination.address,
@@ -277,6 +298,7 @@ private fun DestinationMapLayout(
     onSearchSubmit: () -> Unit,
     onSearchResultClick: (DestinationSelection) -> Unit,
     onCurrentLocationClick: () -> Unit,
+    onDestinationManagementClick: () -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
@@ -321,14 +343,29 @@ private fun DestinationMapLayout(
             }
         }
 
-        FloatingMapHeader(
-            onBackClick = onBackClick,
-            onSearchClick = onSearchClick,
+        Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-        )
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+        ) {
+            FloatingMapHeader(
+                onBackClick = onBackClick,
+                onSearchClick = onSearchClick,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            if (!isSearchOpen) {
+                DestinationShortcutRow(
+                    onManagementClick = onDestinationManagementClick,
+                    modifier = Modifier.padding(
+                        start = 3.dp,
+                        top = 10.dp,
+                        end = 17.dp,
+                    ),
+                )
+            }
+        }
 
         if (isSearchOpen) {
             DestinationSearchPanel(
@@ -340,6 +377,7 @@ private fun DestinationMapLayout(
                 onClose = onSearchClose,
                 onSubmit = onSearchSubmit,
                 onResultClick = onSearchResultClick,
+                onDestinationManagementClick = onDestinationManagementClick,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .zIndex(1f)
@@ -468,6 +506,7 @@ private fun DestinationSearchPanel(
     onClose: () -> Unit,
     onSubmit: () -> Unit,
     onResultClick: (DestinationSelection) -> Unit,
+    onDestinationManagementClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -533,6 +572,10 @@ private fun DestinationSearchPanel(
                 SearchIcon()
             }
         }
+
+        DestinationShortcutRow(
+            onManagementClick = onDestinationManagementClick,
+        )
 
         if (isSearching || error != null || results.isNotEmpty()) {
             when {
@@ -853,6 +896,7 @@ private fun DestinationMapScreenPreview() {
             onSearchSubmit = {},
             onSearchResultClick = {},
             onCurrentLocationClick = {},
+            onDestinationManagementClick = {},
             onConfirmClick = {},
             mapContent = { mapModifier -> Box(mapModifier.background(MapFallback)) },
         )
@@ -885,6 +929,7 @@ private fun DestinationSearchPanelPreview() {
                 onClose = {},
                 onSubmit = {},
                 onResultClick = {},
+                onDestinationManagementClick = {},
                 modifier = Modifier.padding(16.dp),
             )
         }
