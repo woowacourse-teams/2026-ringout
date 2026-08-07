@@ -1,8 +1,8 @@
 ---
 name: "🧩 Client Refactor"
 about: "클라이언트 리팩터링 이슈를 등록합니다."
-title: "[Client Refactor] "
-labels: "client, refactor"
+title: "[Refactor] "
+labels: "client"
 assignees: ""
 ---
 
