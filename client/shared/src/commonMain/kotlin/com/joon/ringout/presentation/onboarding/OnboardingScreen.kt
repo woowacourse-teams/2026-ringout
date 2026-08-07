@@ -1,0 +1,188 @@
+package com.joon.ringout.presentation.onboarding
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.joon.ringout.RingoutTheme
+import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.onboarding.component.OnboardingPage
+import com.joon.ringout.presentation.onboarding.component.OnboardingPageIndicator
+import com.joon.ringout.presentation.onboarding.component.OnboardingPrimaryButton
+
+@Composable
+fun OnboardingScreen(
+    onComplete: () -> Unit,
+    modifier: Modifier = Modifier,
+    pages: List<OnboardingPageContent> = defaultOnboardingPages,
+    viewModel: OnboardingViewModel = viewModel { OnboardingViewModel() },
+) {
+    OnboardingScreenContent(
+        pages = pages,
+        currentPageIndex = viewModel.uiState.currentPageIndex,
+        onNext = {
+            when (viewModel.requestNext(pages.size)) {
+                OnboardingAdvance.Complete -> onComplete()
+                OnboardingAdvance.IgnoredAlreadyComplete,
+                is OnboardingAdvance.MoveTo,
+                -> Unit
+            }
+        },
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun OnboardingScreenContent(
+    pages: List<OnboardingPageContent>,
+    currentPageIndex: Int,
+    onNext: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    require(pages.isNotEmpty()) { "Onboarding requires at least one page." }
+    require(currentPageIndex in pages.indices) {
+        "Current onboarding page must exist in the supplied pages."
+    }
+
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+                    .padding(
+                        start = 24.dp,
+                        top = 12.dp,
+                        end = 24.dp,
+                        bottom = 16.dp,
+                    ),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                OnboardingPage(
+                    content = pages[currentPageIndex],
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                )
+                Spacer(modifier = Modifier.height(22.dp))
+                OnboardingPageIndicator(
+                    pageCount = pages.size,
+                    selectedPage = currentPageIndex,
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                OnboardingPrimaryButton(
+                    label = "다음으로",
+                    onClick = onNext,
+                )
+            }
+        }
+    }
+}
+
+@Preview(name = "Dark onboarding first", widthDp = 402, heightDp = 941)
+@Composable
+private fun DarkOnboardingFirstPagePreview() {
+    OnboardingScreenPreview(themeMode = ThemeMode.Dark, pageIndex = 0)
+}
+
+@Preview(name = "Light onboarding first", widthDp = 402, heightDp = 941)
+@Composable
+private fun LightOnboardingFirstPagePreview() {
+    OnboardingScreenPreview(themeMode = ThemeMode.Light, pageIndex = 0)
+}
+
+@Preview(name = "Dark onboarding second", widthDp = 402, heightDp = 941)
+@Composable
+private fun DarkOnboardingSecondPagePreview() {
+    OnboardingScreenPreview(themeMode = ThemeMode.Dark, pageIndex = 1)
+}
+
+@Preview(name = "Light onboarding second", widthDp = 402, heightDp = 941)
+@Composable
+private fun LightOnboardingSecondPagePreview() {
+    OnboardingScreenPreview(themeMode = ThemeMode.Light, pageIndex = 1)
+}
+
+@Preview(name = "Dark onboarding third", widthDp = 402, heightDp = 941)
+@Composable
+private fun DarkOnboardingThirdPagePreview() {
+    OnboardingScreenPreview(themeMode = ThemeMode.Dark, pageIndex = 2)
+}
+
+@Preview(name = "Light onboarding third", widthDp = 402, heightDp = 941)
+@Composable
+private fun LightOnboardingThirdPagePreview() {
+    OnboardingScreenPreview(themeMode = ThemeMode.Light, pageIndex = 2)
+}
+
+@Preview(name = "Dark onboarding last", widthDp = 402, heightDp = 941)
+@Composable
+private fun DarkOnboardingLastPagePreview() {
+    OnboardingScreenPreview(
+        themeMode = ThemeMode.Dark,
+        pageIndex = defaultOnboardingPages.lastIndex,
+    )
+}
+
+@Preview(name = "Light onboarding last", widthDp = 402, heightDp = 941)
+@Composable
+private fun LightOnboardingLastPagePreview() {
+    OnboardingScreenPreview(
+        themeMode = ThemeMode.Light,
+        pageIndex = defaultOnboardingPages.lastIndex,
+    )
+}
+
+@Preview(name = "Small onboarding", widthDp = 360, heightDp = 800)
+@Composable
+private fun SmallOnboardingScreenPreview() {
+    OnboardingScreenPreview(themeMode = ThemeMode.Dark, pageIndex = 0)
+}
+
+@Preview(name = "Large onboarding", widthDp = 430, heightDp = 932)
+@Composable
+private fun LargeOnboardingScreenPreview() {
+    OnboardingScreenPreview(
+        themeMode = ThemeMode.Light,
+        pageIndex = defaultOnboardingPages.lastIndex,
+    )
+}
+
+@Composable
+private fun OnboardingScreenPreview(
+    themeMode: ThemeMode,
+    pageIndex: Int,
+) {
+    RingoutTheme(themeMode = themeMode) {
+        OnboardingScreenContent(
+            pages = defaultOnboardingPages,
+            currentPageIndex = pageIndex,
+            onNext = {},
+        )
+    }
+}
