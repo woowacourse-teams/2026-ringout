@@ -1,3 +1,11 @@
+---
+name: "💡 Client Feature"
+about: "클라이언트 기능 개발 이슈를 등록합니다."
+title: "[Client Feature] "
+labels: "client, feature"
+assignees: ""
+---
+
 ## 💡 어떤 기능인가요?
 
 > 추가하거나 개선하려는 기능을 간결하게 설명해주세요.
