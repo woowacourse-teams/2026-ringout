@@ -199,8 +199,13 @@ fun DestinationMapScreen(
                     },
                     onAddressResolved = { latitude, longitude, placeName, address ->
                         if (
-                            isResolvingAddress &&
-                            selection.hasSameCoordinates(latitude, longitude)
+                            shouldApplyResolvedAddress(
+                                isResolvingAddress = isResolvingAddress,
+                                selection = selection,
+                                cameraTarget = cameraTarget,
+                                latitude = latitude,
+                                longitude = longitude,
+                            )
                         ) {
                             selection = selection.withResolvedAddress(
                                 latitude = latitude,

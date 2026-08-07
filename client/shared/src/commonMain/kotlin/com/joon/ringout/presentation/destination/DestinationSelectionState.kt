@@ -41,6 +41,17 @@ internal fun DestinationSelection.withResolvedAddress(
     )
 }
 
+internal fun shouldApplyResolvedAddress(
+    isResolvingAddress: Boolean,
+    selection: DestinationSelection,
+    cameraTarget: DestinationSelection?,
+    latitude: Double,
+    longitude: Double,
+): Boolean =
+    isResolvingAddress &&
+        selection.hasSameCoordinates(latitude, longitude) &&
+        cameraTarget?.hasSameCoordinates(latitude, longitude) != true
+
 internal fun DestinationSelection.withNicknameForSave(nickname: String): DestinationSelection =
     copy(
         name = nickname,

@@ -105,6 +105,53 @@ actual fun PlatformDestinationMap(
     var lastHandledCurrentLocationCancellationId by remember { mutableStateOf(0) }
     var currentLocationCameraJob by remember { mutableStateOf<Job?>(null) }
     var currentLocationCameraGeneration by remember { mutableStateOf(0) }
+    val cameraSettlementTracker = remember { DestinationCameraSettlementTracker() }
+    val reverseGeocodeJobHolder = remember { DestinationReverseGeocodeJobHolder() }
+
+    fun cancelReverseGeocoding() {
+        reverseGeocodeJobHolder.job?.cancel()
+        reverseGeocodeJobHolder.job = null
+    }
+
+    fun invalidateCameraSettlement() {
+        cameraSettlementTracker.invalidateSettlement()
+        cancelReverseGeocoding()
+    }
+
+    fun notifyCameraMoveStarted() {
+        invalidateCameraSettlement()
+        currentOnCameraMoveStarted.value()
+    }
+
+    fun settleCameraAndResolveAddress(center: LatLng) {
+        val settlementGeneration = cameraSettlementTracker.registerSettlement(
+            latitude = center.latitude,
+            longitude = center.longitude,
+        ) ?: return
+
+        currentOnCameraSettled.value(center.latitude, center.longitude)
+        cancelReverseGeocoding()
+        reverseGeocodeJobHolder.job = coroutineScope.launch {
+            val resolved = reverseGeocoder.resolve(
+                latitude = center.latitude,
+                longitude = center.longitude,
+            )
+            if (
+                cameraSettlementTracker.isCurrentSettlement(
+                    generation = settlementGeneration,
+                    latitude = center.latitude,
+                    longitude = center.longitude,
+                )
+            ) {
+                currentOnAddressResolved.value(
+                    center.latitude,
+                    center.longitude,
+                    resolved?.placeName,
+                    resolved?.address,
+                )
+            }
+        }
+    }
 
     fun cancelCurrentLocationRequest() {
         currentLocationCameraGeneration += 1
@@ -138,6 +185,7 @@ actual fun PlatformDestinationMap(
                     return@locationCallback
                 }
 
+                invalidateCameraSettlement()
                 currentLocationCameraGeneration += 1
                 val animationGeneration = currentLocationCameraGeneration
                 currentLocationCameraJob?.cancel()
@@ -149,6 +197,9 @@ actual fun PlatformDestinationMap(
                                 CurrentLocationZoomLevel,
                             ),
                             durationMs = CameraAnimationMillis,
+                        )
+                        settleCameraAndResolveAddress(
+                            LatLng(location.latitude, location.longitude),
                         )
                         currentOnCurrentLocationLoadingChange.value(false)
                     } catch (error: CancellationException) {
@@ -199,6 +250,7 @@ actual fun PlatformDestinationMap(
 
     LaunchedEffect(cameraTarget) {
         val target = cameraTarget ?: return@LaunchedEffect
+        invalidateCameraSettlement()
         cancelCurrentLocationRequest()
         try {
             cameraPositionState.animate(
@@ -243,7 +295,6 @@ actual fun PlatformDestinationMap(
     LaunchedEffect(cameraPositionState) {
         var hasObservedCameraMovement = false
         var wasMoving = false
-        var reverseGeocodeJob: Job? = null
         try {
             snapshotFlow {
                 cameraPositionState.isMoving to cameraPositionState.cameraMoveStartedReason
@@ -257,30 +308,15 @@ actual fun PlatformDestinationMap(
                         }
                         if (!wasMoving) {
                             currentOnCurrentLocationLoadingChange.value(false)
-                            reverseGeocodeJob?.cancel()
-                            currentOnCameraMoveStarted.value()
+                            notifyCameraMoveStarted()
                         }
                     } else if (wasMoving && hasObservedCameraMovement) {
-                        val center = cameraPositionState.position.target
-                        currentOnCameraSettled.value(center.latitude, center.longitude)
-                        reverseGeocodeJob?.cancel()
-                        reverseGeocodeJob = launch {
-                            val resolved = reverseGeocoder.resolve(
-                                latitude = center.latitude,
-                                longitude = center.longitude,
-                            )
-                            currentOnAddressResolved.value(
-                                center.latitude,
-                                center.longitude,
-                                resolved?.placeName,
-                                resolved?.address,
-                            )
-                        }
+                        settleCameraAndResolveAddress(cameraPositionState.position.target)
                     }
                     wasMoving = isMoving
                 }
         } finally {
-            reverseGeocodeJob?.cancel()
+            cancelReverseGeocoding()
         }
     }
 
@@ -294,6 +330,7 @@ actual fun PlatformDestinationMap(
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             cancelCurrentLocationRequest()
+            cancelReverseGeocoding()
         }
     }
 
@@ -306,6 +343,51 @@ actual fun PlatformDestinationMap(
         ),
         uiSettings = mapUiSettings,
     )
+}
+
+internal class DestinationCameraSettlementTracker {
+    private var generation = 0L
+    private var settledLatitude: Double? = null
+    private var settledLongitude: Double? = null
+
+    fun invalidateSettlement() {
+        generation += 1
+        settledLatitude = null
+        settledLongitude = null
+    }
+
+    fun registerSettlement(
+        latitude: Double,
+        longitude: Double,
+    ): Long? {
+        if (hasSameCoordinates(latitude, longitude)) return null
+
+        generation += 1
+        settledLatitude = latitude
+        settledLongitude = longitude
+        return generation
+    }
+
+    fun isCurrentSettlement(
+        generation: Long,
+        latitude: Double,
+        longitude: Double,
+    ): Boolean =
+        this.generation == generation && hasSameCoordinates(latitude, longitude)
+
+    private fun hasSameCoordinates(
+        latitude: Double,
+        longitude: Double,
+    ): Boolean {
+        val currentLatitude = settledLatitude ?: return false
+        val currentLongitude = settledLongitude ?: return false
+        return kotlin.math.abs(currentLatitude - latitude) < CameraCoordinateTolerance &&
+            kotlin.math.abs(currentLongitude - longitude) < CameraCoordinateTolerance
+    }
+}
+
+private class DestinationReverseGeocodeJobHolder {
+    var job: Job? = null
 }
 
 private class DestinationCurrentLocationRequester(context: Context) {
@@ -614,6 +696,7 @@ private val MapVerticalContentPadding = 176.dp
 private const val InitialZoomLevel = 17f
 private const val CurrentLocationZoomLevel = 17f
 private const val CameraAnimationMillis = 700
+private const val CameraCoordinateTolerance = 0.00001
 private const val CurrentLocationRefinementDurationMillis = 4_000L
 private const val NanosPerMillisecond = 1_000_000L
 private const val CurrentLocationPermissionError = "현재 위치를 사용하려면 위치 권한이 필요합니다."

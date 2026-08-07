@@ -152,6 +152,35 @@ class DestinationSelectionStateTest {
     }
 
     @Test
+    fun staleAddressDoesNotOverwriteAMatchingSearchTarget() {
+        val searchTarget = DestinationSelection(
+            name = "서울시청",
+            address = "서울특별시 중구 세종대로 110",
+            latitude = 37.5665,
+            longitude = 126.9780,
+        )
+
+        assertFalse(
+            shouldApplyResolvedAddress(
+                isResolvingAddress = true,
+                selection = searchTarget,
+                cameraTarget = searchTarget,
+                latitude = searchTarget.latitude,
+                longitude = searchTarget.longitude,
+            ),
+        )
+        assertTrue(
+            shouldApplyResolvedAddress(
+                isResolvingAddress = true,
+                selection = searchTarget,
+                cameraTarget = null,
+                latitude = searchTarget.latitude,
+                longitude = searchTarget.longitude,
+            ),
+        )
+    }
+
+    @Test
     fun unresolvedAddressIsConvertedToStableFallbackWhenSaved() {
         val selection = DestinationSelection(
             name = SelectedDestinationFallbackName,
