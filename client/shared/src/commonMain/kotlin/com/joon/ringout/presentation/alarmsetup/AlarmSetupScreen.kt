@@ -157,7 +157,8 @@ fun AlarmSetupScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 47.dp),
+                .background(colors.background)
+                .padding(bottom = 47.dp, top = 18.dp),
             contentAlignment = Alignment.Center,
         ) {
             SaveAlarmButton(
