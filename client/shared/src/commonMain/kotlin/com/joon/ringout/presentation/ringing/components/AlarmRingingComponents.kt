@@ -1,6 +1,5 @@
 package com.joon.ringout.presentation.ringing.components
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,40 +21,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.joon.ringout.RingoutTheme
+import com.joon.ringout.ThemeMode
+import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
-import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.ringing_bell_dark
-import ringout.shared.generated.resources.ringing_clock
 
 internal data class AlarmRingingColors(
     val background: Color,
     val primaryText: Color,
+    val emphasisText: Color,
     val secondaryText: Color,
 )
 
 internal fun alarmRingingColors(): AlarmRingingColors =
     AlarmRingingColors(
         background = Color.Black,
-        primaryText = Color.White,
-        secondaryText = Color.White.copy(alpha = 0.8f),
+        primaryText = Color(0xFFF5F5F6),
+        emphasisText = Color.White,
+        secondaryText = Color(0xFFA7A9B0),
     )
-
-@Composable
-internal fun AlarmBellVisual(modifier: Modifier = Modifier) {
-    Image(
-        painter = painterResource(Res.drawable.ringing_bell_dark),
-        contentDescription = "알람이 울리고 있어요",
-        modifier = modifier.size(149.dp),
-        contentScale = ContentScale.Fit,
-    )
-}
 
 @Composable
 internal fun AlarmTimeDetails(
@@ -71,7 +64,7 @@ internal fun AlarmTimeDetails(
     ) {
         Text(
             text = alarmTime,
-            color = colors.primaryText,
+            color = colors.emphasisText,
             maxLines = 1,
             softWrap = false,
             style = MaterialTheme.typography.displayLarge.copy(
@@ -80,7 +73,7 @@ internal fun AlarmTimeDetails(
                 fontWeight = FontWeight.Black,
             ),
         )
-        AlarmLimitBadge(limitMinutes = limitMinutes)
+        AlarmIntervalBadge(intervalMinutes = limitMinutes)
         Text(
             text = "목적지: $destinationName",
             modifier = Modifier.fillMaxWidth(),
@@ -98,8 +91,8 @@ internal fun AlarmTimeDetails(
 }
 
 @Composable
-private fun AlarmLimitBadge(
-    limitMinutes: Int,
+private fun AlarmIntervalBadge(
+    intervalMinutes: Int,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(999.dp)
@@ -114,13 +107,14 @@ private fun AlarmLimitBadge(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Image(
-            painter = painterResource(Res.drawable.ringing_clock),
+        Icon(
+            painter = painterResource(AlarmRingingClockIconResource),
             contentDescription = null,
             modifier = Modifier.size(20.dp),
+            tint = Color.Unspecified,
         )
         Text(
-            text = "제한시간 ${limitMinutes}분",
+            text = "알람 간격 ${intervalMinutes}분",
             color = accentColor,
             maxLines = 1,
             style = MaterialTheme.typography.titleMedium.copy(
@@ -141,7 +135,7 @@ internal fun AlarmDismissButton(
 
     Box(
         modifier = modifier
-            .fillMaxWidth()
+            .width(308.dp)
             .height(64.dp)
             .clip(RoundedCornerShape(32.dp))
             .background(accentColor)
@@ -154,7 +148,7 @@ internal fun AlarmDismissButton(
     ) {
         Text(
             text = "알람 끄고 목적지로 이동하기",
-            color = Color.White,
+            color = MaterialTheme.ringoutColors.primaryActionContent,
             maxLines = 1,
             style = MaterialTheme.typography.titleMedium.copy(
                 fontSize = 18.sp,
@@ -162,5 +156,40 @@ internal fun AlarmDismissButton(
                 fontWeight = FontWeight.Bold,
             ),
         )
+    }
+}
+
+@Preview(widthDp = 402, heightDp = 300)
+@Composable
+private fun AlarmTimeDetailsPreview() {
+    RingoutTheme(themeMode = ThemeMode.Dark) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(alarmRingingColors().background)
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+        ) {
+            AlarmTimeDetails(
+                alarmTime = "7:00",
+                limitMinutes = 10,
+                destinationName = "스터디카페",
+            )
+        }
+    }
+}
+
+@Preview(widthDp = 402, heightDp = 112)
+@Composable
+private fun AlarmDismissButtonPreview() {
+    RingoutTheme(themeMode = ThemeMode.Dark) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(alarmRingingColors().background)
+                .padding(vertical = 24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            AlarmDismissButton(onClick = {})
+        }
     }
 }
