@@ -30,16 +30,19 @@ internal val LocalRingoutThemeMode = staticCompositionLocalOf { ThemeMode.Dark }
 data class RingoutExtendedColors(
     val primaryActionContent: Color,
     val onboardingDescriptionContent: Color,
+    val elevatedSurface: Color,
 )
 
 private val RingoutLightExtendedColors = RingoutExtendedColors(
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.Black,
+    elevatedSurface = Color(0xFFF5F5F6),
 )
 
 private val RingoutDarkExtendedColors = RingoutExtendedColors(
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.White,
+    elevatedSurface = Color(0xFF22242A),
 )
 
 private val LocalRingoutExtendedColors = staticCompositionLocalOf {
