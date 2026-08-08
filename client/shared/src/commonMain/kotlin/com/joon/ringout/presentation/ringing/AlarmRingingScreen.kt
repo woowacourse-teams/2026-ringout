@@ -12,13 +12,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.ringing.components.AlarmBellVisual
 import com.joon.ringout.presentation.ringing.components.AlarmDismissButton
 import com.joon.ringout.presentation.ringing.components.AlarmTimeDetails
 import com.joon.ringout.presentation.ringing.components.alarmRingingColors
@@ -38,13 +39,16 @@ fun AlarmRingingScreen(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background)
+            .semantics { paneTitle = "알람이 울리고 있어요" }
             .statusBarsPadding()
             .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(40.dp),
+        verticalArrangement = Arrangement.spacedBy(
+            space = 40.dp,
+            alignment = Alignment.CenterVertically,
+        ),
     ) {
-        AlarmBellVisual()
         Text(
             text = dateText,
             color = colors.primaryText,
@@ -75,15 +79,15 @@ internal fun formatAlarmDisplayTime(value: String): String {
     }
 }
 
-@Preview(widthDp = 402, heightDp = 874)
+@Preview(widthDp = 402, heightDp = 917)
 @Composable
 private fun AlarmRingingScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         AlarmRingingScreen(
             alarmTime = "07:00",
             dateText = "2026년 7월 23일 목요일",
-            limitMinutes = 30,
-            destinationName = "강남역 2번 출구",
+            limitMinutes = 10,
+            destinationName = "스터디카페",
             onDismissAndNavigateClick = {},
         )
     }
