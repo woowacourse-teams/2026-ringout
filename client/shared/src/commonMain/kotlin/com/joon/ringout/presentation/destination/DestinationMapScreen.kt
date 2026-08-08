@@ -55,8 +55,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
 import com.joon.ringout.presentation.destination.components.DestinationNicknameDialog
-import kotlin.math.abs
+import com.joon.ringout.presentation.destination.components.DestinationShortcutRow
 
 data class DestinationSelection(
     val name: String,
@@ -66,20 +67,25 @@ data class DestinationSelection(
 )
 
 val DefaultDestinationSelection = DestinationSelection(
-    name = "집 앞에 수원천",
-    address = "경기 수원시 팔달구 정조로 893",
-    latitude = 37.2875205998,
-    longitude = 127.0146478075,
+    name = "서울",
+    address = "서울특별시 중구 세종대로 110",
+    latitude = 37.5665851,
+    longitude = 126.9782038,
 )
 
 @Composable
 fun DestinationMapScreen(
     initialSelection: DestinationSelection,
+    requestCurrentLocationOnStart: Boolean = false,
     onBackClick: () -> Unit,
     onConfirmClick: (DestinationSelection) -> Unit,
+    savedDestinations: List<DestinationSelection> = emptyList(),
+    onSavedDestinationEditClick: (DestinationSelection) -> Unit = {},
+    onSavedDestinationDeleteClick: (DestinationSelection) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
+    var isCameraMoving by remember { mutableStateOf(false) }
     var isResolvingAddress by remember { mutableStateOf(false) }
     var mapError by remember { mutableStateOf<String?>(null) }
     var isSearchOpen by remember { mutableStateOf(false) }
@@ -90,14 +96,21 @@ fun DestinationMapScreen(
     var isSearching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var cameraTarget by remember { mutableStateOf<DestinationSelection?>(null) }
-    var currentLocationRequestId by remember { mutableStateOf(0) }
-    var isLocatingCurrentLocation by remember { mutableStateOf(false) }
+    var currentLocationRequestId by remember(initialSelection, requestCurrentLocationOnStart) {
+        mutableStateOf(if (requestCurrentLocationOnStart) InitialCurrentLocationRequestId else 0)
+    }
+    var currentLocationCancellationId by remember { mutableStateOf(0) }
+    var isLocatingCurrentLocation by remember(initialSelection, requestCurrentLocationOnStart) {
+        mutableStateOf(requestCurrentLocationOnStart)
+    }
     var currentLocationError by remember { mutableStateOf<String?>(null) }
     var pendingSelection by remember { mutableStateOf<DestinationSelection?>(null) }
+    var isDestinationManagementOpen by remember { mutableStateOf(false) }
 
     PlatformBackHandler(onBack = {
         when {
             pendingSelection != null -> pendingSelection = null
+            isDestinationManagementOpen -> isDestinationManagementOpen = false
             isSearchOpen -> isSearchOpen = false
             else -> onBackClick()
         }
@@ -122,6 +135,7 @@ fun DestinationMapScreen(
     ) {
         DestinationMapLayout(
             selection = selection,
+            isCameraMoving = isCameraMoving,
             isResolvingAddress = isResolvingAddress,
             mapError = mapError,
             onBackClick = onBackClick,
@@ -159,7 +173,14 @@ fun DestinationMapScreen(
                 isLocatingCurrentLocation = true
                 currentLocationRequestId += 1
             },
-            onConfirmClick = { pendingSelection = selection },
+            onDestinationManagementClick = {
+                isSearchOpen = false
+                isDestinationManagementOpen = true
+            },
+            onConfirmClick = {
+                currentLocationCancellationId += 1
+                pendingSelection = selection
+            },
             modifier = Modifier.fillMaxSize(),
             mapContent = { mapModifier ->
                 PlatformDestinationMap(
@@ -167,34 +188,62 @@ fun DestinationMapScreen(
                     initialLongitude = initialSelection.longitude,
                     cameraTarget = cameraTarget,
                     currentLocationRequestId = currentLocationRequestId,
+                    currentLocationCancellationId = currentLocationCancellationId,
                     onCameraMoveStarted = {
                         currentLocationError = null
+                        isCameraMoving = true
                         isResolvingAddress = true
                     },
-                    onCameraIdle = { latitude, longitude, placeName, address ->
-                        val searchedTarget = cameraTarget?.takeIf {
-                            abs(it.latitude - latitude) < 0.00001 &&
-                                abs(it.longitude - longitude) < 0.00001
-                        }
-                        selection = searchedTarget ?: DestinationSelection(
-                            name = placeName?.takeIf(String::isNotBlank) ?: "선택한 위치",
-                            address = address?.takeIf(String::isNotBlank)
-                                ?: "주소를 확인할 수 없는 위치",
+                    onCameraSettled = { latitude, longitude ->
+                        val isSearchedTarget = cameraTarget?.hasSameCoordinates(
+                            latitude = latitude,
+                            longitude = longitude,
+                        ) == true
+                        selection = destinationAtCameraPosition(
+                            cameraTarget = cameraTarget,
                             latitude = latitude,
                             longitude = longitude,
                         )
                         cameraTarget = null
-                        isResolvingAddress = false
+                        isCameraMoving = false
+                        isResolvingAddress = !isSearchedTarget
+                    },
+                    onAddressResolved = { latitude, longitude, placeName, address ->
+                        if (
+                            shouldApplyResolvedAddress(
+                                isResolvingAddress = isResolvingAddress,
+                                selection = selection,
+                                cameraTarget = cameraTarget,
+                                latitude = latitude,
+                                longitude = longitude,
+                            )
+                        ) {
+                            selection = selection.withResolvedAddress(
+                                latitude = latitude,
+                                longitude = longitude,
+                                placeName = placeName,
+                                address = address,
+                            )
+                            pendingSelection = pendingSelection?.withResolvedAddress(
+                                latitude = latitude,
+                                longitude = longitude,
+                                placeName = placeName,
+                                address = address,
+                            )
+                            isResolvingAddress = false
+                        }
                     },
                     onCurrentLocationLoadingChange = {
                         isLocatingCurrentLocation = it
                     },
                     onCurrentLocationError = { error ->
                         currentLocationError = error
+                        isCameraMoving = false
                         isLocatingCurrentLocation = false
                     },
                     onMapError = { error ->
                         mapError = error
+                        isCameraMoving = false
                         isResolvingAddress = false
                         isLocatingCurrentLocation = false
                     },
@@ -203,6 +252,16 @@ fun DestinationMapScreen(
             },
         )
 
+        if (isDestinationManagementOpen) {
+            DestinationManagementDialog(
+                destinations = savedDestinations,
+                onDismissRequest = { isDestinationManagementOpen = false },
+                onEditClick = onSavedDestinationEditClick,
+                onDeleteClick = onSavedDestinationDeleteClick,
+                modifier = Modifier.zIndex(2f),
+            )
+        }
+
         pendingSelection?.let { selectedDestination ->
             DestinationNicknameDialog(
                 address = selectedDestination.address,
@@ -210,7 +269,7 @@ fun DestinationMapScreen(
                 onSave = { nickname ->
                     pendingSelection = null
                     onConfirmClick(
-                        selectedDestination.copy(name = nickname),
+                        selectedDestination.withNicknameForSave(nickname),
                     )
                 },
                 modifier = Modifier.zIndex(2f),
@@ -222,6 +281,7 @@ fun DestinationMapScreen(
 @Composable
 private fun DestinationMapLayout(
     selection: DestinationSelection,
+    isCameraMoving: Boolean,
     isResolvingAddress: Boolean,
     mapError: String?,
     onBackClick: () -> Unit,
@@ -238,6 +298,7 @@ private fun DestinationMapLayout(
     onSearchSubmit: () -> Unit,
     onSearchResultClick: (DestinationSelection) -> Unit,
     onCurrentLocationClick: () -> Unit,
+    onDestinationManagementClick: () -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
@@ -274,7 +335,7 @@ private fun DestinationMapLayout(
                         ),
                     )
                     Text(
-                        text = "카카오 플랫폼 설정을 확인해 주세요.",
+                        text = "지도 연결 상태와 API 설정을 확인해 주세요.",
                         color = SecondaryText,
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     )
@@ -282,14 +343,29 @@ private fun DestinationMapLayout(
             }
         }
 
-        FloatingMapHeader(
-            onBackClick = onBackClick,
-            onSearchClick = onSearchClick,
+        Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-        )
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+        ) {
+            FloatingMapHeader(
+                onBackClick = onBackClick,
+                onSearchClick = onSearchClick,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            if (!isSearchOpen) {
+                DestinationShortcutRow(
+                    onManagementClick = onDestinationManagementClick,
+                    modifier = Modifier.padding(
+                        start = 3.dp,
+                        top = 10.dp,
+                        end = 17.dp,
+                    ),
+                )
+            }
+        }
 
         if (isSearchOpen) {
             DestinationSearchPanel(
@@ -301,6 +377,7 @@ private fun DestinationMapLayout(
                 onClose = onSearchClose,
                 onSubmit = onSearchSubmit,
                 onResultClick = onSearchResultClick,
+                onDestinationManagementClick = onDestinationManagementClick,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .zIndex(1f)
@@ -311,8 +388,15 @@ private fun DestinationMapLayout(
 
         if (mapError == null) {
             AddressBubble(
-                title = if (isResolvingAddress) "주소를 찾는 중..." else selection.name,
-                address = if (isResolvingAddress) "지도를 움직여 위치를 선택하세요" else selection.address,
+                title = when {
+                    isCameraMoving -> "위치를 선택하는 중..."
+                    isResolvingAddress -> "주소를 찾는 중..."
+                    else -> selection.name
+                },
+                address = when {
+                    isCameraMoving -> "지도를 움직여 위치를 선택하세요"
+                    else -> selection.address
+                },
                 modifier = Modifier
                     .align(Alignment.Center)
                     .offset(y = (-110).dp),
@@ -336,12 +420,20 @@ private fun DestinationMapLayout(
                 CurrentLocationErrorMessage(message = it)
             }
             CurrentLocationButton(
-                enabled = mapError == null && !isResolvingAddress && !isLocatingCurrentLocation,
+                enabled = canConfirmDestination(
+                    isCameraMoving = isCameraMoving,
+                    isLocatingCurrentLocation = isLocatingCurrentLocation,
+                    mapError = mapError,
+                ),
                 isLoading = isLocatingCurrentLocation,
                 onClick = onCurrentLocationClick,
             )
             ConfirmDestinationButton(
-                enabled = !isResolvingAddress && !isLocatingCurrentLocation && mapError == null,
+                enabled = canConfirmDestination(
+                    isCameraMoving = isCameraMoving,
+                    isLocatingCurrentLocation = isLocatingCurrentLocation,
+                    mapError = mapError,
+                ),
                 onClick = onConfirmClick,
             )
         }
@@ -414,6 +506,7 @@ private fun DestinationSearchPanel(
     onClose: () -> Unit,
     onSubmit: () -> Unit,
     onResultClick: (DestinationSelection) -> Unit,
+    onDestinationManagementClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -479,6 +572,10 @@ private fun DestinationSearchPanel(
                 SearchIcon()
             }
         }
+
+        DestinationShortcutRow(
+            onManagementClick = onDestinationManagementClick,
+        )
 
         if (isSearching || error != null || results.isNotEmpty()) {
             when {
@@ -774,6 +871,7 @@ private val Pale = Color(0xFFF5F6F2)
 private val MapFallback = Color(0xFFDCE8DF)
 private val Orange = Color(0xFFFF6B2C)
 private val DisabledButton = Color(0xFFB8BDB7)
+private const val InitialCurrentLocationRequestId = 1
 
 @Preview
 @Composable
@@ -781,6 +879,7 @@ private fun DestinationMapScreenPreview() {
     RingoutTheme {
         DestinationMapLayout(
             selection = DefaultDestinationSelection,
+            isCameraMoving = false,
             isResolvingAddress = false,
             mapError = null,
             onBackClick = {},
@@ -797,6 +896,7 @@ private fun DestinationMapScreenPreview() {
             onSearchSubmit = {},
             onSearchResultClick = {},
             onCurrentLocationClick = {},
+            onDestinationManagementClick = {},
             onConfirmClick = {},
             mapContent = { mapModifier -> Box(mapModifier.background(MapFallback)) },
         )
@@ -829,6 +929,7 @@ private fun DestinationSearchPanelPreview() {
                 onClose = {},
                 onSubmit = {},
                 onResultClick = {},
+                onDestinationManagementClick = {},
                 modifier = Modifier.padding(16.dp),
             )
         }

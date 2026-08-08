@@ -14,14 +14,11 @@ val localProperties = Properties().apply {
     }
 }
 
-val kakaoNativeAppKey = localProperties.getProperty("KAKAO_NATIVE_APP_KEY")
+val mapsApiKey = localProperties.getProperty("MAPS_API_KEY")
     ?.takeIf(String::isNotBlank)
-    ?: providers.environmentVariable("KAKAO_NATIVE_APP_KEY").orNull.orEmpty()
-val kakaoRestApiKey = localProperties.getProperty("KAKAO_REST_API_KEY")
-    ?.takeIf(String::isNotBlank)
-    ?: providers.environmentVariable("KAKAO_REST_API_KEY").orNull.orEmpty()
+    ?: providers.environmentVariable("MAPS_API_KEY").orNull.orEmpty()
 
-val escapedKakaoNativeAppKey = kakaoNativeAppKey
+val escapedMapsApiKey = mapsApiKey
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
@@ -47,7 +44,7 @@ dependencies {
     implementation(projects.shared)
 
     implementation(libs.androidx.activity.compose)
-    implementation(libs.kakao.maps)
+    implementation(libs.google.places)
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
@@ -63,8 +60,8 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 2026007
         versionName = "0.0.7"
-        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$escapedKakaoNativeAppKey\"")
-        manifestPlaceholders["kakaoRestApiKey"] = kakaoRestApiKey
+        buildConfigField("String", "MAPS_API_KEY", "\"$escapedMapsApiKey\"")
+        manifestPlaceholders["mapsApiKey"] = mapsApiKey
     }
     buildFeatures {
         buildConfig = true

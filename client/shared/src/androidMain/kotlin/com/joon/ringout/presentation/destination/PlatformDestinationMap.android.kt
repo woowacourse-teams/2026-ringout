@@ -4,44 +4,48 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.kakao.vectormap.GestureType
-import com.kakao.vectormap.KakaoMap
-import com.kakao.vectormap.KakaoMapReadyCallback
-import com.kakao.vectormap.LatLng
-import com.kakao.vectormap.MapLifeCycleCallback
-import com.kakao.vectormap.MapView
-import com.kakao.vectormap.camera.CameraPosition
-import com.kakao.vectormap.camera.CameraAnimation
-import com.kakao.vectormap.camera.CameraUpdateFactory
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
-import java.util.concurrent.Executors
-import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
+import com.google.android.gms.location.CurrentLocationRequest
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.Granularity
+import com.google.android.gms.location.LastLocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.tasks.CancellationTokenSource
+import com.google.maps.android.compose.CameraMoveStartedReason
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.rememberCameraPositionState
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import java.util.concurrent.Executor
 
 @Composable
 actual fun PlatformDestinationMap(
@@ -49,8 +53,13 @@ actual fun PlatformDestinationMap(
     initialLongitude: Double,
     cameraTarget: DestinationSelection?,
     currentLocationRequestId: Int,
+    currentLocationCancellationId: Int,
     onCameraMoveStarted: () -> Unit,
-    onCameraIdle: (
+    onCameraSettled: (
+        latitude: Double,
+        longitude: Double,
+    ) -> Unit,
+    onAddressResolved: (
         latitude: Double,
         longitude: Double,
         placeName: String?,
@@ -63,25 +72,91 @@ actual fun PlatformDestinationMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
     val currentOnCameraMoveStarted = rememberUpdatedState(onCameraMoveStarted)
-    val currentOnCameraIdle = rememberUpdatedState(onCameraIdle)
+    val currentOnCameraSettled = rememberUpdatedState(onCameraSettled)
+    val currentOnAddressResolved = rememberUpdatedState(onAddressResolved)
     val currentOnCurrentLocationLoadingChange = rememberUpdatedState(onCurrentLocationLoadingChange)
     val currentOnCurrentLocationError = rememberUpdatedState(onCurrentLocationError)
     val currentOnMapError = rememberUpdatedState(onMapError)
-    val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val requestSerial = remember { AtomicInteger() }
-    val reverseGeocoder = remember(context) { KakaoReverseGeocoder(context.applicationContext) }
+    val initialPosition = remember(initialLatitude, initialLongitude) {
+        LatLng(initialLatitude, initialLongitude)
+    }
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(initialPosition, InitialZoomLevel)
+    }
+    val reverseGeocoder = remember(context) {
+        AndroidDestinationReverseGeocoder(context.applicationContext)
+    }
     val currentLocationRequester = remember(context) {
         DestinationCurrentLocationRequester(context.applicationContext)
     }
-    val mapView = remember(context, initialLatitude, initialLongitude) { MapView(context) }
-    val addressExecutor = remember(mapView) { Executors.newSingleThreadExecutor() }
-    var activeKakaoMap by remember(mapView) { mutableStateOf<KakaoMap?>(null) }
+    val mapUiSettings = remember {
+        MapUiSettings(
+            compassEnabled = true,
+            indoorLevelPickerEnabled = false,
+            mapToolbarEnabled = false,
+            myLocationButtonEnabled = false,
+            zoomControlsEnabled = false,
+        )
+    }
     var activeCurrentLocationRequestId by remember { mutableStateOf<Int?>(null) }
     var lastHandledCurrentLocationRequestId by remember { mutableStateOf(0) }
-    val currentActiveKakaoMap = rememberUpdatedState(activeKakaoMap)
+    var lastHandledCurrentLocationCancellationId by remember { mutableStateOf(0) }
+    var currentLocationCameraJob by remember { mutableStateOf<Job?>(null) }
+    var currentLocationCameraGeneration by remember { mutableStateOf(0) }
+    val cameraSettlementTracker = remember { DestinationCameraSettlementTracker() }
+    val reverseGeocodeJobHolder = remember { DestinationReverseGeocodeJobHolder() }
+
+    fun cancelReverseGeocoding() {
+        reverseGeocodeJobHolder.job?.cancel()
+        reverseGeocodeJobHolder.job = null
+    }
+
+    fun invalidateCameraSettlement() {
+        cameraSettlementTracker.invalidateSettlement()
+        cancelReverseGeocoding()
+    }
+
+    fun notifyCameraMoveStarted() {
+        invalidateCameraSettlement()
+        currentOnCameraMoveStarted.value()
+    }
+
+    fun settleCameraAndResolveAddress(center: LatLng) {
+        val settlementGeneration = cameraSettlementTracker.registerSettlement(
+            latitude = center.latitude,
+            longitude = center.longitude,
+        ) ?: return
+
+        currentOnCameraSettled.value(center.latitude, center.longitude)
+        cancelReverseGeocoding()
+        reverseGeocodeJobHolder.job = coroutineScope.launch {
+            val resolved = reverseGeocoder.resolve(
+                latitude = center.latitude,
+                longitude = center.longitude,
+            )
+            if (
+                cameraSettlementTracker.isCurrentSettlement(
+                    generation = settlementGeneration,
+                    latitude = center.latitude,
+                    longitude = center.longitude,
+                )
+            ) {
+                currentOnAddressResolved.value(
+                    center.latitude,
+                    center.longitude,
+                    resolved?.placeName,
+                    resolved?.address,
+                )
+            }
+        }
+    }
 
     fun cancelCurrentLocationRequest() {
+        currentLocationCameraGeneration += 1
+        currentLocationCameraJob?.cancel()
+        currentLocationCameraJob = null
         activeCurrentLocationRequestId = null
         currentLocationRequester.cancel()
         currentOnCurrentLocationLoadingChange.value(false)
@@ -90,41 +165,68 @@ actual fun PlatformDestinationMap(
     fun requestAndMoveToCurrentLocation(requestId: Int) {
         if (activeCurrentLocationRequestId != requestId) return
 
-        val kakaoMap = currentActiveKakaoMap.value
-        if (kakaoMap == null) {
-            activeCurrentLocationRequestId = null
-            currentOnCurrentLocationLoadingChange.value(false)
-            currentOnCurrentLocationError.value(CURRENT_LOCATION_UNAVAILABLE_ERROR)
-            return
-        }
-
         currentOnCurrentLocationLoadingChange.value(true)
+        var lastPresentedLocation: Location? = null
         currentLocationRequester.request(
-            onLocation = { location ->
-                if (activeCurrentLocationRequestId != requestId) return@request
-                activeCurrentLocationRequestId = null
-                if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                    currentOnCurrentLocationLoadingChange.value(false)
-                    return@request
+            onLocation = locationCallback@{ location, isFinal ->
+                if (activeCurrentLocationRequestId != requestId) return@locationCallback
+                if (isFinal) {
+                    activeCurrentLocationRequestId = null
                 }
-                runCatching {
-                    kakaoMap.moveCamera(
-                        CameraUpdateFactory.newCenterPosition(
-                            LatLng.from(location.latitude, location.longitude),
-                            17,
-                        ),
-                        CameraAnimation.from(700),
-                    )
-                }.onSuccess {
+                if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    cancelCurrentLocationRequest()
+                    return@locationCallback
+                }
+
+                val shouldMoveCamera = lastPresentedLocation?.isSameMapFixAs(location) != true
+                lastPresentedLocation = location
+                if (!shouldMoveCamera) {
                     currentOnCurrentLocationLoadingChange.value(false)
-                }.onFailure {
-                    currentOnCurrentLocationLoadingChange.value(false)
-                    currentOnCurrentLocationError.value(CURRENT_LOCATION_MOVE_ERROR)
+                    return@locationCallback
+                }
+
+                invalidateCameraSettlement()
+                currentLocationCameraGeneration += 1
+                val animationGeneration = currentLocationCameraGeneration
+                currentLocationCameraJob?.cancel()
+                currentLocationCameraJob = coroutineScope.launch {
+                    try {
+                        cameraPositionState.animate(
+                            update = CameraUpdateFactory.newLatLngZoom(
+                                LatLng(location.latitude, location.longitude),
+                                CurrentLocationZoomLevel,
+                            ),
+                            durationMs = CameraAnimationMillis,
+                        )
+                        settleCameraAndResolveAddress(
+                            LatLng(location.latitude, location.longitude),
+                        )
+                        currentOnCurrentLocationLoadingChange.value(false)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        if (
+                            currentLocationCameraGeneration == animationGeneration &&
+                            (activeCurrentLocationRequestId == requestId || isFinal)
+                        ) {
+                            activeCurrentLocationRequestId = null
+                            currentLocationRequester.cancel()
+                            currentOnCurrentLocationLoadingChange.value(false)
+                            currentOnCurrentLocationError.value(CurrentLocationMoveError)
+                        }
+                    } finally {
+                        if (currentLocationCameraGeneration == animationGeneration) {
+                            currentLocationCameraJob = null
+                        }
+                    }
                 }
             },
             onError = { error ->
                 if (activeCurrentLocationRequestId != requestId) return@request
                 activeCurrentLocationRequestId = null
+                currentLocationCameraGeneration += 1
+                currentLocationCameraJob?.cancel()
+                currentLocationCameraJob = null
                 currentOnCurrentLocationLoadingChange.value(false)
                 currentOnCurrentLocationError.value(error)
             },
@@ -142,460 +244,397 @@ actual fun PlatformDestinationMap(
         } else {
             activeCurrentLocationRequestId = null
             currentOnCurrentLocationLoadingChange.value(false)
-            currentOnCurrentLocationError.value(CURRENT_LOCATION_PERMISSION_ERROR)
+            currentOnCurrentLocationError.value(CurrentLocationPermissionError)
         }
     }
 
-    LaunchedEffect(cameraTarget, activeKakaoMap) {
+    LaunchedEffect(cameraTarget) {
         val target = cameraTarget ?: return@LaunchedEffect
+        invalidateCameraSettlement()
         cancelCurrentLocationRequest()
-        activeKakaoMap?.moveCamera(
-            CameraUpdateFactory.newCenterPosition(LatLng.from(target.latitude, target.longitude), 17),
-            CameraAnimation.from(700),
-        )
+        try {
+            cameraPositionState.animate(
+                update = CameraUpdateFactory.newLatLngZoom(
+                    LatLng(target.latitude, target.longitude),
+                    CurrentLocationZoomLevel,
+                ),
+                durationMs = CameraAnimationMillis,
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            currentOnMapError.value(MapCameraMoveError)
+        }
     }
 
-    LaunchedEffect(currentLocationRequestId, activeKakaoMap) {
-        if (
-            currentLocationRequestId <= lastHandledCurrentLocationRequestId ||
-            activeKakaoMap == null
-        ) {
+    LaunchedEffect(currentLocationRequestId) {
+        if (currentLocationRequestId <= lastHandledCurrentLocationRequestId) {
             return@LaunchedEffect
         }
 
         lastHandledCurrentLocationRequestId = currentLocationRequestId
+        cancelCurrentLocationRequest()
         activeCurrentLocationRequestId = currentLocationRequestId
         currentOnCurrentLocationLoadingChange.value(true)
         if (context.hasDestinationLocationPermission()) {
             requestAndMoveToCurrentLocation(currentLocationRequestId)
         } else {
-            locationPermissionLauncher.launch(destinationLocationPermissions)
+            locationPermissionLauncher.launch(DestinationLocationPermissions)
         }
     }
 
-    DisposableEffect(mapView, lifecycleOwner) {
-        var isFinished = false
-        var addressRequest: java.util.concurrent.Future<*>? = null
-        val isDisposed = AtomicBoolean(false)
-
-        fun finishMap() {
-            if (!isFinished) {
-                isFinished = true
-                mapView.finish()
-            }
+    LaunchedEffect(currentLocationCancellationId) {
+        if (currentLocationCancellationId <= lastHandledCurrentLocationCancellationId) {
+            return@LaunchedEffect
         }
 
-        mapView.start(
-            object : MapLifeCycleCallback() {
-                override fun onMapDestroy() = Unit
+        lastHandledCurrentLocationCancellationId = currentLocationCancellationId
+        cancelCurrentLocationRequest()
+    }
 
-                override fun onMapError(error: Exception) {
-                    if (isDisposed.get()) return
-                    mainHandler.post {
-                        if (!isDisposed.get()) {
+    LaunchedEffect(cameraPositionState) {
+        var hasObservedCameraMovement = false
+        var wasMoving = false
+        try {
+            snapshotFlow {
+                cameraPositionState.isMoving to cameraPositionState.cameraMoveStartedReason
+            }
+                .distinctUntilChanged()
+                .collect { (isMoving, moveStartedReason) ->
+                    if (isMoving) {
+                        hasObservedCameraMovement = true
+                        if (moveStartedReason == CameraMoveStartedReason.GESTURE) {
                             cancelCurrentLocationRequest()
-                            currentOnMapError.value(error.message ?: "카카오 지도 인증에 실패했습니다.")
                         }
+                        if (!wasMoving) {
+                            currentOnCurrentLocationLoadingChange.value(false)
+                            notifyCameraMoveStarted()
+                        }
+                    } else if (wasMoving && hasObservedCameraMovement) {
+                        settleCameraAndResolveAddress(cameraPositionState.position.target)
                     }
+                    wasMoving = isMoving
                 }
-            },
-            object : KakaoMapReadyCallback() {
-                override fun getPosition(): LatLng = LatLng.from(initialLatitude, initialLongitude)
+        } finally {
+            cancelReverseGeocoding()
+        }
+    }
 
-                override fun getZoomLevel(): Int = 17
-
-                override fun onMapReady(kakaoMap: KakaoMap) {
-                    if (isDisposed.get()) return
-                    activeKakaoMap = kakaoMap
-                    kakaoMap.setOnCameraMoveStartListener(
-                        object : KakaoMap.OnCameraMoveStartListener {
-                            override fun onCameraMoveStart(
-                                kakaoMap: KakaoMap,
-                                gestureType: GestureType,
-                            ) {
-                                if (isDisposed.get()) return
-                                cancelCurrentLocationRequest()
-                                requestSerial.incrementAndGet()
-                                addressRequest?.cancel(true)
-                                currentOnCameraMoveStarted.value()
-                            }
-                        },
-                    )
-                    kakaoMap.setOnCameraMoveEndListener(
-                        object : KakaoMap.OnCameraMoveEndListener {
-                            override fun onCameraMoveEnd(
-                                kakaoMap: KakaoMap,
-                                cameraPosition: CameraPosition,
-                                gestureType: GestureType,
-                            ) {
-                                if (isDisposed.get()) return
-                                val center = cameraPosition.position
-                                val serial = requestSerial.incrementAndGet()
-                                addressRequest?.cancel(true)
-                                try {
-                                    addressRequest = addressExecutor.submit {
-                                        val resolved = reverseGeocoder.resolve(
-                                            latitude = center.latitude,
-                                            longitude = center.longitude,
-                                        )
-                                        mainHandler.post {
-                                            if (!isDisposed.get() && serial == requestSerial.get()) {
-                                                currentOnCameraIdle.value(
-                                                    center.latitude,
-                                                    center.longitude,
-                                                    resolved?.placeName,
-                                                    resolved?.address,
-                                                )
-                                            }
-                                        }
-                                    }
-                                } catch (_: RejectedExecutionException) {
-                                    // The map left composition while the camera callback was being delivered.
-                                }
-                            }
-                        },
-                    )
-                }
-            },
-        )
-        mapView.setFinishManually(true)
-
+    DisposableEffect(lifecycleOwner, currentLocationRequester) {
         val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> mapView.resume()
-                Lifecycle.Event.ON_PAUSE -> mapView.pause()
-                Lifecycle.Event.ON_STOP -> cancelCurrentLocationRequest()
-                Lifecycle.Event.ON_DESTROY -> finishMap()
-                else -> Unit
+            if (event == Lifecycle.Event.ON_STOP) {
+                cancelCurrentLocationRequest()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            mapView.resume()
-        }
-
         onDispose {
-            isDisposed.set(true)
             lifecycleOwner.lifecycle.removeObserver(observer)
-            requestSerial.incrementAndGet()
-            addressRequest?.cancel(true)
-            addressExecutor.shutdownNow()
             cancelCurrentLocationRequest()
-            finishMap()
+            cancelReverseGeocoding()
         }
     }
 
-    AndroidView(
-        factory = { mapView },
+    GoogleMap(
         modifier = modifier,
+        cameraPositionState = cameraPositionState,
+        contentPadding = PaddingValues(
+            horizontal = MapHorizontalContentPadding,
+            vertical = MapVerticalContentPadding,
+        ),
+        uiSettings = mapUiSettings,
     )
 }
 
-@Composable
-actual fun PlatformDestinationSearchEffect(
-    query: String?,
-    requestId: Int,
-    onLoadingChange: (Boolean) -> Unit,
-    onResults: (List<DestinationSelection>) -> Unit,
-    onError: (String) -> Unit,
-) {
-    val context = LocalContext.current
-    val currentOnLoadingChange = rememberUpdatedState(onLoadingChange)
-    val currentOnResults = rememberUpdatedState(onResults)
-    val currentOnError = rememberUpdatedState(onError)
-    val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val searcher = remember(context) { KakaoDestinationSearcher(context.applicationContext) }
-    val executor = remember { Executors.newSingleThreadExecutor() }
+internal class DestinationCameraSettlementTracker {
+    private var generation = 0L
+    private var settledLatitude: Double? = null
+    private var settledLongitude: Double? = null
 
-    DisposableEffect(Unit) {
-        onDispose { executor.shutdownNow() }
+    fun invalidateSettlement() {
+        generation += 1
+        settledLatitude = null
+        settledLongitude = null
     }
-    DisposableEffect(query, requestId) {
-        if (query.isNullOrBlank()) return@DisposableEffect onDispose { }
-        val isActive = AtomicBoolean(true)
-        currentOnLoadingChange.value(true)
-        val request = executor.submit {
-            try {
-                val results = searcher.search(query)
-                mainHandler.post {
-                    if (isActive.get()) {
-                        currentOnLoadingChange.value(false)
-                        currentOnResults.value(results)
-                    }
-                }
-            } catch (_: InterruptedException) {
-                // A newer query replaced this request.
-            } catch (_: Exception) {
-                mainHandler.post {
-                    if (isActive.get()) {
-                        currentOnLoadingChange.value(false)
-                        currentOnError.value("검색 중 오류가 발생했습니다.")
-                    }
-                }
-            }
-        }
-        onDispose {
-            isActive.set(false)
-            request.cancel(true)
-        }
+
+    fun registerSettlement(
+        latitude: Double,
+        longitude: Double,
+    ): Long? {
+        if (hasSameCoordinates(latitude, longitude)) return null
+
+        generation += 1
+        settledLatitude = latitude
+        settledLongitude = longitude
+        return generation
+    }
+
+    fun isCurrentSettlement(
+        generation: Long,
+        latitude: Double,
+        longitude: Double,
+    ): Boolean =
+        this.generation == generation && hasSameCoordinates(latitude, longitude)
+
+    private fun hasSameCoordinates(
+        latitude: Double,
+        longitude: Double,
+    ): Boolean {
+        val currentLatitude = settledLatitude ?: return false
+        val currentLongitude = settledLongitude ?: return false
+        return kotlin.math.abs(currentLatitude - latitude) < CameraCoordinateTolerance &&
+            kotlin.math.abs(currentLongitude - longitude) < CameraCoordinateTolerance
     }
 }
 
-private class KakaoDestinationSearcher(context: Context) {
-    @Suppress("DEPRECATION")
-    private val restApiKey = context.packageManager
-        .getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
-        .metaData
-        ?.getString(REST_API_KEY_METADATA_NAME)
-        .orEmpty()
-
-    fun search(query: String): List<DestinationSelection> {
-        if (restApiKey.isBlank()) throw IllegalStateException("REST API key is missing")
-        val encodedQuery = URLEncoder.encode(query, Charsets.UTF_8.name())
-        val addressResults = request(
-            "https://dapi.kakao.com/v2/local/search/address.json?query=$encodedQuery&size=10",
-            isAddressSearch = true,
-        )
-        val keywordResults = request(
-            "https://dapi.kakao.com/v2/local/search/keyword.json?query=$encodedQuery&size=15",
-            isAddressSearch = false,
-        )
-        return (addressResults + keywordResults).distinctBy { "${it.latitude},${it.longitude}" }
-    }
-
-    private fun request(url: String, isAddressSearch: Boolean): List<DestinationSelection> {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 5_000
-            readTimeout = 5_000
-            setRequestProperty("Authorization", "KakaoAK $restApiKey")
-        }
-        return try {
-            if (connection.responseCode !in 200..299) return emptyList()
-            val documents = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-                .optJSONArray("documents")
-                ?: return emptyList()
-            buildList {
-                for (index in 0 until documents.length()) {
-                    val item = documents.optJSONObject(index) ?: continue
-                    val longitude = item.optString("x").toDoubleOrNull() ?: continue
-                    val latitude = item.optString("y").toDoubleOrNull() ?: continue
-                    val roadAddress = item.optString("road_address_name")
-                    val lotAddress = item.optString("address_name")
-                    val address = roadAddress.ifBlank { lotAddress }
-                    val name = if (isAddressSearch) {
-                        item.optJSONObject("road_address")?.optString("building_name").orEmpty()
-                            .ifBlank { address }
-                    } else {
-                        item.optString("place_name").ifBlank { address }
-                    }
-                    if (address.isNotBlank()) {
-                        add(DestinationSelection(name, address, latitude, longitude))
-                    }
-                }
-            }
-        } finally {
-            connection.disconnect()
-        }
-    }
-}
-
-private class KakaoReverseGeocoder(context: Context) {
-    @Suppress("DEPRECATION")
-    private val restApiKey = context.packageManager
-        .getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
-        .metaData
-        ?.getString(REST_API_KEY_METADATA_NAME)
-        .orEmpty()
-
-    fun resolve(latitude: Double, longitude: Double): ResolvedAddress? {
-        if (restApiKey.isBlank()) return null
-
-        val addressDocument = requestFirstDocument(
-            "https://dapi.kakao.com/v2/local/geo/coord2address.json" +
-                "?x=$longitude&y=$latitude&input_coord=WGS84",
-        )
-        if (addressDocument != null) {
-            val roadAddress = addressDocument.optJSONObject("road_address")
-            val lotAddress = addressDocument.optJSONObject("address")
-            val address = roadAddress?.optString("address_name").orEmpty()
-                .ifBlank { roadAddress?.optString("road_name").orEmpty() }
-                .ifBlank { lotAddress?.optString("address_name").orEmpty() }
-            if (address.isNotBlank()) {
-                return ResolvedAddress(
-                    placeName = roadAddress
-                        ?.optString("building_name")
-                        .orEmpty()
-                        .takeIf(String::isNotBlank),
-                    address = address,
-                )
-            }
-        }
-
-        val regionDocuments = requestDocuments(
-            "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json" +
-                "?x=$longitude&y=$latitude&input_coord=WGS84",
-        )
-        val regionDocument = regionDocuments.firstOrNull {
-            it.optString("region_type") == "H"
-        } ?: regionDocuments.firstOrNull()
-        val regionAddress = regionDocument?.optString("address_name").orEmpty()
-        return regionAddress.takeIf(String::isNotBlank)?.let {
-            ResolvedAddress(placeName = null, address = it)
-        }
-    }
-
-    private fun requestFirstDocument(url: String): JSONObject? =
-        requestDocuments(url).firstOrNull()
-
-    private fun requestDocuments(url: String): List<JSONObject> {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 5_000
-            readTimeout = 5_000
-            setRequestProperty("Authorization", "KakaoAK $restApiKey")
-        }
-
-        return try {
-            if (connection.responseCode !in 200..299) return emptyList()
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            val documents = JSONObject(body)
-                .optJSONArray("documents")
-                ?: return emptyList()
-            buildList {
-                for (index in 0 until documents.length()) {
-                    documents.optJSONObject(index)?.let(::add)
-                }
-            }
-        } catch (_: Exception) {
-            emptyList()
-        } finally {
-            connection.disconnect()
-        }
-    }
-
+private class DestinationReverseGeocodeJobHolder {
+    var job: Job? = null
 }
 
 private class DestinationCurrentLocationRequester(context: Context) {
     private val applicationContext = context.applicationContext
-    private val locationManager = applicationContext.getSystemService(LocationManager::class.java)
+    private val fusedLocationClient: FusedLocationProviderClient =
+        LocationServices.getFusedLocationProviderClient(applicationContext)
     private val mainLooper = Looper.getMainLooper()
     private val mainHandler = Handler(mainLooper)
-    private var activeLocationListener: LocationListener? = null
-    private var activeTimeout: Runnable? = null
+    private val mainExecutor = Executor { command ->
+        if (Looper.myLooper() == mainLooper) {
+            command.run()
+        } else {
+            mainHandler.post(command)
+        }
+    }
+    private var nextRequestId = 0L
+    private var activeRequestId: Long? = null
+    private var activeCancellationTokenSource: CancellationTokenSource? = null
 
     fun request(
-        onLocation: (Location) -> Unit,
+        onLocation: (location: Location, isFinal: Boolean) -> Unit,
         onError: (String) -> Unit,
     ) {
         cancel()
 
         if (!applicationContext.hasDestinationLocationPermission()) {
-            onError(CURRENT_LOCATION_PERMISSION_ERROR)
+            onError(CurrentLocationPermissionError)
             return
         }
 
-        val enabledProviders = runCatching {
-            locationManager.getProviders(true)
-        }.getOrDefault(emptyList())
-        val providers = buildList {
-            if (
-                applicationContext.hasDestinationFineLocationPermission() &&
-                LocationManager.GPS_PROVIDER in enabledProviders
-            ) {
-                add(LocationManager.GPS_PROVIDER)
-            }
-            if (LocationManager.NETWORK_PROVIDER in enabledProviders) {
-                add(LocationManager.NETWORK_PROVIDER)
-            }
-        }
-        if (providers.isEmpty()) {
-            onError(CURRENT_LOCATION_SERVICES_ERROR)
-            return
-        }
-
-        val recentLocation = providers
-            .mapNotNull { provider ->
-                runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
-            }
-            .filter { location -> location.isUsableForMap() }
-            .minWithOrNull(
-                compareBy<Location> { location -> location.mapAccuracyMeters }
-                    .thenByDescending { location -> location.time },
-            )
-        if (recentLocation?.isPreciseEnoughForMap() == true) {
-            onLocation(recentLocation)
-            return
-        }
-
-        var isCompleted = false
-        var bestLocation = recentLocation
-        lateinit var locationListener: LocationListener
-        lateinit var timeout: Runnable
-
-        fun complete(location: Location?) {
-            if (isCompleted || activeLocationListener !== locationListener) return
-            isCompleted = true
-            cancel()
-            if (location != null) {
-                onLocation(location)
-            } else {
-                onError(CURRENT_LOCATION_UNAVAILABLE_ERROR)
-            }
-        }
-
-        locationListener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                if (!location.isUsableForMap()) return
-                if (location.isBetterForMapThan(bestLocation)) {
-                    bestLocation = location
-                }
-                if (location.isPreciseEnoughForMap()) {
-                    complete(location)
-                }
-            }
-
-            override fun onProviderEnabled(provider: String) = Unit
-
-            override fun onProviderDisabled(provider: String) = Unit
-
-            @Deprecated("Deprecated in Android")
-            override fun onStatusChanged(
-                provider: String?,
-                status: Int,
-                extras: Bundle?,
-            ) = Unit
-        }
-        timeout = Runnable { complete(bestLocation) }
-        activeLocationListener = locationListener
-        activeTimeout = timeout
-
-        val registeredProviderCount = providers.count { provider ->
-            runCatching {
-                locationManager.requestLocationUpdates(
-                    provider,
-                    0L,
-                    0f,
-                    locationListener,
-                    mainLooper,
-                )
-            }.isSuccess
-        }
-        if (registeredProviderCount == 0) {
-            complete(bestLocation)
+        val hasFinePermission = applicationContext.hasDestinationFineLocationPermission()
+        val granularity = if (hasFinePermission) {
+            DestinationLocationGranularity.Fine
         } else {
-            mainHandler.postDelayed(timeout, CURRENT_LOCATION_TIMEOUT_MILLIS)
+            DestinationLocationGranularity.Coarse
         }
+        val requestId = ++nextRequestId
+        activeRequestId = requestId
+        requestCachedLocation(
+            requestId = requestId,
+            hasFinePermission = hasFinePermission,
+            onResult = { candidate ->
+                val decision = candidate?.destinationLocationDecision(granularity)
+                    ?: DestinationLocationDecision.Reject
+                when (decision) {
+                    DestinationLocationDecision.UseFinal -> {
+                        val cachedLocation = candidate ?: return@requestCachedLocation
+                        finishWithLocation(requestId, cachedLocation, onLocation)
+                    }
+
+                    DestinationLocationDecision.UseAndRefine -> {
+                        val cachedLocation = candidate ?: return@requestCachedLocation
+                        onLocation(cachedLocation, false)
+                        requestFreshLocation(
+                            requestId = requestId,
+                            hasFinePermission = hasFinePermission,
+                            granularity = granularity,
+                            fallbackLocation = cachedLocation,
+                            onLocation = onLocation,
+                            onError = onError,
+                        )
+                    }
+
+                    DestinationLocationDecision.Reject -> {
+                        requestFreshLocation(
+                            requestId = requestId,
+                            hasFinePermission = hasFinePermission,
+                            granularity = granularity,
+                            fallbackLocation = null,
+                            onLocation = onLocation,
+                            onError = onError,
+                        )
+                    }
+                }
+            },
+        )
     }
 
     fun cancel() {
-        activeTimeout?.let(mainHandler::removeCallbacks)
-        activeTimeout = null
-        activeLocationListener?.let { listener ->
-            runCatching { locationManager.removeUpdates(listener) }
+        activeRequestId = null
+        activeCancellationTokenSource?.cancel()
+        activeCancellationTokenSource = null
+    }
+
+    private fun requestFreshLocation(
+        requestId: Long,
+        hasFinePermission: Boolean,
+        granularity: DestinationLocationGranularity,
+        fallbackLocation: Location?,
+        onLocation: (location: Location, isFinal: Boolean) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        requestSingleLocation(
+            requestId = requestId,
+            request = currentLocationRequest(
+                hasFinePermission = hasFinePermission,
+                maxUpdateAgeMillis = 0L,
+                durationMillis = CurrentLocationRefinementDurationMillis,
+            ),
+            onResult = { candidate ->
+                val refinedLocation = candidate?.takeIf { location ->
+                    location.hasValidDestinationCoordinates() &&
+                        location.destinationLocationAgeMillis in
+                        -DestinationLocationClockSkewMillis..DestinationLocationFreshMaxAgeMillis &&
+                        location.destinationLocationDecision(granularity) !=
+                        DestinationLocationDecision.Reject
+                }?.takeIf { location ->
+                    fallbackLocation == null ||
+                        shouldUseRefinedDestinationLocation(
+                            fallback = fallbackLocation.destinationLocationQuality,
+                            refined = location.destinationLocationQuality,
+                        )
+                }
+                val finalLocation = refinedLocation ?: fallbackLocation
+                if (finalLocation == null) {
+                    finishWithError(requestId, onError)
+                } else {
+                    finishWithLocation(requestId, finalLocation, onLocation)
+                }
+            },
+            onFailure = {
+                if (fallbackLocation == null) {
+                    finishWithError(requestId, onError)
+                } else {
+                    finishWithLocation(requestId, fallbackLocation, onLocation)
+                }
+            },
+        )
+    }
+
+    private fun requestCachedLocation(
+        requestId: Long,
+        hasFinePermission: Boolean,
+        onResult: (Location?) -> Unit,
+    ) {
+        if (activeRequestId != requestId) return
+
+        val request = LastLocationRequest.Builder()
+            .setGranularity(
+                if (hasFinePermission) {
+                    Granularity.GRANULARITY_FINE
+                } else {
+                    Granularity.GRANULARITY_COARSE
+                },
+            )
+            .setMaxUpdateAgeMillis(DestinationLocationCacheMaxAgeMillis)
+            .build()
+        val task = try {
+            fusedLocationClient.getLastLocation(request)
+        } catch (_: SecurityException) {
+            onResult(null)
+            return
+        } catch (_: Exception) {
+            onResult(null)
+            return
         }
-        activeLocationListener = null
+        task.addOnCompleteListener(mainExecutor) { completedTask ->
+            if (activeRequestId != requestId) return@addOnCompleteListener
+            onResult(
+                if (completedTask.isSuccessful) {
+                    completedTask.result
+                } else {
+                    null
+                },
+            )
+        }
+    }
+
+    private fun requestSingleLocation(
+        requestId: Long,
+        request: CurrentLocationRequest,
+        onResult: (Location?) -> Unit,
+        onFailure: () -> Unit,
+    ) {
+        if (activeRequestId != requestId) return
+
+        val cancellationTokenSource = CancellationTokenSource()
+        activeCancellationTokenSource = cancellationTokenSource
+        val task = try {
+            fusedLocationClient.getCurrentLocation(request, cancellationTokenSource.token)
+        } catch (_: SecurityException) {
+            onFailure()
+            return
+        } catch (_: Exception) {
+            onFailure()
+            return
+        }
+        task.addOnCompleteListener(mainExecutor) { completedTask ->
+            if (
+                activeRequestId != requestId ||
+                activeCancellationTokenSource !== cancellationTokenSource
+            ) {
+                return@addOnCompleteListener
+            }
+            if (completedTask.isSuccessful) {
+                onResult(completedTask.result)
+            } else {
+                onFailure()
+            }
+        }
+    }
+
+    private fun currentLocationRequest(
+        hasFinePermission: Boolean,
+        maxUpdateAgeMillis: Long,
+        durationMillis: Long,
+    ): CurrentLocationRequest = CurrentLocationRequest.Builder()
+        .setPriority(
+            if (hasFinePermission) {
+                Priority.PRIORITY_HIGH_ACCURACY
+            } else {
+                Priority.PRIORITY_BALANCED_POWER_ACCURACY
+            },
+        )
+        .setGranularity(
+            if (hasFinePermission) {
+                Granularity.GRANULARITY_FINE
+            } else {
+                Granularity.GRANULARITY_COARSE
+            },
+        )
+        .setMaxUpdateAgeMillis(maxUpdateAgeMillis)
+        .setDurationMillis(durationMillis)
+        .build()
+
+    private fun finishWithLocation(
+        requestId: Long,
+        location: Location,
+        onLocation: (location: Location, isFinal: Boolean) -> Unit,
+    ) {
+        if (!finishRequest(requestId)) return
+        onLocation(location, true)
+    }
+
+    private fun finishWithError(
+        requestId: Long,
+        onError: (String) -> Unit,
+    ) {
+        if (!finishRequest(requestId)) return
+        onError(CurrentLocationUnavailableError)
+    }
+
+    private fun finishRequest(requestId: Long): Boolean {
+        if (activeRequestId != requestId) return false
+        activeRequestId = null
+        activeCancellationTokenSource = null
+        return true
     }
 }
 
@@ -606,41 +645,66 @@ private fun Context.hasDestinationLocationPermission(): Boolean =
     hasDestinationFineLocationPermission() ||
         checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
-private fun Location.isUsableForMap(): Boolean {
-    val ageMillis = System.currentTimeMillis() - time
-    return latitude.isFinite() && latitude in -90.0..90.0 &&
-        longitude.isFinite() && longitude in -180.0..180.0 &&
-        time > 0L && ageMillis in -CURRENT_LOCATION_CLOCK_SKEW_MILLIS..CURRENT_LOCATION_MAX_AGE_MILLIS
-}
+private fun Location.hasValidDestinationCoordinates(): Boolean =
+    latitude.isFinite() && latitude in -90.0..90.0 &&
+        longitude.isFinite() && longitude in -180.0..180.0
+
+private val Location.destinationLocationAgeMillis: Long
+    get() {
+        val currentElapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        val locationElapsedRealtimeNanos = elapsedRealtimeNanos
+        return if (locationElapsedRealtimeNanos > 0L) {
+            (currentElapsedRealtimeNanos - locationElapsedRealtimeNanos) / NanosPerMillisecond
+        } else {
+            System.currentTimeMillis() - time
+        }
+    }
 
 private val Location.mapAccuracyMeters: Float
     get() = accuracy.takeIf { hasAccuracy() && it.isFinite() && it >= 0f }
         ?: Float.POSITIVE_INFINITY
 
-private fun Location.isPreciseEnoughForMap(): Boolean =
-    mapAccuracyMeters <= CURRENT_LOCATION_TARGET_ACCURACY_METERS
+private val Location.destinationLocationQuality: DestinationLocationQuality
+    get() = DestinationLocationQuality(
+        ageMillis = destinationLocationAgeMillis,
+        accuracyMeters = mapAccuracyMeters,
+    )
 
-private fun Location.isBetterForMapThan(other: Location?): Boolean =
-    other == null ||
-        mapAccuracyMeters < other.mapAccuracyMeters ||
-        (mapAccuracyMeters == other.mapAccuracyMeters && time > other.time)
+private fun Location.destinationLocationDecision(
+    granularity: DestinationLocationGranularity,
+): DestinationLocationDecision =
+    if (!hasValidDestinationCoordinates()) {
+        DestinationLocationDecision.Reject
+    } else {
+        decideDestinationLocation(
+            quality = destinationLocationQuality,
+            granularity = granularity,
+        )
+    }
 
-private const val REST_API_KEY_METADATA_NAME = "com.joon.ringout.KAKAO_REST_API_KEY"
-private const val CURRENT_LOCATION_TIMEOUT_MILLIS = 8_000L
-private const val CURRENT_LOCATION_MAX_AGE_MILLIS = 30_000L
-private const val CURRENT_LOCATION_CLOCK_SKEW_MILLIS = 5_000L
-private const val CURRENT_LOCATION_TARGET_ACCURACY_METERS = 50f
-private const val CURRENT_LOCATION_PERMISSION_ERROR = "현재 위치를 사용하려면 위치 권한이 필요합니다."
-private const val CURRENT_LOCATION_SERVICES_ERROR = "기기의 위치 서비스를 켜 주세요."
-private const val CURRENT_LOCATION_UNAVAILABLE_ERROR = "현재 위치를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."
-private const val CURRENT_LOCATION_MOVE_ERROR = "현재 위치로 지도를 이동하지 못했습니다."
+private fun Location.isSameMapFixAs(other: Location): Boolean =
+    this === other ||
+        (
+            elapsedRealtimeNanos == other.elapsedRealtimeNanos &&
+                latitude == other.latitude &&
+                longitude == other.longitude &&
+                mapAccuracyMeters == other.mapAccuracyMeters
+        )
 
-private val destinationLocationPermissions = arrayOf(
+private val MapHorizontalContentPadding = 8.dp
+private val MapVerticalContentPadding = 176.dp
+private const val InitialZoomLevel = 17f
+private const val CurrentLocationZoomLevel = 17f
+private const val CameraAnimationMillis = 700
+private const val CameraCoordinateTolerance = 0.00001
+private const val CurrentLocationRefinementDurationMillis = 4_000L
+private const val NanosPerMillisecond = 1_000_000L
+private const val CurrentLocationPermissionError = "현재 위치를 사용하려면 위치 권한이 필요합니다."
+private const val CurrentLocationUnavailableError = "현재 위치를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."
+private const val CurrentLocationMoveError = "현재 위치로 지도를 이동하지 못했습니다."
+private const val MapCameraMoveError = "지도를 이동하지 못했습니다. 잠시 후 다시 시도해 주세요."
+
+private val DestinationLocationPermissions = arrayOf(
     Manifest.permission.ACCESS_FINE_LOCATION,
     Manifest.permission.ACCESS_COARSE_LOCATION,
-)
-
-private data class ResolvedAddress(
-    val placeName: String?,
-    val address: String,
 )
