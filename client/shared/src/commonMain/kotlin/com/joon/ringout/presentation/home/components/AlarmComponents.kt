@@ -3,6 +3,7 @@ package com.joon.ringout.presentation.home.components
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -45,12 +45,11 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.toTwelveHourDisplay
+import com.joon.ringout.ringoutColors
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
 import ringout.shared.generated.resources.home_add
-import ringout.shared.generated.resources.home_settings_dark
-import ringout.shared.generated.resources.home_settings_light
 import ringout.shared.generated.resources.home_toggle_off
 import ringout.shared.generated.resources.home_toggle_on_dark
 import ringout.shared.generated.resources.home_toggle_on_light
@@ -71,9 +70,7 @@ internal fun AlarmListHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 10.dp),
+            modifier = Modifier.weight(1f),
         ) {
             Text(
                 text = "알람",
@@ -97,40 +94,39 @@ internal fun AlarmListHeader(
             )
         }
 
-        HomeSettingsButton(onClick = onSettingsClick)
+        HomeMyPageButton(onClick = onSettingsClick)
     }
 }
 
 @Composable
-internal fun HomeSettingsButton(
+internal fun HomeMyPageButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val isDarkTheme = LocalRingoutThemeMode.current == ThemeMode.Dark
+    val interactionSource = remember { MutableInteractionSource() }
 
     Box(
         modifier = modifier
             .size(48.dp)
             .clickable(
+                interactionSource = interactionSource,
+                indication = null,
                 role = Role.Button,
-                onClickLabel = "설정 열기",
+                onClickLabel = "마이페이지 열기",
                 onClick = onClick,
             ),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterEnd,
     ) {
-        Image(
-            painter = painterResource(
-                if (isDarkTheme) {
-                    Res.drawable.home_settings_dark
-                } else {
-                    Res.drawable.home_settings_light
-                },
-            ),
-            contentDescription = "설정",
-            modifier = Modifier
-                .offset(x = 10.65.dp)
-                .size(width = 21.3.dp, height = 21.7.dp),
-        )
+        Box(
+            modifier = Modifier.size(26.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(HomeProfileIconResource),
+                contentDescription = "마이페이지",
+                modifier = Modifier.size(width = 18.8333.dp, height = 20.4583.dp),
+            )
+        }
     }
 }
 
@@ -216,9 +212,7 @@ internal fun AlarmRow(
             verticalAlignment = Alignment.Top,
         ) {
             Row(
-                modifier = Modifier
-                    .width(183.dp)
-                    .padding(horizontal = 10.dp),
+                modifier = Modifier.width(183.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 AlarmInfoColumn(
@@ -228,7 +222,7 @@ internal fun AlarmRow(
                     modifier = Modifier.width(70.dp),
                 )
                 AlarmInfoColumn(
-                    label = "제한시간",
+                    label = "알람 간격",
                     value = "${alarm.timeLimitMinutes}분",
                     valueColor = MaterialTheme.colorScheme.primary,
                     horizontalAlignment = Alignment.End,
@@ -323,8 +317,7 @@ internal fun ActiveAlarmMissionRow(
     val shape = RoundedCornerShape(20.dp)
     val countdown = formatAlarmMissionRemainingTime(remainingSeconds)
     val cardColor = MaterialTheme.colorScheme.primary
-    val cardContentColor = MaterialTheme.colorScheme.onPrimary
-    val cardSupportingColor = cardContentColor.copy(alpha = 0.65f)
+    val cardContentColor = MaterialTheme.ringoutColors.primaryActionContent
 
     Column(
         modifier = modifier
@@ -338,53 +331,68 @@ internal fun ActiveAlarmMissionRow(
             )
             .semantics(mergeDescendants = true) {
                 contentDescription =
-                    "${mission.limitMinutes}분 제한시간, 남은 시간 $countdown, " +
-                    "목적지 ${mission.destinationName}"
+                    "목적지 ${mission.destinationName}, 다음 알람까지 $countdown"
             }
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(16.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-        ) {
-            Text(
-                text = "남은 제한시간",
-                color = cardSupportingColor,
-                maxLines = 1,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
-            )
-            Text(
-                text = countdown,
-                color = cardContentColor,
-                maxLines = 1,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontSize = 28.sp,
-                    lineHeight = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
-        }
-
-        Spacer(Modifier.height(10.dp))
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp),
-            verticalAlignment = Alignment.Top,
+                .height(56.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            AlarmInfoColumn(
-                label = "목적지",
-                value = mission.destinationName,
-                labelColor = cardSupportingColor,
-                valueColor = cardContentColor,
+            Column(
                 modifier = Modifier.weight(1f),
-            )
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "목적지",
+                    color = cardContentColor,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+                Text(
+                    text = mission.destinationName,
+                    color = cardContentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 20.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                    ),
+                )
+            }
+
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "다음 알람까지",
+                    color = cardContentColor,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+                Text(
+                    text = countdown,
+                    color = cardContentColor,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 20.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                    ),
+                )
+            }
         }
     }
 }
@@ -544,6 +552,22 @@ internal val Orange = Color(0xFFFF6D2E)
 private const val CountdownRefreshIntervalMillis = 1_000L
 private const val MillisecondsPerSecond = 1_000L
 private const val SecondsPerMinute = 60L
+
+@Preview(widthDp = 360, heightDp = 65)
+@Composable
+private fun HomeMyPageButtonPreview() {
+    RingoutTheme(themeMode = ThemeMode.Dark) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(65.dp)
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            HomeMyPageButton(onClick = {})
+        }
+    }
+}
 
 @Preview
 @Composable
