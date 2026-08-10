@@ -1,14 +1,9 @@
 package com.joon.ringout.presentation.termsagreement
 
-import kotlin.jvm.JvmInline
+import com.joon.ringout.domain.terms.TermType
+import com.joon.ringout.domain.terms.currentTerms
 
-@JvmInline
-value class TermId(val value: String) {
-    companion object {
-        val Service = TermId("service")
-        val Privacy = TermId("privacy")
-    }
-}
+typealias TermId = com.joon.ringout.domain.terms.TermId
 
 data class TermAgreementItem(
     val id: TermId,
@@ -17,15 +12,10 @@ data class TermAgreementItem(
     val isAgreed: Boolean = false,
 )
 
-val defaultTerms = listOf(
+val defaultTerms = currentTerms.map { definition ->
     TermAgreementItem(
-        id = TermId.Service,
-        title = "서비스 이용약관 동의",
-        isRequired = true,
-    ),
-    TermAgreementItem(
-        id = TermId.Privacy,
-        title = "개인정보처리방침 동의",
-        isRequired = true,
-    ),
-)
+        id = definition.id,
+        title = "${definition.name} 동의",
+        isRequired = definition.type == TermType.REQUIRED,
+    )
+}
