@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ringoutColors
@@ -38,21 +39,33 @@ fun MyPageThemeCard(
     onThemeModeChange: (ThemeMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = myPageColors()
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(56.dp)
-            .background(MaterialTheme.ringoutColors.elevatedSurface, RoundedCornerShape(18.dp))
+            .height(51.dp)
+            .background(colors.sectionSurface, RoundedCornerShape(16.dp))
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "테마",
             modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = colors.primaryText,
+            maxLines = 1,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 16.sp,
+                lineHeight = 19.2.sp,
+                fontWeight = FontWeight.Bold,
+            ),
         )
-        ThemeModeSwitch(themeMode, onThemeModeChange)
+        ThemeModeSwitch(
+            themeMode = themeMode,
+            onThemeModeChange = onThemeModeChange,
+            trackColor = colors.toggleTrack,
+            inactiveIconColor = colors.toggleInactiveContent,
+        )
     }
 }
 
@@ -72,34 +85,48 @@ private fun MyPageThemeCardPreview() {
 private fun ThemeModeSwitch(
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
+    trackColor: androidx.compose.ui.graphics.Color,
+    inactiveIconColor: androidx.compose.ui.graphics.Color,
 ) {
     val darkSelected = themeMode == ThemeMode.Dark
     Box(
         modifier = Modifier
-            .size(width = 76.dp, height = 34.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+            .size(width = 73.dp, height = 48.dp)
             .semantics {
                 contentDescription = "테마 전환"
                 stateDescription = if (darkSelected) "다크 모드" else "라이트 모드"
             }
             .toggleable(
                 value = darkSelected,
+                interactionSource = null,
+                indication = null,
                 role = Role.Switch,
                 onValueChange = {
                     onThemeModeChange(if (it) ThemeMode.Dark else ThemeMode.Light)
                 },
             ),
+        contentAlignment = Alignment.Center,
     ) {
-        ThemeIcon(
-            resource = MyPageThemeLightIconResource,
-            selected = !darkSelected,
-            modifier = Modifier.align(Alignment.CenterStart),
-        )
-        ThemeIcon(
-            resource = MyPageThemeDarkIconResource,
-            selected = darkSelected,
-            modifier = Modifier.align(Alignment.CenterEnd),
-        )
+        Box(
+            modifier = Modifier
+                .size(width = 73.dp, height = 32.dp)
+                .background(trackColor, CircleShape),
+        ) {
+            ThemeIcon(
+                resource = MyPageThemeLightIconResource,
+                selected = !darkSelected,
+                inactiveColor = inactiveIconColor,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .then(if (darkSelected) Modifier.offset(x = 7.5.dp) else Modifier),
+            )
+            ThemeIcon(
+                resource = MyPageThemeDarkIconResource,
+                selected = darkSelected,
+                inactiveColor = inactiveIconColor,
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
+        }
     }
 }
 
@@ -107,17 +134,18 @@ private fun ThemeModeSwitch(
 private fun ThemeIcon(
     resource: DrawableResource,
     selected: Boolean,
+    inactiveColor: androidx.compose.ui.graphics.Color,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier.then(
             if (selected) {
                 Modifier
-                    .size(34.dp)
-                    .shadow(5.dp, CircleShape)
+                    .size(32.dp)
+                    .shadow(4.dp, CircleShape)
                     .background(MaterialTheme.colorScheme.primary, CircleShape)
             } else {
-                Modifier.size(34.dp).offset(y = 0.dp)
+                Modifier.size(32.dp)
             },
         ),
         contentAlignment = Alignment.Center,
@@ -125,9 +153,9 @@ private fun ThemeIcon(
         Image(
             painter = painterResource(resource),
             contentDescription = null,
-            modifier = Modifier.size(if (selected) 25.dp else 17.dp),
+            modifier = Modifier.size(if (selected) 24.dp else 16.dp),
             colorFilter = ColorFilter.tint(
-                if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurfaceVariant,
+                if (selected) MaterialTheme.ringoutColors.primaryActionContent else inactiveColor,
             ),
         )
     }

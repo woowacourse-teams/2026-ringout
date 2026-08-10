@@ -8,4 +8,5 @@ enum class MissionResult {
 data class MissionHistoryEntry(
     val result: MissionResult,
     val completedAt: MissionDate,
+    val occurrenceId: String? = null,
 )

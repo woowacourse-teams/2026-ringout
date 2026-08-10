@@ -14,47 +14,66 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.ThemeMode
 import org.jetbrains.compose.resources.painterResource
-import ringout.shared.generated.resources.Res
 
 @Composable
 fun MyPageAppVersionRow(
     appVersion: String,
     modifier: Modifier = Modifier,
 ) {
+    val colors = myPageColors()
+
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = "앱",
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+            modifier = Modifier.semantics { heading() },
+            color = colors.primaryText,
+            style = MaterialTheme.typography.titleSmall.copy(
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Bold,
+            ),
         )
+        Spacer(Modifier.height(8.dp))
         Row(
-            modifier = Modifier.fillMaxWidth().height(62.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .padding(start = 10.dp, end = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "ⓘ",
-                modifier = Modifier.size(28.dp),
-                color = MaterialTheme.colorScheme.primary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
+            Image(
+                painter = painterResource(MyPageAppInfoIconResource),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
             )
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(11.dp))
             Text(
                 text = "앱 버전",
                 modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onBackground,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                color = colors.primaryText,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
             )
             Text(
                 text = appVersion,
-                color = MaterialTheme.colorScheme.onBackground,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                color = colors.primaryText,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                ),
             )
         }
     }
@@ -63,7 +82,7 @@ fun MyPageAppVersionRow(
 @Preview(widthDp = 402)
 @Composable
 private fun MyPageAppVersionRowPreview() {
-    RingoutTheme {
+    RingoutTheme(ThemeMode.Dark) {
         MyPageAppVersionRow(
             appVersion = "1.0.0",
             modifier = Modifier.padding(20.dp),

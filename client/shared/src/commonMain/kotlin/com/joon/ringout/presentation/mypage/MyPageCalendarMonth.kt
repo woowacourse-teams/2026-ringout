@@ -17,23 +17,24 @@ data class CalendarDayUiModel(
 fun buildCalendarCells(
     month: MyPageCalendarMonth,
     successDates: Set<MissionDate>,
-): List<CalendarDayUiModel> = buildList {
+): List<CalendarDayUiModel> = buildList(capacity = CalendarCellCount) {
     repeat(month.firstDayOfWeek) {
         add(CalendarDayUiModel(day = null, isMissionSuccess = false))
     }
     for (day in 1..month.dayCount) {
+        val date = MissionDate.of(
+            year = month.value.year,
+            month = month.value.month,
+            day = day,
+        )
         add(
             CalendarDayUiModel(
                 day = day,
-                isMissionSuccess = MissionDate.of(
-                    year = month.value.year,
-                    month = month.value.month,
-                    day = day,
-                ) in successDates,
+                isMissionSuccess = date in successDates,
             ),
         )
     }
-    while (size % DaysPerWeek != 0) {
+    while (size < CalendarCellCount) {
         add(CalendarDayUiModel(day = null, isMissionSuccess = false))
     }
 }
@@ -56,4 +57,6 @@ private fun firstDayOfWeek(month: MissionYearMonth): Int {
 
 internal expect fun currentMissionYearMonth(): MissionYearMonth
 
-private const val DaysPerWeek = 7
+internal const val DaysPerWeek = 7
+internal const val CalendarWeekCount = 6
+internal const val CalendarCellCount = DaysPerWeek * CalendarWeekCount

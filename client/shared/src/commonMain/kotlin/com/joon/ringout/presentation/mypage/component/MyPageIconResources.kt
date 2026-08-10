@@ -1,0 +1,9 @@
+package com.joon.ringout.presentation.mypage.component
+
+import org.jetbrains.compose.resources.DrawableResource
+
+internal expect val MyPagePolicyPrivacyIconResource: DrawableResource
+internal expect val MyPagePolicyDocsIconResource: DrawableResource
+internal expect val MyPageAppInfoIconResource: DrawableResource
+internal expect val MyPageArrowLeftIconResource: DrawableResource
+internal expect val MyPageChevronRightIconResource: DrawableResource
