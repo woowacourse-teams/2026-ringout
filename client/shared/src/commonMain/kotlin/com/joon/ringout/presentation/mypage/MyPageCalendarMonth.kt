@@ -1,7 +1,6 @@
 package com.joon.ringout.presentation.mypage
 
 import com.joon.ringout.domain.missionhistory.MissionDate
-import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 
 data class MyPageCalendarMonth(
@@ -12,15 +11,15 @@ data class MyPageCalendarMonth(
 
 data class CalendarDayUiModel(
     val day: Int?,
-    val result: MissionResult?,
+    val isMissionSuccess: Boolean,
 )
 
 fun buildCalendarCells(
     month: MyPageCalendarMonth,
-    resultsByDate: Map<MissionDate, MissionResult>,
-): List<CalendarDayUiModel> = buildList {
+    successDates: Set<MissionDate>,
+): List<CalendarDayUiModel> = buildList(capacity = CalendarCellCount) {
     repeat(month.firstDayOfWeek) {
-        add(CalendarDayUiModel(day = null, result = null))
+        add(CalendarDayUiModel(day = null, isMissionSuccess = false))
     }
     for (day in 1..month.dayCount) {
         val date = MissionDate.of(
@@ -31,12 +30,12 @@ fun buildCalendarCells(
         add(
             CalendarDayUiModel(
                 day = day,
-                result = resultsByDate[date],
+                isMissionSuccess = date in successDates,
             ),
         )
     }
-    while (size % DaysPerWeek != 0) {
-        add(CalendarDayUiModel(day = null, result = null))
+    while (size < CalendarCellCount) {
+        add(CalendarDayUiModel(day = null, isMissionSuccess = false))
     }
 }
 
@@ -58,4 +57,6 @@ private fun firstDayOfWeek(month: MissionYearMonth): Int {
 
 internal expect fun currentMissionYearMonth(): MissionYearMonth
 
-private const val DaysPerWeek = 7
+internal const val DaysPerWeek = 7
+internal const val CalendarWeekCount = 6
+internal const val CalendarCellCount = DaysPerWeek * CalendarWeekCount
