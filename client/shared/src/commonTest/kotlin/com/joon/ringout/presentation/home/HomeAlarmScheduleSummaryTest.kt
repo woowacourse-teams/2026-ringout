@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.home
 
+import com.joon.ringout.presentation.LocalClockSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
