@@ -15,12 +15,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
@@ -31,10 +32,7 @@ import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.ThemeMode
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.home_empty_bell_dark
-import ringout.shared.generated.resources.home_empty_bell_light
-import ringout.shared.generated.resources.home_settings_dark
-import ringout.shared.generated.resources.home_settings_light
+import ringout.shared.generated.resources.home_empty_logo
 
 @Composable
 internal fun HomeEmptyState(
@@ -58,7 +56,6 @@ internal fun HomeEmptyState(
                 .padding(20.dp),
         ) {
             EmptyHomeHeader(
-                isDarkTheme = isDarkTheme,
                 onSettingsClick = onSettingsClick,
             )
 
@@ -66,10 +63,9 @@ internal fun HomeEmptyState(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                contentAlignment = BiasAlignment(horizontalBias = 0f, verticalBias = -0.15f),
+                contentAlignment = Alignment.Center,
             ) {
                 EmptyAlarmPrompt(
-                    isDarkTheme = isDarkTheme,
                     onAddAlarm = onAddAlarm,
                 )
             }
@@ -91,19 +87,16 @@ internal fun HomeEmptyState(
 
 @Composable
 private fun EmptyHomeHeader(
-    isDarkTheme: Boolean,
     onSettingsClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(65.dp)
-            .padding(start = 10.dp),
+            .height(65.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "알람",
-            modifier = Modifier.padding(start = 10.dp),
             color = MaterialTheme.colorScheme.onBackground,
             style = MaterialTheme.typography.headlineLarge.copy(
                 fontSize = 28.sp,
@@ -114,61 +107,65 @@ private fun EmptyHomeHeader(
 
         Spacer(Modifier.weight(1f))
 
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clickable(role = Role.Button, onClick = onSettingsClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(
-                    if (isDarkTheme) {
-                        Res.drawable.home_settings_dark
-                    } else {
-                        Res.drawable.home_settings_light
-                    },
-                ),
-                contentDescription = "설정",
-                modifier = Modifier.size(width = 21.3.dp, height = 21.7.dp),
-            )
-        }
+        HomeMyPageButton(onClick = onSettingsClick)
     }
 }
 
 @Composable
 private fun EmptyAlarmPrompt(
-    isDarkTheme: Boolean,
     onAddAlarm: () -> Unit,
 ) {
     Column(
-        modifier = Modifier
-            .width(174.dp)
-            .height(65.dp)
-            .clickable(role = Role.Button, onClick = onAddAlarm),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
     ) {
-        Text(
-            text = "생성된 알람이 없습니다.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 16.sp,
-                lineHeight = 19.2.sp,
-                fontWeight = FontWeight.Medium,
-            ),
+        Image(
+            painter = painterResource(Res.drawable.home_empty_logo),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(148.dp)
+                .clip(CircleShape),
         )
+
         Spacer(Modifier.height(10.dp))
-        Text(
-            text = "알람 생성하기",
-            color = MaterialTheme.colorScheme.primary,
-            maxLines = 1,
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = 18.sp,
-                lineHeight = 21.6.sp,
-                fontWeight = FontWeight.Bold,
-            ),
-        )
+
+        Box(
+            modifier = Modifier
+                .width(313.dp)
+                .height(122.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(174.dp)
+                    .height(65.dp)
+                    .clickable(role = Role.Button, onClick = onAddAlarm),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+            ) {
+                Text(
+                    text = "생성된 알람이 없습니다.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 16.sp,
+                        lineHeight = 19.2.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "알람 생성하기",
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 18.sp,
+                        lineHeight = 21.6.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+            }
+        }
     }
 }
 

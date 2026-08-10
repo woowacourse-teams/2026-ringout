@@ -25,9 +25,11 @@ import com.joon.ringout.presentation.alarmsetup.components.weekdaySummary
 import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationMapScreen
 import com.joon.ringout.presentation.destination.DestinationSelection
+import com.joon.ringout.presentation.destination.isConfiguredDestination
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.settings.SettingsScreen
+import kotlinx.coroutines.flow.collect
 import kotlin.random.Random
 
 @Composable
@@ -36,10 +38,9 @@ fun App(
     activeAlarmMission: ActiveAlarmMission? = null,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation? = null,
     onActiveAlarmMissionExpired: () -> Unit = {},
+    onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit = { _ -> },
 ) {
     val themeController = rememberThemeController()
-
-    SystemBarAppearanceEffect(themeController.themeMode)
 
     RingoutTheme(themeMode = themeController.themeMode) {
         RingoutAppContent(
@@ -48,6 +49,7 @@ fun App(
             activeAlarmMission = activeAlarmMission,
             activeAlarmMissionLocation = activeAlarmMissionLocation,
             onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+            onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
             onThemeModeChange = themeController::setThemeMode,
         )
     }
@@ -60,12 +62,13 @@ private fun RingoutAppContent(
     activeAlarmMission: ActiveAlarmMission?,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation?,
     onActiveAlarmMissionExpired: () -> Unit,
+    onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
-    var destinationName by rememberSaveable { mutableStateOf(DefaultDestinationSelection.name) }
-    var destinationAddress by rememberSaveable { mutableStateOf(DefaultDestinationSelection.address) }
-    var destinationLatitude by rememberSaveable { mutableStateOf(DefaultDestinationSelection.latitude) }
-    var destinationLongitude by rememberSaveable { mutableStateOf(DefaultDestinationSelection.longitude) }
+    var destinationName by rememberSaveable { mutableStateOf("") }
+    var destinationAddress by rememberSaveable { mutableStateOf("") }
+    var destinationLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
+    var destinationLongitude by rememberSaveable { mutableStateOf<Double?>(null) }
     var alarmSoundName by rememberSaveable { mutableStateOf(DefaultAlarmSoundName) }
     var alarmSoundUri by rememberSaveable { mutableStateOf<String?>(null) }
     var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
@@ -75,12 +78,16 @@ private fun RingoutAppContent(
     var editingAlarmId by rememberSaveable { mutableStateOf<String?>(null) }
     var alarms by remember { mutableStateOf<List<HomeAlarm>?>(null) }
     var alarmScheduleError by rememberSaveable { mutableStateOf<String?>(null) }
-    val destination = DestinationSelection(
-        name = destinationName,
-        address = destinationAddress,
-        latitude = destinationLatitude,
-        longitude = destinationLongitude,
-    )
+    val destination = destinationLatitude?.let { latitude ->
+        destinationLongitude?.let { longitude ->
+            DestinationSelection(
+                name = destinationName,
+                address = destinationAddress,
+                latitude = latitude,
+                longitude = longitude,
+            ).takeIf(DestinationSelection::isConfiguredDestination)
+        }
+    }
     val alarmSound = AlarmSoundSelection(
         name = alarmSoundName,
         uri = alarmSoundUri,
@@ -94,6 +101,13 @@ private fun RingoutAppContent(
     } else {
         requestedScreen
     }
+    SystemBarAppearanceEffect(
+        themeMode = if (screen == AppScreen.ActiveAlarmTracking) {
+            ThemeMode.Dark
+        } else {
+            themeMode
+        },
+    )
     val alarmController = rememberAlarmController(
         onScheduled = { request ->
             val wasEnabled = alarms.orEmpty()
@@ -108,12 +122,7 @@ private fun RingoutAppContent(
         },
         onError = { alarmScheduleError = it },
     )
-    val savedAlarms = remember(alarmController) {
-        alarmController.savedAlarms.map { saved ->
-            saved.request.toHomeAlarm(enabled = saved.enabled)
-        }
-    }
-    val visibleAlarms = alarms ?: savedAlarms
+    val visibleAlarms = alarms.orEmpty()
     val editingAlarm = editingAlarmId?.let { alarmId ->
         visibleAlarms.firstOrNull { it.id == alarmId }
     }
@@ -129,8 +138,15 @@ private fun RingoutAppContent(
     }
 
     LaunchedEffect(alarmController) {
-        if (alarms == null) alarms = savedAlarms
         alarmController.ensureFullScreenAccess()
+    }
+
+    LaunchedEffect(alarmController) {
+        alarmController.savedAlarms.collect { savedAlarms ->
+            alarms = savedAlarms.map { saved ->
+                saved.request.toHomeAlarm(enabled = saved.enabled)
+            }
+        }
     }
 
     LaunchedEffect(activeAlarmMission?.occurrenceId) {
@@ -171,10 +187,10 @@ private fun RingoutAppContent(
             onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
             onAddAlarm = {
                 editingAlarmId = null
-                destinationName = DefaultDestinationSelection.name
-                destinationAddress = DefaultDestinationSelection.address
-                destinationLatitude = DefaultDestinationSelection.latitude
-                destinationLongitude = DefaultDestinationSelection.longitude
+                destinationName = ""
+                destinationAddress = ""
+                destinationLatitude = null
+                destinationLongitude = null
                 alarmSoundName = DefaultAlarmSoundName
                 alarmSoundUri = null
                 screenName = AppScreen.AddAlarm.name
@@ -182,16 +198,10 @@ private fun RingoutAppContent(
             onAlarmClick = { alarmId ->
                 visibleAlarms.firstOrNull { it.id == alarmId }?.let { alarm ->
                     editingAlarmId = alarm.id
-                    destinationName = alarm.destination.ifBlank {
-                        DefaultDestinationSelection.name
-                    }
-                    destinationAddress = alarm.targetAddress.ifBlank {
-                        DefaultDestinationSelection.address
-                    }
-                    destinationLatitude =
-                        alarm.targetLatitude ?: DefaultDestinationSelection.latitude
-                    destinationLongitude =
-                        alarm.targetLongitude ?: DefaultDestinationSelection.longitude
+                    destinationName = alarm.destination
+                    destinationAddress = alarm.targetAddress
+                    destinationLatitude = alarm.targetLatitude
+                    destinationLongitude = alarm.targetLongitude
                     alarmSoundName = alarm.alarmSoundName.ifBlank {
                         DefaultAlarmSoundName
                     }
@@ -201,14 +211,9 @@ private fun RingoutAppContent(
             },
             onAlarmEnabledChange = { alarmId, enabled ->
                 alarmController.setEnabled(alarmId, enabled)
-                alarms = visibleAlarms.map { alarm ->
-                    if (alarm.id == alarmId) alarm.copy(isEnabled = enabled) else alarm
-                }
             },
             onAlarmDelete = { alarmId ->
-                if (alarmController.deleteAlarm(alarmId)) {
-                    alarms = visibleAlarms.filterNot { alarm -> alarm.id == alarmId }
-                }
+                alarmController.deleteAlarm(alarmId)
             },
             onActiveAlarmMissionClick = {
                 screenName = AppScreen.ActiveAlarmTracking.name
@@ -221,6 +226,7 @@ private fun RingoutAppContent(
                 mission = mission,
                 currentLocation = activeAlarmMissionLocation,
                 onBackClick = { screenName = AppScreen.Home.name },
+                onForceEndClick = onActiveAlarmMissionForceEnd,
                 onExpired = onActiveAlarmMissionExpired,
             )
         }
@@ -238,8 +244,9 @@ private fun RingoutAppContent(
         AppScreen.AlarmSound,
         -> Box(Modifier.fillMaxSize()) {
             AlarmSetupScreen(
-                destination = destination.name,
+                destination = destination?.name.orEmpty(),
                 alarmSound = alarmSound,
+                isDestinationSet = destination != null,
                 initialTime = editingAlarm?.time ?: DefaultAlarmTime,
                 initialSelectedDays = initialSelectedDays,
                 initialLimitMinutes = editingAlarm?.timeLimitMinutes ?: DefaultLimitMinutes,
@@ -249,7 +256,8 @@ private fun RingoutAppContent(
                 },
                 onDestinationClick = { screenName = AppScreen.Destination.name },
                 onAlarmSoundClick = { screenName = AppScreen.AlarmSound.name },
-                onSaveClick = { time, selectedDays, repeatEnabled, limitMinutes, alarmSound ->
+                onSaveClick = saveAlarm@ { time, selectedDays, repeatEnabled, limitMinutes, alarmSound ->
+                    val configuredDestination = destination ?: return@saveAlarm
                     alarmController.schedule(
                         AlarmScheduleRequest(
                             id = editingAlarmId
@@ -258,10 +266,10 @@ private fun RingoutAppContent(
                             selectedDays = selectedDays,
                             repeatEnabled = repeatEnabled,
                             limitMinutes = limitMinutes,
-                            destinationName = destination.name,
-                            destinationAddress = destination.address,
-                            destinationLatitude = destination.latitude,
-                            destinationLongitude = destination.longitude,
+                            destinationName = configuredDestination.name,
+                            destinationAddress = configuredDestination.address,
+                            destinationLatitude = configuredDestination.latitude,
+                            destinationLongitude = configuredDestination.longitude,
                             alarmSoundName = alarmSound.name,
                             alarmSoundUri = alarmSound.uri,
                         ),
@@ -271,7 +279,8 @@ private fun RingoutAppContent(
 
             if (screen == AppScreen.Destination) {
                 DestinationMapScreen(
-                    initialSelection = destination,
+                    initialSelection = destination ?: DefaultDestinationSelection,
+                    requestCurrentLocationOnStart = destination == null,
                     onBackClick = { screenName = alarmSetupScreen.name },
                     onConfirmClick = { selectedDestination ->
                         destinationName = selectedDestination.name
@@ -309,7 +318,7 @@ private enum class AppScreen {
 }
 
 private const val DefaultAlarmTime = "06:20"
-private val DefaultSelectedDays = listOf("월", "화", "수", "금")
+private val DefaultSelectedDays = listOf("월", "화", "수", "목", "금", "토", "일")
 private const val DefaultLimitMinutes = 13
 private const val DefaultAlarmSoundName = "Ring Ring Ring"
 

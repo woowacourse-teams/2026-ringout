@@ -9,8 +9,13 @@ expect fun PlatformDestinationMap(
     initialLongitude: Double,
     cameraTarget: DestinationSelection?,
     currentLocationRequestId: Int,
+    currentLocationCancellationId: Int,
     onCameraMoveStarted: () -> Unit,
-    onCameraIdle: (
+    onCameraSettled: (
+        latitude: Double,
+        longitude: Double,
+    ) -> Unit,
+    onAddressResolved: (
         latitude: Double,
         longitude: Double,
         placeName: String?,

@@ -28,7 +28,6 @@ import com.joon.ringout.presentation.alarmsetup.components.LimitTimeCard
 import com.joon.ringout.presentation.alarmsetup.components.SaveAlarmButton
 import com.joon.ringout.presentation.alarmsetup.components.SetupBackButton
 import com.joon.ringout.presentation.alarmsetup.components.TimePickerCard
-import com.joon.ringout.presentation.alarmsetup.components.TimeSettingDialog
 import com.joon.ringout.presentation.alarmsetup.components.WeekdaySelector
 import com.joon.ringout.presentation.alarmsetup.components.alarmSetupColors
 import com.joon.ringout.presentation.destination.PlatformBackHandler
@@ -37,8 +36,9 @@ import com.joon.ringout.presentation.destination.PlatformBackHandler
 fun AlarmSetupScreen(
     destination: String,
     alarmSound: AlarmSoundSelection,
+    isDestinationSet: Boolean = destination.isNotBlank(),
     initialTime: String = "06:20",
-    initialSelectedDays: List<String> = listOf("월", "화", "수", "금"),
+    initialSelectedDays: List<String> = listOf("월", "화", "수", "목", "금", "토", "일"),
     initialLimitMinutes: Int = 13,
     onBackClick: () -> Unit,
     onDestinationClick: () -> Unit,
@@ -53,6 +53,7 @@ fun AlarmSetupScreen(
     modifier: Modifier = Modifier,
 ) {
     val initialSelectedDaysValue = initialSelectedDays.joinToString(",")
+    val initialAlarmTime = initialTime.toAlarmTimePickerValue()
     var limitMinutes by rememberSaveable(
         initialTime,
         initialSelectedDaysValue,
@@ -67,35 +68,36 @@ fun AlarmSetupScreen(
     ) {
         mutableStateOf(initialSelectedDaysValue)
     }
-    var alarmTime by rememberSaveable(
+    var alarmIsAm by rememberSaveable(
         initialTime,
         initialSelectedDaysValue,
         initialLimitMinutes,
     ) {
-        mutableStateOf(initialTime)
+        mutableStateOf(initialAlarmTime.isAm)
     }
-    var showTimeDialog by rememberSaveable(
+    var alarmHour by rememberSaveable(
         initialTime,
         initialSelectedDaysValue,
         initialLimitMinutes,
     ) {
-        mutableStateOf(false)
+        mutableStateOf(initialAlarmTime.hour)
+    }
+    var alarmMinute by rememberSaveable(
+        initialTime,
+        initialSelectedDaysValue,
+        initialLimitMinutes,
+    ) {
+        mutableStateOf(initialAlarmTime.minute)
     }
     val selectedDays = selectedDaysValue.split(",").filter(String::isNotBlank)
+    val alarmTime = AlarmTimePickerValue(
+        isAm = alarmIsAm,
+        hour = alarmHour,
+        minute = alarmMinute,
+    ).to24HourString()
     val colors = alarmSetupColors()
 
     PlatformBackHandler(onBack = onBackClick)
-
-    if (showTimeDialog) {
-        TimeSettingDialog(
-            initialTime = alarmTime,
-            onDismissRequest = { showTimeDialog = false },
-            onConfirm = { selectedTime ->
-                alarmTime = selectedTime
-                showTimeDialog = false
-            },
-        )
-    }
 
     Box(
         modifier = modifier
@@ -118,8 +120,12 @@ fun AlarmSetupScreen(
         ) {
             SetupBackButton(onClick = onBackClick)
             TimePickerCard(
-                time = alarmTime,
-                onClick = { showTimeDialog = true },
+                isAm = alarmIsAm,
+                hour = alarmHour,
+                minute = alarmMinute,
+                onAmPmChange = { alarmIsAm = it },
+                onHourChange = { alarmHour = it },
+                onMinuteChange = { alarmMinute = it },
             )
             WeekdaySelector(
                 selectedDays = selectedDays,
@@ -151,10 +157,12 @@ fun AlarmSetupScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 47.dp),
+                .background(colors.background)
+                .padding(bottom = 47.dp, top = 18.dp),
             contentAlignment = Alignment.Center,
         ) {
             SaveAlarmButton(
+                enabled = isDestinationSet,
                 onClick = {
                     onSaveClick(
                         alarmTime,
@@ -174,7 +182,7 @@ fun AlarmSetupScreen(
 private fun AlarmSetupScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         AlarmSetupScreen(
-            destination = "집 앞에 수원천",
+            destination = "",
             alarmSound = AlarmSoundSelection("Ring Ring Ring", null),
             onBackClick = {},
             onDestinationClick = {},
@@ -189,7 +197,7 @@ private fun AlarmSetupScreenDarkPreview() {
 private fun AlarmSetupScreenLightPreview() {
     RingoutTheme(themeMode = ThemeMode.Light) {
         AlarmSetupScreen(
-            destination = "집 앞에 수원천",
+            destination = "",
             alarmSound = AlarmSoundSelection("Ring Ring Ring", null),
             onBackClick = {},
             onDestinationClick = {},

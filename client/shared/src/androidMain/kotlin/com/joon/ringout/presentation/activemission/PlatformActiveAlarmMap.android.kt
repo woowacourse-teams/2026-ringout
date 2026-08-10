@@ -1,42 +1,42 @@
 package com.joon.ringout.presentation.activemission
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RectF
-import android.os.Handler
-import android.os.Looper
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.kakao.vectormap.KakaoMap
-import com.kakao.vectormap.KakaoMapReadyCallback
-import com.kakao.vectormap.LatLng
-import com.kakao.vectormap.MapLifeCycleCallback
-import com.kakao.vectormap.MapView
-import com.kakao.vectormap.camera.CameraAnimation
-import com.kakao.vectormap.camera.CameraUpdateFactory
-import com.kakao.vectormap.label.LabelLayer
-import com.kakao.vectormap.label.LabelLayerOptions
-import com.kakao.vectormap.label.LabelOptions
-import com.kakao.vectormap.label.LabelStyle
-import java.util.concurrent.atomic.AtomicBoolean
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerState
+import com.google.maps.android.compose.rememberCameraPositionState
+import com.joon.ringout.presentation.activemission.components.ActiveAlarmCurrentLocationMarkerResource
+import com.joon.ringout.presentation.activemission.components.ActiveAlarmDestinationMarkerResource
+import kotlinx.coroutines.CancellationException
+import org.jetbrains.compose.resources.painterResource
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 @Composable
 actual fun PlatformActiveAlarmMap(
@@ -47,284 +47,170 @@ actual fun PlatformActiveAlarmMap(
     onMapError: (String) -> Unit,
     modifier: Modifier,
 ) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val currentOnMapError = rememberUpdatedState(onMapError)
-    val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val destinationPosition = remember(destinationLatitude, destinationLongitude) {
-        LatLng.from(destinationLatitude, destinationLongitude)
-    }
-    val mapView = remember(context, destinationLatitude, destinationLongitude) {
-        MapView(context)
-    }
-    val markerDensity = context.resources.displayMetrics.density
-    val destinationColor = MaterialTheme.colorScheme.primary.toArgb()
-    val markerCutoutColor = MaterialTheme.colorScheme.surface.toArgb()
-    val currentLocationColor = MaterialTheme.colorScheme.onSurface.toArgb()
-    val destinationMarker = remember(
-        markerDensity,
-        destinationColor,
-        markerCutoutColor,
-    ) {
-        createDestinationMarker(
-            density = markerDensity,
-            fillColor = destinationColor,
-            cutoutColor = markerCutoutColor,
-        )
-    }
-    val currentLocationMarker = remember(
-        markerDensity,
-        markerCutoutColor,
-        currentLocationColor,
-    ) {
-        createCurrentLocationMarker(
-            density = markerDensity,
-            borderColor = markerCutoutColor,
-            fillColor = currentLocationColor,
-        )
-    }
-    var activeKakaoMap by remember(mapView) { mutableStateOf<KakaoMap?>(null) }
-    var hasFittedBothLocations by remember(mapView) { mutableStateOf(false) }
-
-    LaunchedEffect(
-        activeKakaoMap,
-        destinationPosition,
-        destinationMarker,
-    ) {
-        val kakaoMap = activeKakaoMap ?: return@LaunchedEffect
-        val labelLayer = kakaoMap.activeAlarmLabelLayer() ?: return@LaunchedEffect
-        labelLayer.getLabel(DestinationLabelId)?.remove()
-        labelLayer.addLabel(
-            LabelOptions
-                .from(DestinationLabelId, destinationPosition)
-                .setStyles(
-                    LabelStyle
-                        .from(destinationMarker)
-                        .setAnchorPoint(0.5f, 1f),
-                ),
-        )
-    }
-
-    LaunchedEffect(
-        activeKakaoMap,
-        currentLatitude,
-        currentLongitude,
-        currentLocationMarker,
-    ) {
-        val kakaoMap = activeKakaoMap ?: return@LaunchedEffect
-        val labelLayer = kakaoMap.activeAlarmLabelLayer() ?: return@LaunchedEffect
-        if (currentLatitude == null || currentLongitude == null) {
-            labelLayer.getLabel(CurrentLocationLabelId)?.remove()
-            return@LaunchedEffect
-        }
-
-        val currentPosition = LatLng.from(currentLatitude, currentLongitude)
-        val currentLabel = labelLayer.getLabel(CurrentLocationLabelId)
-            ?: labelLayer.addLabel(
-                LabelOptions
-                    .from(CurrentLocationLabelId, currentPosition)
-                    .setStyles(
-                        LabelStyle
-                            .from(currentLocationMarker)
-                            .setAnchorPoint(0.5f, 0.5f),
-                    ),
-            )
-        currentLabel.moveTo(currentPosition)
-
-        if (!hasFittedBothLocations) {
-            val horizontalPadding = (24f * markerDensity).roundToInt()
-            val topPadding = (112f * markerDensity).roundToInt()
-            val bottomPadding = (240f * markerDensity).roundToInt()
-            val pointPadding = (32f * markerDensity).roundToInt()
-            kakaoMap.setPadding(
-                horizontalPadding,
-                topPadding,
-                horizontalPadding,
-                bottomPadding,
-            )
-            val cameraUpdate = if (
-                abs(currentLatitude - destinationLatitude) < SameLocationThreshold &&
-                abs(currentLongitude - destinationLongitude) < SameLocationThreshold
-            ) {
-                CameraUpdateFactory.newCenterPosition(destinationPosition, CloseLocationZoomLevel)
+    key(destinationLatitude, destinationLongitude) {
+        GoogleActiveAlarmMap(
+            destinationPosition = LatLng(destinationLatitude, destinationLongitude),
+            currentPosition = if (currentLatitude != null && currentLongitude != null) {
+                LatLng(currentLatitude, currentLongitude)
             } else {
-                CameraUpdateFactory.fitMapPoints(
-                    arrayOf(destinationPosition, currentPosition),
-                    pointPadding,
-                )
+                null
+            },
+            onMapError = onMapError,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun GoogleActiveAlarmMap(
+    destinationPosition: LatLng,
+    currentPosition: LatLng?,
+    onMapError: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val currentOnMapError = rememberUpdatedState(onMapError)
+    val pointPadding = with(LocalDensity.current) { MapPointPadding.roundToPx() }
+    val destinationMarker = rememberMarkerBitmap(
+        painter = painterResource(ActiveAlarmDestinationMarkerResource),
+        width = DestinationMarkerWidth,
+        height = DestinationMarkerHeight,
+    )
+    val currentLocationMarker = rememberMarkerBitmap(
+        painter = painterResource(ActiveAlarmCurrentLocationMarkerResource),
+        width = CurrentLocationMarkerWidth,
+        height = CurrentLocationMarkerHeight,
+    )
+    val destinationMarkerState = remember {
+        MarkerState(position = destinationPosition)
+    }
+    val currentLocationMarkerState = remember {
+        MarkerState(position = currentPosition ?: destinationPosition)
+    }
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(destinationPosition, InitialZoomLevel)
+    }
+    val uiSettings = remember {
+        MapUiSettings(
+            mapToolbarEnabled = false,
+            myLocationButtonEnabled = false,
+            zoomControlsEnabled = false,
+        )
+    }
+    var isMapLoaded by remember { mutableStateOf(false) }
+    var hasFittedBothLocations by remember { mutableStateOf(false) }
+    val hasCurrentLocation = currentPosition != null
+
+    LaunchedEffect(currentPosition) {
+        if (currentPosition != null) {
+            currentLocationMarkerState.position = currentPosition
+        }
+    }
+
+    LaunchedEffect(isMapLoaded, hasCurrentLocation) {
+        val location = currentPosition ?: return@LaunchedEffect
+        if (!isMapLoaded || hasFittedBothLocations) return@LaunchedEffect
+
+        try {
+            val cameraUpdate = if (
+                abs(location.latitude - destinationPosition.latitude) < SameLocationThreshold &&
+                abs(location.longitude - destinationPosition.longitude) < SameLocationThreshold
+            ) {
+                CameraUpdateFactory.newLatLngZoom(destinationPosition, CloseLocationZoomLevel)
+            } else {
+                val bounds = LatLngBounds.builder()
+                    .include(destinationPosition)
+                    .include(location)
+                    .build()
+                CameraUpdateFactory.newLatLngBounds(bounds, pointPadding)
             }
-            kakaoMap.moveCamera(cameraUpdate, CameraAnimation.from(CameraAnimationMillis))
+            cameraPositionState.animate(
+                update = cameraUpdate,
+                durationMs = CameraAnimationMillis,
+            )
             hasFittedBothLocations = true
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            currentOnMapError.value(
+                error.message ?: "지도를 표시할 수 없습니다.",
+            )
         }
     }
 
-    DisposableEffect(mapView, lifecycleOwner) {
-        var isFinished = false
-        val isDisposed = AtomicBoolean(false)
-
-        fun finishMap() {
-            if (!isFinished) {
-                isFinished = true
-                mapView.finish()
-            }
-        }
-
-        mapView.start(
-            object : MapLifeCycleCallback() {
-                override fun onMapDestroy() = Unit
-
-                override fun onMapError(error: Exception) {
-                    mainHandler.post {
-                        if (!isDisposed.get()) {
-                            currentOnMapError.value(
-                                error.message ?: "카카오 지도를 불러올 수 없습니다.",
-                            )
-                        }
-                    }
-                }
-            },
-            object : KakaoMapReadyCallback() {
-                override fun getPosition(): LatLng = destinationPosition
-
-                override fun getZoomLevel(): Int = InitialZoomLevel
-
-                override fun onMapReady(kakaoMap: KakaoMap) {
-                    if (!isDisposed.get()) activeKakaoMap = kakaoMap
-                }
-            },
-        )
-        mapView.setFinishManually(true)
-
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> mapView.resume()
-                Lifecycle.Event.ON_PAUSE -> mapView.pause()
-                Lifecycle.Event.ON_DESTROY -> finishMap()
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            mapView.resume()
-        }
-
-        onDispose {
-            isDisposed.set(true)
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            activeKakaoMap = null
-            finishMap()
-        }
-    }
-
-    AndroidView(
-        factory = { mapView },
+    GoogleMap(
         modifier = modifier,
-    )
-}
+        cameraPositionState = cameraPositionState,
+        contentDescription = "알람 목적지 추적 지도",
+        contentPadding = MapContentPadding,
+        uiSettings = uiSettings,
+        onMapLoaded = { isMapLoaded = true },
+    ) {
+        val destinationIcon = remember(destinationMarker) {
+            BitmapDescriptorFactory.fromBitmap(destinationMarker)
+        }
+        val currentLocationIcon = remember(currentLocationMarker) {
+            BitmapDescriptorFactory.fromBitmap(currentLocationMarker)
+        }
 
-private fun KakaoMap.activeAlarmLabelLayer(): LabelLayer? {
-    val manager = labelManager ?: return null
-    return manager.getLayer(TrackingLabelLayerId)
-        ?: manager.addLayer(
-            LabelLayerOptions
-                .from(TrackingLabelLayerId)
-                .setZOrder(TrackingLabelLayerZOrder),
+        Marker(
+            state = destinationMarkerState,
+            anchor = Offset(0.5f, 1f),
+            icon = destinationIcon,
+            zIndex = DestinationMarkerZIndex,
         )
-}
-
-private fun createDestinationMarker(
-    density: Float,
-    fillColor: Int,
-    cutoutColor: Int,
-): Bitmap {
-    val width = (44f * density).roundToInt()
-    val height = (58f * density).roundToInt()
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
-    paint.color = 0x33000000
-    canvas.drawOval(
-        RectF(
-            width * 0.18f,
-            height * 0.84f,
-            width * 0.82f,
-            height * 0.98f,
-        ),
-        paint,
-    )
-
-    val pinPath = Path().apply {
-        moveTo(width * 0.5f, height * 0.9f)
-        cubicTo(
-            width * 0.42f,
-            height * 0.74f,
-            width * 0.12f,
-            height * 0.54f,
-            width * 0.12f,
-            height * 0.32f,
+        Marker(
+            state = currentLocationMarkerState,
+            anchor = Offset(0.5f, CurrentLocationMarkerAnchorY),
+            icon = currentLocationIcon,
+            visible = currentPosition != null,
+            zIndex = CurrentLocationMarkerZIndex,
         )
-        cubicTo(
-            width * 0.12f,
-            height * 0.11f,
-            width * 0.29f,
-            height * 0.03f,
-            width * 0.5f,
-            height * 0.03f,
-        )
-        cubicTo(
-            width * 0.71f,
-            height * 0.03f,
-            width * 0.88f,
-            height * 0.11f,
-            width * 0.88f,
-            height * 0.32f,
-        )
-        cubicTo(
-            width * 0.88f,
-            height * 0.54f,
-            width * 0.58f,
-            height * 0.74f,
-            width * 0.5f,
-            height * 0.9f,
-        )
-        close()
     }
-    paint.color = fillColor
-    canvas.drawPath(pinPath, paint)
-    paint.color = cutoutColor
-    canvas.drawCircle(width * 0.5f, height * 0.3f, width * 0.15f, paint)
-
-    return bitmap
 }
 
-private fun createCurrentLocationMarker(
-    density: Float,
-    borderColor: Int,
-    fillColor: Int,
+@Composable
+private fun rememberMarkerBitmap(
+    painter: Painter,
+    width: Dp,
+    height: Dp,
 ): Bitmap {
-    val size = (34f * density).roundToInt()
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    val center = size / 2f
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
 
-    paint.color = 0x33000000
-    canvas.drawCircle(center, center + density, size * 0.48f, paint)
-    paint.color = borderColor
-    canvas.drawCircle(center, center, size * 0.46f, paint)
-    paint.color = fillColor
-    canvas.drawCircle(center, center, size * 0.31f, paint)
+    return remember(painter, density, layoutDirection, width, height) {
+        val widthPx = with(density) { width.roundToPx() }
+        val heightPx = with(density) { height.roundToPx() }
+        val imageBitmap = ImageBitmap(widthPx, heightPx)
+        val canvas = Canvas(imageBitmap)
+        val size = Size(widthPx.toFloat(), heightPx.toFloat())
 
-    return bitmap
+        CanvasDrawScope().draw(
+            density = density,
+            layoutDirection = layoutDirection,
+            canvas = canvas,
+            size = size,
+        ) {
+            with(painter) { draw(size) }
+        }
+        imageBitmap.asAndroidBitmap()
+    }
 }
 
-private const val DestinationLabelId = "active-alarm-destination"
-private const val CurrentLocationLabelId = "active-alarm-current-location"
-private const val TrackingLabelLayerId = "active-alarm-tracking"
-private const val TrackingLabelLayerZOrder = 10_000
-private const val InitialZoomLevel = 16
-private const val CloseLocationZoomLevel = 18
+private val MapContentPadding = PaddingValues(
+    start = 24.dp,
+    top = 80.dp,
+    end = 24.dp,
+    bottom = 243.dp,
+)
+private val MapPointPadding = 32.dp
+private val DestinationMarkerWidth = 45.dp
+private val DestinationMarkerHeight = 52.5.dp
+private val CurrentLocationMarkerWidth = 36.dp
+private val CurrentLocationMarkerHeight = 38.dp
+private const val InitialZoomLevel = 16f
+private const val CloseLocationZoomLevel = 18f
 private const val CameraAnimationMillis = 700
 private const val SameLocationThreshold = 0.00001
+private const val DestinationMarkerZIndex = 1f
+private const val CurrentLocationMarkerZIndex = 2f
+private const val CurrentLocationMarkerAnchorY = 18f / 38f

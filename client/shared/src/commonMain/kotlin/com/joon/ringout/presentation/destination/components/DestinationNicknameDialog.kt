@@ -56,7 +56,7 @@ internal fun DestinationNicknameDialog(
     onSave: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var nickname by remember(address) { mutableStateOf("") }
+    var nickname by remember { mutableStateOf("") }
     val normalizedNickname = normalizeDestinationNickname(nickname)
     val scrimInteractionSource = remember { MutableInteractionSource() }
     val cardInteractionSource = remember { MutableInteractionSource() }
@@ -133,7 +133,7 @@ internal fun DestinationNicknameDialogContent(
                 ),
             )
             Text(
-                text = "현재 선택된 주소: $address",
+                text = address,
                 color = NicknameDialogSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
