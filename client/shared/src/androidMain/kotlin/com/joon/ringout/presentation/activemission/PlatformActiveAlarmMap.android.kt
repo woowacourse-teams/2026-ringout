@@ -1,12 +1,7 @@
 package com.joon.ringout.presentation.activemission
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RectF
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,8 +12,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
@@ -30,9 +32,11 @@ import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.joon.ringout.presentation.activemission.components.ActiveAlarmCurrentLocationMarkerResource
+import com.joon.ringout.presentation.activemission.components.ActiveAlarmDestinationMarkerResource
 import kotlinx.coroutines.CancellationException
+import org.jetbrains.compose.resources.painterResource
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 @Composable
 actual fun PlatformActiveAlarmMap(
@@ -65,33 +69,17 @@ private fun GoogleActiveAlarmMap(
     modifier: Modifier = Modifier,
 ) {
     val currentOnMapError = rememberUpdatedState(onMapError)
-    val markerDensity = LocalDensity.current.density
     val pointPadding = with(LocalDensity.current) { MapPointPadding.roundToPx() }
-    val destinationColor = MaterialTheme.colorScheme.primary.toArgb()
-    val markerCutoutColor = MaterialTheme.colorScheme.surface.toArgb()
-    val currentLocationColor = MaterialTheme.colorScheme.onSurface.toArgb()
-    val destinationMarker = remember(
-        markerDensity,
-        destinationColor,
-        markerCutoutColor,
-    ) {
-        createDestinationMarker(
-            density = markerDensity,
-            fillColor = destinationColor,
-            cutoutColor = markerCutoutColor,
-        )
-    }
-    val currentLocationMarker = remember(
-        markerDensity,
-        markerCutoutColor,
-        currentLocationColor,
-    ) {
-        createCurrentLocationMarker(
-            density = markerDensity,
-            borderColor = markerCutoutColor,
-            fillColor = currentLocationColor,
-        )
-    }
+    val destinationMarker = rememberMarkerBitmap(
+        painter = painterResource(ActiveAlarmDestinationMarkerResource),
+        width = DestinationMarkerWidth,
+        height = DestinationMarkerHeight,
+    )
+    val currentLocationMarker = rememberMarkerBitmap(
+        painter = painterResource(ActiveAlarmCurrentLocationMarkerResource),
+        width = CurrentLocationMarkerWidth,
+        height = CurrentLocationMarkerHeight,
+    )
     val destinationMarkerState = remember {
         MarkerState(position = destinationPosition)
     }
@@ -172,7 +160,7 @@ private fun GoogleActiveAlarmMap(
         )
         Marker(
             state = currentLocationMarkerState,
-            anchor = Offset(0.5f, 0.5f),
+            anchor = Offset(0.5f, CurrentLocationMarkerAnchorY),
             icon = currentLocationIcon,
             visible = currentPosition != null,
             zIndex = CurrentLocationMarkerZIndex,
@@ -180,103 +168,49 @@ private fun GoogleActiveAlarmMap(
     }
 }
 
-private fun createDestinationMarker(
-    density: Float,
-    fillColor: Int,
-    cutoutColor: Int,
+@Composable
+private fun rememberMarkerBitmap(
+    painter: Painter,
+    width: Dp,
+    height: Dp,
 ): Bitmap {
-    val width = (44f * density).roundToInt()
-    val height = (58f * density).roundToInt()
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
 
-    paint.color = 0x33000000
-    canvas.drawOval(
-        RectF(
-            width * 0.18f,
-            height * 0.84f,
-            width * 0.82f,
-            height * 0.98f,
-        ),
-        paint,
-    )
+    return remember(painter, density, layoutDirection, width, height) {
+        val widthPx = with(density) { width.roundToPx() }
+        val heightPx = with(density) { height.roundToPx() }
+        val imageBitmap = ImageBitmap(widthPx, heightPx)
+        val canvas = Canvas(imageBitmap)
+        val size = Size(widthPx.toFloat(), heightPx.toFloat())
 
-    val pinPath = Path().apply {
-        moveTo(width * 0.5f, height * 0.9f)
-        cubicTo(
-            width * 0.42f,
-            height * 0.74f,
-            width * 0.12f,
-            height * 0.54f,
-            width * 0.12f,
-            height * 0.32f,
-        )
-        cubicTo(
-            width * 0.12f,
-            height * 0.11f,
-            width * 0.29f,
-            height * 0.03f,
-            width * 0.5f,
-            height * 0.03f,
-        )
-        cubicTo(
-            width * 0.71f,
-            height * 0.03f,
-            width * 0.88f,
-            height * 0.11f,
-            width * 0.88f,
-            height * 0.32f,
-        )
-        cubicTo(
-            width * 0.88f,
-            height * 0.54f,
-            width * 0.58f,
-            height * 0.74f,
-            width * 0.5f,
-            height * 0.9f,
-        )
-        close()
+        CanvasDrawScope().draw(
+            density = density,
+            layoutDirection = layoutDirection,
+            canvas = canvas,
+            size = size,
+        ) {
+            with(painter) { draw(size) }
+        }
+        imageBitmap.asAndroidBitmap()
     }
-    paint.color = fillColor
-    canvas.drawPath(pinPath, paint)
-    paint.color = cutoutColor
-    canvas.drawCircle(width * 0.5f, height * 0.3f, width * 0.15f, paint)
-
-    return bitmap
-}
-
-private fun createCurrentLocationMarker(
-    density: Float,
-    borderColor: Int,
-    fillColor: Int,
-): Bitmap {
-    val size = (34f * density).roundToInt()
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    val center = size / 2f
-
-    paint.color = 0x33000000
-    canvas.drawCircle(center, center + density, size * 0.48f, paint)
-    paint.color = borderColor
-    canvas.drawCircle(center, center, size * 0.46f, paint)
-    paint.color = fillColor
-    canvas.drawCircle(center, center, size * 0.31f, paint)
-
-    return bitmap
 }
 
 private val MapContentPadding = PaddingValues(
     start = 24.dp,
-    top = 112.dp,
+    top = 80.dp,
     end = 24.dp,
-    bottom = 240.dp,
+    bottom = 243.dp,
 )
 private val MapPointPadding = 32.dp
+private val DestinationMarkerWidth = 45.dp
+private val DestinationMarkerHeight = 52.5.dp
+private val CurrentLocationMarkerWidth = 36.dp
+private val CurrentLocationMarkerHeight = 38.dp
 private const val InitialZoomLevel = 16f
 private const val CloseLocationZoomLevel = 18f
 private const val CameraAnimationMillis = 700
 private const val SameLocationThreshold = 0.00001
 private const val DestinationMarkerZIndex = 1f
 private const val CurrentLocationMarkerZIndex = 2f
+private const val CurrentLocationMarkerAnchorY = 18f / 38f

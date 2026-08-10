@@ -54,7 +54,17 @@ class AlarmMissionTrackingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ActionStopTracking) {
-            stopSelf()
+            val expectedOccurrenceId = intent.getStringExtra(
+                AlarmRuntime.EXTRA_OCCURRENCE_ID,
+            )
+            val activeOccurrenceId = activeMission?.occurrenceId
+            if (
+                expectedOccurrenceId == null ||
+                activeOccurrenceId == null ||
+                activeOccurrenceId == expectedOccurrenceId
+            ) {
+                stopSelf(startId)
+            }
             return START_NOT_STICKY
         }
 
@@ -230,9 +240,13 @@ class AlarmMissionTrackingService : Service() {
             putExtra(AlarmRuntime.EXTRA_OCCURRENCE_ID, occurrenceId)
         }
 
-        internal fun stopIntent(context: Context): Intent =
+        internal fun stopIntent(
+            context: Context,
+            occurrenceId: String,
+        ): Intent =
             Intent(context, AlarmMissionTrackingService::class.java).apply {
                 action = ActionStopTracking
+                putExtra(AlarmRuntime.EXTRA_OCCURRENCE_ID, occurrenceId)
             }
     }
 }
