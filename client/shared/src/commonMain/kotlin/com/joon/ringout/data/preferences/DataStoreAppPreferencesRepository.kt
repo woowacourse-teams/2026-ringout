@@ -1,37 +1,39 @@
-package com.joon.ringout.data.firstlaunch
+package com.joon.ringout.data.preferences
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.joon.ringout.domain.firstlaunch.FirstLaunchRepository
+import com.joon.ringout.ThemeMode
 import com.joon.ringout.domain.firstlaunch.FirstLaunchStatus
+import com.joon.ringout.domain.preferences.AppBootstrapSnapshot
+import com.joon.ringout.domain.preferences.AppPreferencesRepository
 import com.joon.ringout.domain.terms.TermConsentRecord
 import com.joon.ringout.domain.terms.TermDefinition
 import com.joon.ringout.domain.terms.TermId
 import com.joon.ringout.domain.terms.TermType
 import com.joon.ringout.domain.terms.currentTerms
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
-import okio.IOException
 
-class DataStoreFirstLaunchRepository(
+class DataStoreAppPreferencesRepository(
     private val dataStore: DataStore<Preferences>,
     private val terms: List<TermDefinition> = currentTerms,
-) : FirstLaunchRepository {
-    override val status: Flow<FirstLaunchStatus> = dataStore.data
-        .catch { error ->
-            if (error is IOException) {
-                emit(emptyPreferences())
-            } else {
-                throw error
-            }
+) : AppPreferencesRepository {
+    override val bootstrapState: Flow<AppBootstrapSnapshot> = dataStore.data.map { preferences ->
+        AppBootstrapSnapshot(
+            themeMode = ThemeMode.fromPersistedValue(preferences[ThemeModeKey]),
+            firstLaunchStatus = preferences.toFirstLaunchStatus(),
+        )
+    }
+
+    override suspend fun setThemeMode(themeMode: ThemeMode) {
+        dataStore.edit { preferences ->
+            preferences[ThemeModeKey] = themeMode.persistedValue
         }
-        .map(::toFirstLaunchStatus)
+    }
 
     override suspend fun markOnboardingCompleted() {
         dataStore.edit { preferences ->
@@ -63,13 +65,11 @@ class DataStoreFirstLaunchRepository(
         }
     }
 
-    private fun toFirstLaunchStatus(preferences: Preferences): FirstLaunchStatus =
+    private fun Preferences.toFirstLaunchStatus(): FirstLaunchStatus =
         FirstLaunchStatus(
-            isOnboardingCompleted = preferences[OnboardingCompletedKey] ?: false,
+            isOnboardingCompleted = this[OnboardingCompletedKey] ?: false,
             termConsents = terms.mapNotNull { definition ->
-                preferences.toTermConsentRecord(definition.id)?.let { record ->
-                    definition.id to record
-                }
+                toTermConsentRecord(definition.id)?.let { record -> definition.id to record }
             }.toMap(),
         )
 }
@@ -89,6 +89,7 @@ private fun Preferences.toTermConsentRecord(id: TermId): TermConsentRecord? {
     )
 }
 
+internal val ThemeModeKey = stringPreferencesKey("theme.mode")
 private val OnboardingCompletedKey = booleanPreferencesKey("onboarding.completed")
 
 private fun nameKey(id: TermId) = stringPreferencesKey("terms.${id.value}.name")

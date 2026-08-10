@@ -2,10 +2,8 @@ package com.joon.ringout
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -16,10 +14,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.joon.ringout.data.firstlaunch.DataStoreFirstLaunchRepository
+import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.domain.terms.TermId
@@ -41,7 +39,7 @@ import com.joon.ringout.presentation.destination.isConfiguredDestination
 import com.joon.ringout.presentation.destination.rememberDestinationRepository
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
-import com.joon.ringout.presentation.appentry.AppEntryViewModel
+import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.settings.SettingsScreen
 import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
@@ -63,17 +61,21 @@ fun App(
     onActiveAlarmMissionExpired: () -> Unit = {},
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit = { _ -> },
 ) {
-    val themeController = rememberThemeController()
     val preferencesDataStore = rememberAppPreferencesDataStore()
-    val firstLaunchRepository = remember(preferencesDataStore) {
-        DataStoreFirstLaunchRepository(preferencesDataStore)
+    val appPreferencesRepository = remember(preferencesDataStore) {
+        DataStoreAppPreferencesRepository(preferencesDataStore)
     }
-    val appEntryViewModel = viewModel {
-        AppEntryViewModel(firstLaunchRepository)
+    val appBootstrapViewModel = viewModel {
+        AppBootstrapViewModel(appPreferencesRepository)
+    }
+    val appBootstrapUiState = appBootstrapViewModel.uiState
+
+    if (!appBootstrapUiState.isReady) {
+        AppBootstrapSurface()
+        return
     }
 
-    RingoutTheme(themeMode = themeController.themeMode) {
-        val appEntryUiState = appEntryViewModel.uiState
+    RingoutTheme(themeMode = appBootstrapUiState.themeMode) {
         val uriHandler = LocalUriHandler.current
         val serviceTermUrl = stringResource(
             requireNotNull(termDocumentResource(TermId.Service)),
@@ -88,55 +90,47 @@ fun App(
             )
         }
 
-        when {
-            appEntryUiState.isLoading -> AppEntryLoading()
-
-            appEntryUiState.destination == AppEntryDestination.Onboarding ->
+        when (appBootstrapUiState.destination) {
+            AppEntryDestination.Onboarding ->
                 OnboardingScreen(
-                    onComplete = appEntryViewModel::completeOnboarding,
-                    completionEnabled = !appEntryUiState.isSaving,
-                    completionRetryToken = appEntryUiState.onboardingRetryToken,
+                    onComplete = appBootstrapViewModel::completeOnboarding,
+                    completionEnabled = !appBootstrapUiState.isSaving,
+                    completionRetryToken = appBootstrapUiState.onboardingRetryToken,
                 )
 
-            appEntryUiState.destination == AppEntryDestination.TermsAgreement ->
+            AppEntryDestination.TermsAgreement ->
                 TermsAgreementScreen(
-                    onStart = appEntryViewModel::completeTermsAgreement,
+                    onStart = appBootstrapViewModel::completeTermsAgreement,
                     onTermDetailClick = { termId ->
                         termDocumentUrls[termId]?.let { url ->
                             runCatching { uriHandler.openUri(url) }
                         }
                     },
-                    isSaving = appEntryUiState.isSaving,
+                    isSaving = appBootstrapUiState.isSaving,
                 )
 
-            appEntryUiState.destination == AppEntryDestination.Home ->
+            AppEntryDestination.Home ->
                 RingoutAppContent(
-                    themeMode = themeController.themeMode,
+                    themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
                     activeAlarmMission = activeAlarmMission,
                     activeAlarmMissionLocation = activeAlarmMissionLocation,
                     onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
                     onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
-                    onThemeModeChange = themeController::setThemeMode,
+                    onThemeModeChange = appBootstrapViewModel::setThemeMode,
                 )
+
+            null -> Unit
         }
     }
 }
 
 @Composable
-private fun AppEntryLoading() {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator()
-        }
-    }
-}
+private fun AppBootstrapSurface() = Box(
+    modifier = Modifier
+        .fillMaxSize()
+        .background(Color.Black),
+)
 
 @Composable
 private fun RingoutAppContent(

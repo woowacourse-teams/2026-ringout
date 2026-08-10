@@ -1,49 +1,89 @@
-package com.joon.ringout.presentation.appentry
+package com.joon.ringout.presentation.appbootstrap
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.joon.ringout.ThemeMode
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
-import com.joon.ringout.domain.firstlaunch.FirstLaunchRepository
 import com.joon.ringout.domain.firstlaunch.determineAppEntryDestination
+import com.joon.ringout.domain.preferences.AppPreferencesRepository
 import com.joon.ringout.domain.terms.TermConsentRecord
 import com.joon.ringout.domain.terms.TermDefinition
 import com.joon.ringout.domain.terms.TermId
 import com.joon.ringout.domain.terms.TermType
 import com.joon.ringout.domain.terms.currentTerms
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okio.IOException
 import kotlin.time.Clock
 
-data class AppEntryUiState(
-    val isLoading: Boolean = true,
+data class AppBootstrapUiState(
+    val isReady: Boolean = false,
+    val themeMode: ThemeMode = ThemeMode.Dark,
     val destination: AppEntryDestination? = null,
     val isSaving: Boolean = false,
     val onboardingRetryToken: Int = 0,
 )
 
-class AppEntryViewModel(
-    private val repository: FirstLaunchRepository,
+class AppBootstrapViewModel(
+    private val repository: AppPreferencesRepository,
     private val clock: Clock = Clock.System,
     private val terms: List<TermDefinition> = currentTerms,
     coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
-    var uiState by mutableStateOf(AppEntryUiState())
+    var uiState by mutableStateOf(AppBootstrapUiState())
         private set
 
     private val scope = coroutineScope ?: viewModelScope
+    private val themeWriteMutex = Mutex()
+    private var latestRequestedThemeMode: ThemeMode? = null
 
     init {
         scope.launch {
-            repository.status.collect { status ->
-                uiState = uiState.copy(
-                    isLoading = false,
-                    destination = determineAppEntryDestination(status, terms),
-                )
+            repository.bootstrapState
+                .retryWhen { cause, _ ->
+                    if (cause !is IOException) return@retryWhen false
+                    delay(BootstrapReadRetryDelayMillis)
+                    true
+                }
+                .collect { snapshot ->
+                    if (latestRequestedThemeMode == null) {
+                        latestRequestedThemeMode = snapshot.themeMode
+                    }
+                    uiState = uiState.copy(
+                        isReady = true,
+                        themeMode = snapshot.themeMode,
+                        destination = determineAppEntryDestination(
+                            snapshot.firstLaunchStatus,
+                            terms,
+                        ),
+                    )
+                }
+        }
+    }
+
+    fun setThemeMode(themeMode: ThemeMode) {
+        if (latestRequestedThemeMode == themeMode) return
+        latestRequestedThemeMode = themeMode
+
+        scope.launch {
+            themeWriteMutex.withLock {
+                try {
+                    repository.setThemeMode(themeMode)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: IOException) {
+                    if (latestRequestedThemeMode == themeMode) {
+                        latestRequestedThemeMode = uiState.themeMode
+                    }
+                }
             }
         }
     }
@@ -100,3 +140,5 @@ class AppEntryViewModel(
         }
     }
 }
+
+private const val BootstrapReadRetryDelayMillis = 1_000L
