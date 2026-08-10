@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.mypage
 
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,13 +15,15 @@ class MyPageStateTest {
         val month = MyPageCalendarMonth(MissionYearMonth(2026, 8))
         val cells = buildCalendarCells(
             month = month,
-            successDates = setOf(MissionDate.parse("2026-08-01")),
+            resultsByDate = mapOf(
+                MissionDate.parse("2026-08-01") to MissionResult.SUCCESS,
+            ),
         )
 
         assertEquals(6, month.firstDayOfWeek)
         assertEquals(31, month.dayCount)
         assertEquals(1, cells[6].day)
-        assertTrue(cells[6].isMissionSuccess)
+        assertEquals(MissionResult.SUCCESS, cells[6].result)
         assertEquals(31, cells.count { it.day != null })
     }
 
@@ -32,14 +35,29 @@ class MyPageStateTest {
     }
 
     @Test
-    fun onlyInjectedDatesAreMarkedAsSuccess() {
+    fun successAndFailureResultsAreMappedToTheirCalendarDays() {
         val cells = buildCalendarCells(
             month = MyPageCalendarMonth(MissionYearMonth(2026, 8)),
-            successDates = setOf(MissionDate.parse("2026-08-03")),
+            resultsByDate = mapOf(
+                MissionDate.parse("2026-08-03") to MissionResult.SUCCESS,
+                MissionDate.parse("2026-08-04") to MissionResult.FAILURE,
+            ),
         )
 
-        assertTrue(cells.single { it.day == 3 }.isMissionSuccess)
-        assertFalse(cells.single { it.day == 4 }.isMissionSuccess)
+        assertEquals(MissionResult.SUCCESS, cells.single { it.day == 3 }.result)
+        assertEquals(MissionResult.FAILURE, cells.single { it.day == 4 }.result)
+        assertEquals(null, cells.single { it.day == 5 }.result)
+    }
+
+    @Test
+    fun emptyHistoryLeavesEveryCalendarDayWithoutAResult() {
+        val cells = buildCalendarCells(
+            month = MyPageCalendarMonth(MissionYearMonth(2026, 8)),
+            resultsByDate = emptyMap(),
+        )
+
+        assertTrue(cells.filter { it.day != null }.all { it.result == null })
+        assertFalse(cells.isEmpty())
     }
 
     @Test

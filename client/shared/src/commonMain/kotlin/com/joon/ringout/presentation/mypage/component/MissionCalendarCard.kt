@@ -1,6 +1,5 @@
 package com.joon.ringout.presentation.mypage.component
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,32 +18,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.joon.ringout.RingoutTheme
+import com.joon.ringout.ThemeMode
+import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.missionhistory.MissionResult
+import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.presentation.mypage.CalendarDayUiModel
 import com.joon.ringout.presentation.mypage.MyPageCalendarMonth
 import com.joon.ringout.presentation.mypage.buildCalendarCells
-import com.joon.ringout.domain.missionhistory.MissionDate
-import com.joon.ringout.domain.missionhistory.MissionYearMonth
-import com.joon.ringout.RingoutTheme
-import com.joon.ringout.ThemeMode
-import org.jetbrains.compose.resources.painterResource
-import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.mypage_mission_stamp
 
 @Composable
 fun MissionCalendarCard(
     month: MyPageCalendarMonth,
-    successDates: Set<MissionDate>,
+    resultsByDate: Map<MissionDate, MissionResult>,
     onPreviousMonthClick: () -> Unit,
     onNextMonthClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val cells = remember(month, successDates) { buildCalendarCells(month, successDates) }
+    val cells = remember(month, resultsByDate) { buildCalendarCells(month, resultsByDate) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -127,14 +122,8 @@ private fun CalendarWeek(week: List<CalendarDayUiModel>) {
                         color = MaterialTheme.colorScheme.onBackground,
                         style = MaterialTheme.typography.bodyLarge,
                     )
-                    if (cell.isMissionSuccess) {
-                        Image(
-                            painter = painterResource(Res.drawable.mypage_mission_stamp),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(23.dp)
-                                .semantics { contentDescription = "${cell.day}일 미션 성공" },
-                        )
+                    cell.result?.let { result ->
+                        MissionResultIndicator(day = cell.day, result = result)
                     }
                 }
             }
@@ -150,9 +139,9 @@ private fun MissionCalendarCardPreview() {
     RingoutTheme(ThemeMode.Light) {
         MissionCalendarCard(
             month = MyPageCalendarMonth(MissionYearMonth(2026, 8)),
-            successDates = setOf(
-                MissionDate.of(2026, 8, 1),
-                MissionDate.of(2026, 8, 3),
+            resultsByDate = mapOf(
+                MissionDate.of(2026, 8, 1) to MissionResult.SUCCESS,
+                MissionDate.of(2026, 8, 3) to MissionResult.FAILURE,
             ),
             onPreviousMonthClick = {},
             onNextMonthClick = {},

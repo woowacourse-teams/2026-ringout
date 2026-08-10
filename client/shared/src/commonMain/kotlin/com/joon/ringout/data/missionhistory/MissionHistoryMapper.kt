@@ -11,4 +11,23 @@ internal fun MissionHistoryDto.toDomain(): MissionHistoryEntry = MissionHistoryE
         else -> error("Unsupported mission result: $result")
     },
     completedAt = MissionDate.parse(completedAt),
+    occurrenceId = occurrenceId,
+)
+
+internal fun MissionHistoryEntry.toDto(): MissionHistoryDto = MissionHistoryDto(
+    result = result.name,
+    completedAt = completedAt.iso8601,
+    occurrenceId = occurrenceId,
+)
+
+internal fun MissionHistoryEntity.toDto(): MissionHistoryDto = MissionHistoryDto(
+    result = result,
+    completedAt = completedAt,
+    occurrenceId = occurrenceId,
+)
+
+internal fun MissionHistoryDto.toEntity(): MissionHistoryEntity = MissionHistoryEntity(
+    result = result,
+    completedAt = completedAt,
+    occurrenceId = occurrenceId,
 )

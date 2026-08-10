@@ -89,6 +89,45 @@ class RingoutDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migratesVersionThreeByKeepingLegacyRowsAndAddingOccurrenceUniqueness() = runBlocking {
+        val databasePath = temporaryDatabasePath()
+        createVersionThreeDatabase(databasePath)
+
+        val database = buildRingoutDatabase(
+            Room.databaseBuilder<RingoutDatabase>(name = databasePath),
+        )
+        try {
+            val dao = database.missionHistoryDao()
+            assertEquals(
+                listOf(null),
+                dao.getHistory("2026-08-01", "2026-08-31").map { it.occurrenceId },
+            )
+            assertTrue(
+                dao.insert(
+                    com.joon.ringout.data.missionhistory.MissionHistoryEntity(
+                        result = "SUCCESS",
+                        completedAt = "2026-08-05",
+                        occurrenceId = "occurrence-1",
+                    ),
+                ),
+            )
+            assertEquals(
+                false,
+                dao.insert(
+                    com.joon.ringout.data.missionhistory.MissionHistoryEntity(
+                        result = "FAILURE",
+                        completedAt = "2026-08-05",
+                        occurrenceId = "occurrence-1",
+                    ),
+                ),
+            )
+        } finally {
+            database.close()
+            deleteDatabaseFiles(databasePath)
+        }
+    }
+
     private fun createVersionOneDatabase(databasePath: String) {
         BundledSQLiteDriver().open(databasePath).use { connection ->
             connection.execSQL(
@@ -227,6 +266,30 @@ class RingoutDatabaseMigrationTest {
                 """.trimIndent(),
             )
             connection.execSQL("PRAGMA user_version = 2")
+        }
+    }
+
+    private fun createVersionThreeDatabase(databasePath: String) {
+        createVersionTwoDatabase(databasePath)
+        BundledSQLiteDriver().open(databasePath).use { connection ->
+            connection.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `saved_destinations` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `address` TEXT NOT NULL,
+                    `latitude` REAL NOT NULL,
+                    `longitude` REAL NOT NULL
+                )
+                """.trimIndent(),
+            )
+            connection.execSQL(
+                """
+                INSERT OR REPLACE INTO room_master_table (id, identity_hash)
+                VALUES(42, 'd8699d58e420e62b054ec9c812b191ac')
+                """.trimIndent(),
+            )
+            connection.execSQL("PRAGMA user_version = 3")
         }
     }
 

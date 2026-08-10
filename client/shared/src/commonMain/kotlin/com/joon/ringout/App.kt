@@ -32,7 +32,7 @@ import com.joon.ringout.presentation.destination.isConfiguredDestination
 import com.joon.ringout.presentation.destination.rememberDestinationRepository
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
-import com.joon.ringout.presentation.settings.SettingsScreen
+import com.joon.ringout.presentation.mypage.MyPageScreen
 import kotlinx.coroutines.flow.collect
 import kotlin.random.Random
 
@@ -259,7 +259,7 @@ private fun RingoutAppContent(
             onActiveAlarmMissionClick = {
                 screenName = AppScreen.ActiveAlarmTracking.name
             },
-            onSettingsClick = { screenName = AppScreen.Settings.name },
+            onSettingsClick = { screenName = AppScreen.MyPage.name },
         )
 
         AppScreen.ActiveAlarmTracking -> activeAlarmMission?.let { mission ->
@@ -272,11 +272,15 @@ private fun RingoutAppContent(
             )
         }
 
-        AppScreen.Settings -> SettingsScreen(
+        AppScreen.MyPage,
+        AppScreen.Settings,
+        -> MyPageScreen(
             themeMode = themeMode,
             appVersion = appVersion,
+            policies = emptyList(),
             onThemeModeChange = onThemeModeChange,
             onBackClick = { screenName = AppScreen.Home.name },
+            onPolicyClick = {},
         )
 
         AppScreen.AddAlarm,
@@ -367,6 +371,7 @@ private enum class AppScreen {
     EditAlarm,
     Destination,
     AlarmSound,
+    MyPage,
     Settings,
     ActiveAlarmTracking,
 }

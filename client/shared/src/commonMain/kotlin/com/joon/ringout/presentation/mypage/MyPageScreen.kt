@@ -14,6 +14,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -23,8 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
+import com.joon.ringout.domain.missionhistory.GetMissionResultsByDate
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.mypage.component.MissionCalendarCard
@@ -35,7 +37,6 @@ import com.joon.ringout.presentation.mypage.component.MyPageThemeCard
 
 @Composable
 fun MyPageScreen(
-    getMissionSuccessDates: GetMissionSuccessDates,
     themeMode: ThemeMode,
     appVersion: String,
     policies: List<PolicyInfo>,
@@ -43,10 +44,11 @@ fun MyPageScreen(
     onBackClick: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: MyPageViewModel = viewModel {
-        MyPageViewModel(getMissionSuccessDates, currentMissionYearMonth())
-    },
+    viewModel: MyPageViewModel = rememberMyPageViewModel(),
 ) {
+    LaunchedEffect(viewModel) {
+        viewModel.retry()
+    }
     PlatformBackHandler(onBack = onBackClick)
     MyPageScreenContent(
         uiState = viewModel.uiState,
@@ -60,6 +62,17 @@ fun MyPageScreen(
         onPolicyClick = onPolicyClick,
         modifier = modifier,
     )
+}
+
+@Composable
+private fun rememberMyPageViewModel(): MyPageViewModel {
+    val missionHistoryRepository = rememberMissionHistoryRepository()
+    return viewModel {
+        MyPageViewModel(
+            getMissionResultsByDate = GetMissionResultsByDate(missionHistoryRepository),
+            initialMonth = currentMissionYearMonth(),
+        )
+    }
 }
 
 @Composable
@@ -88,7 +101,7 @@ fun MyPageScreenContent(
         item {
             MissionCalendarCard(
                 month = uiState.selectedMonth,
-                successDates = uiState.successDates,
+                resultsByDate = uiState.resultsByDate,
                 onPreviousMonthClick = onPreviousMonthClick,
                 onNextMonthClick = onNextMonthClick,
             )
@@ -134,15 +147,21 @@ private val PreviewPolicies = listOf(
 private val PreviewState = MyPageUiState(
     isLoading = false,
     selectedMonth = MyPageCalendarMonth(MissionYearMonth(2026, 8)),
-    successDates = setOf(1, 3, 4, 5, 7, 11, 12, 13, 17, 18, 21, 22, 23, 25, 26, 28)
-        .mapTo(mutableSetOf()) { MissionDate.of(2026, 8, it) },
+    resultsByDate = buildMap {
+        listOf(1, 3, 5, 7, 11, 13, 17, 21, 23, 25, 28).forEach { day ->
+            put(MissionDate.of(2026, 8, day), MissionResult.SUCCESS)
+        }
+        listOf(4, 12, 18, 22, 26).forEach { day ->
+            put(MissionDate.of(2026, 8, day), MissionResult.FAILURE)
+        }
+    },
 )
 
-@Preview(name = "Dark My Page", widthDp = 402, heightDp = 941)
+@Preview(name = "Dark success and failure My Page", widthDp = 402, heightDp = 941)
 @Composable
 private fun MyPageDarkPreview() = MyPagePreview(ThemeMode.Dark, PreviewState)
 
-@Preview(name = "Light My Page", widthDp = 402, heightDp = 941)
+@Preview(name = "Light success and failure My Page", widthDp = 402, heightDp = 941)
 @Composable
 private fun MyPageLightPreview() = MyPagePreview(ThemeMode.Light, PreviewState)
 
@@ -150,7 +169,7 @@ private fun MyPageLightPreview() = MyPagePreview(ThemeMode.Light, PreviewState)
 @Composable
 private fun MyPageSmallEmptyPreview() = MyPagePreview(
     ThemeMode.Dark,
-    PreviewState.copy(successDates = emptySet()),
+    PreviewState.copy(resultsByDate = emptyMap()),
 )
 
 @Preview(name = "Error My Page", widthDp = 402, heightDp = 941)

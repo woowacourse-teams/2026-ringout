@@ -61,3 +61,12 @@ internal val RingoutMigration2To3 = Migration(2, 3) { connection ->
         """.trimIndent(),
     )
 }
+
+internal val RingoutMigration3To4 = Migration(3, 4) { connection ->
+    connection.executeSQL(
+        "ALTER TABLE `mission_history` ADD COLUMN `occurrence_id` TEXT",
+    )
+    connection.executeSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_mission_history_occurrence_id` ON `mission_history` (`occurrence_id`)",
+    )
+}

@@ -5,8 +5,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
+import com.joon.ringout.domain.missionhistory.GetMissionResultsByDate
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -14,12 +15,12 @@ import kotlinx.coroutines.launch
 data class MyPageUiState(
     val isLoading: Boolean = true,
     val selectedMonth: MyPageCalendarMonth,
-    val successDates: Set<MissionDate> = emptySet(),
+    val resultsByDate: Map<MissionDate, MissionResult> = emptyMap(),
     val errorMessage: String? = null,
 )
 
 class MyPageViewModel(
-    private val getMissionSuccessDates: GetMissionSuccessDates,
+    private val getMissionResultsByDate: GetMissionResultsByDate,
     initialMonth: MissionYearMonth,
 ) : ViewModel() {
     var uiState by mutableStateOf(
@@ -50,14 +51,17 @@ class MyPageViewModel(
         val currentRequestId = ++requestId
         uiState = uiState.copy(
             isLoading = true,
-            successDates = emptySet(),
+            resultsByDate = emptyMap(),
             errorMessage = null,
         )
         loadJob = viewModelScope.launch {
-            runCatching { getMissionSuccessDates(month) }
-                .onSuccess { dates ->
+            runCatching { getMissionResultsByDate(month) }
+                .onSuccess { resultsByDate ->
                     if (currentRequestId == requestId && uiState.selectedMonth.value == month) {
-                        uiState = uiState.copy(isLoading = false, successDates = dates)
+                        uiState = uiState.copy(
+                            isLoading = false,
+                            resultsByDate = resultsByDate,
+                        )
                     }
                 }
                 .onFailure { error ->
