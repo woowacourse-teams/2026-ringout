@@ -9,10 +9,5 @@
         <item name="android:windowNoTitle">true</item>
     </style>
 
-    <style name="Theme.Ringout" parent="Theme.Ringout.Base">
-        <item name="android:windowBackground">@drawable/ringout_launch_background</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
-    </style>
     <style name="Theme.Ringout.Content" parent="Theme.Ringout.Base" />
 </resources>
