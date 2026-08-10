@@ -1,20 +1,18 @@
 package com.joon.ringout.presentation.mypage
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -24,9 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.domain.missionhistory.GetMissionResultsByDate
+import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.MissionDate
-import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.mypage.component.MissionCalendarCard
@@ -34,6 +31,7 @@ import com.joon.ringout.presentation.mypage.component.MyPageAppVersionRow
 import com.joon.ringout.presentation.mypage.component.MyPageHeader
 import com.joon.ringout.presentation.mypage.component.MyPagePolicySection
 import com.joon.ringout.presentation.mypage.component.MyPageThemeCard
+import com.joon.ringout.presentation.mypage.component.myPageColors
 
 @Composable
 fun MyPageScreen(
@@ -46,9 +44,6 @@ fun MyPageScreen(
     modifier: Modifier = Modifier,
     viewModel: MyPageViewModel = rememberMyPageViewModel(),
 ) {
-    LaunchedEffect(viewModel) {
-        viewModel.retry()
-    }
     PlatformBackHandler(onBack = onBackClick)
     MyPageScreenContent(
         uiState = viewModel.uiState,
@@ -69,7 +64,7 @@ private fun rememberMyPageViewModel(): MyPageViewModel {
     val missionHistoryRepository = rememberMissionHistoryRepository()
     return viewModel {
         MyPageViewModel(
-            getMissionResultsByDate = GetMissionResultsByDate(missionHistoryRepository),
+            getMissionSuccessDates = GetMissionSuccessDates(missionHistoryRepository),
             initialMonth = currentMissionYearMonth(),
         )
     }
@@ -88,30 +83,28 @@ fun MyPageScreenContent(
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = myPageColors()
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(colors.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(horizontal = 20.dp),
         contentPadding = PaddingValues(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         item { MyPageHeader(onBackClick = onBackClick) }
+        item { Spacer(Modifier.height(6.dp)) }
         item {
             MissionCalendarCard(
                 month = uiState.selectedMonth,
-                resultsByDate = uiState.resultsByDate,
+                successDates = uiState.successDates,
                 onPreviousMonthClick = onPreviousMonthClick,
                 onNextMonthClick = onNextMonthClick,
             )
         }
-        if (uiState.isLoading) {
-            item {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-        }
         uiState.errorMessage?.let { message ->
+            item { Spacer(Modifier.height(8.dp)) }
             item {
                 Text(
                     text = message,
@@ -121,6 +114,7 @@ fun MyPageScreenContent(
                 )
             }
         }
+        item { Spacer(Modifier.height(34.dp)) }
         item {
             MyPageThemeCard(
                 themeMode = themeMode,
@@ -128,6 +122,7 @@ fun MyPageScreenContent(
             )
         }
         if (policies.isNotEmpty()) {
+            item { Spacer(Modifier.height(10.dp)) }
             item {
                 MyPagePolicySection(
                     policies = policies,
@@ -135,33 +130,23 @@ fun MyPageScreenContent(
                 )
             }
         }
+        item { Spacer(Modifier.height(10.dp)) }
         item { MyPageAppVersionRow(appVersion = appVersion) }
     }
 }
 
-private val PreviewPolicies = listOf(
-    PolicyInfo(PolicyId("privacy"), "개인정보처리방침", PolicyIcon.PRIVACY),
-    PolicyInfo(PolicyId("terms"), "이용약관", PolicyIcon.DOCUMENT),
-)
-
 private val PreviewState = MyPageUiState(
     isLoading = false,
     selectedMonth = MyPageCalendarMonth(MissionYearMonth(2026, 8)),
-    resultsByDate = buildMap {
-        listOf(1, 3, 5, 7, 11, 13, 17, 21, 23, 25, 28).forEach { day ->
-            put(MissionDate.of(2026, 8, day), MissionResult.SUCCESS)
-        }
-        listOf(4, 12, 18, 22, 26).forEach { day ->
-            put(MissionDate.of(2026, 8, day), MissionResult.FAILURE)
-        }
-    },
+    successDates = listOf(1, 3, 5, 7, 11, 13, 17, 21, 23, 25, 28)
+        .mapTo(mutableSetOf()) { day -> MissionDate.of(2026, 8, day) },
 )
 
-@Preview(name = "Dark success and failure My Page", widthDp = 402, heightDp = 941)
+@Preview(name = "Dark My Page - success stamps", widthDp = 402, heightDp = 985)
 @Composable
 private fun MyPageDarkPreview() = MyPagePreview(ThemeMode.Dark, PreviewState)
 
-@Preview(name = "Light success and failure My Page", widthDp = 402, heightDp = 941)
+@Preview(name = "Light My Page - success stamps", widthDp = 402, heightDp = 985)
 @Composable
 private fun MyPageLightPreview() = MyPagePreview(ThemeMode.Light, PreviewState)
 
@@ -169,7 +154,7 @@ private fun MyPageLightPreview() = MyPagePreview(ThemeMode.Light, PreviewState)
 @Composable
 private fun MyPageSmallEmptyPreview() = MyPagePreview(
     ThemeMode.Dark,
-    PreviewState.copy(resultsByDate = emptyMap()),
+    PreviewState.copy(successDates = emptySet()),
 )
 
 @Preview(name = "Error My Page", widthDp = 402, heightDp = 941)
@@ -186,7 +171,7 @@ private fun MyPagePreview(themeMode: ThemeMode, state: MyPageUiState) {
             uiState = state,
             themeMode = themeMode,
             appVersion = "1.0.0",
-            policies = PreviewPolicies,
+            policies = DefaultMyPagePolicies,
             onThemeModeChange = {},
             onPreviousMonthClick = {},
             onNextMonthClick = {},

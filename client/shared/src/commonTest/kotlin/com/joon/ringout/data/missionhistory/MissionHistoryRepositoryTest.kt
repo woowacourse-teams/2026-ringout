@@ -108,4 +108,22 @@ class MissionHistoryRepositoryTest {
             GetMissionResultsByDate(repository)(MissionYearMonth(2026, 8)),
         )
     }
+
+    @Test
+    fun successDatesKeepAStampWhenAnotherAttemptOnTheSameDateFails() = runBlocking {
+        val repository = DefaultMissionHistoryRepository(
+            InMemoryMissionHistoryDataSource(
+                listOf(
+                    MissionHistoryDto("SUCCESS", "2026-08-05", "occurrence-1"),
+                    MissionHistoryDto("FAILURE", "2026-08-05", "occurrence-2"),
+                    MissionHistoryDto("FAILURE", "2026-08-06", "occurrence-3"),
+                ),
+            ),
+        )
+
+        assertEquals(
+            setOf(MissionDate.parse("2026-08-05")),
+            GetMissionSuccessDates(repository)(MissionYearMonth(2026, 8)),
+        )
+    }
 }

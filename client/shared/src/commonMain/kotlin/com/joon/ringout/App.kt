@@ -32,6 +32,7 @@ import com.joon.ringout.presentation.destination.isConfiguredDestination
 import com.joon.ringout.presentation.destination.rememberDestinationRepository
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
+import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
 import kotlinx.coroutines.flow.collect
 import kotlin.random.Random
@@ -277,7 +278,7 @@ private fun RingoutAppContent(
         -> MyPageScreen(
             themeMode = themeMode,
             appVersion = appVersion,
-            policies = emptyList(),
+            policies = DefaultMyPagePolicies,
             onThemeModeChange = onThemeModeChange,
             onBackClick = { screenName = AppScreen.Home.name },
             onPolicyClick = {},

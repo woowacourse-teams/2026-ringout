@@ -24,6 +24,13 @@ data class PolicyInfo(
     }
 }
 
+val DefaultMyPagePolicies: List<PolicyInfo> = requireUniquePolicyIds(
+    listOf(
+        PolicyInfo(PolicyId("privacy"), "개인정보처리방침", PolicyIcon.PRIVACY),
+        PolicyInfo(PolicyId("terms"), "이용약관", PolicyIcon.DOCUMENT),
+    ),
+)
+
 fun requireUniquePolicyIds(policies: List<PolicyInfo>): List<PolicyInfo> =
     policies.also {
         require(it.map(PolicyInfo::id).distinct().size == it.size) {
