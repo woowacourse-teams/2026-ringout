@@ -19,6 +19,20 @@ class DestinationLocationPolicyTest {
     }
 
     @Test
+    fun fineLocationOlderThanTenSecondsMustBeRefinedBeforeSaving() {
+        assertEquals(
+            DestinationLocationDecision.UseAndRefine,
+            decideDestinationLocation(
+                quality = DestinationLocationQuality(
+                    ageMillis = DestinationLocationFreshMaxAgeMillis + 1,
+                    accuracyMeters = DestinationLocationFineTargetAccuracyMeters,
+                ),
+                granularity = DestinationLocationGranularity.Fine,
+            ),
+        )
+    }
+
+    @Test
     fun usableFineCacheIsShownBeforeRefinement() {
         assertEquals(
             DestinationLocationDecision.UseAndRefine,
@@ -57,23 +71,13 @@ class DestinationLocationPolicyTest {
     }
 
     @Test
-    fun coarseLocationUsesItsOwnAccuracyLimitWithoutRefinement() {
-        assertEquals(
-            DestinationLocationDecision.UseFinal,
-            decideDestinationLocation(
-                quality = DestinationLocationQuality(
-                    ageMillis = DestinationLocationCacheMaxAgeMillis,
-                    accuracyMeters = DestinationLocationCoarseAccuracyMeters,
-                ),
-                granularity = DestinationLocationGranularity.Coarse,
-            ),
-        )
+    fun coarseLocationCannotBeUsedAsADestination() {
         assertEquals(
             DestinationLocationDecision.Reject,
             decideDestinationLocation(
                 quality = DestinationLocationQuality(
                     ageMillis = 0L,
-                    accuracyMeters = DestinationLocationCoarseAccuracyMeters + 1f,
+                    accuracyMeters = 1f,
                 ),
                 granularity = DestinationLocationGranularity.Coarse,
             ),
@@ -107,22 +111,12 @@ class DestinationLocationPolicyTest {
     }
 
     @Test
-    fun freshRefinementMustNotBeSignificantlyLessAccurateThanCache() {
+    fun freshFinalQualityLocationReplacesAnOlderAccurateCache() {
         val cached = DestinationLocationQuality(
             ageMillis = 31_000L,
             accuracyMeters = 10f,
         )
 
-        assertEquals(
-            false,
-            shouldUseRefinedDestinationLocation(
-                fallback = cached,
-                refined = DestinationLocationQuality(
-                    ageMillis = 0L,
-                    accuracyMeters = 199f,
-                ),
-            ),
-        )
         assertEquals(
             true,
             shouldUseRefinedDestinationLocation(
@@ -130,6 +124,26 @@ class DestinationLocationPolicyTest {
                 refined = DestinationLocationQuality(
                     ageMillis = 0L,
                     accuracyMeters = 40f,
+                ),
+            ),
+        )
+        assertEquals(
+            false,
+            shouldUseRefinedDestinationLocation(
+                fallback = cached,
+                refined = DestinationLocationQuality(
+                    ageMillis = 0L,
+                    accuracyMeters = DestinationLocationFineTargetAccuracyMeters + 1f,
+                ),
+            ),
+        )
+        assertEquals(
+            false,
+            shouldUseRefinedDestinationLocation(
+                fallback = cached,
+                refined = DestinationLocationQuality(
+                    ageMillis = cached.ageMillis,
+                    accuracyMeters = DestinationLocationFineTargetAccuracyMeters,
                 ),
             ),
         )

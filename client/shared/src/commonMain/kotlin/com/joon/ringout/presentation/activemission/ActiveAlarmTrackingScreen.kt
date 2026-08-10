@@ -22,6 +22,8 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
+import com.joon.ringout.alarm.MaximumAcceptedLocationAccuracyMeters
+import com.joon.ringout.alarm.MaximumTrackingLocationAgeMillis
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmMapUnavailable
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingCard
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingHeader
@@ -29,6 +31,7 @@ import com.joon.ringout.presentation.activemission.components.activeAlarmTrackin
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.home.components.formatAlarmMissionRemainingTime
 import com.joon.ringout.presentation.home.components.rememberActiveAlarmMissionRemainingSeconds
+import kotlin.time.Clock
 
 @Composable
 fun ActiveAlarmTrackingScreen(
@@ -43,8 +46,12 @@ fun ActiveAlarmTrackingScreen(
         mission = mission,
         onExpired = onExpired,
     )
+    val nowEpochMillis = Clock.System.now().toEpochMilliseconds()
     val validCurrentLocation = currentLocation?.takeIf { location ->
-        isValidMapCoordinate(location.latitude, location.longitude)
+        isUsableActiveAlarmMapLocation(
+            location = location,
+            nowEpochMillis = nowEpochMillis,
+        )
     }
     val hasValidDestination = isValidMapCoordinate(
         latitude = mission.destinationLatitude,
@@ -138,6 +145,29 @@ internal fun isValidMapCoordinate(
         longitude.isFinite() &&
         latitude in -90.0..90.0 &&
         longitude in -180.0..180.0
+
+internal fun isUsableActiveAlarmMapLocation(
+    location: ActiveAlarmMissionLocation,
+    nowEpochMillis: Long,
+): Boolean {
+    if (!isValidMapCoordinate(location.latitude, location.longitude)) return false
+    if (
+        !location.accuracyMeters.isFinite() ||
+        location.accuracyMeters < 0f ||
+        location.accuracyMeters > MaximumAcceptedLocationAccuracyMeters
+    ) {
+        return false
+    }
+    if (location.capturedAtEpochMillis > nowEpochMillis) return false
+
+    val earliestUsableLocationEpochMillis =
+        if (nowEpochMillis < Long.MIN_VALUE + MaximumTrackingLocationAgeMillis) {
+            Long.MIN_VALUE
+        } else {
+            nowEpochMillis - MaximumTrackingLocationAgeMillis
+        }
+    return location.capturedAtEpochMillis >= earliestUsableLocationEpochMillis
+}
 
 @Preview(name = "Dark active alarm map", widthDp = 402, heightDp = 941)
 @Composable

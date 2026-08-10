@@ -170,7 +170,11 @@ class AlarmMissionCoordinator(context: Context) {
             scheduleDeadline(mission)
             return false
         }
-        currentLocation?.let { location ->
+        val cachedLocation = store.readLastLocation(mission.occurrenceId)
+        val deadlineLocation = mission.selectBestDeadlineLocation(
+            listOfNotNull(cachedLocation, currentLocation),
+        )
+        deadlineLocation?.let { location ->
             store.updateLastLocation(
                 occurrenceId = mission.occurrenceId,
                 latitude = location.latitude,
@@ -179,16 +183,6 @@ class AlarmMissionCoordinator(context: Context) {
                 capturedAtEpochMillis = location.capturedAtEpochMillis,
             )
         }
-        val deadlineLocation = currentLocation
-            ?.takeIf { location ->
-                mission.isUsableDeadlineLocation(
-                    latitude = location.latitude,
-                    longitude = location.longitude,
-                    accuracyMeters = location.accuracyMeters,
-                    capturedAtEpochMillis = location.capturedAtEpochMillis,
-                )
-            }
-            ?: store.readLastLocation(mission.occurrenceId)
         val reachedByDeadline = deadlineLocation != null &&
             mission.hasReachedDestinationByDeadline(
                 latitude = deadlineLocation.latitude,
@@ -400,15 +394,25 @@ class AlarmMissionCoordinator(context: Context) {
             flags,
         )
 
-    private fun startTracking(mission: ActiveAlarmMission) {
-        runCatching {
+    private fun startTracking(mission: ActiveAlarmMission): Boolean {
+        if (!applicationContext.hasMissionFineLocationPermission()) {
+            Log.w(MissionTrackingLogTag, "미션 위치 추적을 시작할 정확한 위치 권한이 없습니다.")
+            return false
+        }
+        if (!applicationContext.isMissionLocationEnabled()) {
+            Log.w(MissionTrackingLogTag, "위치 서비스가 꺼져 있어 미션 위치 추적을 시작하지 못했습니다.")
+            return false
+        }
+        return runCatching {
             applicationContext.startForegroundService(
                 AlarmMissionTrackingService.startIntent(
                     context = applicationContext,
                     occurrenceId = mission.occurrenceId,
                 ),
             )
-        }
+        }.onFailure { error ->
+            Log.e(MissionTrackingLogTag, "미션 위치 추적 서비스를 시작하지 못했습니다.", error)
+        }.isSuccess
     }
 
     private fun completeSuccessfully(
@@ -754,6 +758,7 @@ private val MissionOutcomePersistenceScope =
 private val PendingOutcomeCallbacks = mutableMapOf<String, MutableList<() -> Unit>>()
 private fun currentMissionCompletedDate(): String = LocalDate.now().toString()
 private const val MissionOutcomeLogTag = "RingoutMissionHistory"
+private const val MissionTrackingLogTag = "RingoutMissionLocation"
 private const val MissionOutcomePersistenceTimeoutMillis = 2_500L
 private const val DeadlineReceiverWakeLockTimeoutMillis = 9_000L
 private const val DeadlineReceiverExecutionTimeoutMillis = 8_500L
