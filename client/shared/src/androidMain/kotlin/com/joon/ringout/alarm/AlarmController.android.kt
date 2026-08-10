@@ -12,16 +12,32 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
-import org.json.JSONArray
-import org.json.JSONObject
+import com.joon.ringout.data.alarm.AlarmDataSource
+import com.joon.ringout.data.alarm.LegacyAlarmPreferencesMigrator
+import com.joon.ringout.data.alarm.RoomAlarmDataSource
+import com.joon.ringout.data.alarm.validateForStorage
+import com.joon.ringout.data.database.getRingoutDatabase
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.retryWhen
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlin.coroutines.coroutineContext
 
 @Composable
 actual fun rememberAlarmController(
@@ -30,15 +46,18 @@ actual fun rememberAlarmController(
 ): AlarmController {
     val context = LocalContext.current
     val scheduler = remember(context) { AndroidAlarmScheduler(context.applicationContext) }
+    val coroutineScope = rememberCoroutineScope()
     val permissionPreferences = remember(context) {
         context.getSharedPreferences(PERMISSION_PREFERENCES_NAME, Context.MODE_PRIVATE)
     }
     val pendingAction = remember { mutableStateOf<PendingAlarmAction?>(null) }
+    val isScheduleInFlight = remember { mutableStateOf(false) }
     val currentOnScheduled = rememberUpdatedState(onScheduled)
     val currentOnError = rememberUpdatedState(onError)
 
     fun failPendingAction(message: String) {
         pendingAction.value = null
+        isScheduleInFlight.value = false
         currentOnError.value(message)
     }
 
@@ -64,15 +83,22 @@ actual fun rememberAlarmController(
             failPendingAction(LOCATION_SERVICES_ERROR)
             return
         }
-        runCatching { scheduler.schedule(request) }
-            .onSuccess {
+        pendingAction.value = null
+        isScheduleInFlight.value = true
+        coroutineScope.launch {
+            try {
+                scheduler.schedule(request)
                 pendingAction.value = null
                 currentOnScheduled.value(request)
                 requestFullScreenPermissionIfNeeded()
-            }
-            .onFailure { error ->
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
                 failPendingAction(error.message ?: "알람 예약 중 오류가 발생했습니다.")
+            } finally {
+                isScheduleInFlight.value = false
             }
+        }
     }
 
     fun enableNow(alarmId: String) {
@@ -88,11 +114,16 @@ actual fun rememberAlarmController(
             failPendingAction(permissionError)
             return
         }
-        runCatching { scheduler.setEnabled(alarmId, true) }
-            .onSuccess { pendingAction.value = null }
-            .onFailure { error ->
+        pendingAction.value = null
+        coroutineScope.launch {
+            try {
+                scheduler.setEnabled(alarmId, true)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
                 failPendingAction(error.message ?: "알람 상태를 변경하지 못했습니다.")
             }
+        }
     }
 
     fun completePendingAction() {
@@ -198,6 +229,21 @@ actual fun rememberAlarmController(
         }
     }
 
+    LaunchedEffect(scheduler) {
+        try {
+            scheduler.rescheduleAll()
+            cancelAlarmRescheduleRetry(context.applicationContext)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            currentOnError.value(error.message ?: "저장된 알람을 다시 예약하지 못했습니다.")
+            scheduleAlarmRescheduleRetry(
+                context = context.applicationContext,
+                attempt = 1,
+            )
+        }
+    }
+
     return remember(
         scheduler,
         notificationPermissionLauncher,
@@ -205,11 +251,17 @@ actual fun rememberAlarmController(
         locationServicesLauncher,
         overlayPermissionLauncher,
         exactAlarmPermissionLauncher,
+        coroutineScope,
     ) {
         AlarmController(
             schedule = { request ->
-                pendingAction.value = PendingAlarmAction.Schedule(request)
-                continuePermissionChain()
+                val canStartSchedule =
+                    !isScheduleInFlight.value &&
+                        pendingAction.value !is PendingAlarmAction.Schedule
+                if (canStartSchedule) {
+                    pendingAction.value = PendingAlarmAction.Schedule(request)
+                    continuePermissionChain()
+                }
             },
             setEnabled = { alarmId, enabled ->
                 if (enabled) {
@@ -220,11 +272,16 @@ actual fun rememberAlarmController(
                     if (action is PendingAlarmAction.Enable && action.alarmId == alarmId) {
                         pendingAction.value = null
                     }
-                    runCatching { scheduler.setEnabled(alarmId, false) }
-                        .onFailure { error ->
+                    coroutineScope.launch {
+                        try {
+                            scheduler.setEnabled(alarmId, false)
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Exception) {
                             currentOnError.value(
                                 error.message ?: "알람 상태를 변경하지 못했습니다.",
                             )
+                        }
                     }
                 }
             },
@@ -233,15 +290,28 @@ actual fun rememberAlarmController(
                 if (action is PendingAlarmAction.Enable && action.alarmId == alarmId) {
                     pendingAction.value = null
                 }
-                runCatching {
-                    scheduler.delete(alarmId)
-                }.onFailure { error ->
-                    currentOnError.value(
-                        error.message ?: "알람을 삭제하지 못했습니다.",
-                    )
-                }.isSuccess
+                coroutineScope.launch {
+                    try {
+                        scheduler.delete(alarmId)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        currentOnError.value(
+                            error.message ?: "알람을 삭제하지 못했습니다.",
+                        )
+                    }
+                }
             },
-            savedAlarms = scheduler.loadAll(),
+            savedAlarms = scheduler.observeAll().retryWhen { error, attempt ->
+                if (error is CancellationException) return@retryWhen false
+                if (attempt == 0L) {
+                    currentOnError.value(
+                        error.message ?: "저장된 알람을 불러오지 못했습니다.",
+                    )
+                }
+                delay(AlarmLoadRetryDelayMillis)
+                true
+            },
             ensureFullScreenAccess = {
                 val hasRequestedOnFirstLaunch = permissionPreferences.getBoolean(
                     KEY_INITIAL_OVERLAY_PERMISSION_REQUESTED,
@@ -294,6 +364,7 @@ private const val OVERLAY_PERMISSION_ERROR =
 private const val EXACT_ALARM_PERMISSION_ERROR = "정확한 알람 권한을 허용해 주세요."
 private const val PERMISSION_PREFERENCES_NAME = "ringout_permission_prompts"
 private const val KEY_INITIAL_OVERLAY_PERMISSION_REQUESTED = "initial_overlay_permission_requested"
+private const val AlarmLoadRetryDelayMillis = 1_000L
 
 private sealed interface PendingAlarmAction {
     data class Schedule(val request: AlarmScheduleRequest) : PendingAlarmAction
@@ -301,78 +372,157 @@ private sealed interface PendingAlarmAction {
     data class Enable(val alarmId: String) : PendingAlarmAction
 }
 
-internal class AndroidAlarmScheduler(private val context: Context) {
-    private val alarmManager = context.getSystemService(AlarmManager::class.java)
-    private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+private val AlarmSchedulerMutationMutex = Mutex()
 
-    fun schedule(request: AlarmScheduleRequest) {
-        val enabled = load(request.id)?.enabled ?: true
-        if (enabled) {
-            scheduleNext(request, afterMillis = System.currentTimeMillis())
-            save(StoredAlarm(request = request, enabled = true))
+internal class AndroidAlarmScheduler(
+    private val context: Context,
+    private val dataSource: AlarmDataSource = RoomAlarmDataSource(
+        getRingoutDatabase(context).alarmDao(),
+    ),
+    private val legacyMigrator: LegacyAlarmPreferencesMigrator =
+        LegacyAlarmPreferencesMigrator(context, dataSource),
+) {
+    private val alarmManager = context.getSystemService(AlarmManager::class.java)
+
+    suspend fun schedule(request: AlarmScheduleRequest): Unit = AlarmSchedulerMutationMutex.withLock {
+        legacyMigrator.ensureMigrated()
+        request.validateForStorage()
+        val previous = dataSource.getById(request.id)
+        val replacement = SavedAlarmSchedule(
+            request = request,
+            enabled = previous?.enabled ?: true,
+        )
+        if (replacement.enabled) {
+            try {
+                scheduleNext(request, afterMillis = System.currentTimeMillis())
+                dataSource.replace(replacement)
+            } catch (error: Exception) {
+                restorePreviousAlarm(previous, request.id, error)
+                throw error
+            }
         } else {
-            save(StoredAlarm(request = request, enabled = false))
+            dataSource.replace(replacement)
             cancel(request.id)
         }
     }
 
-    fun setEnabled(alarmId: String, enabled: Boolean) {
-        val storedAlarm = load(alarmId) ?: return
+    suspend fun setEnabled(
+        alarmId: String,
+        enabled: Boolean,
+    ): Unit = AlarmSchedulerMutationMutex.withLock {
+        legacyMigrator.ensureMigrated()
+        val storedAlarm = dataSource.getById(alarmId) ?: return@withLock
         if (enabled) {
             try {
                 scheduleNext(storedAlarm.request, afterMillis = System.currentTimeMillis())
-                save(storedAlarm.copy(enabled = true))
+                check(dataSource.setEnabled(alarmId, true)) {
+                    "저장된 알람을 찾지 못했습니다."
+                }
             } catch (error: Exception) {
-                save(storedAlarm.copy(enabled = false))
+                runCatching { dataSource.setEnabled(alarmId, false) }
+                    .exceptionOrNull()
+                    ?.let(error::addSuppressed)
+                cancel(alarmId)
                 throw error
             }
         } else {
-            save(storedAlarm.copy(enabled = false))
+            dataSource.setEnabled(alarmId, false)
             cancel(alarmId)
         }
     }
 
-    fun delete(alarmId: String) {
+    suspend fun delete(alarmId: String): Unit = AlarmSchedulerMutationMutex.withLock {
+        legacyMigrator.ensureMigrated()
+        val storedAlarm = dataSource.getById(alarmId)
         cancel(alarmId)
-        check(
-            preferences.edit()
-                .remove(alarmId)
-                .commit(),
-        ) {
-            "알람을 삭제하지 못했습니다."
+        try {
+            dataSource.delete(alarmId)
+        } catch (error: Exception) {
+            if (storedAlarm?.enabled == true) {
+                runCatching {
+                    scheduleNext(storedAlarm.request, afterMillis = System.currentTimeMillis())
+                }.exceptionOrNull()?.let(error::addSuppressed)
+            }
+            throw error
         }
     }
 
-    fun onTriggered(alarmId: String) {
-        val storedAlarm = load(alarmId) ?: return
+    suspend fun ringTriggeredIfCurrent(
+        alarmId: String,
+        expectedFingerprint: String?,
+        startRinging: suspend (AlarmScheduleRequest) -> Unit,
+    ): Boolean = AlarmSchedulerMutationMutex.withLock {
+        legacyMigrator.ensureMigrated()
+        val storedAlarm = dataSource.getById(alarmId)
+            ?.takeIf(SavedAlarmSchedule::enabled)
+            ?: return@withLock false
         val request = storedAlarm.request
+        if (
+            expectedFingerprint != null &&
+            expectedFingerprint != request.scheduleFingerprint()
+        ) {
+            return@withLock false
+        }
+        startRinging(request)
         if (request.repeatEnabled && request.selectedDays.isNotEmpty()) {
             scheduleNext(request, afterMillis = System.currentTimeMillis() + 60_000L)
         } else {
-            save(storedAlarm.copy(enabled = false))
+            check(dataSource.setEnabled(alarmId, false)) {
+                "발화한 알람의 상태를 갱신하지 못했습니다."
+            }
+        }
+        true
+    }
+
+    suspend fun rescheduleAll(): Unit = AlarmSchedulerMutationMutex.withLock {
+        legacyMigrator.ensureMigrated()
+        var firstFailure: Exception? = null
+        dataSource.getAll().forEach { stored ->
+            coroutineContext.ensureActive()
+            try {
+                if (stored.enabled) {
+                    scheduleNext(stored.request, afterMillis = System.currentTimeMillis())
+                } else {
+                    cancel(stored.request.id)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                val previousFailure = firstFailure
+                if (previousFailure == null) {
+                    firstFailure = error
+                } else {
+                    previousFailure.addSuppressed(error)
+                }
+            }
+        }
+        firstFailure?.let { error ->
+            throw IllegalStateException("일부 저장된 알람을 다시 예약하지 못했습니다.", error)
         }
     }
 
-    fun rescheduleAll() {
-        loadAll()
-            .filter(SavedAlarmSchedule::enabled)
-            .forEach { stored ->
-                runCatching {
-                    scheduleNext(stored.request, afterMillis = System.currentTimeMillis())
-                }
-            }
+    fun observeAll(): Flow<List<SavedAlarmSchedule>> = flow {
+        legacyMigrator.ensureMigrated()
+        emitAll(dataSource.observeAll())
     }
 
-    fun loadAll(): List<SavedAlarmSchedule> =
-        preferences.all.values
-            .filterIsInstance<String>()
-            .mapNotNull(::decode)
-            .map { stored ->
-                SavedAlarmSchedule(
-                    request = stored.request,
-                    enabled = stored.enabled,
-                )
+    private suspend fun restorePreviousAlarm(
+        previous: SavedAlarmSchedule?,
+        alarmId: String,
+        schedulingError: Exception,
+    ) {
+        runCatching {
+            cancel(alarmId)
+            if (previous == null) {
+                dataSource.delete(alarmId)
+            } else {
+                if (previous.enabled) {
+                    scheduleNext(previous.request, afterMillis = System.currentTimeMillis())
+                }
+                dataSource.replace(previous)
             }
+        }.exceptionOrNull()?.let(schedulingError::addSuppressed)
+    }
 
     private fun scheduleNext(request: AlarmScheduleRequest, afterMillis: Long) {
         val triggerAtMillis = calculateNextTrigger(request, afterMillis)
@@ -424,24 +574,20 @@ internal class AndroidAlarmScheduler(private val context: Context) {
         )?.cancel()
     }
 
-    private fun save(storedAlarm: StoredAlarm) {
-        preferences.edit()
-            .putString(storedAlarm.request.id, encode(storedAlarm).toString())
-            .apply()
-    }
-
-    private fun load(alarmId: String): StoredAlarm? =
-        preferences.getString(alarmId, null)?.let(::decode)
-
     private fun calculateNextTrigger(request: AlarmScheduleRequest, afterMillis: Long): Long {
+        request.validateForStorage()
         val parts = request.time.split(":")
-        val hour = parts.getOrNull(0)?.toIntOrNull()?.coerceIn(0, 23) ?: 0
-        val minute = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(0, 59) ?: 0
+        val hour = parts[0].toInt()
+        val minute = parts[1].toInt()
         val alarmTime = LocalTime.of(hour, minute)
         val zone = ZoneId.systemDefault()
         val after = Instant.ofEpochMilli(afterMillis).atZone(zone)
         val repeatDays = if (request.repeatEnabled) {
-            request.selectedDays.mapNotNull(DAY_OF_WEEK_BY_KOREAN::get).toSet()
+            request.selectedDays.map { day ->
+                requireNotNull(DAY_OF_WEEK_BY_KOREAN[day]) {
+                    "지원하지 않는 반복 요일입니다: $day"
+                }
+            }.toSet()
         } else {
             emptySet()
         }
@@ -469,72 +615,7 @@ internal class AndroidAlarmScheduler(private val context: Context) {
         error("다음 알람 시각을 계산하지 못했습니다.")
     }
 
-    private fun encode(storedAlarm: StoredAlarm): JSONObject {
-        val request = storedAlarm.request
-        return JSONObject()
-            .put(KEY_ID, request.id)
-            .put(KEY_TIME, request.time)
-            .put(KEY_DAYS, JSONArray(request.selectedDays))
-            .put(KEY_REPEAT_ENABLED, request.repeatEnabled)
-            .put(KEY_LIMIT_MINUTES, request.limitMinutes)
-            .put(KEY_DESTINATION_NAME, request.destinationName)
-            .put(KEY_DESTINATION_ADDRESS, request.destinationAddress)
-            .put(KEY_DESTINATION_LATITUDE, request.destinationLatitude)
-            .put(KEY_DESTINATION_LONGITUDE, request.destinationLongitude)
-            .put(KEY_TARGET_DISTANCE_KM, request.targetDistanceKm)
-            .put(KEY_SOUND_NAME, request.alarmSoundName)
-            .put(KEY_SOUND_URI, request.alarmSoundUri ?: JSONObject.NULL)
-            .put(KEY_ENABLED, storedAlarm.enabled)
-    }
-
-    private fun decode(raw: String): StoredAlarm? = runCatching {
-        val json = JSONObject(raw)
-        val daysJson = json.optJSONArray(KEY_DAYS) ?: JSONArray()
-        val days = buildList {
-            for (index in 0 until daysJson.length()) {
-                daysJson.optString(index).takeIf(String::isNotBlank)?.let(::add)
-            }
-        }
-        StoredAlarm(
-            request = AlarmScheduleRequest(
-                id = json.getString(KEY_ID),
-                time = json.getString(KEY_TIME),
-                selectedDays = days,
-                repeatEnabled = json.optBoolean(KEY_REPEAT_ENABLED, true),
-                limitMinutes = json.optInt(KEY_LIMIT_MINUTES, 12),
-                destinationName = json.optString(KEY_DESTINATION_NAME),
-                destinationAddress = json.optString(KEY_DESTINATION_ADDRESS),
-                destinationLatitude = json.optDouble(KEY_DESTINATION_LATITUDE),
-                destinationLongitude = json.optDouble(KEY_DESTINATION_LONGITUDE),
-                targetDistanceKm = json.optDouble(KEY_TARGET_DISTANCE_KM, 1.2),
-                alarmSoundName = json.optString(KEY_SOUND_NAME, "기본 알람음"),
-                alarmSoundUri = if (json.isNull(KEY_SOUND_URI)) null else json.optString(KEY_SOUND_URI),
-            ),
-            enabled = json.optBoolean(KEY_ENABLED, true),
-        )
-    }.getOrNull()
-
-    private data class StoredAlarm(
-        val request: AlarmScheduleRequest,
-        val enabled: Boolean,
-    )
-
     private companion object {
-        const val PREFERENCES_NAME = "ringout_scheduled_alarms"
-        const val KEY_ID = "id"
-        const val KEY_TIME = "time"
-        const val KEY_DAYS = "days"
-        const val KEY_REPEAT_ENABLED = "repeatEnabled"
-        const val KEY_LIMIT_MINUTES = "limitMinutes"
-        const val KEY_DESTINATION_NAME = "destinationName"
-        const val KEY_DESTINATION_ADDRESS = "destinationAddress"
-        const val KEY_DESTINATION_LATITUDE = "destinationLatitude"
-        const val KEY_DESTINATION_LONGITUDE = "destinationLongitude"
-        const val KEY_TARGET_DISTANCE_KM = "targetDistanceKm"
-        const val KEY_SOUND_NAME = "soundName"
-        const val KEY_SOUND_URI = "soundUri"
-        const val KEY_ENABLED = "enabled"
-
         val DAY_OF_WEEK_BY_KOREAN = mapOf(
             "월" to DayOfWeek.MONDAY,
             "화" to DayOfWeek.TUESDAY,

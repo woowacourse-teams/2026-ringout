@@ -29,6 +29,7 @@ import com.joon.ringout.presentation.destination.isConfiguredDestination
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.settings.SettingsScreen
+import kotlinx.coroutines.flow.collect
 import kotlin.random.Random
 
 @Composable
@@ -121,12 +122,7 @@ private fun RingoutAppContent(
         },
         onError = { alarmScheduleError = it },
     )
-    val savedAlarms = remember(alarmController) {
-        alarmController.savedAlarms.map { saved ->
-            saved.request.toHomeAlarm(enabled = saved.enabled)
-        }
-    }
-    val visibleAlarms = alarms ?: savedAlarms
+    val visibleAlarms = alarms.orEmpty()
     val editingAlarm = editingAlarmId?.let { alarmId ->
         visibleAlarms.firstOrNull { it.id == alarmId }
     }
@@ -142,8 +138,15 @@ private fun RingoutAppContent(
     }
 
     LaunchedEffect(alarmController) {
-        if (alarms == null) alarms = savedAlarms
         alarmController.ensureFullScreenAccess()
+    }
+
+    LaunchedEffect(alarmController) {
+        alarmController.savedAlarms.collect { savedAlarms ->
+            alarms = savedAlarms.map { saved ->
+                saved.request.toHomeAlarm(enabled = saved.enabled)
+            }
+        }
     }
 
     LaunchedEffect(activeAlarmMission?.occurrenceId) {
@@ -208,14 +211,9 @@ private fun RingoutAppContent(
             },
             onAlarmEnabledChange = { alarmId, enabled ->
                 alarmController.setEnabled(alarmId, enabled)
-                alarms = visibleAlarms.map { alarm ->
-                    if (alarm.id == alarmId) alarm.copy(isEnabled = enabled) else alarm
-                }
             },
             onAlarmDelete = { alarmId ->
-                if (alarmController.deleteAlarm(alarmId)) {
-                    alarms = visibleAlarms.filterNot { alarm -> alarm.id == alarmId }
-                }
+                alarmController.deleteAlarm(alarmId)
             },
             onActiveAlarmMissionClick = {
                 screenName = AppScreen.ActiveAlarmTracking.name

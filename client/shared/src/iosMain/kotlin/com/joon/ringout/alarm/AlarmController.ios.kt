@@ -3,6 +3,7 @@ package com.joon.ringout.alarm
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.flow.flowOf
 
 @Composable
 actual fun rememberAlarmController(
@@ -14,7 +15,8 @@ actual fun rememberAlarmController(
         AlarmController(
             schedule = { currentOnError.value("알람 예약은 현재 Android에서 지원됩니다.") },
             setEnabled = { _, _ -> },
-            deleteAlarm = { true },
+            deleteAlarm = {},
+            savedAlarms = flowOf(emptyList()),
         )
     }
 }
