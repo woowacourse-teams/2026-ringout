@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.mypage
 
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 
 data class MyPageCalendarMonth(
@@ -11,30 +12,31 @@ data class MyPageCalendarMonth(
 
 data class CalendarDayUiModel(
     val day: Int?,
-    val isMissionSuccess: Boolean,
+    val result: MissionResult?,
 )
 
 fun buildCalendarCells(
     month: MyPageCalendarMonth,
-    successDates: Set<MissionDate>,
+    resultsByDate: Map<MissionDate, MissionResult>,
 ): List<CalendarDayUiModel> = buildList {
     repeat(month.firstDayOfWeek) {
-        add(CalendarDayUiModel(day = null, isMissionSuccess = false))
+        add(CalendarDayUiModel(day = null, result = null))
     }
     for (day in 1..month.dayCount) {
+        val date = MissionDate.of(
+            year = month.value.year,
+            month = month.value.month,
+            day = day,
+        )
         add(
             CalendarDayUiModel(
                 day = day,
-                isMissionSuccess = MissionDate.of(
-                    year = month.value.year,
-                    month = month.value.month,
-                    day = day,
-                ) in successDates,
+                result = resultsByDate[date],
             ),
         )
     }
     while (size % DaysPerWeek != 0) {
-        add(CalendarDayUiModel(day = null, isMissionSuccess = false))
+        add(CalendarDayUiModel(day = null, result = null))
     }
 }
 
