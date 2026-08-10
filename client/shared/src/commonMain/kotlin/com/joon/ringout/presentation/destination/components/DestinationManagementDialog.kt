@@ -39,15 +39,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
-import com.joon.ringout.presentation.destination.DestinationSelection
+import com.joon.ringout.domain.destination.SavedDestination
 import org.jetbrains.compose.resources.painterResource
 
 @Composable
 internal fun DestinationManagementDialog(
-    destinations: List<DestinationSelection>,
+    destinations: List<SavedDestination>,
     onDismissRequest: () -> Unit,
-    onEditClick: (DestinationSelection) -> Unit,
-    onDeleteClick: (DestinationSelection) -> Unit,
+    onEditClick: (SavedDestination) -> Unit,
+    onDeleteClick: (SavedDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = DestinationManagementPalette
@@ -97,10 +97,10 @@ internal fun DestinationManagementDialog(
 
 @Composable
 internal fun DestinationManagementDialogContent(
-    destinations: List<DestinationSelection>,
+    destinations: List<SavedDestination>,
     onDismissRequest: () -> Unit,
-    onEditClick: (DestinationSelection) -> Unit,
-    onDeleteClick: (DestinationSelection) -> Unit,
+    onEditClick: (SavedDestination) -> Unit,
+    onDeleteClick: (SavedDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = DestinationManagementPalette
@@ -123,7 +123,10 @@ internal fun DestinationManagementDialogContent(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(destinations) { destination ->
+            items(
+                items = destinations,
+                key = SavedDestination::id,
+            ) { destination ->
                 DestinationManagementRow(
                     destination = destination,
                     onEditClick = { onEditClick(destination) },
@@ -179,7 +182,7 @@ private fun DestinationManagementHeader(
 
 @Composable
 private fun DestinationManagementRow(
-    destination: DestinationSelection,
+    destination: SavedDestination,
     onEditClick: () -> Unit,
     onDeleteClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -273,19 +276,22 @@ private fun DestinationManagementAction(
 }
 
 private val DestinationManagementPreviewItems = listOf(
-    DestinationSelection(
+    SavedDestination(
+        id = 1,
         name = "런닝",
         address = "서울 중구 세종대로 110",
         latitude = 37.5665851,
         longitude = 126.9782038,
     ),
-    DestinationSelection(
+    SavedDestination(
+        id = 2,
         name = "공부하러가야지",
         address = "서울 서초구 반포대로 201",
         latitude = 37.5001000,
         longitude = 127.0001000,
     ),
-    DestinationSelection(
+    SavedDestination(
+        id = 3,
         name = "헬스장을가보아요",
         address = "서울 강남구 테헤란로 123",
         latitude = 37.5012000,

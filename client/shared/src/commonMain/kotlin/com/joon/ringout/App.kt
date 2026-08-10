@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.AlarmScheduleRequest
@@ -25,7 +26,10 @@ import com.joon.ringout.presentation.alarmsetup.components.weekdaySummary
 import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationMapScreen
 import com.joon.ringout.presentation.destination.DestinationSelection
+import com.joon.ringout.presentation.destination.DestinationViewModel
+import com.joon.ringout.presentation.destination.belongsToDestinationRequest
 import com.joon.ringout.presentation.destination.isConfiguredDestination
+import com.joon.ringout.presentation.destination.rememberDestinationRepository
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.settings.SettingsScreen
@@ -65,6 +69,11 @@ private fun RingoutAppContent(
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
+    val destinationRepository = rememberDestinationRepository()
+    val destinationViewModel: DestinationViewModel = viewModel {
+        DestinationViewModel(destinationRepository)
+    }
+    val destinationUiState = destinationViewModel.uiState
     var destinationName by rememberSaveable { mutableStateOf("") }
     var destinationAddress by rememberSaveable { mutableStateOf("") }
     var destinationLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
@@ -76,6 +85,7 @@ private fun RingoutAppContent(
         mutableStateOf<String?>(null)
     }
     var editingAlarmId by rememberSaveable { mutableStateOf<String?>(null) }
+    var destinationRequestId by rememberSaveable { mutableStateOf(0L) }
     var alarms by remember { mutableStateOf<List<HomeAlarm>?>(null) }
     var alarmScheduleError by rememberSaveable { mutableStateOf<String?>(null) }
     val destination = destinationLatitude?.let { latitude ->
@@ -149,6 +159,24 @@ private fun RingoutAppContent(
         }
     }
 
+    LaunchedEffect(destinationUiState.savedEvent?.eventId) {
+        destinationUiState.savedEvent?.let { event ->
+            if (
+                event.belongsToDestinationRequest(
+                    currentRequestId = destinationRequestId,
+                    isDestinationScreenVisible = screenName == AppScreen.Destination.name,
+                )
+            ) {
+                destinationName = event.destination.name
+                destinationAddress = event.destination.address
+                destinationLatitude = event.destination.latitude
+                destinationLongitude = event.destination.longitude
+                screenName = alarmSetupScreen.name
+            }
+            destinationViewModel.consumeSavedEvent(event.eventId)
+        }
+    }
+
     LaunchedEffect(activeAlarmMission?.occurrenceId) {
         val occurrenceId = activeAlarmMission?.occurrenceId
         when {
@@ -174,6 +202,19 @@ private fun RingoutAppContent(
             text = { Text(alarmScheduleError.orEmpty()) },
             confirmButton = {
                 TextButton(onClick = { alarmScheduleError = null }) {
+                    Text("확인")
+                }
+            },
+        )
+    }
+
+    if (alarmScheduleError == null && destinationUiState.errorMessage != null) {
+        AlertDialog(
+            onDismissRequest = destinationViewModel::clearError,
+            title = { Text("목적지를 처리할 수 없습니다") },
+            text = { Text(destinationUiState.errorMessage.orEmpty()) },
+            confirmButton = {
+                TextButton(onClick = destinationViewModel::clearError) {
                     Text("확인")
                 }
             },
@@ -254,7 +295,10 @@ private fun RingoutAppContent(
                     editingAlarmId = null
                     screenName = AppScreen.Home.name
                 },
-                onDestinationClick = { screenName = AppScreen.Destination.name },
+                onDestinationClick = {
+                    destinationRequestId += 1L
+                    screenName = AppScreen.Destination.name
+                },
                 onAlarmSoundClick = { screenName = AppScreen.AlarmSound.name },
                 onSaveClick = saveAlarm@ { time, selectedDays, repeatEnabled, limitMinutes, alarmSound ->
                     val configuredDestination = destination ?: return@saveAlarm
@@ -282,13 +326,23 @@ private fun RingoutAppContent(
                     initialSelection = destination ?: DefaultDestinationSelection,
                     requestCurrentLocationOnStart = destination == null,
                     onBackClick = { screenName = alarmSetupScreen.name },
-                    onConfirmClick = { selectedDestination ->
-                        destinationName = selectedDestination.name
-                        destinationAddress = selectedDestination.address
-                        destinationLatitude = selectedDestination.latitude
-                        destinationLongitude = selectedDestination.longitude
+                    onConfirmClick = { destination ->
+                        destinationViewModel.save(
+                            destination = destination,
+                            requestId = destinationRequestId,
+                        )
+                    },
+                    onSavedDestinationConfirmClick = { savedDestination ->
+                        destinationName = savedDestination.name
+                        destinationAddress = savedDestination.address
+                        destinationLatitude = savedDestination.latitude
+                        destinationLongitude = savedDestination.longitude
                         screenName = alarmSetupScreen.name
                     },
+                    savedDestinations = destinationUiState.destinations,
+                    onSavedDestinationRename = destinationViewModel::rename,
+                    onSavedDestinationDeleteClick = destinationViewModel::delete,
+                    isSaveInProgress = destinationUiState.isSaving,
                 )
             }
 
