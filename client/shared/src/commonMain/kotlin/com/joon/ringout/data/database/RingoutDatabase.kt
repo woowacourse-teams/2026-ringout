@@ -9,6 +9,8 @@ import com.joon.ringout.data.alarm.AlarmDao
 import com.joon.ringout.data.alarm.AlarmEntity
 import com.joon.ringout.data.alarm.AlarmRepeatDayEntity
 import com.joon.ringout.data.alarm.StorageMigrationEntity
+import com.joon.ringout.data.destination.SavedDestinationDao
+import com.joon.ringout.data.destination.SavedDestinationEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryDao
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 
@@ -18,8 +20,9 @@ import com.joon.ringout.data.missionhistory.MissionHistoryEntity
         AlarmEntity::class,
         AlarmRepeatDayEntity::class,
         StorageMigrationEntity::class,
+        SavedDestinationEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -27,6 +30,8 @@ abstract class RingoutDatabase : RoomDatabase() {
     abstract fun missionHistoryDao(): MissionHistoryDao
 
     abstract fun alarmDao(): AlarmDao
+
+    abstract fun destinationDao(): SavedDestinationDao
 }
 
 @Suppress("KotlinNoActualForExpect")
@@ -38,7 +43,10 @@ fun buildRingoutDatabase(
     builder: RoomDatabase.Builder<RingoutDatabase>,
 ): RingoutDatabase = builder
     .setDriver(BundledSQLiteDriver())
-    .addMigrations(RingoutMigration1To2)
+    .addMigrations(
+        RingoutMigration1To2,
+        RingoutMigration2To3,
+    )
     .build()
 
 internal const val RingoutDatabaseName = "ringout.db"

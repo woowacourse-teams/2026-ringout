@@ -1,5 +1,7 @@
 package com.joon.ringout.presentation.destination
 
+import com.joon.ringout.domain.destination.SavedDestination
+
 internal fun DestinationSelection.isConfiguredDestination(): Boolean =
     name.isNotBlank() &&
         latitude.isFinite() &&
@@ -11,8 +13,9 @@ internal fun canConfirmDestination(
     isCameraMoving: Boolean,
     isLocatingCurrentLocation: Boolean,
     mapError: String?,
+    isSaveInProgress: Boolean = false,
 ): Boolean =
-    !isCameraMoving && !isLocatingCurrentLocation && mapError == null
+    !isCameraMoving && !isLocatingCurrentLocation && !isSaveInProgress && mapError == null
 
 internal fun destinationAtCameraPosition(
     cameraTarget: DestinationSelection?,
@@ -68,6 +71,23 @@ internal fun DestinationSelection.hasSameCoordinates(
 ): Boolean =
     kotlin.math.abs(this.latitude - latitude) < DestinationCoordinateTolerance &&
         kotlin.math.abs(this.longitude - longitude) < DestinationCoordinateTolerance
+
+internal fun SavedDestination.toDestinationSelection(): DestinationSelection =
+    DestinationSelection(
+        name = name,
+        address = address,
+        latitude = latitude,
+        longitude = longitude,
+    )
+
+internal fun DestinationSelection.toSavedDestination(id: Long = 0L): SavedDestination =
+    SavedDestination(
+        id = id,
+        name = name,
+        address = address,
+        latitude = latitude,
+        longitude = longitude,
+    )
 
 internal const val SelectedDestinationFallbackName = "선택한 위치"
 internal const val ResolvingDestinationAddress = "주소를 확인하는 중입니다."

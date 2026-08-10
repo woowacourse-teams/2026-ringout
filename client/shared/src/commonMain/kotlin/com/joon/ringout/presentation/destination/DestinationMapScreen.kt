@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
 import com.joon.ringout.presentation.destination.components.DestinationNicknameDialog
 import com.joon.ringout.presentation.destination.components.DestinationShortcutRow
@@ -78,10 +79,12 @@ fun DestinationMapScreen(
     initialSelection: DestinationSelection,
     requestCurrentLocationOnStart: Boolean = false,
     onBackClick: () -> Unit,
-    onConfirmClick: (DestinationSelection) -> Unit,
-    savedDestinations: List<DestinationSelection> = emptyList(),
-    onSavedDestinationEditClick: (DestinationSelection) -> Unit = {},
-    onSavedDestinationDeleteClick: (DestinationSelection) -> Unit = {},
+    onConfirmClick: (SavedDestination) -> Unit,
+    onSavedDestinationConfirmClick: (SavedDestination) -> Unit,
+    savedDestinations: List<SavedDestination> = emptyList(),
+    onSavedDestinationEditClick: (SavedDestination) -> Unit = {},
+    onSavedDestinationDeleteClick: (Long) -> Unit = {},
+    isSaveInProgress: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
@@ -106,6 +109,9 @@ fun DestinationMapScreen(
     var currentLocationError by remember { mutableStateOf<String?>(null) }
     var pendingSelection by remember { mutableStateOf<DestinationSelection?>(null) }
     var isDestinationManagementOpen by remember { mutableStateOf(false) }
+    var editingDestinationId by remember { mutableStateOf<Long?>(null) }
+    var editingDestinationNickname by remember { mutableStateOf("") }
+    var selectedSavedDestination by remember { mutableStateOf<SavedDestination?>(null) }
 
     PlatformBackHandler(onBack = {
         when {
@@ -144,7 +150,9 @@ fun DestinationMapScreen(
             searchResults = searchResults,
             isSearching = isSearching,
             searchError = searchError,
+            savedDestinations = savedDestinations,
             isLocatingCurrentLocation = isLocatingCurrentLocation,
+            isSaveInProgress = isSaveInProgress,
             currentLocationError = currentLocationError,
             onSearchQueryChange = {
                 searchQuery = it
@@ -163,12 +171,14 @@ fun DestinationMapScreen(
             onSearchResultClick = { result ->
                 selection = result
                 cameraTarget = result
+                selectedSavedDestination = null
                 currentLocationError = null
                 isSearchOpen = false
                 searchResults = emptyList()
                 searchError = null
             },
             onCurrentLocationClick = {
+                selectedSavedDestination = null
                 currentLocationError = null
                 isLocatingCurrentLocation = true
                 currentLocationRequestId += 1
@@ -177,9 +187,31 @@ fun DestinationMapScreen(
                 isSearchOpen = false
                 isDestinationManagementOpen = true
             },
+            onSavedDestinationClick = { savedDestination ->
+                val savedSelection = savedDestination.toDestinationSelection()
+                selection = savedSelection
+                cameraTarget = savedSelection
+                selectedSavedDestination = savedDestination
+                editingDestinationId = null
+                editingDestinationNickname = ""
+                currentLocationError = null
+                isSearchOpen = false
+                searchResults = emptyList()
+                searchError = null
+            },
             onConfirmClick = {
                 currentLocationCancellationId += 1
-                pendingSelection = selection
+                val savedDestination = selectedSavedDestination?.takeIf { saved ->
+                    saved.toDestinationSelection().hasSameCoordinates(
+                        latitude = selection.latitude,
+                        longitude = selection.longitude,
+                    )
+                }
+                if (savedDestination == null) {
+                    pendingSelection = selection
+                } else {
+                    onSavedDestinationConfirmClick(savedDestination)
+                }
             },
             modifier = Modifier.fillMaxSize(),
             mapContent = { mapModifier ->
@@ -204,6 +236,12 @@ fun DestinationMapScreen(
                             latitude = latitude,
                             longitude = longitude,
                         )
+                        selectedSavedDestination = selectedSavedDestination?.takeIf { saved ->
+                            saved.toDestinationSelection().hasSameCoordinates(
+                                latitude = latitude,
+                                longitude = longitude,
+                            )
+                        }
                         cameraTarget = null
                         isCameraMoving = false
                         isResolvingAddress = !isSearchedTarget
@@ -256,8 +294,27 @@ fun DestinationMapScreen(
             DestinationManagementDialog(
                 destinations = savedDestinations,
                 onDismissRequest = { isDestinationManagementOpen = false },
-                onEditClick = onSavedDestinationEditClick,
-                onDeleteClick = onSavedDestinationDeleteClick,
+                onEditClick = { savedDestination ->
+                    val savedSelection = savedDestination.toDestinationSelection()
+                    selection = savedSelection
+                    cameraTarget = savedSelection
+                    editingDestinationId = savedDestination.id
+                    editingDestinationNickname = savedDestination.name
+                    selectedSavedDestination = null
+                    currentLocationError = null
+                    isDestinationManagementOpen = false
+                    onSavedDestinationEditClick(savedDestination)
+                },
+                onDeleteClick = { savedDestination ->
+                    if (editingDestinationId == savedDestination.id) {
+                        editingDestinationId = null
+                        editingDestinationNickname = ""
+                    }
+                    if (selectedSavedDestination?.id == savedDestination.id) {
+                        selectedSavedDestination = null
+                    }
+                    onSavedDestinationDeleteClick(savedDestination.id)
+                },
                 modifier = Modifier.zIndex(2f),
             )
         }
@@ -265,11 +322,14 @@ fun DestinationMapScreen(
         pendingSelection?.let { selectedDestination ->
             DestinationNicknameDialog(
                 address = selectedDestination.address,
+                initialNickname = editingDestinationNickname,
                 onDismissRequest = { pendingSelection = null },
                 onSave = { nickname ->
                     pendingSelection = null
                     onConfirmClick(
-                        selectedDestination.withNicknameForSave(nickname),
+                        selectedDestination
+                            .withNicknameForSave(nickname)
+                            .toSavedDestination(editingDestinationId ?: 0L),
                     )
                 },
                 modifier = Modifier.zIndex(2f),
@@ -290,7 +350,9 @@ private fun DestinationMapLayout(
     searchResults: List<DestinationSelection>,
     isSearching: Boolean,
     searchError: String?,
+    savedDestinations: List<SavedDestination>,
     isLocatingCurrentLocation: Boolean,
+    isSaveInProgress: Boolean,
     currentLocationError: String?,
     onSearchQueryChange: (String) -> Unit,
     onSearchClick: () -> Unit,
@@ -299,6 +361,7 @@ private fun DestinationMapLayout(
     onSearchResultClick: (DestinationSelection) -> Unit,
     onCurrentLocationClick: () -> Unit,
     onDestinationManagementClick: () -> Unit,
+    onSavedDestinationClick: (SavedDestination) -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
@@ -357,7 +420,9 @@ private fun DestinationMapLayout(
             )
             if (!isSearchOpen) {
                 DestinationShortcutRow(
+                    destinations = savedDestinations,
                     onManagementClick = onDestinationManagementClick,
+                    onDestinationClick = onSavedDestinationClick,
                     modifier = Modifier.padding(
                         start = 3.dp,
                         top = 10.dp,
@@ -378,6 +443,8 @@ private fun DestinationMapLayout(
                 onSubmit = onSearchSubmit,
                 onResultClick = onSearchResultClick,
                 onDestinationManagementClick = onDestinationManagementClick,
+                savedDestinations = savedDestinations,
+                onSavedDestinationClick = onSavedDestinationClick,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .zIndex(1f)
@@ -424,16 +491,20 @@ private fun DestinationMapLayout(
                     isCameraMoving = isCameraMoving,
                     isLocatingCurrentLocation = isLocatingCurrentLocation,
                     mapError = mapError,
+                    isSaveInProgress = isSaveInProgress,
                 ),
                 isLoading = isLocatingCurrentLocation,
                 onClick = onCurrentLocationClick,
             )
             ConfirmDestinationButton(
-                enabled = canConfirmDestination(
-                    isCameraMoving = isCameraMoving,
-                    isLocatingCurrentLocation = isLocatingCurrentLocation,
-                    mapError = mapError,
-                ),
+                enabled = selection.isConfiguredDestination() &&
+                    canConfirmDestination(
+                        isCameraMoving = isCameraMoving,
+                        isLocatingCurrentLocation = isLocatingCurrentLocation,
+                        mapError = mapError,
+                        isSaveInProgress = isSaveInProgress,
+                    ),
+                isSaving = isSaveInProgress,
                 onClick = onConfirmClick,
             )
         }
@@ -507,6 +578,8 @@ private fun DestinationSearchPanel(
     onSubmit: () -> Unit,
     onResultClick: (DestinationSelection) -> Unit,
     onDestinationManagementClick: () -> Unit,
+    savedDestinations: List<SavedDestination>,
+    onSavedDestinationClick: (SavedDestination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -574,7 +647,9 @@ private fun DestinationSearchPanel(
         }
 
         DestinationShortcutRow(
+            destinations = savedDestinations,
             onManagementClick = onDestinationManagementClick,
+            onDestinationClick = onSavedDestinationClick,
         )
 
         if (isSearching || error != null || results.isNotEmpty()) {
@@ -797,6 +872,7 @@ private fun CurrentLocationButton(
 @Composable
 private fun ConfirmDestinationButton(
     enabled: Boolean,
+    isSaving: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -810,7 +886,7 @@ private fun ConfirmDestinationButton(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "이 위치를 목적지로 설정",
+            text = if (isSaving) "목적지 저장 중..." else "이 위치를 목적지로 설정",
             color = Color.White,
             style = MaterialTheme.typography.bodyLarge.copy(
                 fontSize = 16.sp,
@@ -873,6 +949,30 @@ private val Orange = Color(0xFFFF6B2C)
 private val DisabledButton = Color(0xFFB8BDB7)
 private const val InitialCurrentLocationRequestId = 1
 
+private val DestinationPreviewSavedDestinations = listOf(
+    SavedDestination(
+        id = 1L,
+        name = "런닝",
+        address = "서울 중구 세종대로 110",
+        latitude = 37.5665851,
+        longitude = 126.9782038,
+    ),
+    SavedDestination(
+        id = 2L,
+        name = "공부하러가야지",
+        address = "서울 서초구 반포대로 201",
+        latitude = 37.5001,
+        longitude = 127.0001,
+    ),
+    SavedDestination(
+        id = 3L,
+        name = "헬스장",
+        address = "서울 강남구 테헤란로 123",
+        latitude = 37.5012,
+        longitude = 127.0396,
+    ),
+)
+
 @Preview
 @Composable
 private fun DestinationMapScreenPreview() {
@@ -888,7 +988,9 @@ private fun DestinationMapScreenPreview() {
             searchResults = emptyList(),
             isSearching = false,
             searchError = null,
+            savedDestinations = DestinationPreviewSavedDestinations,
             isLocatingCurrentLocation = false,
+            isSaveInProgress = false,
             currentLocationError = null,
             onSearchQueryChange = {},
             onSearchClick = {},
@@ -897,6 +999,7 @@ private fun DestinationMapScreenPreview() {
             onSearchResultClick = {},
             onCurrentLocationClick = {},
             onDestinationManagementClick = {},
+            onSavedDestinationClick = {},
             onConfirmClick = {},
             mapContent = { mapModifier -> Box(mapModifier.background(MapFallback)) },
         )
@@ -930,6 +1033,8 @@ private fun DestinationSearchPanelPreview() {
                 onSubmit = {},
                 onResultClick = {},
                 onDestinationManagementClick = {},
+                savedDestinations = DestinationPreviewSavedDestinations,
+                onSavedDestinationClick = {},
                 modifier = Modifier.padding(16.dp),
             )
         }

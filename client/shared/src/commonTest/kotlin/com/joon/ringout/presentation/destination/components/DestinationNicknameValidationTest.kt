@@ -20,24 +20,24 @@ class DestinationNicknameValidationTest {
     }
 
     @Test
-    fun nicknameAcceptsOneToTenCharacters() {
+    fun nicknameAcceptsOneToTwelveCharacters() {
         assertEquals("집", normalizeDestinationNickname("집"))
         assertEquals(
-            "1234567890",
-            normalizeDestinationNickname("1234567890"),
+            "123456789012",
+            normalizeDestinationNickname("123456789012"),
         )
     }
 
     @Test
-    fun nicknameLongerThanTenCharactersIsInvalid() {
-        assertNull(normalizeDestinationNickname("12345678901"))
+    fun nicknameLongerThanTwelveCharactersIsInvalid() {
+        assertNull(normalizeDestinationNickname("1234567890123"))
     }
 
     @Test
-    fun inputIsLimitedToTenCharacters() {
+    fun inputIsLimitedToTwelveCharacters() {
         assertEquals(
-            "1234567890",
-            limitDestinationNicknameInput("12345678901"),
+            "123456789012",
+            limitDestinationNicknameInput("1234567890123"),
         )
     }
 }
