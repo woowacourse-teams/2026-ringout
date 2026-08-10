@@ -181,7 +181,9 @@ actual fun PlatformDestinationMap(
                 val shouldMoveCamera = lastPresentedLocation?.isSameMapFixAs(location) != true
                 lastPresentedLocation = location
                 if (!shouldMoveCamera) {
-                    currentOnCurrentLocationLoadingChange.value(false)
+                    if (isFinal) {
+                        currentOnCurrentLocationLoadingChange.value(false)
+                    }
                     return@locationCallback
                 }
 
@@ -201,7 +203,9 @@ actual fun PlatformDestinationMap(
                         settleCameraAndResolveAddress(
                             LatLng(location.latitude, location.longitude),
                         )
-                        currentOnCurrentLocationLoadingChange.value(false)
+                        if (isFinal) {
+                            currentOnCurrentLocationLoadingChange.value(false)
+                        }
                     } catch (error: CancellationException) {
                         throw error
                     } catch (_: Exception) {
@@ -238,13 +242,22 @@ actual fun PlatformDestinationMap(
     ) { permissions ->
         val requestId = activeCurrentLocationRequestId
             ?: return@rememberLauncherForActivityResult
-        val isGranted = permissions.values.any { it } || context.hasDestinationLocationPermission()
-        if (isGranted) {
-            requestAndMoveToCurrentLocation(requestId)
-        } else {
-            activeCurrentLocationRequestId = null
-            currentOnCurrentLocationLoadingChange.value(false)
-            currentOnCurrentLocationError.value(CurrentLocationPermissionError)
+        when {
+            context.hasDestinationFineLocationPermission() -> {
+                requestAndMoveToCurrentLocation(requestId)
+            }
+
+            context.hasDestinationLocationPermission() || permissions.values.any { it } -> {
+                activeCurrentLocationRequestId = null
+                currentOnCurrentLocationLoadingChange.value(false)
+                currentOnCurrentLocationError.value(CurrentLocationFinePermissionError)
+            }
+
+            else -> {
+                activeCurrentLocationRequestId = null
+                currentOnCurrentLocationLoadingChange.value(false)
+                currentOnCurrentLocationError.value(CurrentLocationPermissionError)
+            }
         }
     }
 
@@ -276,7 +289,7 @@ actual fun PlatformDestinationMap(
         cancelCurrentLocationRequest()
         activeCurrentLocationRequestId = currentLocationRequestId
         currentOnCurrentLocationLoadingChange.value(true)
-        if (context.hasDestinationLocationPermission()) {
+        if (context.hasDestinationFineLocationPermission()) {
             requestAndMoveToCurrentLocation(currentLocationRequestId)
         } else {
             locationPermissionLauncher.launch(DestinationLocationPermissions)
@@ -307,7 +320,6 @@ actual fun PlatformDestinationMap(
                             cancelCurrentLocationRequest()
                         }
                         if (!wasMoving) {
-                            currentOnCurrentLocationLoadingChange.value(false)
                             notifyCameraMoveStarted()
                         }
                     } else if (wasMoving && hasObservedCameraMovement) {
@@ -323,7 +335,12 @@ actual fun PlatformDestinationMap(
     DisposableEffect(lifecycleOwner, currentLocationRequester) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
+                val wasCurrentLocationInProgress =
+                    activeCurrentLocationRequestId != null || currentLocationCameraJob != null
                 cancelCurrentLocationRequest()
+                if (wasCurrentLocationInProgress) {
+                    currentOnCurrentLocationError.value(CurrentLocationInterruptedError)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -419,11 +436,11 @@ private class DestinationCurrentLocationRequester(context: Context) {
         }
 
         val hasFinePermission = applicationContext.hasDestinationFineLocationPermission()
-        val granularity = if (hasFinePermission) {
-            DestinationLocationGranularity.Fine
-        } else {
-            DestinationLocationGranularity.Coarse
+        if (!hasFinePermission) {
+            onError(CurrentLocationFinePermissionError)
+            return
         }
+        val granularity = DestinationLocationGranularity.Fine
         val requestId = ++nextRequestId
         activeRequestId = requestId
         requestCachedLocation(
@@ -492,8 +509,8 @@ private class DestinationCurrentLocationRequester(context: Context) {
                     location.hasValidDestinationCoordinates() &&
                         location.destinationLocationAgeMillis in
                         -DestinationLocationClockSkewMillis..DestinationLocationFreshMaxAgeMillis &&
-                        location.destinationLocationDecision(granularity) !=
-                        DestinationLocationDecision.Reject
+                        location.destinationLocationDecision(granularity) ==
+                        DestinationLocationDecision.UseFinal
                 }?.takeIf { location ->
                     fallbackLocation == null ||
                         shouldUseRefinedDestinationLocation(
@@ -501,19 +518,14 @@ private class DestinationCurrentLocationRequester(context: Context) {
                             refined = location.destinationLocationQuality,
                         )
                 }
-                val finalLocation = refinedLocation ?: fallbackLocation
-                if (finalLocation == null) {
+                if (refinedLocation == null) {
                     finishWithError(requestId, onError)
                 } else {
-                    finishWithLocation(requestId, finalLocation, onLocation)
+                    finishWithLocation(requestId, refinedLocation, onLocation)
                 }
             },
             onFailure = {
-                if (fallbackLocation == null) {
-                    finishWithError(requestId, onError)
-                } else {
-                    finishWithLocation(requestId, fallbackLocation, onLocation)
-                }
+                finishWithError(requestId, onError)
             },
         )
     }
@@ -697,10 +709,13 @@ private const val InitialZoomLevel = 17f
 private const val CurrentLocationZoomLevel = 17f
 private const val CameraAnimationMillis = 700
 private const val CameraCoordinateTolerance = 0.00001
-private const val CurrentLocationRefinementDurationMillis = 4_000L
+private const val CurrentLocationRefinementDurationMillis = 12_000L
 private const val NanosPerMillisecond = 1_000_000L
 private const val CurrentLocationPermissionError = "현재 위치를 사용하려면 위치 권한이 필요합니다."
+private const val CurrentLocationFinePermissionError =
+    "현재 위치를 정확히 설정하려면 정확한 위치 권한을 허용해 주세요."
 private const val CurrentLocationUnavailableError = "현재 위치를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."
+private const val CurrentLocationInterruptedError = "현재 위치 확인이 중단되었습니다. 다시 시도해 주세요."
 private const val CurrentLocationMoveError = "현재 위치로 지도를 이동하지 못했습니다."
 private const val MapCameraMoveError = "지도를 이동하지 못했습니다. 잠시 후 다시 시도해 주세요."
 

@@ -509,6 +509,7 @@ private fun DestinationMapLayout(
             )
             ConfirmDestinationButton(
                 enabled = selection.isConfiguredDestination() &&
+                    currentLocationError == null &&
                     canConfirmDestination(
                         isCameraMoving = isCameraMoving,
                         isLocatingCurrentLocation = isLocatingCurrentLocation,

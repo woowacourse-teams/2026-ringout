@@ -40,31 +40,21 @@ internal fun decideDestinationLocation(
             else -> DestinationLocationDecision.UseAndRefine
         }
 
-        DestinationLocationGranularity.Coarse ->
-            if (quality.accuracyMeters <= DestinationLocationCoarseAccuracyMeters) {
-                DestinationLocationDecision.UseFinal
-            } else {
-                DestinationLocationDecision.Reject
-            }
+        DestinationLocationGranularity.Coarse -> DestinationLocationDecision.Reject
     }
 }
 
 internal fun shouldUseRefinedDestinationLocation(
     fallback: DestinationLocationQuality,
     refined: DestinationLocationQuality,
-): Boolean {
-    val maximumAcceptedAccuracy = maxOf(
-        DestinationLocationFineTargetAccuracyMeters,
-        fallback.accuracyMeters * DestinationLocationRefinementAccuracyMultiplier,
-    )
-    return refined.ageMillis < fallback.ageMillis &&
-        refined.accuracyMeters <= maximumAcceptedAccuracy
-}
+): Boolean =
+    refined.ageMillis < fallback.ageMillis &&
+        refined.ageMillis in -DestinationLocationClockSkewMillis..DestinationLocationFreshMaxAgeMillis &&
+        refined.accuracyMeters.isFinite() &&
+        refined.accuracyMeters in 0f..DestinationLocationFineTargetAccuracyMeters
 
 internal const val DestinationLocationCacheMaxAgeMillis = 3 * 60_000L
-internal const val DestinationLocationFreshMaxAgeMillis = 30_000L
+internal const val DestinationLocationFreshMaxAgeMillis = 10_000L
 internal const val DestinationLocationClockSkewMillis = 5_000L
 internal const val DestinationLocationFineInitialAccuracyMeters = 200f
 internal const val DestinationLocationFineTargetAccuracyMeters = 50f
-internal const val DestinationLocationCoarseAccuracyMeters = 3_000f
-private const val DestinationLocationRefinementAccuracyMultiplier = 1.5f

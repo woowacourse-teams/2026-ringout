@@ -73,9 +73,7 @@ internal fun ActiveAlarmMission.isUsableDestinationLocation(
         return false
     }
 
-    val maximumAcceptedAccuracyMeters =
-        arrivalRadiusMeters.coerceAtMost(MaximumAcceptedLocationAccuracyMeters)
-    return accuracyMeters <= maximumAcceptedAccuracyMeters
+    return accuracyMeters <= MaximumAcceptedLocationAccuracyMeters
 }
 
 internal fun ActiveAlarmMission.hasReachedDestinationByDeadline(
@@ -106,13 +104,51 @@ internal fun ActiveAlarmMission.isUsableDeadlineLocation(
         startedAtEpochMillis,
         expiresAtEpochMillis - MaximumDeadlineLocationAgeMillis,
     )
+    val latestAcceptedLocationEpochMillis =
+        if (expiresAtEpochMillis > Long.MAX_VALUE - DeadlineLocationGracePeriodMillis) {
+            Long.MAX_VALUE
+        } else {
+            expiresAtEpochMillis + DeadlineLocationGracePeriodMillis
+        }
     return capturedAtEpochMillis in
-        earliestAcceptedLocationEpochMillis..expiresAtEpochMillis &&
+        earliestAcceptedLocationEpochMillis..latestAcceptedLocationEpochMillis &&
         isUsableDestinationLocation(
             latitude = latitude,
             longitude = longitude,
             accuracyMeters = accuracyMeters,
         )
+}
+
+/**
+ * Chooses the strongest evidence available when the deadline receiver and the
+ * continuous tracker have both produced a location.
+ *
+ * A usable location that proves arrival is preferred over a newer location
+ * outside the destination. Within the same outcome, horizontal accuracy wins
+ * and capture time breaks ties.
+ */
+internal fun ActiveAlarmMission.selectBestDeadlineLocation(
+    candidates: Iterable<ActiveAlarmMissionLocation>,
+): ActiveAlarmMissionLocation? {
+    val usableCandidates = candidates.filter { candidate ->
+        isUsableDeadlineLocation(
+            latitude = candidate.latitude,
+            longitude = candidate.longitude,
+            accuracyMeters = candidate.accuracyMeters,
+            capturedAtEpochMillis = candidate.capturedAtEpochMillis,
+        )
+    }
+    val arrivalCandidates = usableCandidates.filter { candidate ->
+        hasReachedDestination(
+            latitude = candidate.latitude,
+            longitude = candidate.longitude,
+            accuracyMeters = candidate.accuracyMeters,
+        )
+    }
+    return (arrivalCandidates.ifEmpty { usableCandidates }).minWithOrNull(
+        compareBy<ActiveAlarmMissionLocation> { candidate -> candidate.accuracyMeters }
+            .thenByDescending { candidate -> candidate.capturedAtEpochMillis },
+    )
 }
 
 internal fun distanceMetersBetween(
@@ -141,8 +177,16 @@ private fun Double.isValidLongitude(): Boolean = isFinite() && this in -180.0..1
 
 private fun Double.toRadians(): Double = this * PI / 180.0
 
-internal const val DefaultArrivalRadiusMeters = 10.0
+internal const val DefaultArrivalRadiusMeters = 30.0
+internal const val MaximumAcceptedLocationAccuracyMeters = 50.0
 internal const val MaximumDeadlineLocationAgeMillis = 30_000L
 internal const val DeadlineLocationAcquisitionTimeoutMillis = 5_000L
-private const val MaximumAcceptedLocationAccuracyMeters = 100.0
+
+/**
+ * Deliberate arrival grace while the deadline receiver finishes its final
+ * location check. A fix captured during these five seconds can complete the
+ * mission, which avoids rejecting a user because the final GPS fix arrived
+ * just after the nominal deadline.
+ */
+internal const val DeadlineLocationGracePeriodMillis = 5_000L
 private const val EarthRadiusMeters = 6_371_000.0
