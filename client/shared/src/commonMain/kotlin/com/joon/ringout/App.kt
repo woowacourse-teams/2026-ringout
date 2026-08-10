@@ -50,6 +50,8 @@ import org.jetbrains.compose.resources.stringResource
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
 import com.joon.ringout.presentation.mypage.findPolicyUrl
+import com.joon.ringout.presentation.currentLocalClockSnapshot
+import com.joon.ringout.presentation.to24HourTimeString
 import kotlinx.coroutines.flow.collect
 import kotlin.random.Random
 
@@ -163,6 +165,9 @@ private fun RingoutAppContent(
         mutableStateOf<String?>(null)
     }
     var editingAlarmId by rememberSaveable { mutableStateOf<String?>(null) }
+    var newAlarmInitialTime by rememberSaveable {
+        mutableStateOf(UnavailableEditingAlarmTime)
+    }
     var destinationRequestId by rememberSaveable { mutableStateOf(0L) }
     var alarms by remember { mutableStateOf<List<HomeAlarm>?>(null) }
     var alarmScheduleError by rememberSaveable { mutableStateOf<String?>(null) }
@@ -306,6 +311,7 @@ private fun RingoutAppContent(
             onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
             onAddAlarm = {
                 editingAlarmId = null
+                newAlarmInitialTime = currentLocalClockSnapshot().to24HourTimeString()
                 destinationName = ""
                 destinationAddress = ""
                 destinationLatitude = null
@@ -374,7 +380,11 @@ private fun RingoutAppContent(
                 destination = destination?.name.orEmpty(),
                 alarmSound = alarmSound,
                 isDestinationSet = destination != null,
-                initialTime = editingAlarm?.time ?: DefaultAlarmTime,
+                initialTime = alarmSetupInitialTime(
+                    editingAlarmId = editingAlarmId,
+                    editingAlarmTime = editingAlarm?.time,
+                    newAlarmInitialTime = newAlarmInitialTime,
+                ),
                 initialSelectedDays = initialSelectedDays,
                 initialLimitMinutes = editingAlarm?.timeLimitMinutes ?: DefaultLimitMinutes,
                 onBackClick = {
@@ -458,10 +468,20 @@ private enum class AppScreen {
     ActiveAlarmTracking,
 }
 
-private const val DefaultAlarmTime = "06:20"
+private const val UnavailableEditingAlarmTime = "06:20"
 private val DefaultSelectedDays = listOf("월", "화", "수", "목", "금", "토", "일")
 private const val DefaultLimitMinutes = 13
 private const val DefaultAlarmSoundName = "Ring Ring Ring"
+
+internal fun alarmSetupInitialTime(
+    editingAlarmId: String?,
+    editingAlarmTime: String?,
+    newAlarmInitialTime: String,
+): String = when {
+    editingAlarmId == null -> newAlarmInitialTime
+    editingAlarmTime != null -> editingAlarmTime
+    else -> UnavailableEditingAlarmTime
+}
 
 private fun AlarmScheduleRequest.toHomeAlarm(enabled: Boolean): HomeAlarm = HomeAlarm(
     id = id,
