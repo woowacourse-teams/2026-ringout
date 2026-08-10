@@ -14,6 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
@@ -23,6 +25,7 @@ import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmMapUnavailable
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingCard
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingHeader
+import com.joon.ringout.presentation.activemission.components.activeAlarmTrackingColors
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.home.components.formatAlarmMissionRemainingTime
 import com.joon.ringout.presentation.home.components.rememberActiveAlarmMissionRemainingSeconds
@@ -32,6 +35,7 @@ fun ActiveAlarmTrackingScreen(
     mission: ActiveAlarmMission,
     currentLocation: ActiveAlarmMissionLocation?,
     onBackClick: () -> Unit,
+    onForceEndClick: (occurrenceId: String) -> Unit,
     onExpired: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -54,15 +58,14 @@ fun ActiveAlarmTrackingScreen(
 
     ActiveAlarmTrackingLayout(
         destinationName = mission.destinationName,
-        limitMinutes = mission.limitMinutes,
         countdown = formatAlarmMissionRemainingTime(remainingSeconds),
-        hasCurrentLocation = validCurrentLocation != null,
         mapUnavailableMessage = when {
             !hasValidDestination -> "설정한 목적지의 위치 정보가 없습니다."
             mapError != null -> mapError
             else -> null
         },
         onBackClick = onBackClick,
+        onForceEndClick = { onForceEndClick(mission.occurrenceId) },
         modifier = modifier,
         mapContent = { mapModifier ->
             PlatformActiveAlarmMap(
@@ -80,46 +83,50 @@ fun ActiveAlarmTrackingScreen(
 @Composable
 private fun ActiveAlarmTrackingLayout(
     destinationName: String,
-    limitMinutes: Int,
     countdown: String,
-    hasCurrentLocation: Boolean,
     mapUnavailableMessage: String?,
     onBackClick: () -> Unit,
+    onForceEndClick: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
 ) {
+    val colors = activeAlarmTrackingColors()
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .background(colors.screenChrome)
+            .semantics { paneTitle = "목적지로 이동 중" },
     ) {
-        if (mapUnavailableMessage == null) {
-            mapContent(Modifier.fillMaxSize())
-        } else {
-            ActiveAlarmMapUnavailable(
-                message = mapUnavailableMessage,
-                modifier = Modifier.fillMaxSize(),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
+        ) {
+            if (mapUnavailableMessage == null) {
+                mapContent(Modifier.fillMaxSize())
+            } else {
+                ActiveAlarmMapUnavailable(
+                    message = mapUnavailableMessage,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+
+            ActiveAlarmTrackingHeader(
+                onBackClick = onBackClick,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(start = 10.dp, top = 18.dp, end = 11.dp),
+            )
+
+            ActiveAlarmTrackingCard(
+                destinationName = destinationName,
+                countdown = countdown,
+                onForceEndClick = onForceEndClick,
+                modifier = Modifier.align(Alignment.BottomCenter),
             )
         }
-
-        ActiveAlarmTrackingHeader(
-            onBackClick = onBackClick,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-        )
-
-        ActiveAlarmTrackingCard(
-            destinationName = destinationName,
-            limitMinutes = limitMinutes,
-            countdown = countdown,
-            hasCurrentLocation = hasCurrentLocation,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-        )
     }
 }
 
@@ -137,12 +144,11 @@ internal fun isValidMapCoordinate(
 private fun ActiveAlarmTrackingScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         ActiveAlarmTrackingLayout(
-            destinationName = "집 앞에 수원천",
-            limitMinutes = 13,
-            countdown = "08:42",
-            hasCurrentLocation = true,
+            destinationName = "스터디카페",
+            countdown = "11:42",
             mapUnavailableMessage = null,
             onBackClick = {},
+            onForceEndClick = {},
             mapContent = { mapModifier ->
                 Box(
                     modifier = mapModifier.background(
@@ -159,12 +165,11 @@ private fun ActiveAlarmTrackingScreenDarkPreview() {
 private fun ActiveAlarmTrackingScreenLightPreview() {
     RingoutTheme(themeMode = ThemeMode.Light) {
         ActiveAlarmTrackingLayout(
-            destinationName = "집 앞에 수원천",
-            limitMinutes = 13,
-            countdown = "08:42",
-            hasCurrentLocation = false,
+            destinationName = "스터디카페",
+            countdown = "11:42",
             mapUnavailableMessage = null,
             onBackClick = {},
+            onForceEndClick = {},
             mapContent = { mapModifier ->
                 Box(
                     modifier = mapModifier.background(

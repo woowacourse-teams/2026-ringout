@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
                 activeAlarmMission = activeAlarmMission,
                 activeAlarmMissionLocation = activeAlarmMissionLocation,
                 onActiveAlarmMissionExpired = ::handleActiveAlarmMissionExpired,
+                onActiveAlarmMissionForceEnd = ::handleActiveAlarmMissionForceEnd,
             )
         }
     }
@@ -71,6 +72,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleActiveAlarmMissionExpired() {
         alarmMissionCoordinator.handleDeadline(activeAlarmMission?.occurrenceId)
+    }
+
+    private fun handleActiveAlarmMissionForceEnd(occurrenceId: String) {
+        alarmMissionCoordinator.forceEnd(occurrenceId)
+        refreshActiveAlarmMission()
     }
 
     private fun refreshActiveAlarmMission() {

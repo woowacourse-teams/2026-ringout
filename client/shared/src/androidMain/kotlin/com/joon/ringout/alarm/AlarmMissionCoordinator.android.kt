@@ -17,18 +17,19 @@ class AlarmMissionCoordinator(context: Context) {
     private val store = ActiveAlarmMissionStore(applicationContext)
     private val alarmManager = applicationContext.getSystemService(AlarmManager::class.java)
 
-    fun startFrom(ringingIntent: Intent): ActiveAlarmMission? {
-        if (
-            !applicationContext.hasMissionFineLocationPermission() ||
-            !applicationContext.isMissionLocationEnabled()
-        ) {
-            return null
+    fun startFrom(ringingIntent: Intent): ActiveAlarmMission? =
+        synchronized(AlarmMissionSideEffectLock) {
+            if (
+                !applicationContext.hasMissionFineLocationPermission() ||
+                !applicationContext.isMissionLocationEnabled()
+            ) {
+                return@synchronized null
+            }
+            val mission = store.saveFrom(ringingIntent) ?: return@synchronized null
+            scheduleDeadline(mission)
+            startTracking(mission)
+            mission
         }
-        val mission = store.saveFrom(ringingIntent) ?: return null
-        scheduleDeadline(mission)
-        startTracking(mission)
-        return mission
-    }
 
     fun resumeTracking() {
         val storedMission = store.readStoredMission() ?: return
@@ -73,6 +74,16 @@ class AlarmMissionCoordinator(context: Context) {
             -> schedulePendingActionRetry(storedMission.mission)
         }
     }
+
+    fun forceEnd(expectedOccurrenceId: String): Boolean =
+        synchronized(AlarmMissionSideEffectLock) {
+            val clearedMission = store.clearMissionForForceEnd(expectedOccurrenceId)
+                ?: return@synchronized false
+            cancelDeadline(clearedMission.mission)
+            requestTrackingStop(clearedMission.mission)
+            clearedMission.isPersistenceConfirmed ||
+                store.confirmMissionCleared(expectedOccurrenceId)
+        }
 
     internal fun prepareDeadlineLocationCheck(
         expectedOccurrenceId: String?,
@@ -198,9 +209,7 @@ class AlarmMissionCoordinator(context: Context) {
             cancelDeadline(storedMission.mission)
         }
         if (completion.wasAccepted) {
-            applicationContext.stopService(
-                AlarmMissionTrackingService.stopIntent(applicationContext),
-            )
+            requestTrackingStop(storedMission.mission)
         }
         return completion.wasAccepted
     }
@@ -241,9 +250,11 @@ class AlarmMissionCoordinator(context: Context) {
         val deadlineIntent = deadlinePendingIntent(
             mission = mission,
             flags = PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
-        ) ?: return
-        alarmManager.cancel(deadlineIntent)
-        deadlineIntent.cancel()
+        )
+        deadlineIntent?.let { pendingIntent ->
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        }
         missionShowPendingIntent(
             mission = mission,
             flags = PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
@@ -417,9 +428,26 @@ class AlarmMissionCoordinator(context: Context) {
             cancelDeadline(storedMission.mission)
         }
         if (completion.wasAccepted) {
-            applicationContext.stopService(
-                AlarmMissionTrackingService.stopIntent(applicationContext),
+            requestTrackingStop(storedMission.mission)
+        }
+    }
+
+    private fun requestTrackingStop(mission: ActiveAlarmMission) {
+        synchronized(AlarmMissionSideEffectLock) {
+            val stopIntent = AlarmMissionTrackingService.stopIntent(
+                context = applicationContext,
+                occurrenceId = mission.occurrenceId,
             )
+            runCatching { applicationContext.startService(stopIntent) }
+                .onFailure {
+                    val activeMission = store.read()
+                    if (
+                        activeMission == null ||
+                        activeMission.occurrenceId == mission.occurrenceId
+                    ) {
+                        applicationContext.stopService(stopIntent)
+                    }
+                }
         }
     }
 

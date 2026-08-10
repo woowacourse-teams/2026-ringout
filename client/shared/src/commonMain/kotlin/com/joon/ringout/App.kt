@@ -37,10 +37,9 @@ fun App(
     activeAlarmMission: ActiveAlarmMission? = null,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation? = null,
     onActiveAlarmMissionExpired: () -> Unit = {},
+    onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit = { _ -> },
 ) {
     val themeController = rememberThemeController()
-
-    SystemBarAppearanceEffect(themeController.themeMode)
 
     RingoutTheme(themeMode = themeController.themeMode) {
         RingoutAppContent(
@@ -49,6 +48,7 @@ fun App(
             activeAlarmMission = activeAlarmMission,
             activeAlarmMissionLocation = activeAlarmMissionLocation,
             onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+            onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
             onThemeModeChange = themeController::setThemeMode,
         )
     }
@@ -61,6 +61,7 @@ private fun RingoutAppContent(
     activeAlarmMission: ActiveAlarmMission?,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation?,
     onActiveAlarmMissionExpired: () -> Unit,
+    onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     var destinationName by rememberSaveable { mutableStateOf("") }
@@ -99,6 +100,13 @@ private fun RingoutAppContent(
     } else {
         requestedScreen
     }
+    SystemBarAppearanceEffect(
+        themeMode = if (screen == AppScreen.ActiveAlarmTracking) {
+            ThemeMode.Dark
+        } else {
+            themeMode
+        },
+    )
     val alarmController = rememberAlarmController(
         onScheduled = { request ->
             val wasEnabled = alarms.orEmpty()
@@ -220,6 +228,7 @@ private fun RingoutAppContent(
                 mission = mission,
                 currentLocation = activeAlarmMissionLocation,
                 onBackClick = { screenName = AppScreen.Home.name },
+                onForceEndClick = onActiveAlarmMissionForceEnd,
                 onExpired = onActiveAlarmMissionExpired,
             )
         }

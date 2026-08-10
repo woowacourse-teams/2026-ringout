@@ -1,0 +1,9 @@
+package com.joon.ringout.presentation.activemission.components
+
+import org.jetbrains.compose.resources.DrawableResource
+
+internal expect val ActiveAlarmTrackingBackIconResource: DrawableResource
+
+internal expect val ActiveAlarmDestinationMarkerResource: DrawableResource
+
+internal expect val ActiveAlarmCurrentLocationMarkerResource: DrawableResource
