@@ -6,15 +6,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.joon.ringout.presentation.LocalClockSnapshot
+import com.joon.ringout.presentation.currentLocalClockSnapshot
 import kotlinx.coroutines.delay
-
-internal data class LocalClockSnapshot(
-    val dayOfWeek: Int,
-    val hour: Int,
-    val minute: Int,
-)
-
-internal expect fun currentLocalClockSnapshot(): LocalClockSnapshot
 
 @Composable
 internal fun rememberNextAlarmDescription(alarms: List<HomeAlarm>): String {
