@@ -1,10 +1,12 @@
 package com.joon.ringout.presentation.mypage
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -13,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -96,12 +99,17 @@ fun MyPageScreenContent(
         item { MyPageHeader(onBackClick = onBackClick) }
         item { Spacer(Modifier.height(6.dp)) }
         item {
-            MissionCalendarCard(
-                month = uiState.selectedMonth,
-                successDates = uiState.successDates,
-                onPreviousMonthClick = onPreviousMonthClick,
-                onNextMonthClick = onNextMonthClick,
-            )
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                MissionCalendarCard(
+                    month = uiState.selectedMonth,
+                    successDates = uiState.successDates,
+                    onPreviousMonthClick = onPreviousMonthClick,
+                    onNextMonthClick = onNextMonthClick,
+                )
+            }
         }
         uiState.errorMessage?.let { message ->
             item { Spacer(Modifier.height(8.dp)) }

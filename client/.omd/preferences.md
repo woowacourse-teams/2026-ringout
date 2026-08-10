@@ -49,3 +49,33 @@ source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/mypa
 ```
 
 Do not show a loading progress bar below the My Page calendar when changing months.
+
+## 2026-08-10T10:57:26.000Z — the-my-page-theme-toggle-never-shows-a-g
+
+```omd-meta
+id: pref_msn4airv_69450e26
+timestamp: 2026-08-10T10:57:26.000Z
+scope: components.button
+signal: user-correction
+confidence: explicit
+status: pending
+source_agent: codex
+source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/mypage/component/MyPageThemeCard.kt"
+```
+
+The My Page theme toggle never shows a gray ripple or pressed background when tapped.
+
+## 2026-08-10T11:08:06.000Z — the-my-page-calendar-card-stays-horizont
+
+```omd-meta
+id: pref_msn4o7xg_1283729f
+timestamp: 2026-08-10T11:08:06.000Z
+scope: components.calendar
+signal: user-correction
+confidence: explicit
+status: pending
+source_agent: codex
+source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/mypage/MyPageScreen.kt"
+```
+
+The My Page calendar card stays horizontally centered on every device width.

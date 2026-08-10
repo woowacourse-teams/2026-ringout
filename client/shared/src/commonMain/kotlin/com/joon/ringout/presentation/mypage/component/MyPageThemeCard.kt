@@ -98,6 +98,8 @@ private fun ThemeModeSwitch(
             }
             .toggleable(
                 value = darkSelected,
+                interactionSource = null,
+                indication = null,
                 role = Role.Switch,
                 onValueChange = {
                     onThemeModeChange(if (it) ThemeMode.Dark else ThemeMode.Light)
