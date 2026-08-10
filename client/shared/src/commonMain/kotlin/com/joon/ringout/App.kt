@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
@@ -34,6 +35,7 @@ import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
+import com.joon.ringout.presentation.mypage.findPolicyUrl
 import kotlinx.coroutines.flow.collect
 import kotlin.random.Random
 
@@ -70,6 +72,7 @@ private fun RingoutAppContent(
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
+    val uriHandler = LocalUriHandler.current
     val destinationRepository = rememberDestinationRepository()
     val destinationViewModel: DestinationViewModel = viewModel {
         DestinationViewModel(destinationRepository)
@@ -281,7 +284,11 @@ private fun RingoutAppContent(
             policies = DefaultMyPagePolicies,
             onThemeModeChange = onThemeModeChange,
             onBackClick = { screenName = AppScreen.Home.name },
-            onPolicyClick = {},
+            onPolicyClick = { policyId ->
+                findPolicyUrl(policyId)?.let { url ->
+                    runCatching { uriHandler.openUri(url) }
+                }
+            },
         )
 
         AppScreen.AddAlarm,

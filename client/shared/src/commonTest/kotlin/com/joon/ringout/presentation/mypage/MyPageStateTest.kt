@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MyPageStateTest {
@@ -78,5 +79,19 @@ class MyPageStateTest {
             PolicyInfo(PolicyId("terms"), "추가 약관", PolicyIcon.DOCUMENT),
         )
         assertFails { requireUniquePolicyIds(duplicated) }
+    }
+
+    @Test
+    fun defaultPoliciesPointToTheConfiguredHttpsPages() {
+        assertEquals(
+            "https://app.notion.com/p/3b858b8d8e6c80d2be23f7e4c0ff23bd?source=copy_link",
+            findPolicyUrl(PolicyId("privacy")),
+        )
+        assertEquals(
+            "https://sheer-mimosa-20f.notion.site/3b858b8d8e6c80de9724e0cd32000093?source=copy_link",
+            findPolicyUrl(PolicyId("terms")),
+        )
+        assertNull(findPolicyUrl(PolicyId("unknown")))
+        assertTrue(DefaultMyPagePolicies.all { findPolicyUrl(it.id) != null })
     }
 }
