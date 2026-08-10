@@ -5,17 +5,28 @@ import androidx.room3.Database
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.joon.ringout.data.alarm.AlarmDao
+import com.joon.ringout.data.alarm.AlarmEntity
+import com.joon.ringout.data.alarm.AlarmRepeatDayEntity
+import com.joon.ringout.data.alarm.StorageMigrationEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryDao
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 
 @Database(
-    entities = [MissionHistoryEntity::class],
-    version = 1,
+    entities = [
+        MissionHistoryEntity::class,
+        AlarmEntity::class,
+        AlarmRepeatDayEntity::class,
+        StorageMigrationEntity::class,
+    ],
+    version = 2,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
 abstract class RingoutDatabase : RoomDatabase() {
     abstract fun missionHistoryDao(): MissionHistoryDao
+
+    abstract fun alarmDao(): AlarmDao
 }
 
 @Suppress("KotlinNoActualForExpect")
@@ -27,6 +38,7 @@ fun buildRingoutDatabase(
     builder: RoomDatabase.Builder<RingoutDatabase>,
 ): RingoutDatabase = builder
     .setDriver(BundledSQLiteDriver())
+    .addMigrations(RingoutMigration1To2)
     .build()
 
 internal const val RingoutDatabaseName = "ringout.db"

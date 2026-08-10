@@ -14,3 +14,15 @@ fun getRingoutDatabaseBuilder(
         name = databaseFile.absolutePath,
     )
 }
+
+@Volatile
+private var ringoutDatabaseInstance: RingoutDatabase? = null
+
+internal fun getRingoutDatabase(context: Context): RingoutDatabase =
+    ringoutDatabaseInstance ?: synchronized(RingoutDatabase::class.java) {
+        ringoutDatabaseInstance ?: buildRingoutDatabase(
+            getRingoutDatabaseBuilder(context.applicationContext),
+        ).also { database ->
+            ringoutDatabaseInstance = database
+        }
+    }

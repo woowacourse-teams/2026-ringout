@@ -55,6 +55,7 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.androidx.room3.runtime)
             implementation(libs.androidx.sqlite.bundled)
+            implementation(libs.androidx.sqlite.async)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
