@@ -4,6 +4,7 @@ import com.joon.ringout.domain.destination.SavedDestination
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DestinationSelectionStateTest {
@@ -232,5 +233,46 @@ class DestinationSelectionStateTest {
             savedDestination,
         )
         assertEquals(selection, savedDestination.toDestinationSelection())
+    }
+
+    @Test
+    fun savedDestinationIsMatchedByLocationEvenWhenNicknameAndAddressDiffer() {
+        val savedDestination = SavedDestination(
+            id = 42L,
+            name = "회사",
+            address = "저장된 주소",
+            latitude = 37.5665,
+            longitude = 126.9780,
+        )
+        val restoredSelection = DestinationSelection(
+            name = "별명이 달라진 회사",
+            address = "새로 확인된 주소",
+            latitude = savedDestination.latitude,
+            longitude = savedDestination.longitude,
+        )
+
+        assertEquals(
+            savedDestination,
+            listOf(savedDestination).findAtLocation(restoredSelection),
+        )
+    }
+
+    @Test
+    fun savedDestinationIsNotMatchedByNicknameWhenLocationDiffers() {
+        val savedDestination = SavedDestination(
+            id = 42L,
+            name = "회사",
+            address = "서울특별시 중구 세종대로 110",
+            latitude = 37.5665,
+            longitude = 126.9780,
+        )
+        val differentLocation = DestinationSelection(
+            name = savedDestination.name,
+            address = savedDestination.address,
+            latitude = 35.1796,
+            longitude = 129.0756,
+        )
+
+        assertNull(listOf(savedDestination).findAtLocation(differentLocation))
     }
 }

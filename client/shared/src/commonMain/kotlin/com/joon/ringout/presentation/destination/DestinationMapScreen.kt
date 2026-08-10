@@ -82,7 +82,7 @@ fun DestinationMapScreen(
     onConfirmClick: (SavedDestination) -> Unit,
     onSavedDestinationConfirmClick: (SavedDestination) -> Unit,
     savedDestinations: List<SavedDestination> = emptyList(),
-    onSavedDestinationEditClick: (SavedDestination) -> Unit = {},
+    onSavedDestinationRename: (Long, String) -> Unit = { _, _ -> },
     onSavedDestinationDeleteClick: (Long) -> Unit = {},
     isSaveInProgress: Boolean = false,
     modifier: Modifier = Modifier,
@@ -109,12 +109,12 @@ fun DestinationMapScreen(
     var currentLocationError by remember { mutableStateOf<String?>(null) }
     var pendingSelection by remember { mutableStateOf<DestinationSelection?>(null) }
     var isDestinationManagementOpen by remember { mutableStateOf(false) }
-    var editingDestinationId by remember { mutableStateOf<Long?>(null) }
-    var editingDestinationNickname by remember { mutableStateOf("") }
+    var nicknameEditingDestination by remember { mutableStateOf<SavedDestination?>(null) }
     var selectedSavedDestination by remember { mutableStateOf<SavedDestination?>(null) }
 
     PlatformBackHandler(onBack = {
         when {
+            nicknameEditingDestination != null -> nicknameEditingDestination = null
             pendingSelection != null -> pendingSelection = null
             isDestinationManagementOpen -> isDestinationManagementOpen = false
             isSearchOpen -> isSearchOpen = false
@@ -135,6 +135,24 @@ fun DestinationMapScreen(
             searchError = it
         },
     )
+
+    LaunchedEffect(savedDestinations) {
+        val selectedId = selectedSavedDestination?.id ?: return@LaunchedEffect
+        val refreshedDestination = savedDestinations.firstOrNull { it.id == selectedId }
+        if (refreshedDestination == null) {
+            selectedSavedDestination = null
+        } else if (refreshedDestination != selectedSavedDestination) {
+            selectedSavedDestination = refreshedDestination
+            if (
+                selection.hasSameCoordinates(
+                    latitude = refreshedDestination.latitude,
+                    longitude = refreshedDestination.longitude,
+                )
+            ) {
+                selection = refreshedDestination.toDestinationSelection()
+            }
+        }
+    }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -192,8 +210,6 @@ fun DestinationMapScreen(
                 selection = savedSelection
                 cameraTarget = savedSelection
                 selectedSavedDestination = savedDestination
-                editingDestinationId = null
-                editingDestinationNickname = ""
                 currentLocationError = null
                 isSearchOpen = false
                 searchResults = emptyList()
@@ -201,12 +217,7 @@ fun DestinationMapScreen(
             },
             onConfirmClick = {
                 currentLocationCancellationId += 1
-                val savedDestination = selectedSavedDestination?.takeIf { saved ->
-                    saved.toDestinationSelection().hasSameCoordinates(
-                        latitude = selection.latitude,
-                        longitude = selection.longitude,
-                    )
-                }
+                val savedDestination = savedDestinations.findAtLocation(selection)
                 if (savedDestination == null) {
                     pendingSelection = selection
                 } else {
@@ -295,21 +306,9 @@ fun DestinationMapScreen(
                 destinations = savedDestinations,
                 onDismissRequest = { isDestinationManagementOpen = false },
                 onEditClick = { savedDestination ->
-                    val savedSelection = savedDestination.toDestinationSelection()
-                    selection = savedSelection
-                    cameraTarget = savedSelection
-                    editingDestinationId = savedDestination.id
-                    editingDestinationNickname = savedDestination.name
-                    selectedSavedDestination = null
-                    currentLocationError = null
-                    isDestinationManagementOpen = false
-                    onSavedDestinationEditClick(savedDestination)
+                    nicknameEditingDestination = savedDestination
                 },
                 onDeleteClick = { savedDestination ->
-                    if (editingDestinationId == savedDestination.id) {
-                        editingDestinationId = null
-                        editingDestinationNickname = ""
-                    }
                     if (selectedSavedDestination?.id == savedDestination.id) {
                         selectedSavedDestination = null
                     }
@@ -319,17 +318,29 @@ fun DestinationMapScreen(
             )
         }
 
+        nicknameEditingDestination?.let { savedDestination ->
+            DestinationNicknameDialog(
+                address = savedDestination.address,
+                initialNickname = savedDestination.name,
+                onDismissRequest = { nicknameEditingDestination = null },
+                onSave = { nickname ->
+                    nicknameEditingDestination = null
+                    onSavedDestinationRename(savedDestination.id, nickname)
+                },
+                modifier = Modifier.zIndex(3f),
+            )
+        }
+
         pendingSelection?.let { selectedDestination ->
             DestinationNicknameDialog(
                 address = selectedDestination.address,
-                initialNickname = editingDestinationNickname,
                 onDismissRequest = { pendingSelection = null },
                 onSave = { nickname ->
                     pendingSelection = null
                     onConfirmClick(
                         selectedDestination
                             .withNicknameForSave(nickname)
-                            .toSavedDestination(editingDestinationId ?: 0L),
+                            .toSavedDestination(),
                     )
                 },
                 modifier = Modifier.zIndex(2f),

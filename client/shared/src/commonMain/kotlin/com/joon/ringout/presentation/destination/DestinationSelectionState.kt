@@ -72,6 +72,16 @@ internal fun DestinationSelection.hasSameCoordinates(
     kotlin.math.abs(this.latitude - latitude) < DestinationCoordinateTolerance &&
         kotlin.math.abs(this.longitude - longitude) < DestinationCoordinateTolerance
 
+internal fun List<SavedDestination>.findAtLocation(
+    selection: DestinationSelection,
+): SavedDestination? =
+    firstOrNull { savedDestination ->
+        selection.hasSameCoordinates(
+            latitude = savedDestination.latitude,
+            longitude = savedDestination.longitude,
+        )
+    }
+
 internal fun SavedDestination.toDestinationSelection(): DestinationSelection =
     DestinationSelection(
         name = name,

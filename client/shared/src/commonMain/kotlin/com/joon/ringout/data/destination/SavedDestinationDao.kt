@@ -17,6 +17,9 @@ interface SavedDestinationDao {
     @Update
     suspend fun update(destination: SavedDestinationEntity): Int
 
+    @Query("UPDATE saved_destinations SET name = :name WHERE id = :id")
+    suspend fun updateName(id: Long, name: String): Int
+
     @Query("DELETE FROM saved_destinations WHERE id = :id")
     suspend fun delete(id: Long): Int
 }

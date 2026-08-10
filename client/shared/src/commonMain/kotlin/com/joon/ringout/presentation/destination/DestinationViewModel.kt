@@ -80,6 +80,40 @@ class DestinationViewModel(
         }
     }
 
+    fun rename(
+        destinationId: Long,
+        nickname: String,
+    ) {
+        if (uiState.isSaving) return
+
+        uiState = uiState.copy(
+            isSaving = true,
+            errorMessage = null,
+        )
+        viewModelScope.launch {
+            try {
+                val renamed = mutationMutex.withLock {
+                    repository.updateName(destinationId, nickname)
+                }
+                uiState = if (renamed) {
+                    uiState.copy(isSaving = false)
+                } else {
+                    uiState.copy(
+                        isSaving = false,
+                        errorMessage = "수정할 목적지를 찾지 못했어요.",
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                uiState = uiState.copy(
+                    isSaving = false,
+                    errorMessage = error.message ?: "목적지 별명을 수정하지 못했어요.",
+                )
+            }
+        }
+    }
+
     fun delete(destinationId: Long) {
         viewModelScope.launch {
             try {

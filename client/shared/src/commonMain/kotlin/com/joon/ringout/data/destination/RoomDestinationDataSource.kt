@@ -24,6 +24,12 @@ class RoomDestinationDataSource(
         }
     }
 
+    override suspend fun updateName(id: Long, name: String): Boolean {
+        require(id >= 0L) { "Saved destination id must not be negative: $id" }
+        require(name.isNotBlank()) { "Saved destination name must not be blank." }
+        return destinationDao.updateName(id, name) == 1
+    }
+
     override suspend fun delete(id: Long): Boolean {
         require(id >= 0L) { "Saved destination id must not be negative: $id" }
         return destinationDao.delete(id) == 1

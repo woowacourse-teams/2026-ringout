@@ -340,6 +340,7 @@ private fun RingoutAppContent(
                         screenName = alarmSetupScreen.name
                     },
                     savedDestinations = destinationUiState.destinations,
+                    onSavedDestinationRename = destinationViewModel::rename,
                     onSavedDestinationDeleteClick = destinationViewModel::delete,
                     isSaveInProgress = destinationUiState.isSaving,
                 )

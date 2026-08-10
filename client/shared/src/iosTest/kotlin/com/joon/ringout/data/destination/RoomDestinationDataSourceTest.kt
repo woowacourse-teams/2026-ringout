@@ -67,6 +67,52 @@ class RoomDestinationDataSourceTest {
         }
     }
 
+    @Test
+    fun updatesOnlyTheNameAndReturnsWhetherTheDestinationExists() = runBlocking {
+        withDatabase { database ->
+            val repository = DefaultDestinationRepository(
+                RoomDestinationDataSource(database.destinationDao()),
+            )
+            val destination = repository.save(destination())
+
+            assertTrue(repository.updateName(destination.id, "새 회사"))
+            assertEquals(
+                destination.copy(name = "새 회사"),
+                repository.observeAll().first().single(),
+            )
+            assertFalse(repository.updateName(999, "없는 목적지"))
+            assertEquals(
+                destination.copy(name = "새 회사"),
+                repository.observeAll().first().single(),
+            )
+        }
+    }
+
+    @Test
+    fun keepsFullDestinationUpdatesAndRejectsInvalidNameUpdateArguments() = runBlocking {
+        withDatabase { database ->
+            val repository = DefaultDestinationRepository(
+                RoomDestinationDataSource(database.destinationDao()),
+            )
+            val destination = repository.save(destination())
+            val fullyUpdated = destination.copy(
+                name = "새 회사",
+                address = "서울특별시 종로구 세종대로 1",
+                latitude = 37.5759,
+                longitude = 126.9768,
+            )
+
+            assertEquals(fullyUpdated, repository.save(fullyUpdated))
+            assertEquals(fullyUpdated, repository.observeAll().first().single())
+            assertFailsWith<IllegalArgumentException> {
+                repository.updateName(-1, "회사")
+            }
+            assertFailsWith<IllegalArgumentException> {
+                repository.updateName(destination.id, "   ")
+            }
+        }
+    }
+
     private suspend fun withDatabase(
         block: suspend (RingoutDatabase) -> Unit,
     ) {

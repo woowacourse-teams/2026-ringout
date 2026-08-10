@@ -12,5 +12,8 @@ class DefaultDestinationRepository(
     override suspend fun save(destination: SavedDestination): SavedDestination =
         dataSource.save(destination)
 
+    override suspend fun updateName(id: Long, name: String): Boolean =
+        dataSource.updateName(id, name)
+
     override suspend fun delete(id: Long): Boolean = dataSource.delete(id)
 }

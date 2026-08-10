@@ -249,3 +249,22 @@ private fun DestinationNicknameDialogPreview() {
         }
     }
 }
+
+@Preview(widthDp = 402, heightDp = 941)
+@Composable
+private fun DestinationNicknameEditDialogPreview() {
+    RingoutTheme {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFD8DDD8)),
+        ) {
+            DestinationNicknameDialog(
+                address = "서울 서초구 반포동 748-10",
+                initialNickname = "헬스장",
+                onDismissRequest = {},
+                onSave = {},
+            )
+        }
+    }
+}
