@@ -2,7 +2,6 @@ package com.joon.ringout.presentation.mypage.component
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,7 +16,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -25,11 +28,9 @@ import com.joon.ringout.presentation.mypage.PolicyIcon
 import com.joon.ringout.presentation.mypage.PolicyId
 import com.joon.ringout.presentation.mypage.PolicyInfo
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.ThemeMode
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
-import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.mypage_policy_privacy
-import ringout.shared.generated.resources.mypage_policy_docs
 
 @Composable
 fun MyPagePolicySection(
@@ -38,16 +39,20 @@ fun MyPagePolicySection(
     modifier: Modifier = Modifier,
 ) {
     if (policies.isEmpty()) return
+    val colors = myPageColors()
 
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = "약관 및 정책",
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+            modifier = Modifier.semantics { heading() },
+            color = colors.primaryText,
+            style = MaterialTheme.typography.titleSmall.copy(
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Bold,
+            ),
         )
+        Spacer(Modifier.height(8.dp))
         policies.forEach { policy ->
             PolicyRow(policy = policy, onClick = { onPolicyClick(policy.id) })
         }
@@ -57,12 +62,11 @@ fun MyPagePolicySection(
 @Preview(widthDp = 402)
 @Composable
 private fun MyPagePolicySectionPreview() {
-    RingoutTheme {
+    RingoutTheme(ThemeMode.Dark) {
         MyPagePolicySection(
             policies = listOf(
                 PolicyInfo(PolicyId("privacy"), "개인정보처리방침", PolicyIcon.PRIVACY),
                 PolicyInfo(PolicyId("terms"), "이용약관", PolicyIcon.DOCUMENT),
-                PolicyInfo(PolicyId("location"), "위치정보 이용약관", PolicyIcon.DOCUMENT),
             ),
             onPolicyClick = {},
             modifier = Modifier.padding(20.dp),
@@ -75,25 +79,38 @@ private fun PolicyRow(
     policy: PolicyInfo,
     onClick: () -> Unit,
 ) {
+    val colors = myPageColors()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(62.dp)
-            .clickable(role = Role.Button, onClickLabel = policy.title, onClick = onClick),
+            .height(54.dp)
+            .clickable(role = Role.Button, onClickLabel = policy.title, onClick = onClick)
+            .padding(start = 10.dp, end = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PolicyGlyph(policy.icon)
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(11.dp))
         Text(
             text = policy.title,
             modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+            color = colors.primaryText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Bold,
+            ),
         )
         Text(
-            text = "›",
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 24.sp,
+            text = ">",
+            modifier = Modifier.width(9.dp),
+            color = colors.primaryText,
+            fontSize = 13.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -101,12 +118,12 @@ private fun PolicyRow(
 @Composable
 private fun PolicyGlyph(icon: PolicyIcon) {
     val resource: DrawableResource = when (icon) {
-        PolicyIcon.PRIVACY -> Res.drawable.mypage_policy_privacy
-        PolicyIcon.DOCUMENT -> Res.drawable.mypage_policy_docs
+        PolicyIcon.PRIVACY -> MyPagePolicyPrivacyIconResource
+        PolicyIcon.DOCUMENT -> MyPagePolicyDocsIconResource
     }
     Image(
         painter = painterResource(resource),
         contentDescription = null,
-        modifier = Modifier.size(28.dp),
+        modifier = Modifier.size(24.dp),
     )
 }

@@ -47,3 +47,26 @@ internal val RingoutMigration1To2 = Migration(1, 2) { connection ->
         """.trimIndent(),
     )
 }
+
+internal val RingoutMigration2To3 = Migration(2, 3) { connection ->
+    connection.executeSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `saved_destinations` (
+            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            `name` TEXT NOT NULL,
+            `address` TEXT NOT NULL,
+            `latitude` REAL NOT NULL,
+            `longitude` REAL NOT NULL
+        )
+        """.trimIndent(),
+    )
+}
+
+internal val RingoutMigration3To4 = Migration(3, 4) { connection ->
+    connection.executeSQL(
+        "ALTER TABLE `mission_history` ADD COLUMN `occurrence_id` TEXT",
+    )
+    connection.executeSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_mission_history_occurrence_id` ON `mission_history` (`occurrence_id`)",
+    )
+}

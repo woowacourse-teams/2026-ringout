@@ -8,6 +8,8 @@ import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class RingoutDatabaseTest {
     @Test
@@ -27,6 +29,50 @@ class RingoutDatabaseTest {
                 RoomMissionHistoryDataSource(dao)
                     .getHistory(MissionYearMonth(2026, 8))
                     .map { it.completedAt },
+            )
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun ignoresDuplicateOccurrenceButAllowsDifferentOccurrencesOnTheSameDate() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder<RingoutDatabase>()
+            .setDriver(BundledSQLiteDriver())
+            .build()
+
+        try {
+            val dao = database.missionHistoryDao()
+            assertTrue(
+                dao.insert(
+                    MissionHistoryEntity(
+                        result = "SUCCESS",
+                        completedAt = "2026-08-05",
+                        occurrenceId = "occurrence-1",
+                    ),
+                ),
+            )
+            assertFalse(
+                dao.insert(
+                    MissionHistoryEntity(
+                        result = "FAILURE",
+                        completedAt = "2026-08-05",
+                        occurrenceId = "occurrence-1",
+                    ),
+                ),
+            )
+            assertTrue(
+                dao.insert(
+                    MissionHistoryEntity(
+                        result = "FAILURE",
+                        completedAt = "2026-08-05",
+                        occurrenceId = "occurrence-2",
+                    ),
+                ),
+            )
+            assertEquals(
+                listOf("occurrence-1", "occurrence-2"),
+                dao.getHistory("2026-08-01", "2026-08-31").map { it.occurrenceId },
             )
         } finally {
             database.close()

@@ -7,7 +7,10 @@ import androidx.room3.PrimaryKey
 
 @Entity(
     tableName = "mission_history",
-    indices = [Index(value = ["completed_at"])],
+    indices = [
+        Index(value = ["completed_at"]),
+        Index(value = ["occurrence_id"], unique = true),
+    ],
 )
 data class MissionHistoryEntity(
     @PrimaryKey(autoGenerate = true)
@@ -15,4 +18,6 @@ data class MissionHistoryEntity(
     val result: String,
     @ColumnInfo(name = "completed_at")
     val completedAt: String,
+    @ColumnInfo(name = "occurrence_id")
+    val occurrenceId: String? = null,
 )

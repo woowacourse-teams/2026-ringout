@@ -30,6 +30,8 @@ import com.joon.ringout.presentation.onboarding.component.OnboardingPrimaryButto
 fun OnboardingScreen(
     onComplete: () -> Unit,
     modifier: Modifier = Modifier,
+    completionEnabled: Boolean = true,
+    completionRetryToken: Int = 0,
     pages: List<OnboardingPageContent> = defaultOnboardingPages,
     viewModel: OnboardingViewModel = viewModel { OnboardingViewModel() },
 ) {
@@ -37,13 +39,14 @@ fun OnboardingScreen(
         pages = pages,
         currentPageIndex = viewModel.uiState.currentPageIndex,
         onNext = {
-            when (viewModel.requestNext(pages.size)) {
+            when (viewModel.requestNext(pages.size, completionRetryToken)) {
                 OnboardingAdvance.Complete -> onComplete()
                 OnboardingAdvance.IgnoredAlreadyComplete,
                 is OnboardingAdvance.MoveTo,
                 -> Unit
             }
         },
+        completionEnabled = completionEnabled,
         modifier = modifier,
     )
 }
@@ -54,6 +57,7 @@ internal fun OnboardingScreenContent(
     currentPageIndex: Int,
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
+    completionEnabled: Boolean = true,
 ) {
     require(pages.isNotEmpty()) { "Onboarding requires at least one page." }
     require(currentPageIndex in pages.indices) {
@@ -98,6 +102,7 @@ internal fun OnboardingScreenContent(
                 OnboardingPrimaryButton(
                     label = "다음으로",
                     onClick = onNext,
+                    enabled = currentPageIndex != pages.lastIndex || completionEnabled,
                 )
             }
         }

@@ -9,13 +9,24 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
+import android.util.Log
+import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 class AlarmMissionCoordinator(context: Context) {
     private val applicationContext = context.applicationContext
     private val store = ActiveAlarmMissionStore(applicationContext)
     private val alarmManager = applicationContext.getSystemService(AlarmManager::class.java)
+    private val outcomeRecorder by lazy { MissionOutcomeRecorder(applicationContext) }
 
     fun startFrom(ringingIntent: Intent): ActiveAlarmMission? =
         synchronized(AlarmMissionSideEffectLock) {
@@ -41,6 +52,7 @@ class AlarmMissionCoordinator(context: Context) {
                 }
             }
             AlarmMissionPhase.SuccessPendingNotification,
+            AlarmMissionPhase.FailurePendingPersistence,
             AlarmMissionPhase.RetryPendingRing,
             -> schedulePendingActionRetry(storedMission.mission)
         }
@@ -54,6 +66,7 @@ class AlarmMissionCoordinator(context: Context) {
         when (storedMission.phase) {
             AlarmMissionPhase.Tracking -> scheduleDeadline(storedMission.mission)
             AlarmMissionPhase.SuccessPendingNotification,
+            AlarmMissionPhase.FailurePendingPersistence,
             AlarmMissionPhase.RetryPendingRing,
             -> schedulePendingActionRetry(storedMission.mission)
         }
@@ -70,6 +83,7 @@ class AlarmMissionCoordinator(context: Context) {
         when (storedMission.phase) {
             AlarmMissionPhase.Tracking -> scheduleDeadline(storedMission.mission)
             AlarmMissionPhase.SuccessPendingNotification,
+            AlarmMissionPhase.FailurePendingPersistence,
             AlarmMissionPhase.RetryPendingRing,
             -> schedulePendingActionRetry(storedMission.mission)
         }
@@ -77,39 +91,56 @@ class AlarmMissionCoordinator(context: Context) {
 
     fun forceEnd(expectedOccurrenceId: String): Boolean =
         synchronized(AlarmMissionSideEffectLock) {
-            val clearedMission = store.clearMissionForForceEnd(expectedOccurrenceId)
+            val pendingMission = store.beginTerminalTransition(
+                occurrenceId = expectedOccurrenceId,
+                phase = AlarmMissionPhase.FailurePendingPersistence,
+                terminalCompletedAt = currentMissionCompletedDate(),
+            )
                 ?: return@synchronized false
-            cancelDeadline(clearedMission.mission)
-            requestTrackingStop(clearedMission.mission)
-            clearedMission.isPersistenceConfirmed ||
-                store.confirmMissionCleared(expectedOccurrenceId)
+            schedulePendingActionRetry(pendingMission)
+            requestTrackingStop(pendingMission)
+            deliverPendingAction(pendingMission.occurrenceId)
+            true
         }
 
     internal fun prepareDeadlineLocationCheck(
         expectedOccurrenceId: String?,
-    ): ActiveAlarmMission? {
-        val storedMission = store.readStoredMission() ?: return null
+        onPendingOutcomeFinished: () -> Unit,
+    ): DeadlineLocationPreparation {
+        val storedMission = store.readStoredMission()
+            ?: return DeadlineLocationPreparation.Completed
         if (
             expectedOccurrenceId != null &&
             storedMission.mission.occurrenceId != expectedOccurrenceId
         ) {
-            return null
+            return DeadlineLocationPreparation.Completed
         }
 
         return when (storedMission.phase) {
             AlarmMissionPhase.SuccessPendingNotification,
-            AlarmMissionPhase.RetryPendingRing,
+            AlarmMissionPhase.FailurePendingPersistence,
             -> {
+                val awaitsOutcome = deliverPendingAction(
+                    expectedOccurrenceId = storedMission.mission.occurrenceId,
+                    onOutcomeFinished = onPendingOutcomeFinished,
+                )
+                if (awaitsOutcome) {
+                    DeadlineLocationPreparation.AwaitingOutcome
+                } else {
+                    DeadlineLocationPreparation.Completed
+                }
+            }
+            AlarmMissionPhase.RetryPendingRing -> {
                 deliverPendingAction(storedMission.mission.occurrenceId)
-                null
+                DeadlineLocationPreparation.Completed
             }
             AlarmMissionPhase.Tracking -> {
                 if (storedMission.mission.isExpiredAt(System.currentTimeMillis())) {
                     scheduleDeadlineCheckRecovery(storedMission.mission)
-                    storedMission.mission
+                    DeadlineLocationPreparation.CheckLocation(storedMission.mission)
                 } else {
                     scheduleDeadline(storedMission.mission)
-                    null
+                    DeadlineLocationPreparation.Completed
                 }
             }
         }
@@ -118,25 +149,32 @@ class AlarmMissionCoordinator(context: Context) {
     internal fun resolveDeadline(
         expectedOccurrenceId: String?,
         currentLocation: ActiveAlarmMissionLocation?,
-    ) {
-        val storedMission = store.readStoredMission() ?: return
+        onPendingOutcomeFinished: (() -> Unit)? = null,
+    ): Boolean {
+        val storedMission = store.readStoredMission() ?: return false
         if (
             expectedOccurrenceId != null &&
             storedMission.mission.occurrenceId != expectedOccurrenceId
         ) {
-            return
+            return false
         }
         if (storedMission.phase != AlarmMissionPhase.Tracking) {
-            deliverPendingAction(storedMission.mission.occurrenceId)
-            return
+            return deliverPendingAction(
+                expectedOccurrenceId = storedMission.mission.occurrenceId,
+                onOutcomeFinished = onPendingOutcomeFinished,
+            )
         }
 
         val mission = storedMission.mission
         if (!mission.isExpiredAt(System.currentTimeMillis())) {
             scheduleDeadline(mission)
-            return
+            return false
         }
-        currentLocation?.let { location ->
+        val cachedLocation = store.readLastLocation(mission.occurrenceId)
+        val deadlineLocation = mission.selectBestDeadlineLocation(
+            listOfNotNull(cachedLocation, currentLocation),
+        )
+        deadlineLocation?.let { location ->
             store.updateLastLocation(
                 occurrenceId = mission.occurrenceId,
                 latitude = location.latitude,
@@ -145,16 +183,6 @@ class AlarmMissionCoordinator(context: Context) {
                 capturedAtEpochMillis = location.capturedAtEpochMillis,
             )
         }
-        val deadlineLocation = currentLocation
-            ?.takeIf { location ->
-                mission.isUsableDeadlineLocation(
-                    latitude = location.latitude,
-                    longitude = location.longitude,
-                    accuracyMeters = location.accuracyMeters,
-                    capturedAtEpochMillis = location.capturedAtEpochMillis,
-                )
-            }
-            ?: store.readLastLocation(mission.occurrenceId)
         val reachedByDeadline = deadlineLocation != null &&
             mission.hasReachedDestinationByDeadline(
                 latitude = deadlineLocation.latitude,
@@ -163,9 +191,10 @@ class AlarmMissionCoordinator(context: Context) {
                 capturedAtEpochMillis = deadlineLocation.capturedAtEpochMillis,
             )
         if (reachedByDeadline) {
-            completeSuccessfully(mission)
+            return completeSuccessfully(mission, onPendingOutcomeFinished)
         } else {
             ringAgain(mission)
+            return false
         }
     }
 
@@ -205,8 +234,11 @@ class AlarmMissionCoordinator(context: Context) {
             occurrenceId = storedMission.mission.occurrenceId,
             phase = storedMission.phase,
         )
-        if (completion.isPersistenceConfirmed) {
-            cancelDeadline(storedMission.mission)
+        when (completion) {
+            TerminalTransitionCompletion.Persisted -> cancelDeadline(storedMission.mission)
+            TerminalTransitionCompletion.AcceptedWithoutConfirmedPersistence ->
+                schedulePendingActionRetry(storedMission.mission)
+            TerminalTransitionCompletion.Rejected -> Unit
         }
         if (completion.wasAccepted) {
             requestTrackingStop(storedMission.mission)
@@ -362,24 +394,38 @@ class AlarmMissionCoordinator(context: Context) {
             flags,
         )
 
-    private fun startTracking(mission: ActiveAlarmMission) {
-        runCatching {
+    private fun startTracking(mission: ActiveAlarmMission): Boolean {
+        if (!applicationContext.hasMissionFineLocationPermission()) {
+            Log.w(MissionTrackingLogTag, "미션 위치 추적을 시작할 정확한 위치 권한이 없습니다.")
+            return false
+        }
+        if (!applicationContext.isMissionLocationEnabled()) {
+            Log.w(MissionTrackingLogTag, "위치 서비스가 꺼져 있어 미션 위치 추적을 시작하지 못했습니다.")
+            return false
+        }
+        return runCatching {
             applicationContext.startForegroundService(
                 AlarmMissionTrackingService.startIntent(
                     context = applicationContext,
                     occurrenceId = mission.occurrenceId,
                 ),
             )
-        }
+        }.onFailure { error ->
+            Log.e(MissionTrackingLogTag, "미션 위치 추적 서비스를 시작하지 못했습니다.", error)
+        }.isSuccess
     }
 
-    private fun completeSuccessfully(mission: ActiveAlarmMission) {
+    private fun completeSuccessfully(
+        mission: ActiveAlarmMission,
+        onOutcomeFinished: (() -> Unit)? = null,
+    ): Boolean {
         val pendingMission = store.beginTerminalTransition(
             occurrenceId = mission.occurrenceId,
             phase = AlarmMissionPhase.SuccessPendingNotification,
-        ) ?: return
+            terminalCompletedAt = currentMissionCompletedDate(),
+        ) ?: return false
         schedulePendingActionRetry(pendingMission)
-        deliverPendingAction(pendingMission.occurrenceId)
+        return deliverPendingAction(pendingMission.occurrenceId, onOutcomeFinished)
     }
 
     private fun ringAgain(mission: ActiveAlarmMission) {
@@ -391,31 +437,99 @@ class AlarmMissionCoordinator(context: Context) {
         deliverPendingAction(pendingMission.occurrenceId)
     }
 
-    private fun deliverPendingAction(expectedOccurrenceId: String) {
-        synchronized(AlarmMissionSideEffectLock) {
-            val storedMission = store.readStoredMission()
+    private fun deliverPendingAction(
+        expectedOccurrenceId: String,
+        onOutcomeFinished: (() -> Unit)? = null,
+    ): Boolean {
+        val storedMission = synchronized(AlarmMissionSideEffectLock) {
+            store.readStoredMission()
                 ?.takeIf { current ->
                     current.mission.occurrenceId == expectedOccurrenceId
                 }
-                ?: return
-            when (storedMission.phase) {
-                AlarmMissionPhase.Tracking -> return
-                AlarmMissionPhase.SuccessPendingNotification -> {
-                    val delivered = runCatching {
-                        showArrivalNotification(storedMission.mission)
-                    }.isSuccess
-                    if (!delivered) {
-                        schedulePendingActionRetry(storedMission.mission)
-                        return
-                    }
-                    completePendingAction(storedMission)
-                }
-                AlarmMissionPhase.RetryPendingRing -> {
-                    if (!startRetryAlarm(storedMission.mission)) {
-                        schedulePendingActionRetry(storedMission.mission)
-                    }
-                }
+        } ?: return false
+        return when (storedMission.phase) {
+            AlarmMissionPhase.Tracking -> false
+            AlarmMissionPhase.SuccessPendingNotification,
+            AlarmMissionPhase.FailurePendingPersistence,
+            -> {
+                persistOutcomeThenComplete(storedMission, onOutcomeFinished)
+                true
             }
+            AlarmMissionPhase.RetryPendingRing -> synchronized(AlarmMissionSideEffectLock) {
+                if (!startRetryAlarm(storedMission.mission)) {
+                    schedulePendingActionRetry(storedMission.mission)
+                }
+                false
+            }
+        }
+    }
+
+    private fun persistOutcomeThenComplete(
+        storedMission: StoredAlarmMission,
+        onOutcomeFinished: (() -> Unit)?,
+    ) {
+        val occurrenceId = storedMission.mission.occurrenceId
+        synchronized(AlarmMissionSideEffectLock) {
+            PendingOutcomeCallbacks[occurrenceId]?.let { callbacks ->
+                onOutcomeFinished?.let(callbacks::add)
+                return
+            }
+            PendingOutcomeCallbacks[occurrenceId] = buildList {
+                onOutcomeFinished?.let(::add)
+            }.toMutableList()
+        }
+        MissionOutcomePersistenceScope.launch {
+            try {
+                withTimeout(MissionOutcomePersistenceTimeoutMillis) {
+                    outcomeRecorder.record(storedMission)
+                }
+                synchronized(AlarmMissionSideEffectLock) {
+                    val currentMission = store.readStoredMission()
+                        ?.takeIf { current ->
+                            current.mission.occurrenceId == occurrenceId &&
+                                current.phase == storedMission.phase
+                        }
+                        ?: return@synchronized
+                    if (currentMission.phase == AlarmMissionPhase.SuccessPendingNotification) {
+                        runCatching {
+                            showArrivalNotification(currentMission.mission)
+                        }.onFailure { error ->
+                            Log.w(
+                                MissionOutcomeLogTag,
+                                "도착 알림을 표시하지 못했습니다.",
+                                error,
+                            )
+                        }
+                    }
+                    completePendingAction(currentMission)
+                }
+            } catch (error: CancellationException) {
+                scheduleOutcomeRetryIfStillPending(storedMission)
+                throw error
+            } catch (error: Exception) {
+                Log.e(
+                    MissionOutcomeLogTag,
+                    "미션 결과 처리를 완료하지 못했습니다.",
+                    error,
+                )
+                scheduleOutcomeRetryIfStillPending(storedMission)
+            } finally {
+                val callbacks = synchronized(AlarmMissionSideEffectLock) {
+                    PendingOutcomeCallbacks.remove(occurrenceId).orEmpty()
+                }
+                callbacks.forEach { callback -> runCatching(callback) }
+            }
+        }
+    }
+
+    private fun scheduleOutcomeRetryIfStillPending(storedMission: StoredAlarmMission) {
+        synchronized(AlarmMissionSideEffectLock) {
+            store.readStoredMission()
+                ?.takeIf { current ->
+                    current.mission.occurrenceId == storedMission.mission.occurrenceId &&
+                        current.phase == storedMission.phase
+                }
+                ?.let { current -> schedulePendingActionRetry(current.mission) }
         }
     }
 
@@ -424,8 +538,11 @@ class AlarmMissionCoordinator(context: Context) {
             occurrenceId = storedMission.mission.occurrenceId,
             phase = storedMission.phase,
         )
-        if (completion.isPersistenceConfirmed) {
-            cancelDeadline(storedMission.mission)
+        when (completion) {
+            TerminalTransitionCompletion.Persisted -> cancelDeadline(storedMission.mission)
+            TerminalTransitionCompletion.AcceptedWithoutConfirmedPersistence ->
+                schedulePendingActionRetry(storedMission.mission)
+            TerminalTransitionCompletion.Rejected -> Unit
         }
         if (completion.wasAccepted) {
             requestTrackingStop(storedMission.mission)
@@ -548,6 +665,8 @@ class AlarmMissionDeadlineReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pendingResult = goAsync()
         val isFinished = AtomicBoolean(false)
+        val finishHandler = Handler(Looper.getMainLooper())
+        var finishTimeout: Runnable? = null
         val wakeLock = runCatching {
             context.getSystemService(PowerManager::class.java)
                 .newWakeLock(
@@ -560,46 +679,64 @@ class AlarmMissionDeadlineReceiver : BroadcastReceiver() {
         }.getOrNull()
         fun finish() {
             if (isFinished.compareAndSet(false, true)) {
+                finishTimeout?.let(finishHandler::removeCallbacks)
                 runCatching {
                     wakeLock?.takeIf(PowerManager.WakeLock::isHeld)?.release()
                 }
                 pendingResult.finish()
             }
         }
+        finishTimeout = Runnable(::finish)
+        finishHandler.postDelayed(
+            requireNotNull(finishTimeout),
+            DeadlineReceiverExecutionTimeoutMillis,
+        )
 
         val applicationContext = context.applicationContext
         val expectedOccurrenceId = intent.getStringExtra(
             AlarmRuntime.EXTRA_OCCURRENCE_ID,
         )
         val coordinator = AlarmMissionCoordinator(applicationContext)
-        val mission = runCatching {
-            coordinator.prepareDeadlineLocationCheck(expectedOccurrenceId)
+        val preparation = runCatching {
+            coordinator.prepareDeadlineLocationCheck(expectedOccurrenceId, ::finish)
         }.getOrNull()
-        if (mission == null) {
+        if (preparation == null) {
             finish()
             return
+        }
+        val mission = when (preparation) {
+            DeadlineLocationPreparation.AwaitingOutcome -> return
+            DeadlineLocationPreparation.Completed -> {
+                finish()
+                return
+            }
+            is DeadlineLocationPreparation.CheckLocation -> preparation.mission
         }
 
         runCatching {
             AlarmMissionDeadlineLocationVerifier(applicationContext)
                 .requestCurrentLocation(mission) { location ->
                     try {
-                        coordinator.resolveDeadline(
+                        val awaitsOutcome = coordinator.resolveDeadline(
                             expectedOccurrenceId = expectedOccurrenceId,
                             currentLocation = location,
+                            onPendingOutcomeFinished = ::finish,
                         )
-                    } finally {
+                        if (!awaitsOutcome) finish()
+                    } catch (_: Exception) {
                         finish()
                     }
                 }
         }.onFailure {
             if (!isFinished.get()) {
                 try {
-                    coordinator.resolveDeadline(
+                    val awaitsOutcome = coordinator.resolveDeadline(
                         expectedOccurrenceId = expectedOccurrenceId,
                         currentLocation = null,
+                        onPendingOutcomeFinished = ::finish,
                     )
-                } finally {
+                    if (!awaitsOutcome) finish()
+                } catch (_: Exception) {
                     finish()
                 }
             }
@@ -607,5 +744,21 @@ class AlarmMissionDeadlineReceiver : BroadcastReceiver() {
     }
 }
 
+internal sealed interface DeadlineLocationPreparation {
+    data class CheckLocation(val mission: ActiveAlarmMission) : DeadlineLocationPreparation
+
+    data object AwaitingOutcome : DeadlineLocationPreparation
+
+    data object Completed : DeadlineLocationPreparation
+}
+
 private val AlarmMissionSideEffectLock = Any()
-private const val DeadlineReceiverWakeLockTimeoutMillis = 7_000L
+private val MissionOutcomePersistenceScope =
+    CoroutineScope(SupervisorJob() + Dispatchers.IO)
+private val PendingOutcomeCallbacks = mutableMapOf<String, MutableList<() -> Unit>>()
+private fun currentMissionCompletedDate(): String = LocalDate.now().toString()
+private const val MissionOutcomeLogTag = "RingoutMissionHistory"
+private const val MissionTrackingLogTag = "RingoutMissionLocation"
+private const val MissionOutcomePersistenceTimeoutMillis = 2_500L
+private const val DeadlineReceiverWakeLockTimeoutMillis = 9_000L
+private const val DeadlineReceiverExecutionTimeoutMillis = 8_500L

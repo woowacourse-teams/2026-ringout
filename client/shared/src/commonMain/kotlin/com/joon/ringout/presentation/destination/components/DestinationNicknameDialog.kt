@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 
-internal const val DestinationNicknameMaxLength = 10
+internal const val DestinationNicknameMaxLength = 12
 
 private val NicknameDialogScrim = Color.Black.copy(alpha = 0.5f)
 private val NicknameDialogSurface = Color.White
@@ -52,11 +52,14 @@ private val NicknameDialogShape = RoundedCornerShape(24.dp)
 @Composable
 internal fun DestinationNicknameDialog(
     address: String,
+    initialNickname: String = "",
     onDismissRequest: () -> Unit,
     onSave: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var nickname by remember { mutableStateOf("") }
+    var nickname by remember(initialNickname) {
+        mutableStateOf(limitDestinationNicknameInput(initialNickname))
+    }
     val normalizedNickname = normalizeDestinationNickname(nickname)
     val scrimInteractionSource = remember { MutableInteractionSource() }
     val cardInteractionSource = remember { MutableInteractionSource() }
@@ -240,6 +243,25 @@ private fun DestinationNicknameDialogPreview() {
         ) {
             DestinationNicknameDialog(
                 address = "서울 서초구 반포동 748-10",
+                onDismissRequest = {},
+                onSave = {},
+            )
+        }
+    }
+}
+
+@Preview(widthDp = 402, heightDp = 941)
+@Composable
+private fun DestinationNicknameEditDialogPreview() {
+    RingoutTheme {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFD8DDD8)),
+        ) {
+            DestinationNicknameDialog(
+                address = "서울 서초구 반포동 748-10",
+                initialNickname = "헬스장",
                 onDismissRequest = {},
                 onSave = {},
             )

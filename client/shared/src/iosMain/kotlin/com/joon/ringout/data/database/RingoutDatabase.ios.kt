@@ -13,6 +13,12 @@ fun getRingoutDatabaseBuilder(): RoomDatabase.Builder<RingoutDatabase> {
     return Room.databaseBuilder<RingoutDatabase>(name = databasePath)
 }
 
+private val ringoutDatabaseInstance: RingoutDatabase by lazy {
+    buildRingoutDatabase(getRingoutDatabaseBuilder())
+}
+
+internal fun getRingoutDatabase(): RingoutDatabase = ringoutDatabaseInstance
+
 private fun documentDirectory(): String {
     val directory = NSFileManager.defaultManager.URLForDirectory(
         directory = NSDocumentDirectory,

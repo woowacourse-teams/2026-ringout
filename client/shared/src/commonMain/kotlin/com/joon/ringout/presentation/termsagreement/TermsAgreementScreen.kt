@@ -34,9 +34,10 @@ import com.joon.ringout.presentation.termsagreement.component.TermsStartButton
 
 @Composable
 fun TermsAgreementScreen(
-    onStart: () -> Unit,
+    onStart: (Set<TermId>) -> Unit,
     onTermDetailClick: (TermId) -> Unit,
     modifier: Modifier = Modifier,
+    isSaving: Boolean = false,
     viewModel: TermsAgreementViewModel = viewModel { TermsAgreementViewModel() },
 ) {
     TermsAgreementScreenContent(
@@ -46,9 +47,14 @@ fun TermsAgreementScreen(
         onTermDetailClick = onTermDetailClick,
         onStartClick = {
             if (viewModel.requestStart() == TermsAgreementAdvance.Complete) {
-                onStart()
+                onStart(
+                    viewModel.uiState.terms
+                        .filter(TermAgreementItem::isAgreed)
+                        .mapTo(mutableSetOf(), TermAgreementItem::id),
+                )
             }
         },
+        startEnabled = !isSaving,
         modifier = modifier,
     )
 }
@@ -61,6 +67,7 @@ internal fun TermsAgreementScreenContent(
     onTermDetailClick: (TermId) -> Unit,
     onStartClick: () -> Unit,
     modifier: Modifier = Modifier,
+    startEnabled: Boolean = true,
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -122,7 +129,7 @@ internal fun TermsAgreementScreenContent(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 TermsStartButton(
-                    enabled = uiState.canStart,
+                    enabled = uiState.canStart && startEnabled,
                     onClick = onStartClick,
                     label = "시작하기",
                 )

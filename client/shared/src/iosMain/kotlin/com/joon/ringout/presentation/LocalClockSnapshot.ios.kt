@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.home
+package com.joon.ringout.presentation
 
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateFormatter

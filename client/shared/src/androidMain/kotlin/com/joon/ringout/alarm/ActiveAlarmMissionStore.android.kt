@@ -72,6 +72,8 @@ class ActiveAlarmMissionStore(context: Context) {
                     }
                 }
                 ?: AlarmMissionPhase.Tracking,
+            terminalCompletedAt = preferences.getString(KeyTerminalCompletedAt, null)
+                ?.takeIf(String::isNotBlank),
         )
     }
 
@@ -123,18 +125,35 @@ class ActiveAlarmMissionStore(context: Context) {
     internal fun beginTerminalTransition(
         occurrenceId: String,
         phase: AlarmMissionPhase,
+        terminalCompletedAt: String? = null,
     ): ActiveAlarmMission? = synchronized(ActiveAlarmMissionStoreLock) {
         if (phase == AlarmMissionPhase.Tracking) return@synchronized null
+        require(
+            !phase.recordsMissionResult || !terminalCompletedAt.isNullOrBlank(),
+        ) { "A completed date is required for a mission result." }
         val storedMission = readStoredMissionLocked()
             ?.takeIf { current ->
                 current.mission.occurrenceId == occurrenceId &&
                     current.phase == AlarmMissionPhase.Tracking
             }
             ?: return@synchronized null
-        val committed = preferences.edit()
+        val editor = preferences.edit()
             .putString(KeyPhase, phase.storageValue)
+        if (terminalCompletedAt == null) {
+            editor.remove(KeyTerminalCompletedAt)
+        } else {
+            editor.putString(KeyTerminalCompletedAt, terminalCompletedAt)
+        }
+        val committed = editor
             .commit()
-        storedMission.mission.takeIf { committed }
+        if (!committed) {
+            preferences.edit()
+                .putString(KeyPhase, AlarmMissionPhase.Tracking.storageValue)
+                .remove(KeyTerminalCompletedAt)
+                .apply()
+            return@synchronized null
+        }
+        storedMission.mission
     }
 
     internal fun completeTerminalTransition(
@@ -153,10 +172,39 @@ class ActiveAlarmMissionStore(context: Context) {
             TerminalTransitionCompletion.Persisted
         } else {
             // SharedPreferences reflects the edit in memory before disk persistence.
-            // The caller may proceed with an already-started side effect, but must
-            // retain its recovery alarm until persistence has been confirmed.
+            // Restore the pending state in memory so the retained recovery alarm can
+            // retry the cleanup without waiting for a process restart.
+            restoreStoredMissionLocked(storedMission)
             TerminalTransitionCompletion.AcceptedWithoutConfirmedPersistence
         }
+    }
+
+    private fun restoreStoredMissionLocked(storedMission: StoredAlarmMission) {
+        val mission = storedMission.mission
+        preferences.edit()
+            .clear()
+            .putString(KeyPhase, storedMission.phase.storageValue)
+            .putString(KeyAlarmId, mission.alarmId)
+            .putString(KeyOccurrenceId, mission.occurrenceId)
+            .putInt(KeyRetryAttempt, mission.retryAttempt)
+            .putString(KeyAlarmTime, mission.alarmTime)
+            .putString(KeyDestinationName, mission.destinationName)
+            .putInt(KeyLimitMinutes, mission.limitMinutes)
+            .putLong(KeyStartedAtEpochMillis, mission.startedAtEpochMillis)
+            .putLong(KeyExpiresAtEpochMillis, mission.expiresAtEpochMillis)
+            .putDouble(KeyDestinationLatitude, mission.destinationLatitude)
+            .putDouble(KeyDestinationLongitude, mission.destinationLongitude)
+            .putDouble(KeyArrivalRadiusMeters, mission.arrivalRadiusMeters)
+            .putBoolean(KeyHasAlarmSoundUri, mission.hasAlarmSoundUri)
+            .apply {
+                storedMission.terminalCompletedAt?.let { completedAt ->
+                    putString(KeyTerminalCompletedAt, completedAt)
+                }
+                mission.alarmSoundUri?.let { soundUri ->
+                    putString(KeyAlarmSoundUri, soundUri)
+                }
+            }
+            .apply()
     }
 
     internal fun saveFrom(intent: Intent): ActiveAlarmMission? =
@@ -313,6 +361,7 @@ class ActiveAlarmMissionStore(context: Context) {
     private companion object {
         const val PreferencesName = "ringout_active_alarm_mission"
         const val KeyPhase = "phase"
+        const val KeyTerminalCompletedAt = "terminal_completed_at"
         const val KeyAlarmId = "alarm_id"
         const val KeyOccurrenceId = "occurrence_id"
         const val KeyRetryAttempt = "retry_attempt"
@@ -341,12 +390,18 @@ internal enum class AlarmMissionPhase(
 ) {
     Tracking("tracking"),
     SuccessPendingNotification("success_pending_notification"),
+    FailurePendingPersistence("failure_pending_persistence"),
     RetryPendingRing("retry_pending_ring"),
+    ;
+
+    val recordsMissionResult: Boolean
+        get() = this == SuccessPendingNotification || this == FailurePendingPersistence
 }
 
 internal data class StoredAlarmMission(
     val mission: ActiveAlarmMission,
     val phase: AlarmMissionPhase,
+    val terminalCompletedAt: String?,
 )
 
 internal data class ForcedMissionClear(
@@ -362,9 +417,6 @@ internal enum class TerminalTransitionCompletion {
 
     val wasAccepted: Boolean
         get() = this != Rejected
-
-    val isPersistenceConfirmed: Boolean
-        get() = this == Persisted
 }
 
 private fun SharedPreferences.Editor.putDouble(

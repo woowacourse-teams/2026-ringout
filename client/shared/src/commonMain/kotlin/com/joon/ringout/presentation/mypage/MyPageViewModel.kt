@@ -55,9 +55,12 @@ class MyPageViewModel(
         )
         loadJob = viewModelScope.launch {
             runCatching { getMissionSuccessDates(month) }
-                .onSuccess { dates ->
+                .onSuccess { successDates ->
                     if (currentRequestId == requestId && uiState.selectedMonth.value == month) {
-                        uiState = uiState.copy(isLoading = false, successDates = dates)
+                        uiState = uiState.copy(
+                            isLoading = false,
+                            successDates = successDates,
+                        )
                     }
                 }
                 .onFailure { error ->

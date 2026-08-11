@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.home
+package com.joon.ringout.presentation
 
 import java.time.LocalDateTime
 

@@ -44,6 +44,18 @@ class OnboardingStateTest {
     }
 
     @Test
+    fun allowsCompletionToBeRetriedAfterPersistenceFailure() {
+        val viewModel = OnboardingViewModel()
+        repeat(3) { viewModel.requestNext(pageCount = 4) }
+        assertEquals(OnboardingAdvance.Complete, viewModel.requestNext(pageCount = 4))
+
+        assertEquals(
+            OnboardingAdvance.Complete,
+            viewModel.requestNext(pageCount = 4, completionRetryToken = 1),
+        )
+    }
+
+    @Test
     fun completesSinglePageOnFirstRequest() {
         val viewModel = OnboardingViewModel()
 

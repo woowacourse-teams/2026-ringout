@@ -19,7 +19,7 @@ class ActiveAlarmMissionDestinationTest {
     fun acceptsLocationInsideDefaultDestinationRadius() {
         assertTrue(
             mission.hasReachedDestination(
-                latitude = 37.56654,
+                latitude = 37.5667,
                 longitude = 126.9780,
                 accuracyMeters = 5f,
             ),
@@ -30,7 +30,7 @@ class ActiveAlarmMissionDestinationTest {
     fun rejectsLocationOutsideDefaultDestinationRadius() {
         assertFalse(
             mission.hasReachedDestination(
-                latitude = 37.5666,
+                latitude = 37.5668,
                 longitude = 126.9780,
                 accuracyMeters = 5f,
             ),
@@ -38,12 +38,23 @@ class ActiveAlarmMissionDestinationTest {
     }
 
     @Test
-    fun rejectsLocationWithInsufficientAccuracy() {
+    fun acceptsLocationAccuracyIndependentlyFromArrivalRadius() {
+        assertTrue(
+            mission.hasReachedDestination(
+                latitude = 37.5665,
+                longitude = 126.9780,
+                accuracyMeters = MaximumAcceptedLocationAccuracyMeters.toFloat(),
+            ),
+        )
+    }
+
+    @Test
+    fun rejectsLocationAboveMaximumAcceptedAccuracy() {
         assertFalse(
             mission.hasReachedDestination(
                 latitude = 37.5665,
                 longitude = 126.9780,
-                accuracyMeters = 11f,
+                accuracyMeters = MaximumAcceptedLocationAccuracyMeters.toFloat() + 1f,
             ),
         )
     }
@@ -87,13 +98,14 @@ class ActiveAlarmMissionDestinationTest {
     }
 
     @Test
-    fun rejectsArrivalEvidenceCapturedAfterDeadline() {
-        assertFalse(
+    fun acceptsFreshFixDuringTechnicalDeadlineVerificationGracePeriod() {
+        assertTrue(
             mission.hasReachedDestinationByDeadline(
                 latitude = 37.5665,
                 longitude = 126.9780,
                 accuracyMeters = 10f,
-                capturedAtEpochMillis = 600_001L,
+                capturedAtEpochMillis =
+                    600_000L + DeadlineLocationGracePeriodMillis,
             ),
         )
     }
@@ -109,5 +121,56 @@ class ActiveAlarmMissionDestinationTest {
                     600_000L + DeadlineLocationAcquisitionTimeoutMillis + 1L,
             ),
         )
+    }
+
+    @Test
+    fun prefersCachedArrivalEvidenceOverNewerLocationOutsideDestination() {
+        val cachedArrival = ActiveAlarmMissionLocation(
+            latitude = 37.5665,
+            longitude = 126.9780,
+            accuracyMeters = 40f,
+            capturedAtEpochMillis = 599_000L,
+        )
+        val verifierLocationOutsideDestination = ActiveAlarmMissionLocation(
+            latitude = 37.5670,
+            longitude = 126.9780,
+            accuracyMeters = 5f,
+            capturedAtEpochMillis = 600_500L,
+        )
+
+        val selected = mission.selectBestDeadlineLocation(
+            listOf(cachedArrival, verifierLocationOutsideDestination),
+        )
+
+        assertTrue(selected === cachedArrival)
+    }
+
+    @Test
+    fun selectsMoreAccurateArrivalEvidenceThenUsesNewestAsTieBreaker() {
+        val olderAccurateArrival = ActiveAlarmMissionLocation(
+            latitude = 37.5665,
+            longitude = 126.9780,
+            accuracyMeters = 5f,
+            capturedAtEpochMillis = 598_000L,
+        )
+        val newerLessAccurateArrival = ActiveAlarmMissionLocation(
+            latitude = 37.5665,
+            longitude = 126.9780,
+            accuracyMeters = 20f,
+            capturedAtEpochMillis = 600_000L,
+        )
+        val newestEquallyAccurateArrival = olderAccurateArrival.copy(
+            capturedAtEpochMillis = 600_500L,
+        )
+
+        val selected = mission.selectBestDeadlineLocation(
+            listOf(
+                olderAccurateArrival,
+                newerLessAccurateArrival,
+                newestEquallyAccurateArrival,
+            ),
+        )
+
+        assertTrue(selected === newestEquallyAccurateArrival)
     }
 }

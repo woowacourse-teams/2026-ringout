@@ -22,11 +22,20 @@ class OnboardingViewModel : ViewModel() {
         private set
 
     private var hasCompleted = false
+    private var lastRetryToken = 0
 
-    fun requestNext(pageCount: Int): OnboardingAdvance {
+    fun requestNext(
+        pageCount: Int,
+        completionRetryToken: Int = 0,
+    ): OnboardingAdvance {
         require(pageCount > 0) { "Onboarding requires at least one page." }
         require(uiState.currentPageIndex in 0 until pageCount) {
             "Current page must be within the supplied page count."
+        }
+
+        if (completionRetryToken != lastRetryToken) {
+            lastRetryToken = completionRetryToken
+            hasCompleted = false
         }
 
         if (hasCompleted) {
