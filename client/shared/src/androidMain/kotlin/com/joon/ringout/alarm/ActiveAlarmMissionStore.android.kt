@@ -83,6 +83,45 @@ class ActiveAlarmMissionStore(context: Context) {
         }
     }
 
+    internal fun clearMissionForForceEnd(
+        expectedOccurrenceId: String,
+    ): ForcedMissionClear? = synchronized(ActiveAlarmMissionStoreLock) {
+        val storedMission = readStoredMissionLocked()
+            ?.takeIf { current ->
+                current.mission.occurrenceId == expectedOccurrenceId
+            }
+            ?: return@synchronized null
+        val persistenceConfirmed =
+            preferences.edit().clear().commit() ||
+                applicationContext.deleteSharedPreferences(PreferencesName)
+        if (!persistenceConfirmed) {
+            preferences.edit().clear().apply()
+        }
+        ForcedMissionClear(
+            mission = storedMission.mission,
+            isPersistenceConfirmed = persistenceConfirmed,
+        )
+    }
+
+    internal fun confirmMissionCleared(
+        expectedOccurrenceId: String,
+    ): Boolean = synchronized(ActiveAlarmMissionStoreLock) {
+        val currentMission = readStoredMissionLocked()
+        if (
+            currentMission != null &&
+            currentMission.mission.occurrenceId != expectedOccurrenceId
+        ) {
+            return@synchronized true
+        }
+        val persistenceConfirmed =
+            preferences.edit().clear().commit() ||
+                applicationContext.deleteSharedPreferences(PreferencesName)
+        if (!persistenceConfirmed) {
+            preferences.edit().clear().apply()
+        }
+        persistenceConfirmed
+    }
+
     internal fun beginTerminalTransition(
         occurrenceId: String,
         phase: AlarmMissionPhase,
@@ -363,6 +402,11 @@ internal data class StoredAlarmMission(
     val mission: ActiveAlarmMission,
     val phase: AlarmMissionPhase,
     val terminalCompletedAt: String?,
+)
+
+internal data class ForcedMissionClear(
+    val mission: ActiveAlarmMission,
+    val isPersistenceConfirmed: Boolean,
 )
 
 internal enum class TerminalTransitionCompletion {
