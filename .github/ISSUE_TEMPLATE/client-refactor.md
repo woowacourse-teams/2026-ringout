@@ -1,9 +1,10 @@
 ---
-name: "🧩 Client Refactor"
-about: "클라이언트 리팩터링 이슈를 등록합니다."
+name: "\U0001F9E9 Client Refactor"
+about: 클라이언트 리팩터링 이슈를 등록합니다.
 title: "[Refactor] "
-labels: "client"
-assignees: ""
+labels: client
+assignees: ''
+
 ---
 
 ## 🧩 리팩터링 대상
