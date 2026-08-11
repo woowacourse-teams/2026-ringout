@@ -60,6 +60,11 @@ fun App(
     activeAlarmMissionLocation: ActiveAlarmMissionLocation? = null,
     onActiveAlarmMissionExpired: () -> Unit = {},
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit = { _ -> },
+    onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit = { _ -> },
+    onActiveAlarmMissionForceEndHoldCancelled:
+        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
+    onActiveAlarmMissionForceEndHoldCompleted:
+        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
 ) {
     val preferencesDataStore = rememberAppPreferencesDataStore()
     val appPreferencesRepository = remember(preferencesDataStore) {
@@ -117,6 +122,12 @@ fun App(
                     activeAlarmMissionLocation = activeAlarmMissionLocation,
                     onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
                     onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
+                    onActiveAlarmMissionForceEndHoldStarted =
+                        onActiveAlarmMissionForceEndHoldStarted,
+                    onActiveAlarmMissionForceEndHoldCancelled =
+                        onActiveAlarmMissionForceEndHoldCancelled,
+                    onActiveAlarmMissionForceEndHoldCompleted =
+                        onActiveAlarmMissionForceEndHoldCompleted,
                     onThemeModeChange = appBootstrapViewModel::setThemeMode,
                 )
 
@@ -140,6 +151,11 @@ private fun RingoutAppContent(
     activeAlarmMissionLocation: ActiveAlarmMissionLocation?,
     onActiveAlarmMissionExpired: () -> Unit,
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
+    onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit,
+    onActiveAlarmMissionForceEndHoldCancelled:
+        (occurrenceId: String, holdDurationMillis: Long) -> Unit,
+    onActiveAlarmMissionForceEndHoldCompleted:
+        (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -346,6 +362,9 @@ private fun RingoutAppContent(
                 currentLocation = activeAlarmMissionLocation,
                 onBackClick = { screenName = AppScreen.Home.name },
                 onForceEndClick = onActiveAlarmMissionForceEnd,
+                onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
+                onForceEndHoldCancelled = onActiveAlarmMissionForceEndHoldCancelled,
+                onForceEndHoldCompleted = onActiveAlarmMissionForceEndHoldCompleted,
                 onExpired = onActiveAlarmMissionExpired,
             )
         }

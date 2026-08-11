@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,6 +43,11 @@ fun ActiveAlarmTrackingScreen(
     onForceEndClick: (occurrenceId: String) -> Unit,
     onExpired: () -> Unit,
     modifier: Modifier = Modifier,
+    onForceEndHoldStarted: (occurrenceId: String) -> Unit = {},
+    onForceEndHoldCancelled:
+        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
+    onForceEndHoldCompleted:
+        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
 ) {
     val remainingSeconds = rememberActiveAlarmMissionRemainingSeconds(
         mission = mission,
@@ -75,6 +81,7 @@ fun ActiveAlarmTrackingScreen(
     )
 
     ActiveAlarmTrackingLayout(
+        missionOccurrenceId = mission.occurrenceId,
         destinationName = mission.destinationName,
         countdown = formatAlarmMissionRemainingTime(remainingSeconds),
         mapUnavailableMessage = when {
@@ -83,8 +90,25 @@ fun ActiveAlarmTrackingScreen(
             else -> null
         },
         onBackClick = onBackClick,
-        onForceEndHoldComplete = {
+        onForceEndHoldStarted = {
             if (!isForceEndRequested) {
+                onForceEndHoldStarted(mission.occurrenceId)
+            }
+        },
+        onForceEndHoldCancelled = { holdDurationMillis ->
+            if (!isForceEndRequested) {
+                onForceEndHoldCancelled(
+                    mission.occurrenceId,
+                    holdDurationMillis,
+                )
+            }
+        },
+        onForceEndHoldComplete = { holdDurationMillis ->
+            if (!isForceEndRequested) {
+                onForceEndHoldCompleted(
+                    mission.occurrenceId,
+                    holdDurationMillis,
+                )
                 isForceEndDialogVisible = true
             }
         },
@@ -113,11 +137,14 @@ fun ActiveAlarmTrackingScreen(
 
 @Composable
 private fun ActiveAlarmTrackingLayout(
+    missionOccurrenceId: String,
     destinationName: String,
     countdown: String,
     mapUnavailableMessage: String?,
     onBackClick: () -> Unit,
-    onForceEndHoldComplete: () -> Unit,
+    onForceEndHoldStarted: () -> Unit,
+    onForceEndHoldCancelled: (holdDurationMillis: Long) -> Unit,
+    onForceEndHoldComplete: (holdDurationMillis: Long) -> Unit,
     isForceEndEnabled: Boolean,
     isForceEndDialogVisible: Boolean,
     onForceEndConfirm: () -> Unit,
@@ -154,13 +181,17 @@ private fun ActiveAlarmTrackingLayout(
                     .padding(start = 10.dp, top = 18.dp, end = 11.dp),
             )
 
-            ActiveAlarmTrackingCard(
-                destinationName = destinationName,
-                countdown = countdown,
-                onForceEndHoldComplete = onForceEndHoldComplete,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                isForceEndEnabled = isForceEndEnabled,
-            )
+            key(missionOccurrenceId) {
+                ActiveAlarmTrackingCard(
+                    destinationName = destinationName,
+                    countdown = countdown,
+                    onForceEndHoldStarted = onForceEndHoldStarted,
+                    onForceEndHoldCancelled = onForceEndHoldCancelled,
+                    onForceEndHoldComplete = onForceEndHoldComplete,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    isForceEndEnabled = isForceEndEnabled,
+                )
+            }
         }
 
         if (isForceEndDialogVisible) {
@@ -208,10 +239,13 @@ internal fun isUsableActiveAlarmMapLocation(
 private fun ActiveAlarmTrackingScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         ActiveAlarmTrackingLayout(
+            missionOccurrenceId = "preview-dark",
             destinationName = "스터디카페",
             countdown = "11:42",
             mapUnavailableMessage = null,
             onBackClick = {},
+            onForceEndHoldStarted = {},
+            onForceEndHoldCancelled = {},
             onForceEndHoldComplete = {},
             isForceEndEnabled = true,
             isForceEndDialogVisible = false,
@@ -232,10 +266,13 @@ private fun ActiveAlarmTrackingScreenDarkPreview() {
 private fun ActiveAlarmTrackingScreenLightPreview() {
     RingoutTheme(themeMode = ThemeMode.Light) {
         ActiveAlarmTrackingLayout(
+            missionOccurrenceId = "preview-light",
             destinationName = "스터디카페",
             countdown = "11:42",
             mapUnavailableMessage = null,
             onBackClick = {},
+            onForceEndHoldStarted = {},
+            onForceEndHoldCancelled = {},
             onForceEndHoldComplete = {},
             isForceEndEnabled = true,
             isForceEndDialogVisible = false,
@@ -256,10 +293,13 @@ private fun ActiveAlarmTrackingScreenLightPreview() {
 private fun ActiveAlarmTrackingForceEndDialogPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         ActiveAlarmTrackingLayout(
+            missionOccurrenceId = "preview-dialog",
             destinationName = "스터디카페",
             countdown = "11:42",
             mapUnavailableMessage = null,
             onBackClick = {},
+            onForceEndHoldStarted = {},
+            onForceEndHoldCancelled = {},
             onForceEndHoldComplete = {},
             isForceEndEnabled = false,
             isForceEndDialogVisible = true,

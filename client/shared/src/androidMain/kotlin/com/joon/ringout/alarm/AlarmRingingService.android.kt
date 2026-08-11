@@ -20,6 +20,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import com.joon.ringout.analytics.AlarmAnalytics
 
 class AlarmRingingService : Service() {
     private var mediaPlayer: MediaPlayer? = null
@@ -30,6 +31,9 @@ class AlarmRingingService : Service() {
     private val audioManager by lazy { getSystemService(AudioManager::class.java) }
     private val ringingSessionStore by lazy {
         AlarmRingingSessionStore(applicationContext)
+    }
+    private val analytics by lazy {
+        runCatching { AlarmAnalytics(applicationContext) }.getOrNull()
     }
 
     override fun onCreate() {
@@ -92,6 +96,13 @@ class AlarmRingingService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        analytics?.recordAlarmRingingStarted(
+            occurrenceId = occurrenceId,
+            retryAttempt = intent.getIntExtra(
+                AlarmRuntime.EXTRA_RETRY_ATTEMPT,
+                0,
+            ),
+        )
         if (retryAlarmConfirmed && Settings.canDrawOverlays(applicationContext)) {
             runCatching {
                 startActivity(

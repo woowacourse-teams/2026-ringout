@@ -50,6 +50,12 @@ class MainActivity : ComponentActivity() {
                 activeAlarmMissionLocation = activeAlarmMissionLocation,
                 onActiveAlarmMissionExpired = ::handleActiveAlarmMissionExpired,
                 onActiveAlarmMissionForceEnd = ::handleActiveAlarmMissionForceEnd,
+                onActiveAlarmMissionForceEndHoldStarted =
+                    alarmMissionCoordinator::recordForceEndHoldStarted,
+                onActiveAlarmMissionForceEndHoldCancelled =
+                    alarmMissionCoordinator::recordForceEndHoldCancelled,
+                onActiveAlarmMissionForceEndHoldCompleted =
+                    alarmMissionCoordinator::recordForceEndHoldCompleted,
             )
         }
     }
