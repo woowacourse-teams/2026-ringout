@@ -40,6 +40,8 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.androidx.activity.compose)
             implementation(libs.compose.uiToolingPreview)
+            implementation(project.dependencies.platform(libs.firebase.bom))
+            implementation(libs.firebase.analytics)
             implementation(libs.google.maps.compose)
             implementation(libs.google.places)
             implementation(libs.google.play.services.location)

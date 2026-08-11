@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +23,12 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
@@ -38,62 +45,150 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.joon.ringout.RingoutTheme
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 internal const val ForceEndHoldDurationSeconds = 30
 internal const val ForceEndHoldDurationMillis = ForceEndHoldDurationSeconds * 1_000L
 private val ForceEndButtonWidth = 160.dp
 private val ForceEndButtonHeight = 48.dp
+private val ForceEndActivationKeys = setOf(
+    Key.Enter,
+    Key.NumPadEnter,
+    Key.Spacebar,
+    Key.DirectionCenter,
+)
+
+private data class ForceEndKeyboardHoldOwner(
+    val attemptId: Long,
+    val key: Key,
+)
 
 @Composable
 internal fun ForceEndHoldButton(
-    onHoldComplete: () -> Unit,
+    onHoldStarted: () -> Unit,
+    onHoldCancelled: (holdDurationMillis: Long) -> Unit,
+    onHoldComplete: (holdDurationMillis: Long) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
     val colors = activeAlarmTrackingColors()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val progress = remember { mutableStateOf(0f) }
     val elapsedMillis = remember { mutableStateOf(0L) }
-    val holdActive = remember { mutableStateOf(false) }
-    val completionGate = remember { ForceEndHoldCompletionGate() }
+    val activeAttemptId = remember { mutableStateOf<Long?>(null) }
+    val keyboardHoldOwner = remember { mutableStateOf<ForceEndKeyboardHoldOwner?>(null) }
+    val holdStartedAt = remember { mutableStateOf<TimeMark?>(null) }
+    val interactionState = remember { ForceEndHoldInteractionState() }
+    val currentOnHoldStarted by rememberUpdatedState(onHoldStarted)
+    val currentOnHoldCancelled by rememberUpdatedState(onHoldCancelled)
     val currentOnHoldComplete by rememberUpdatedState(onHoldComplete)
     val currentEnabled by rememberUpdatedState(enabled)
-    val isHolding = holdActive.value && enabled
+    val isHolding = activeAttemptId.value != null && enabled
 
-    LaunchedEffect(isHolding, enabled) {
-        if (!isHolding || !enabled) {
+    fun startHold(): Long? {
+        if (!currentEnabled) return null
+        val attemptId = interactionState.start() ?: return null
+        holdStartedAt.value = TimeSource.Monotonic.markNow()
+        elapsedMillis.value = 0L
+        progress.value = 0f
+        activeAttemptId.value = attemptId
+        currentOnHoldStarted()
+        return attemptId
+    }
+
+    fun measuredDurationMillis(attemptId: Long): Long {
+        if (activeAttemptId.value != attemptId) return 0L
+        return holdStartedAt.value
+            ?.elapsedNow()
+            ?.inWholeMilliseconds
+            ?: elapsedMillis.value
+    }
+
+    fun dispatchResult(
+        attemptId: Long,
+        result: ForceEndHoldResult?,
+    ): Boolean {
+        result ?: return false
+        if (activeAttemptId.value != attemptId) return false
+
+        if (keyboardHoldOwner.value?.attemptId == attemptId) {
+            keyboardHoldOwner.value = null
+        }
+        activeAttemptId.value = null
+        holdStartedAt.value = null
+        elapsedMillis.value = 0L
+        progress.value = 0f
+        when (result) {
+            is ForceEndHoldResult.Cancelled ->
+                currentOnHoldCancelled(result.holdDurationMillis)
+            is ForceEndHoldResult.Completed ->
+                currentOnHoldComplete(result.holdDurationMillis)
+        }
+        return true
+    }
+
+    fun finishHold(attemptId: Long): Boolean {
+        return dispatchResult(
+            attemptId = attemptId,
+            result = interactionState.finish(
+                attemptId = attemptId,
+                elapsedMillis = measuredDurationMillis(attemptId),
+            ),
+        )
+    }
+
+    fun cancelHold(attemptId: Long): Boolean = dispatchResult(
+        attemptId = attemptId,
+        result = interactionState.cancel(
+            attemptId = attemptId,
+            elapsedMillis = measuredDurationMillis(attemptId),
+        ),
+    )
+
+    DisposableEffect(lifecycleOwner, interactionState) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                activeAttemptId.value?.let(::cancelHold)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            activeAttemptId.value?.let(::cancelHold)
+        }
+    }
+
+    LaunchedEffect(activeAttemptId.value, enabled) {
+        val attemptId = activeAttemptId.value
+        if (attemptId == null) {
             progress.value = 0f
             elapsedMillis.value = 0L
-            completionGate.reset()
-            if (!enabled) holdActive.value = false
+            return@LaunchedEffect
+        }
+        if (!enabled) {
+            cancelHold(attemptId)
             return@LaunchedEffect
         }
 
-        completionGate.reset()
-        val startedAt = TimeSource.Monotonic.markNow()
-        while (holdActive.value && currentEnabled) {
-            val currentElapsedMillis = startedAt.elapsedNow().inWholeMilliseconds
+        while (activeAttemptId.value == attemptId && currentEnabled) {
+            val currentElapsedMillis = measuredDurationMillis(attemptId)
             elapsedMillis.value = currentElapsedMillis
             progress.value = forceEndHoldProgress(
                 elapsedMillis = currentElapsedMillis,
                 isHolding = true,
             )
-            if (
-                completionGate.shouldComplete(
-                    elapsedMillis = currentElapsedMillis,
-                    isHolding = holdActive.value && currentEnabled,
-                )
-            ) {
-                holdActive.value = false
-                currentOnHoldComplete()
+            if (currentElapsedMillis >= ForceEndHoldDurationMillis) {
+                finishHold(attemptId)
                 return@LaunchedEffect
             }
             withFrameNanos {}
         }
-        progress.value = 0f
-        elapsedMillis.value = 0L
-        completionGate.reset()
+        cancelHold(attemptId)
     }
 
     val remainingSeconds = forceEndHoldRemainingSeconds(elapsedMillis.value)
@@ -116,6 +211,42 @@ internal fun ForceEndHoldButton(
             .height(ForceEndButtonHeight)
             .clip(shape)
             .background(colors.panelContent)
+            .onKeyEvent { event ->
+                if (!enabled || event.key !in ForceEndActivationKeys) {
+                    return@onKeyEvent false
+                }
+                when (event.type) {
+                    KeyEventType.KeyDown -> {
+                        if (keyboardHoldOwner.value == null) {
+                            startHold()?.let { attemptId ->
+                                keyboardHoldOwner.value = ForceEndKeyboardHoldOwner(
+                                    attemptId = attemptId,
+                                    key = event.key,
+                                )
+                            }
+                        }
+                        true
+                    }
+                    KeyEventType.KeyUp -> {
+                        keyboardHoldOwner.value
+                            ?.takeIf { owner -> owner.key == event.key }
+                            ?.let { owner ->
+                                finishHold(owner.attemptId)
+                                keyboardHoldOwner.value = null
+                            }
+                        true
+                    }
+                    else -> false
+                }
+            }
+            .onFocusChanged { focusState ->
+                if (!focusState.isFocused) {
+                    keyboardHoldOwner.value?.let { owner ->
+                        cancelHold(owner.attemptId)
+                        keyboardHoldOwner.value = null
+                    }
+                }
+            }
             .focusable(enabled = enabled)
             .semantics(mergeDescendants = true) {
                 role = Role.Button
@@ -139,7 +270,12 @@ internal fun ForceEndHoldButton(
                             "30초 강제 종료 누르기 시작"
                         },
                     ) {
-                        holdActive.value = !holdActive.value
+                        val attemptId = activeAttemptId.value
+                        if (attemptId != null) {
+                            finishHold(attemptId)
+                        } else {
+                            startHold()
+                        }
                         true
                     }
                 } else {
@@ -149,12 +285,16 @@ internal fun ForceEndHoldButton(
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(
-                    onPress = {
-                        holdActive.value = true
+                    onPress = press@{
+                        val attemptId = startHold() ?: return@press
                         try {
-                            tryAwaitRelease()
+                            if (tryAwaitRelease()) {
+                                finishHold(attemptId)
+                            } else {
+                                cancelHold(attemptId)
+                            }
                         } finally {
-                            holdActive.value = false
+                            cancelHold(attemptId)
                         }
                     },
                     onTap = {},
@@ -205,31 +345,68 @@ internal fun forceEndHoldProgress(
         .coerceIn(0f, 1f)
 }
 
-internal class ForceEndHoldCompletionGate(
+internal class ForceEndHoldInteractionState(
     private val durationMillis: Long = ForceEndHoldDurationMillis,
 ) {
-    private var completionDispatched = false
+    private var nextAttemptId = 0L
+    private var activeAttemptId: Long? = null
 
     init {
         require(durationMillis > 0L)
     }
 
-    fun reset() {
-        completionDispatched = false
+    fun start(): Long? {
+        if (activeAttemptId != null) return null
+        nextAttemptId += 1L
+        return nextAttemptId.also { attemptId ->
+            activeAttemptId = attemptId
+        }
     }
 
-    fun shouldComplete(
+    fun finish(
+        attemptId: Long,
         elapsedMillis: Long,
-        isHolding: Boolean,
-    ): Boolean {
-        if (!isHolding) {
-            reset()
-            return false
+    ): ForceEndHoldResult? = end(
+        attemptId = attemptId,
+        elapsedMillis = elapsedMillis,
+        forceCancelled = false,
+    )
+
+    fun cancel(
+        attemptId: Long,
+        elapsedMillis: Long,
+    ): ForceEndHoldResult? = end(
+        attemptId = attemptId,
+        elapsedMillis = elapsedMillis,
+        forceCancelled = true,
+    )
+
+    private fun end(
+        attemptId: Long,
+        elapsedMillis: Long,
+        forceCancelled: Boolean,
+    ): ForceEndHoldResult? {
+        if (activeAttemptId != attemptId) return null
+        activeAttemptId = null
+        val normalizedDurationMillis = elapsedMillis.coerceAtLeast(0L)
+        return if (!forceCancelled && normalizedDurationMillis >= durationMillis) {
+            ForceEndHoldResult.Completed(normalizedDurationMillis)
+        } else {
+            ForceEndHoldResult.Cancelled(normalizedDurationMillis)
         }
-        if (completionDispatched || elapsedMillis < durationMillis) return false
-        completionDispatched = true
-        return true
     }
+}
+
+internal sealed interface ForceEndHoldResult {
+    val holdDurationMillis: Long
+
+    data class Cancelled(
+        override val holdDurationMillis: Long,
+    ) : ForceEndHoldResult
+
+    data class Completed(
+        override val holdDurationMillis: Long,
+    ) : ForceEndHoldResult
 }
 
 @Preview(widthDp = 200, heightDp = 80)
@@ -242,7 +419,11 @@ private fun ForceEndHoldButtonPreview() {
                 .background(MaterialTheme.colorScheme.primary),
             contentAlignment = Alignment.Center,
         ) {
-            ForceEndHoldButton(onHoldComplete = {})
+            ForceEndHoldButton(
+                onHoldStarted = {},
+                onHoldCancelled = {},
+                onHoldComplete = {},
+            )
         }
     }
 }

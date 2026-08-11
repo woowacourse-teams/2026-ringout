@@ -32,7 +32,9 @@ import com.joon.ringout.ThemeMode
 internal fun ActiveAlarmTrackingCard(
     destinationName: String,
     countdown: String,
-    onForceEndHoldComplete: () -> Unit,
+    onForceEndHoldStarted: () -> Unit,
+    onForceEndHoldCancelled: (holdDurationMillis: Long) -> Unit,
+    onForceEndHoldComplete: (holdDurationMillis: Long) -> Unit,
     modifier: Modifier = Modifier,
     isForceEndEnabled: Boolean = true,
 ) {
@@ -133,6 +135,8 @@ internal fun ActiveAlarmTrackingCard(
             }
 
             ForceEndHoldButton(
+                onHoldStarted = onForceEndHoldStarted,
+                onHoldCancelled = onForceEndHoldCancelled,
                 onHoldComplete = onForceEndHoldComplete,
                 enabled = isForceEndEnabled,
             )
@@ -147,6 +151,8 @@ private fun ActiveAlarmTrackingCardPreview() {
         ActiveAlarmTrackingCard(
             destinationName = "스터디카페",
             countdown = "11:42",
+            onForceEndHoldStarted = {},
+            onForceEndHoldCancelled = {},
             onForceEndHoldComplete = {},
         )
     }

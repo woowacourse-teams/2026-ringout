@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "831074770315",
+    "project_id": "ringout-8abf2",
+    "storage_bucket": "ringout-8abf2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:831074770315:android:4b4e44298bfe67c49ba38e",
+        "android_client_info": {
+          "package_name": "com.joon.ringout"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBLqoiJY1rLxmOAV6k29VRpRIo_1w2IJA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
