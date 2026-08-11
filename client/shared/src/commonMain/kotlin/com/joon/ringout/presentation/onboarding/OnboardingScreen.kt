@@ -1,6 +1,6 @@
 package com.joon.ringout.presentation.onboarding
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -68,21 +68,27 @@ internal fun OnboardingScreenContent(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.surface,
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing),
             contentAlignment = Alignment.Center,
         ) {
+            val horizontalPadding = when {
+                maxWidth <= ExtraCompactScreenWidth -> ExtraCompactHorizontalPadding
+                maxWidth <= CompactScreenWidth -> CompactHorizontalPadding
+                else -> DefaultHorizontalPadding
+            }
+
             Column(
                 modifier = Modifier
                     .widthIn(max = 560.dp)
                     .fillMaxWidth()
                     .fillMaxHeight()
                     .padding(
-                        start = 24.dp,
+                        start = horizontalPadding,
                         top = 12.dp,
-                        end = 24.dp,
+                        end = horizontalPadding,
                         bottom = 16.dp,
                     ),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -108,6 +114,12 @@ internal fun OnboardingScreenContent(
         }
     }
 }
+
+private val ExtraCompactScreenWidth = 320.dp
+private val CompactScreenWidth = 360.dp
+private val ExtraCompactHorizontalPadding = 12.dp
+private val CompactHorizontalPadding = 16.dp
+private val DefaultHorizontalPadding = 24.dp
 
 @Preview(name = "Dark onboarding first", widthDp = 402, heightDp = 941)
 @Composable
@@ -167,6 +179,29 @@ private fun LightOnboardingLastPagePreview() {
 @Composable
 private fun SmallOnboardingScreenPreview() {
     OnboardingScreenPreview(themeMode = ThemeMode.Dark, pageIndex = 0)
+}
+
+@Preview(name = "Extra compact onboarding", widthDp = 320, heightDp = 700)
+@Composable
+private fun ExtraCompactOnboardingScreenPreview() {
+    OnboardingScreenPreview(
+        themeMode = ThemeMode.Dark,
+        pageIndex = defaultOnboardingPages.lastIndex,
+    )
+}
+
+@Preview(
+    name = "Onboarding accessibility text",
+    widthDp = 360,
+    heightDp = 800,
+    fontScale = 1.3f,
+)
+@Composable
+private fun OnboardingAccessibilityTextPreview() {
+    OnboardingScreenPreview(
+        themeMode = ThemeMode.Light,
+        pageIndex = defaultOnboardingPages.lastIndex,
+    )
 }
 
 @Preview(name = "Large onboarding", widthDp = 430, heightDp = 932)
