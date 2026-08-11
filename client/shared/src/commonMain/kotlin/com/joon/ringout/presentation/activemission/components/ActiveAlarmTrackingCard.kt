@@ -1,15 +1,12 @@
 package com.joon.ringout.presentation.activemission.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -36,8 +32,9 @@ import com.joon.ringout.ThemeMode
 internal fun ActiveAlarmTrackingCard(
     destinationName: String,
     countdown: String,
-    onForceEndClick: () -> Unit,
+    onForceEndHoldComplete: () -> Unit,
     modifier: Modifier = Modifier,
+    isForceEndEnabled: Boolean = true,
 ) {
     val colors = activeAlarmTrackingColors()
     val shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
@@ -135,30 +132,10 @@ internal fun ActiveAlarmTrackingCard(
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .width(132.dp)
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(colors.panelContent)
-                    .clickable(
-                        role = Role.Button,
-                        onClickLabel = "활성 알람 강제 종료",
-                        onClick = onForceEndClick,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "강제 종료",
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontSize = 14.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                    ),
-                )
-            }
+            ForceEndHoldButton(
+                onHoldComplete = onForceEndHoldComplete,
+                enabled = isForceEndEnabled,
+            )
         }
     }
 }
@@ -170,7 +147,7 @@ private fun ActiveAlarmTrackingCardPreview() {
         ActiveAlarmTrackingCard(
             destinationName = "스터디카페",
             countdown = "11:42",
-            onForceEndClick = {},
+            onForceEndHoldComplete = {},
         )
     }
 }

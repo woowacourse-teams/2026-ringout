@@ -10,6 +10,7 @@ internal data class ActiveAlarmTrackingColors(
     val headerBorder: Color,
     val panelShadow: Color,
     val panelContent: Color,
+    val forceEndProgressFill: Color,
 )
 
 internal fun activeAlarmTrackingColors(): ActiveAlarmTrackingColors =
@@ -19,4 +20,5 @@ internal fun activeAlarmTrackingColors(): ActiveAlarmTrackingColors =
         headerBorder = Color(0xFFD0D0D0),
         panelShadow = Color.Black,
         panelContent = Color(0xFFF5F5F6),
+        forceEndProgressFill = Color(0xFFFF0000),
     )
