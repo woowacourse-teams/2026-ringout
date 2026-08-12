@@ -20,7 +20,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
-import com.joon.ringout.domain.terms.TermId
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.AlarmScheduleRequest
@@ -42,9 +41,6 @@ import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.settings.SettingsScreen
-import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
-import com.joon.ringout.presentation.termsagreement.termDocumentResource
-import org.jetbrains.compose.resources.stringResource
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
 import com.joon.ringout.presentation.mypage.findPolicyUrl
@@ -81,37 +77,12 @@ fun App(
     }
 
     RingoutTheme(themeMode = appBootstrapUiState.themeMode) {
-        val uriHandler = LocalUriHandler.current
-        val serviceTermUrl = stringResource(
-            requireNotNull(termDocumentResource(TermId.Service)),
-        )
-        val privacyTermUrl = stringResource(
-            requireNotNull(termDocumentResource(TermId.Privacy)),
-        )
-        val termDocumentUrls = remember(serviceTermUrl, privacyTermUrl) {
-            mapOf(
-                TermId.Service to serviceTermUrl,
-                TermId.Privacy to privacyTermUrl,
-            )
-        }
-
         when (appBootstrapUiState.destination) {
             AppEntryDestination.Onboarding ->
                 OnboardingScreen(
                     onComplete = appBootstrapViewModel::completeOnboarding,
                     completionEnabled = !appBootstrapUiState.isSaving,
                     completionRetryToken = appBootstrapUiState.onboardingRetryToken,
-                )
-
-            AppEntryDestination.TermsAgreement ->
-                TermsAgreementScreen(
-                    onStart = appBootstrapViewModel::completeTermsAgreement,
-                    onTermDetailClick = { termId ->
-                        termDocumentUrls[termId]?.let { url ->
-                            runCatching { uriHandler.openUri(url) }
-                        }
-                    },
-                    isSaving = appBootstrapUiState.isSaving,
                 )
 
             AppEntryDestination.Home ->

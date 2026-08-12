@@ -9,11 +9,6 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.domain.firstlaunch.determineAppEntryDestination
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
-import com.joon.ringout.domain.terms.TermConsentRecord
-import com.joon.ringout.domain.terms.TermDefinition
-import com.joon.ringout.domain.terms.TermId
-import com.joon.ringout.domain.terms.TermType
-import com.joon.ringout.domain.terms.currentTerms
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -22,7 +17,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okio.IOException
-import kotlin.time.Clock
 
 data class AppBootstrapUiState(
     val isReady: Boolean = false,
@@ -34,8 +28,6 @@ data class AppBootstrapUiState(
 
 class AppBootstrapViewModel(
     private val repository: AppPreferencesRepository,
-    private val clock: Clock = Clock.System,
-    private val terms: List<TermDefinition> = currentTerms,
     coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     var uiState by mutableStateOf(AppBootstrapUiState())
@@ -60,10 +52,7 @@ class AppBootstrapViewModel(
                     uiState = uiState.copy(
                         isReady = true,
                         themeMode = snapshot.themeMode,
-                        destination = determineAppEntryDestination(
-                            snapshot.firstLaunchStatus,
-                            terms,
-                        ),
+                        destination = determineAppEntryDestination(snapshot.firstLaunchStatus),
                     )
                 }
         }
@@ -96,30 +85,6 @@ class AppBootstrapViewModel(
             )
         },
     )
-
-    fun completeTermsAgreement(agreedTermIds: Set<TermId>) {
-        val requiredTermIds = terms
-            .filter { definition -> definition.type == TermType.REQUIRED }
-            .mapTo(mutableSetOf(), TermDefinition::id)
-        if (!agreedTermIds.containsAll(requiredTermIds)) return
-
-        save(block = {
-            val agreedAtEpochMillis = clock.now().toEpochMilliseconds()
-            repository.saveTermConsents(
-                terms.map { definition ->
-                    val isAgreed = definition.id in agreedTermIds
-                    TermConsentRecord(
-                        id = definition.id,
-                        termName = definition.name,
-                        termVersion = definition.version,
-                        termType = definition.type,
-                        isAgreed = isAgreed,
-                        agreedAtEpochMillis = agreedAtEpochMillis.takeIf { isAgreed },
-                    )
-                },
-            )
-        })
-    }
 
     private fun save(
         block: suspend () -> Unit,
