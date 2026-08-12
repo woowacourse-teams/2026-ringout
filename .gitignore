@@ -18,3 +18,4 @@ captures
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
 /client/androidApp/release/androidApp-release.aab
+/client/iosApp/Configuration/RingoutSecrets.xcconfig
