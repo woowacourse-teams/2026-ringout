@@ -30,6 +30,7 @@ import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.mypage.component.MissionCalendarCard
+import com.joon.ringout.presentation.mypage.component.MyPageAccountStatus
 import com.joon.ringout.presentation.mypage.component.MyPageAppVersionRow
 import com.joon.ringout.presentation.mypage.component.MyPageHeader
 import com.joon.ringout.presentation.mypage.component.MyPagePolicySection
@@ -98,6 +99,8 @@ fun MyPageScreenContent(
     ) {
         item { MyPageHeader(onBackClick = onBackClick) }
         item { Spacer(Modifier.height(6.dp)) }
+        item { MyPageAccountStatus() }
+        item { Spacer(Modifier.height(16.dp)) }
         item {
             Box(
                 modifier = Modifier.fillMaxWidth(),
