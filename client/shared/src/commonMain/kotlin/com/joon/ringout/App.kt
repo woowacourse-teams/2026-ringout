@@ -38,6 +38,8 @@ import com.joon.ringout.presentation.destination.isConfiguredDestination
 import com.joon.ringout.presentation.destination.rememberDestinationRepository
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
+import com.joon.ringout.presentation.login.LoginScreen
+import com.joon.ringout.presentation.login.SocialLoginProvider
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.settings.SettingsScreen
@@ -348,11 +350,17 @@ private fun RingoutAppContent(
             policies = DefaultMyPagePolicies,
             onThemeModeChange = onThemeModeChange,
             onBackClick = { screenName = AppScreen.Home.name },
+            onAccountStatusClick = { screenName = AppScreen.Login.name },
             onPolicyClick = { policyId ->
                 findPolicyUrl(policyId)?.let { url ->
                     runCatching { uriHandler.openUri(url) }
                 }
             },
+        )
+
+        AppScreen.Login -> LoginScreen(
+            onBackClick = { screenName = AppScreen.MyPage.name },
+            onSocialLoginClick = { _: SocialLoginProvider -> },
         )
 
         AppScreen.AddAlarm,
@@ -448,6 +456,7 @@ private enum class AppScreen {
     Destination,
     AlarmSound,
     MyPage,
+    Login,
     Settings,
     ActiveAlarmTracking,
 }

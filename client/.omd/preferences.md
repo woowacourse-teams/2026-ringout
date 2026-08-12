@@ -109,3 +109,18 @@ source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/acti
 ```
 
 The force-end hold progress fill color is exactly #FF0000 red.
+
+## 2026-08-12T05:00:59.000Z — the-login-screen-always-follows-the-app
+
+```omd-meta
+id: pref_mspmfqb3_524af5b7
+timestamp: 2026-08-12T05:00:59.000Z
+scope: visualTheme
+signal: user-correction
+confidence: explicit
+status: pending
+source_agent: codex
+source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/login"
+```
+
+The Login screen always follows the app theme, including its background, content colors, and system bar icon contrast.
