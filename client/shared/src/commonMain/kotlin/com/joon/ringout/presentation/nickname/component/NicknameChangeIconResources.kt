@@ -1,0 +1,8 @@
+package com.joon.ringout.presentation.nickname.component
+
+import org.jetbrains.compose.resources.DrawableResource
+
+internal expect val NicknameChangeBackIconResource: DrawableResource
+internal expect val NicknameChangeUserIconResource: DrawableResource
+internal expect val NicknameChangeValidIconResource: DrawableResource
+internal expect val NicknameChangeInvalidIconResource: DrawableResource
