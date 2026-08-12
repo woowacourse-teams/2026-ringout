@@ -5,17 +5,14 @@ import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
 import com.joon.ringout.domain.missionhistory.MissionResult
 
 internal fun MissionHistoryDto.toDomain(): MissionHistoryEntry = MissionHistoryEntry(
-    result = when (result) {
-        "SUCCESS" -> MissionResult.SUCCESS
-        "FAILURE" -> MissionResult.FAILURE
-        else -> error("Unsupported mission result: $result")
-    },
+    result = MissionResult.fromPersistedValue(result)
+        ?: error("Unsupported mission result: $result"),
     completedAt = MissionDate.parse(completedAt),
     occurrenceId = occurrenceId,
 )
 
 internal fun MissionHistoryEntry.toDto(): MissionHistoryDto = MissionHistoryDto(
-    result = result.name,
+    result = result.persistedValue,
     completedAt = completedAt.iso8601,
     occurrenceId = occurrenceId,
 )

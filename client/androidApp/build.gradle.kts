@@ -1,11 +1,31 @@
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.TaskAction
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
+
+abstract class ValidateMapsApiKeyTask : DefaultTask() {
+    @get:Input
+    var isConfigured = false
+
+    @TaskAction
+    fun validate() {
+        if (!isConfigured) {
+            throw GradleException(
+                "MAPS_API_KEY must be set in local.properties or the environment for release builds.",
+            )
+        }
+    }
+}
 
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.googleServices)
+    alias(libs.plugins.firebaseCrashlytics)
 }
 
 val localProperties = Properties().apply {
@@ -48,6 +68,7 @@ dependencies {
     implementation(libs.google.places)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
+    implementation(libs.firebase.crashlytics)
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
@@ -87,7 +108,15 @@ android {
     buildTypes {
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = true
+            }
         }
     }
 
@@ -95,4 +124,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+}
+
+val validateReleaseMapsApiKey by tasks.registering(ValidateMapsApiKeyTask::class) {
+    group = "verification"
+    description = "Fails release builds when MAPS_API_KEY is not configured."
+    isConfigured = mapsApiKey.isNotBlank()
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(validateReleaseMapsApiKey)
 }
