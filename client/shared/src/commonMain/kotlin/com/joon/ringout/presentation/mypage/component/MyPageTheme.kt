@@ -20,6 +20,31 @@ internal data class MyPageColors(
     val toggleInactiveContent: Color,
 )
 
+@Immutable
+internal data class MyPageAccountActionDialogColors(
+    val surface: Color,
+    val title: Color,
+    val description: Color,
+    val cancel: Color,
+    val logout: Color,
+    val withdraw: Color,
+    val actionContent: Color,
+    val shadow: Color,
+    val actionShadow: Color,
+)
+
+internal val MyPageAccountActionDialogPalette = MyPageAccountActionDialogColors(
+    surface = Color.White,
+    title = Color(0xFF1F2937),
+    description = Color(0xFF6B7280),
+    cancel = Color(0xFF808080),
+    logout = Color(0xFFFF6D2E),
+    withdraw = Color(0xFFFF2B01),
+    actionContent = Color.White,
+    shadow = Color(0x21000000),
+    actionShadow = Color(0x404338CA),
+)
+
 @Composable
 internal fun myPageColors(): MyPageColors =
     if (LocalRingoutThemeMode.current == ThemeMode.Dark) {
