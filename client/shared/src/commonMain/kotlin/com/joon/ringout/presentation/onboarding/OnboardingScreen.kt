@@ -63,6 +63,7 @@ internal fun OnboardingScreenContent(
     require(currentPageIndex in pages.indices) {
         "Current onboarding page must exist in the supplied pages."
     }
+    val isLastPage = currentPageIndex == pages.lastIndex
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -106,9 +107,9 @@ internal fun OnboardingScreenContent(
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 OnboardingPrimaryButton(
-                    label = "다음으로",
+                    label = if (isLastPage) "시작하기" else "다음으로",
                     onClick = onNext,
-                    enabled = currentPageIndex != pages.lastIndex || completionEnabled,
+                    enabled = !isLastPage || completionEnabled,
                 )
             }
         }
