@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
+import com.joon.ringout.analytics.AlarmAnalytics
 import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarm.LegacyAlarmPreferencesMigrator
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
@@ -383,6 +384,7 @@ internal class AndroidAlarmScheduler(
         LegacyAlarmPreferencesMigrator(context, dataSource),
 ) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
+    private val analytics = runCatching { AlarmAnalytics(context) }.getOrNull()
 
     suspend fun schedule(request: AlarmScheduleRequest): Unit = AlarmSchedulerMutationMutex.withLock {
         legacyMigrator.ensureMigrated()
@@ -403,6 +405,13 @@ internal class AndroidAlarmScheduler(
         } else {
             dataSource.replace(replacement)
             cancel(request.id)
+        }
+        if (previous == null) {
+            analytics?.recordAlarmCreated(
+                alarmId = request.id,
+                repeatEnabled = request.repeatEnabled,
+                repeatDayCount = request.selectedDays.distinct().size,
+            )
         }
     }
 

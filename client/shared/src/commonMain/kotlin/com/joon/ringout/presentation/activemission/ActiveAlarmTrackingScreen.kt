@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -27,6 +28,7 @@ import com.joon.ringout.alarm.MaximumTrackingLocationAgeMillis
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmMapUnavailable
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingCard
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingHeader
+import com.joon.ringout.presentation.activemission.components.ForceEndCompletedDialog
 import com.joon.ringout.presentation.activemission.components.activeAlarmTrackingColors
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.home.components.formatAlarmMissionRemainingTime
@@ -41,6 +43,11 @@ fun ActiveAlarmTrackingScreen(
     onForceEndClick: (occurrenceId: String) -> Unit,
     onExpired: () -> Unit,
     modifier: Modifier = Modifier,
+    onForceEndHoldStarted: (occurrenceId: String) -> Unit = {},
+    onForceEndHoldCancelled:
+        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
+    onForceEndHoldCompleted:
+        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
 ) {
     val remainingSeconds = rememberActiveAlarmMissionRemainingSeconds(
         mission = mission,
@@ -60,10 +67,21 @@ fun ActiveAlarmTrackingScreen(
     var mapError by remember(mission.occurrenceId) {
         mutableStateOf<String?>(null)
     }
+    var isForceEndDialogVisible by remember(mission.occurrenceId) {
+        mutableStateOf(false)
+    }
+    var isForceEndRequested by remember(mission.occurrenceId) {
+        mutableStateOf(false)
+    }
 
-    PlatformBackHandler(onBack = onBackClick)
+    PlatformBackHandler(
+        onBack = {
+            if (!isForceEndDialogVisible) onBackClick()
+        },
+    )
 
     ActiveAlarmTrackingLayout(
+        missionOccurrenceId = mission.occurrenceId,
         destinationName = mission.destinationName,
         countdown = formatAlarmMissionRemainingTime(remainingSeconds),
         mapUnavailableMessage = when {
@@ -72,7 +90,37 @@ fun ActiveAlarmTrackingScreen(
             else -> null
         },
         onBackClick = onBackClick,
-        onForceEndClick = { onForceEndClick(mission.occurrenceId) },
+        onForceEndHoldStarted = {
+            if (!isForceEndRequested) {
+                onForceEndHoldStarted(mission.occurrenceId)
+            }
+        },
+        onForceEndHoldCancelled = { holdDurationMillis ->
+            if (!isForceEndRequested) {
+                onForceEndHoldCancelled(
+                    mission.occurrenceId,
+                    holdDurationMillis,
+                )
+            }
+        },
+        onForceEndHoldComplete = { holdDurationMillis ->
+            if (!isForceEndRequested) {
+                onForceEndHoldCompleted(
+                    mission.occurrenceId,
+                    holdDurationMillis,
+                )
+                isForceEndDialogVisible = true
+            }
+        },
+        isForceEndEnabled = !isForceEndDialogVisible && !isForceEndRequested,
+        isForceEndDialogVisible = isForceEndDialogVisible,
+        onForceEndConfirm = {
+            if (!isForceEndRequested) {
+                isForceEndRequested = true
+                isForceEndDialogVisible = false
+                onForceEndClick(mission.occurrenceId)
+            }
+        },
         modifier = modifier,
         mapContent = { mapModifier ->
             PlatformActiveAlarmMap(
@@ -89,11 +137,17 @@ fun ActiveAlarmTrackingScreen(
 
 @Composable
 private fun ActiveAlarmTrackingLayout(
+    missionOccurrenceId: String,
     destinationName: String,
     countdown: String,
     mapUnavailableMessage: String?,
     onBackClick: () -> Unit,
-    onForceEndClick: () -> Unit,
+    onForceEndHoldStarted: () -> Unit,
+    onForceEndHoldCancelled: (holdDurationMillis: Long) -> Unit,
+    onForceEndHoldComplete: (holdDurationMillis: Long) -> Unit,
+    isForceEndEnabled: Boolean,
+    isForceEndDialogVisible: Boolean,
+    onForceEndConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
 ) {
@@ -127,11 +181,22 @@ private fun ActiveAlarmTrackingLayout(
                     .padding(start = 10.dp, top = 18.dp, end = 11.dp),
             )
 
-            ActiveAlarmTrackingCard(
-                destinationName = destinationName,
-                countdown = countdown,
-                onForceEndClick = onForceEndClick,
-                modifier = Modifier.align(Alignment.BottomCenter),
+            key(missionOccurrenceId) {
+                ActiveAlarmTrackingCard(
+                    destinationName = destinationName,
+                    countdown = countdown,
+                    onForceEndHoldStarted = onForceEndHoldStarted,
+                    onForceEndHoldCancelled = onForceEndHoldCancelled,
+                    onForceEndHoldComplete = onForceEndHoldComplete,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    isForceEndEnabled = isForceEndEnabled,
+                )
+            }
+        }
+
+        if (isForceEndDialogVisible) {
+            ForceEndCompletedDialog(
+                onConfirm = onForceEndConfirm,
             )
         }
     }
@@ -174,11 +239,17 @@ internal fun isUsableActiveAlarmMapLocation(
 private fun ActiveAlarmTrackingScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         ActiveAlarmTrackingLayout(
+            missionOccurrenceId = "preview-dark",
             destinationName = "스터디카페",
             countdown = "11:42",
             mapUnavailableMessage = null,
             onBackClick = {},
-            onForceEndClick = {},
+            onForceEndHoldStarted = {},
+            onForceEndHoldCancelled = {},
+            onForceEndHoldComplete = {},
+            isForceEndEnabled = true,
+            isForceEndDialogVisible = false,
+            onForceEndConfirm = {},
             mapContent = { mapModifier ->
                 Box(
                     modifier = mapModifier.background(
@@ -195,11 +266,44 @@ private fun ActiveAlarmTrackingScreenDarkPreview() {
 private fun ActiveAlarmTrackingScreenLightPreview() {
     RingoutTheme(themeMode = ThemeMode.Light) {
         ActiveAlarmTrackingLayout(
+            missionOccurrenceId = "preview-light",
             destinationName = "스터디카페",
             countdown = "11:42",
             mapUnavailableMessage = null,
             onBackClick = {},
-            onForceEndClick = {},
+            onForceEndHoldStarted = {},
+            onForceEndHoldCancelled = {},
+            onForceEndHoldComplete = {},
+            isForceEndEnabled = true,
+            isForceEndDialogVisible = false,
+            onForceEndConfirm = {},
+            mapContent = { mapModifier ->
+                Box(
+                    modifier = mapModifier.background(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                )
+            },
+        )
+    }
+}
+
+@Preview(name = "Force end completed dialog", widthDp = 402, heightDp = 941)
+@Composable
+private fun ActiveAlarmTrackingForceEndDialogPreview() {
+    RingoutTheme(themeMode = ThemeMode.Dark) {
+        ActiveAlarmTrackingLayout(
+            missionOccurrenceId = "preview-dialog",
+            destinationName = "스터디카페",
+            countdown = "11:42",
+            mapUnavailableMessage = null,
+            onBackClick = {},
+            onForceEndHoldStarted = {},
+            onForceEndHoldCancelled = {},
+            onForceEndHoldComplete = {},
+            isForceEndEnabled = false,
+            isForceEndDialogVisible = true,
+            onForceEndConfirm = {},
             mapContent = { mapModifier ->
                 Box(
                     modifier = mapModifier.background(

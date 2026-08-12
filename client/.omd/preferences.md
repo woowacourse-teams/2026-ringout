@@ -79,3 +79,33 @@ source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/mypa
 ```
 
 The My Page calendar card stays horizontally centered on every device width.
+
+## 2026-08-11T05:09:49.000Z — do-not-reveal-a-second-text-layer-inside
+
+```omd-meta
+id: pref_mso7bbx5_51dd44c0
+timestamp: 2026-08-11T05:09:49.000Z
+scope: components.button
+signal: user-correction
+confidence: explicit
+status: pending
+source_agent: codex
+source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/activemission/components/ForceEndHoldButton.kt"
+```
+
+The force-end hold button keeps one text layer; its left-to-right progress fill does not reveal duplicate text.
+
+## 2026-08-11T05:14:08.000Z — the-force-end-hold-progress-fill-uses-ex
+
+```omd-meta
+id: pref_mso7gva5_dc12adf3
+timestamp: 2026-08-11T05:14:08.000Z
+scope: color
+signal: user-correction
+confidence: explicit
+status: pending
+source_agent: codex
+source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/activemission/components/ForceEndHoldButton.kt"
+```
+
+The force-end hold progress fill color is exactly #FF0000 red.

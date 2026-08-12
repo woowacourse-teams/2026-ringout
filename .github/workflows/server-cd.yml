@@ -8,9 +8,8 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: Docker image tag to deploy
+        description: Docker image tag to deploy, e.g. commit SHA
         required: true
-        default: latest
 
 concurrency:
   group: spring-production
@@ -20,44 +19,152 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: Deploy Spring container to application EC2
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main')
-    runs-on: [ self-hosted, Linux, ARM64 ]
-    timeout-minutes: 10
-    environment: production
+  inspect:
+    name: Inspect deployment candidate
+    runs-on: [ self-hosted, Linux, ARM64, ringout-production ]
+    timeout-minutes: 5
+    outputs:
+      should_deploy: ${{ steps.decision.outputs.should_deploy }}
+      image_tag: ${{ steps.decision.outputs.image_tag }}
+      deployment_sha: ${{ steps.decision.outputs.deployment_sha }}
+      reason: ${{ steps.decision.outputs.reason }}
     steps:
-      - name: Select image tag
-        id: image
+      - name: Checkout workflow run commit
+        if: >-
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Decide whether to deploy
+        id: decision
         env:
           EVENT_NAME: ${{ github.event_name }}
           MANUAL_TAG: ${{ inputs.image_tag }}
-          CI_COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          set -eu
+
+          write_decision() {
+            echo "should_deploy=$1" >> "$GITHUB_OUTPUT"
+            echo "image_tag=$2" >> "$GITHUB_OUTPUT"
+            echo "deployment_sha=$3" >> "$GITHUB_OUTPUT"
+            echo "reason=$4" >> "$GITHUB_OUTPUT"
+            echo "Decision: should_deploy=$1, image_tag=$2, deployment_sha=$3, reason=$4"
+          }
+
+          validate_image_tag() {
+            tag="$1"
+            if [ -z "$tag" ]; then
+              echo "image_tag is required for manual deployment."
+              exit 1
+            fi
+            if ! printf '%s' "$tag" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'; then
+              echo "image_tag must be a valid Docker tag."
+              exit 1
+            fi
+          }
+
+          is_commit() {
+            test -n "$1" && git cat-file -e "$1^{commit}" 2>/dev/null
+          }
+
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "tag=$MANUAL_TAG" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=$CI_COMMIT_SHA" >> "$GITHUB_OUTPUT"
+            validate_image_tag "$MANUAL_TAG"
+            write_decision true "$MANUAL_TAG" "" manual_dispatch
+            exit 0
           fi
 
-      #      - name: Prepare deployment environment file
-      #        id: environment
-      #        env:
-      #          SERVER_ENV_FILE: ${{ secrets.SERVER_ENV_FILE }}
-      #        run: |
-      #          test -n "$SERVER_ENV_FILE"
-      #          SERVER_ENV_FILE_BASE64=$(printf '%s' "$SERVER_ENV_FILE" | base64 --wrap=0)
-      #          echo "::add-mask::$SERVER_ENV_FILE_BASE64"
-      #          echo "env_file_base64=$SERVER_ENV_FILE_BASE64" >> "$GITHUB_OUTPUT"
+          if [ "$RUN_CONCLUSION" != "success" ] ||
+             [ "$RUN_EVENT" != "push" ] ||
+             [ "$RUN_BRANCH" != "main" ]; then
+            write_decision false "" "" not_main_push_success
+            exit 0
+          fi
+
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          CURRENT_MAIN_SHA=$(git rev-parse origin/main)
+          if [ "$CURRENT_MAIN_SHA" != "$HEAD_SHA" ]; then
+            echo "Skipping stale deployment candidate. current_main=$CURRENT_MAIN_SHA, candidate=$HEAD_SHA"
+            write_decision false "" "" stale_main
+            exit 0
+          fi
+
+          APP_DIRECTORY="$HOME/ringout"
+          BASE_SHA=""
+
+          if [ -f "$APP_DIRECTORY/.last-deployed-sha" ]; then
+            CANDIDATE_SHA=$(sed -n '1p' "$APP_DIRECTORY/.last-deployed-sha")
+            if is_commit "$CANDIDATE_SHA"; then
+              BASE_SHA="$CANDIDATE_SHA"
+            fi
+          fi
+
+          if [ -z "$BASE_SHA" ]; then
+            CANDIDATE_SHA=$(docker inspect --format '{{ index .Config.Labels "com.ringout.deployment-sha" }}' ringout-server 2>/dev/null || true)
+            if [ "$CANDIDATE_SHA" != "<no value>" ] && is_commit "$CANDIDATE_SHA"; then
+              BASE_SHA="$CANDIDATE_SHA"
+            fi
+          fi
+
+          if [ -z "$BASE_SHA" ]; then
+            CURRENT_IMAGE=$(docker inspect --format '{{.Config.Image}}' ringout-server 2>/dev/null || true)
+            CANDIDATE_SHA="${CURRENT_IMAGE##*:}"
+            if [ "$CANDIDATE_SHA" != "$CURRENT_IMAGE" ] && is_commit "$CANDIDATE_SHA"; then
+              BASE_SHA="$CANDIDATE_SHA"
+            fi
+          fi
+
+          if [ -z "$BASE_SHA" ] && is_commit "$HEAD_SHA^"; then
+            BASE_SHA="$HEAD_SHA^"
+          fi
+
+          if [ -n "$BASE_SHA" ]; then
+            echo "Checking changed files between $BASE_SHA and $HEAD_SHA."
+            changed_files=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          else
+            echo "No comparable base commit was found. Deploying conservatively."
+            write_decision true "$HEAD_SHA" "$HEAD_SHA" no_comparable_base
+            exit 0
+          fi
+
+          printf 'Changed files in deployment candidate:\n%s\n' "$changed_files"
+
+          if printf '%s\n' "$changed_files" | grep -q '^server/'; then
+            write_decision true "$HEAD_SHA" "$HEAD_SHA" server_changes
+            exit 0
+          fi
+
+          write_decision false "" "" no_server_changes
+
+  deploy:
+    name: Deploy Spring container to application EC2
+    needs: inspect
+    if: needs.inspect.outputs.should_deploy == 'true'
+    runs-on: [ self-hosted, Linux, ARM64, ringout-production ]
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Checkout deployment commit
+        if: needs.inspect.outputs.deployment_sha != ''
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.inspect.outputs.deployment_sha }}
+          fetch-depth: 0
 
       - name: Deploy Docker container
         env:
           IMAGE_REPOSITORY: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}/ringout-server
-          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+          IMAGE_TAG: ${{ needs.inspect.outputs.image_tag }}
+          DEPLOYMENT_SHA: ${{ needs.inspect.outputs.deployment_sha }}
+          DEPLOYMENT_REASON: ${{ needs.inspect.outputs.reason }}
           DOCKERHUB_USERNAME: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.SERVER_DOCKERHUB_TOKEN }}
           SERVER_ENV_FILE: ${{ secrets.SERVER_ENV_FILE }}
@@ -88,13 +195,21 @@ jobs:
           }
           
           start_server() {
+            image="$1"
+            deployment_sha="$2"
+            label_args=""
+            if [ -n "$deployment_sha" ]; then
+              label_args="--label com.ringout.deployment-sha=$deployment_sha"
+            fi
+
             docker run --detach \
               --name ringout-server \
               --restart unless-stopped \
               --env-file "$APP_ENV_FILE" \
               --env JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
               --publish "$APP_PORT:8080" \
-              "$1"
+              $label_args \
+              "$image"
           }
           
           rollback() {
@@ -104,7 +219,7 @@ jobs:
               echo "No previous image is available for rollback."
               return 1
             fi
-            if ! start_server "$PREVIOUS_IMAGE"; then
+            if ! start_server "$PREVIOUS_IMAGE" "$PREVIOUS_DEPLOYMENT_SHA"; then
               echo "Failed to start the previous image."
               return 1
             fi
@@ -115,21 +230,38 @@ jobs:
             docker logs ringout-server 2>/dev/null || true
             return 1
           }
+
+          if [ -n "$DEPLOYMENT_SHA" ] && [ "$DEPLOYMENT_REASON" != "manual_dispatch" ]; then
+            git fetch --no-tags origin main:refs/remotes/origin/main
+            CURRENT_MAIN_SHA=$(git rev-parse origin/main)
+            if [ "$CURRENT_MAIN_SHA" != "$DEPLOYMENT_SHA" ]; then
+              echo "Deployment candidate is stale after approval. current_main=$CURRENT_MAIN_SHA, candidate=$DEPLOYMENT_SHA"
+              exit 1
+            fi
+          fi
           
           echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
           trap 'docker logout >/dev/null 2>&1 || true' EXIT
           docker pull "$IMAGE_REPOSITORY:$IMAGE_TAG"
           
           PREVIOUS_IMAGE=$(docker inspect --format '{{.Image}}' ringout-server 2>/dev/null || true)
+          PREVIOUS_DEPLOYMENT_SHA=$(docker inspect --format '{{ index .Config.Labels "com.ringout.deployment-sha" }}' ringout-server 2>/dev/null || true)
+          if [ "$PREVIOUS_DEPLOYMENT_SHA" = "<no value>" ]; then
+            PREVIOUS_DEPLOYMENT_SHA=""
+          fi
           docker rm --force ringout-server 2>/dev/null || true
           
-          if ! start_server "$IMAGE_REPOSITORY:$IMAGE_TAG"; then
+          if ! start_server "$IMAGE_REPOSITORY:$IMAGE_TAG" "$DEPLOYMENT_SHA"; then
             rollback || true
             exit 1
           fi
           
           if wait_for_health; then
             echo "Deployment completed successfully."
+            if [ -n "$DEPLOYMENT_SHA" ]; then
+              printf '%s\n' "$DEPLOYMENT_SHA" > "$APP_DIRECTORY/.last-deployed-sha"
+              chmod 600 "$APP_DIRECTORY/.last-deployed-sha"
+            fi
             docker image prune --force
             exit 0
           fi
@@ -137,103 +269,3 @@ jobs:
           docker logs ringout-server 2>/dev/null || true
           rollback || true
           exit 1
-
-#      - name: Deploy Docker container over SSH
-#        uses: appleboy/ssh-action@v1.2.2
-#        env:
-#          IMAGE_REPOSITORY: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}/ringout-server
-#          IMAGE_TAG: ${{ steps.image.outputs.tag }}
-#          DOCKERHUB_USERNAME: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}
-#          DOCKERHUB_TOKEN: ${{ secrets.SERVER_DOCKERHUB_TOKEN }}
-#          APP_ENV_FILE_BASE64: ${{ steps.environment.outputs.env_file_base64 }}
-#          APP_PORT: ${{ vars.SERVER_PORT || '8080' }}
-#        with:
-#          # SERVER_* SSH secrets point to the Spring application EC2, not the MySQL EC2.
-#          host: ${{ secrets.SERVER_HOST }}
-#          username: ${{ secrets.SERVER_USERNAME }}
-#          key: ${{ secrets.SERVER_SSH_KEY }}
-#          port: ${{ secrets.SERVER_SSH_PORT || 22 }}
-#          envs: IMAGE_REPOSITORY,IMAGE_TAG,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,APP_ENV_FILE_BASE64,APP_PORT
-#          script_stop: true
-#          script: |
-#            set -eu
-#
-#            command -v docker >/dev/null 2>&1
-#            command -v curl >/dev/null 2>&1
-#
-#            APP_DIRECTORY="$HOME/ringout"
-#            APP_ENV_FILE="$APP_DIRECTORY/.env"
-#            mkdir -p "$APP_DIRECTORY"
-#            chmod 700 "$APP_DIRECTORY"
-#            printf '%s' "$APP_ENV_FILE_BASE64" | base64 --decode > "$APP_ENV_FILE.tmp"
-#            printf '\nSPRING_PROFILES_ACTIVE=prod\n' >> "$APP_ENV_FILE.tmp"
-#            chmod 600 "$APP_ENV_FILE.tmp"
-#            mv "$APP_ENV_FILE.tmp" "$APP_ENV_FILE"
-#
-#            wait_for_health() {
-#              attempt=1
-#              while [ "$attempt" -le 30 ]; do
-#                if curl --fail --silent "http://127.0.0.1:$APP_PORT/actuator/health"; then
-#                  return 0
-#                fi
-#                echo "Waiting for server... (${attempt}/30)"
-#                attempt=$((attempt + 1))
-#                sleep 2
-#              done
-#              return 1
-#            }
-#
-#            start_server() {
-#              docker run --detach \
-#                --name ringout-server \
-#                --restart unless-stopped \
-#                --env-file "$APP_ENV_FILE" \
-#                --publish "$APP_PORT:8080" \
-#                "$1"
-#            }
-#
-#            rollback() {
-#              echo "Deployment failed. Rolling back to the previous image."
-#              docker rm --force ringout-server 2>/dev/null || true
-#
-#              if [ -z "$PREVIOUS_IMAGE" ]; then
-#                echo "No previous image is available for rollback."
-#                return 1
-#              fi
-#
-#              if ! start_server "$PREVIOUS_IMAGE"; then
-#                echo "Failed to start the previous image."
-#                return 1
-#              fi
-#
-#              if wait_for_health; then
-#                echo "Rollback completed successfully."
-#                return 0
-#              fi
-#
-#              docker logs ringout-server 2>/dev/null || true
-#              echo "The rollback container did not become healthy."
-#              return 1
-#            }
-#
-#            echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
-#            trap 'docker logout >/dev/null 2>&1 || true' EXIT
-#            docker pull "$IMAGE_REPOSITORY:$IMAGE_TAG"
-#
-#            PREVIOUS_IMAGE=$(docker inspect --format '{{.Image}}' ringout-server 2>/dev/null || true)
-#            docker rm --force ringout-server 2>/dev/null || true
-#
-#            if ! start_server "$IMAGE_REPOSITORY:$IMAGE_TAG"; then
-#              rollback || true
-#              exit 1
-#            fi
-#
-#            if wait_for_health; then
-#              echo "Deployment completed successfully."
-#              docker image prune --force
-#              exit 0
-#            fi
-#
-#            docker logs ringout-server 2>/dev/null || true
-#            rollback || true
-#            exit 1

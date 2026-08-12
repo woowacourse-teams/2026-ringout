@@ -21,3 +21,17 @@ management:
     web:
       exposure:
         include: health
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  packages-to-scan: com.ringout.api
+
+app:
+  swagger:
+    local-url: ${SWAGGER_LOCAL_URL:http://localhost:8080}
+    production-url: ${SWAGGER_PRODUCTION_URL:}
