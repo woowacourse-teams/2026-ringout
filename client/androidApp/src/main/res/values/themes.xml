@@ -5,9 +5,10 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
         <item name="android:windowNoTitle">true</item>
     </style>
 
-    <style name="Theme.Ringout.Content" parent="Theme.Ringout.Base" />
+    <style name="Theme.Ringout.Api27" parent="Theme.Ringout.Base" />
+
+    <style name="Theme.Ringout.Content" parent="Theme.Ringout.Api27" />
 </resources>
