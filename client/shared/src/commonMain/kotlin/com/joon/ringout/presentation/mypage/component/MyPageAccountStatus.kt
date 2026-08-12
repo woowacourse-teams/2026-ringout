@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.mypage.component
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -29,6 +31,7 @@ import ringout.shared.generated.resources.mypage_logged_out_profile
 
 @Composable
 fun MyPageAccountStatus(
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = myPageColors()
@@ -36,7 +39,12 @@ fun MyPageAccountStatus(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(AccountStatusHeight),
+            .height(AccountStatusHeight)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "로그인 화면으로 이동",
+                onClick = onClick,
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Image(
@@ -89,6 +97,6 @@ private val TextLineSpacing = 3.dp
 @Composable
 private fun MyPageAccountStatusPreview() {
     RingoutTheme(ThemeMode.Dark) {
-        MyPageAccountStatus()
+        MyPageAccountStatus(onClick = {})
     }
 }

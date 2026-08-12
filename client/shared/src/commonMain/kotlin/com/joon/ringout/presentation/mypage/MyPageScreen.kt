@@ -44,6 +44,7 @@ fun MyPageScreen(
     policies: List<PolicyInfo>,
     onThemeModeChange: (ThemeMode) -> Unit,
     onBackClick: () -> Unit,
+    onAccountStatusClick: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MyPageViewModel = rememberMyPageViewModel(),
@@ -58,6 +59,7 @@ fun MyPageScreen(
         onPreviousMonthClick = viewModel::onPreviousMonthClick,
         onNextMonthClick = viewModel::onNextMonthClick,
         onBackClick = onBackClick,
+        onAccountStatusClick = onAccountStatusClick,
         onPolicyClick = onPolicyClick,
         modifier = modifier,
     )
@@ -84,6 +86,7 @@ fun MyPageScreenContent(
     onPreviousMonthClick: () -> Unit,
     onNextMonthClick: () -> Unit,
     onBackClick: () -> Unit,
+    onAccountStatusClick: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -99,7 +102,7 @@ fun MyPageScreenContent(
     ) {
         item { MyPageHeader(onBackClick = onBackClick) }
         item { Spacer(Modifier.height(6.dp)) }
-        item { MyPageAccountStatus() }
+        item { MyPageAccountStatus(onClick = onAccountStatusClick) }
         item { Spacer(Modifier.height(16.dp)) }
         item {
             Box(
@@ -187,6 +190,7 @@ private fun MyPagePreview(themeMode: ThemeMode, state: MyPageUiState) {
             onPreviousMonthClick = {},
             onNextMonthClick = {},
             onBackClick = {},
+            onAccountStatusClick = {},
             onPolicyClick = {},
         )
     }
