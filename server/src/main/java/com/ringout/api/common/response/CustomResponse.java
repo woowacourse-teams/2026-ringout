@@ -13,7 +13,7 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 @JsonPropertyOrder({"isSuccess", "code", "message", "result"})
-public class ApiResponse<T> {
+public class CustomResponse<T> {
 
   @JsonProperty("isSuccess")
   private final Boolean isSuccess;
@@ -22,16 +22,16 @@ public class ApiResponse<T> {
   @JsonInclude(Include.NON_NULL)
   private T result;
 
-  public static <T> ApiResponse<T> onSuccess(T result) {
-    return new ApiResponse<>(true, SuccessStatus._OK.getCode(), SuccessStatus._OK.getMessage(), result);
+  public static <T> CustomResponse<T> onSuccess(T result) {
+    return new CustomResponse<>(true, SuccessStatus._OK.getCode(), SuccessStatus._OK.getMessage(), result);
   }
 
-  public static <T> ApiResponse<T> of(BaseCode code, T result){
+  public static <T> CustomResponse<T> of(BaseCode code, T result){
     ReasonResponse reason = code.getReason();
-    return new ApiResponse<>(true, reason.code(), reason.message(), result);
+    return new CustomResponse<>(true, reason.code(), reason.message(), result);
   }
 
-  public static <T> ApiResponse<T> onFailure(String code, String message, T data){
-    return new ApiResponse<>(false, code, message, data);
+  public static <T> CustomResponse<T> onFailure(String code, String message, T data){
+    return new CustomResponse<>(false, code, message, data);
   }
 }
