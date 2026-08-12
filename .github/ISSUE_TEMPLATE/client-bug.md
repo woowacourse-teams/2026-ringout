@@ -1,9 +1,10 @@
 ---
-name: "🐞 Client Bug"
-about: "클라이언트에서 발생한 버그를 등록합니다."
+name: "\U0001F41E Client Bug"
+about: 클라이언트에서 발생한 버그를 등록합니다.
 title: "[Bug] "
-labels: "client"
-assignees: ""
+labels: client
+assignees: ''
+
 ---
 
 ## 🐞 어떤 버그인가요?

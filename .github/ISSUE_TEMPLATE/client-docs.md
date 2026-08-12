@@ -1,9 +1,10 @@
 ---
-name: "📝 Client Documentation"
-about: "클라이언트 문서 작업 이슈를 등록합니다."
+name: "\U0001F4DD Client Documentation"
+about: 클라이언트 문서 작업 이슈를 등록합니다.
 title: "[Docs] "
-labels: "client"
-assignees: ""
+labels: client
+assignees: ''
+
 ---
 
 ## 📝 문서 종류
