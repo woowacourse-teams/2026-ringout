@@ -1,4 +1,4 @@
-package com.ringout.api.terms.dto;
+package com.ringout.api.terms.dto.response;
 
 import java.time.LocalDate;
 import java.util.List;

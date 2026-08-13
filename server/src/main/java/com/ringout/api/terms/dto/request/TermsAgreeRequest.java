@@ -1,4 +1,4 @@
-package com.ringout.api.terms.dto;
+package com.ringout.api.terms.dto.request;
 
 import com.ringout.api.terms.domain.TermsType;
 import jakarta.validation.constraints.NotBlank;

@@ -5,7 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.ringout.api.terms.dto.TermsAgreeResponse;
+import com.ringout.api.terms.dto.response.TermsAgreeResponse;
 import com.ringout.api.terms.service.TermsService;
 import java.time.LocalDate;
 import java.util.List;

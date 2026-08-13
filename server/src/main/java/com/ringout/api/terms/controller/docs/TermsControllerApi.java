@@ -1,9 +1,9 @@
 package com.ringout.api.terms.controller.docs;
 
 import com.ringout.api.common.response.CustomResponse;
-import com.ringout.api.terms.dto.CheckRequiredTermsAgreedResponse;
-import com.ringout.api.terms.dto.TermsAgreeRequest;
-import com.ringout.api.terms.dto.TermsAgreeResponse;
+import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
+import com.ringout.api.terms.dto.request.TermsAgreeRequest;
+import com.ringout.api.terms.dto.response.TermsAgreeResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;

@@ -1,4 +1,4 @@
-package com.ringout.api.terms.dto;
+package com.ringout.api.terms.dto.response;
 
 public record CheckRequiredTermsAgreedResponse(
     boolean agreements

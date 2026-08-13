@@ -58,6 +58,19 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
     return handleExceptionInternalFalse(e, ErrorStatus._INTERNAL_SERVER_ERROR, HttpHeaders.EMPTY, ErrorStatus._INTERNAL_SERVER_ERROR.getHttpStatus(),request, e.getMessage());
   }
 
+  @ExceptionHandler(value = IllegalStateException.class)
+  public ResponseEntity handleIllegalStateException(IllegalStateException illegalStateException,
+      HttpServletRequest request) {
+    WebRequest webRequest = new ServletWebRequest(request);
+    return handleExceptionInternalFalse(
+        illegalStateException,
+        ErrorStatus.STAMP_ALREADY_CREATED,
+        HttpHeaders.EMPTY,
+        ErrorStatus.STAMP_ALREADY_CREATED.getHttpStatus(),
+        webRequest,
+        illegalStateException.getMessage());
+  }
+
   @ExceptionHandler(value = GeneralException.class)
   public ResponseEntity onThrowException(GeneralException generalException, HttpServletRequest request) {
     ErrorReasonResponse errorReasonHttpStatus = generalException.getErrorReasonHttpStatus();
