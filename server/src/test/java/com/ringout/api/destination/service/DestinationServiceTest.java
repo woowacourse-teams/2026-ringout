@@ -5,20 +5,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.destination.domain.Coordinate;
 import com.ringout.api.destination.domain.Destination;
 import com.ringout.api.destination.domain.DestinationAlias;
+import com.ringout.api.destination.dto.request.DestinationSyncRequest;
+import com.ringout.api.destination.dto.request.DestinationSyncRequest.DestinationSyncItemRequest;
 import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
 import com.ringout.api.destination.dto.response.DestinationCreateResponse;
 import com.ringout.api.destination.dto.response.DestinationResponse;
+import com.ringout.api.destination.dto.response.DestinationSyncResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -99,6 +105,173 @@ class DestinationServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
             verify(destinationRepository, never()).findOwnedDestinations(any());
+        }
+    }
+
+    @Nested
+    class 목적지_동기화 {
+
+        @Test
+        void 목적지_동기화에_성공한다() {
+            // given
+            Long userId = 1L;
+            AtomicLong destinationId = new AtomicLong(1L);
+            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
+                new DestinationSyncItemRequest(2L, "집", 37.4979, 127.0276),
+                new DestinationSyncItemRequest(3L, "회사", 37.5665, 126.9780)
+            ));
+
+            given(destinationRepository.save(any(Destination.class)))
+                .willAnswer(invocation -> {
+                    Destination destination = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(destination, "id", destinationId.getAndIncrement());
+                    return destination;
+                });
+
+            // when
+            DestinationSyncResponse response = destinationService.syncDestinations(userId, request);
+
+            // then
+            assertThat(response.destinations()).hasSize(2);
+            assertThat(response.destinations().get(0).clientDestinationId()).isEqualTo(2L);
+            assertThat(response.destinations().get(0).destinationId()).isEqualTo(1L);
+            assertThat(response.destinations().get(0).alias()).isEqualTo("집");
+            assertThat(response.destinations().get(0).latitude()).isEqualTo(37.4979);
+            assertThat(response.destinations().get(0).longitude()).isEqualTo(127.0276);
+            assertThat(response.destinations().get(1).clientDestinationId()).isEqualTo(3L);
+            assertThat(response.destinations().get(1).destinationId()).isEqualTo(2L);
+            assertThat(response.destinations().get(1).alias()).isEqualTo("회사");
+            verify(destinationRepository, times(2)).save(any(Destination.class));
+        }
+
+        @Test
+        void 사용자_id가_없으면_목적지를_동기화할_수_없다() {
+            // given
+            Long userId = null;
+            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
+                new DestinationSyncItemRequest(2L, "집", 37.4979, 127.0276)
+            ));
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
+            verify(destinationRepository, never()).save(any(Destination.class));
+        }
+
+        @Test
+        void 요청_body가_없으면_목적지를_동기화할_수_없다() {
+            // given
+            Long userId = 1L;
+            DestinationSyncRequest request = null;
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
+            verify(destinationRepository, never()).save(any(Destination.class));
+        }
+
+        @Test
+        void 목적지_목록이_비어있으면_빈_목록으로_동기화한다() {
+            // given
+            Long userId = 1L;
+            DestinationSyncRequest request = new DestinationSyncRequest(List.of());
+
+            // when
+            DestinationSyncResponse response = destinationService.syncDestinations(userId, request);
+
+            // then
+            assertThat(response.destinations()).isEmpty();
+            verify(destinationRepository, never()).save(any(Destination.class));
+        }
+
+        @Test
+        void 목적지_목록이_없으면_동기화할_수_없다() {
+            // given
+            Long userId = 1L;
+            DestinationSyncRequest request = new DestinationSyncRequest(null);
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
+            verify(destinationRepository, never()).save(any(Destination.class));
+        }
+
+        @Test
+        void 목적지_항목이_null_이라면_동기화할_수_없다() {
+            // given
+            Long userId = 1L;
+            DestinationSyncRequest request = new DestinationSyncRequest(Collections.singletonList(null));
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
+            verify(destinationRepository, never()).save(any(Destination.class));
+        }
+
+        @Test
+        void 클라이언트_목적지_id가_올바르지_않으면_동기화할_수_없다() {
+            // given
+            Long userId = 1L;
+            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
+                new DestinationSyncItemRequest(0L, "집", 37.4979, 127.0276)
+            ));
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
+            verify(destinationRepository, never()).save(any(Destination.class));
+        }
+
+        @Test
+        void 클라이언트_목적지_id가_중복되면_동기화할_수_없다() {
+            // given
+            Long userId = 1L;
+            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
+                new DestinationSyncItemRequest(2L, "집", 37.4979, 127.0276),
+                new DestinationSyncItemRequest(2L, "회사", 37.5665, 126.9780)
+            ));
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
+            verify(destinationRepository, never()).save(any(Destination.class));
+        }
+
+        @Test
+        void 목적지_별칭이_올바르지_않으면_동기화할_수_없다() {
+            // given
+            Long userId = 1L;
+            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
+                new DestinationSyncItemRequest(2L, "", 37.4979, 127.0276)
+            ));
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
+            verify(destinationRepository, never()).save(any(Destination.class));
+        }
+
+        @Test
+        void 목적지_좌표가_올바르지_않으면_동기화할_수_없다() {
+            // given
+            Long userId = 1L;
+            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
+                new DestinationSyncItemRequest(2L, "집", 91.0, 127.0276)
+            ));
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(
+                        DestinationErrorStatus.DESTINATION_SYNC_COORDINATE_INVALID));
+            verify(destinationRepository, never()).save(any(Destination.class));
         }
     }
 

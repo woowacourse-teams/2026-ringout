@@ -4,13 +4,20 @@ import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.destination.domain.Coordinate;
 import com.ringout.api.destination.domain.Destination;
 import com.ringout.api.destination.domain.DestinationAlias;
+import com.ringout.api.destination.dto.request.DestinationSyncRequest;
+import com.ringout.api.destination.dto.request.DestinationSyncRequest.DestinationSyncItemRequest;
 import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
 import com.ringout.api.destination.dto.response.DestinationCreateResponse;
 import com.ringout.api.destination.dto.response.DestinationResponse;
+import com.ringout.api.destination.dto.response.DestinationSyncResponse;
+import com.ringout.api.destination.dto.response.DestinationSyncResponse.DestinationSyncItemResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +45,22 @@ public class DestinationService {
         return destinationRepository.findOwnedDestinations(userId).stream()
             .map(DestinationResponse::from)
             .toList();
+    }
+
+    @Transactional
+    public DestinationSyncResponse syncDestinations(Long userId, DestinationSyncRequest request) {
+        validateAuthenticatedUserExists(userId);
+        validateDestinationSyncRequestBodyExists(request);
+        validateSyncRequestClientDestinationIdsAreUsable(request.destinations());
+
+        List<DestinationSyncItemResponse> syncedDestinations = new ArrayList<>();
+        for (DestinationSyncItemRequest item : request.destinations()) {
+            Destination destination = createDestinationForSync(userId, item);
+            Destination savedDestination = destinationRepository.save(destination);
+            syncedDestinations.add(DestinationSyncItemResponse.of(item.clientDestinationId(), savedDestination));
+        }
+
+        return new DestinationSyncResponse(syncedDestinations);
     }
 
     @Transactional
@@ -79,6 +102,56 @@ public class DestinationService {
         if (request == null || request.hasNoUpdateField()) {
             throw new GeneralException(DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID);
         }
+    }
+
+    private void validateDestinationSyncRequestBodyExists(DestinationSyncRequest request) {
+        if (request == null || request.hasNoDestinationList()) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID);
+        }
+    }
+
+    private void validateSyncRequestClientDestinationIdsAreUsable(List<DestinationSyncItemRequest> destinations) {
+        Set<Long> clientDestinationIds = new HashSet<>();
+        for (DestinationSyncItemRequest destination : destinations) {
+            validateDestinationSyncItemExists(destination);
+            validateClientDestinationIdIsPositive(destination.clientDestinationId());
+            validateClientDestinationIdIsUnique(clientDestinationIds, destination.clientDestinationId());
+        }
+    }
+
+    private void validateDestinationSyncItemExists(DestinationSyncItemRequest destination) {
+        if (destination == null) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID);
+        }
+    }
+
+    private void validateClientDestinationIdIsPositive(Long clientDestinationId) {
+        if (clientDestinationId == null || clientDestinationId <= 0) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID);
+        }
+    }
+
+    private void validateClientDestinationIdIsUnique(Set<Long> clientDestinationIds, Long clientDestinationId) {
+        if (!clientDestinationIds.add(clientDestinationId)) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID);
+        }
+    }
+
+    private Destination createDestinationForSync(Long userId, DestinationSyncItemRequest request) {
+        try {
+            return Destination.create(userId, DestinationAlias.from(request.alias()),
+                Coordinate.of(request.latitude(), request.longitude()));
+        } catch (GeneralException exception) {
+            throw convertToDestinationSyncException(exception);
+        }
+    }
+
+    private GeneralException convertToDestinationSyncException(GeneralException exception) {
+        if (DestinationErrorStatus.DESTINATION_COORDINATE_INVALID.equals(exception.getCode())) {
+            return new GeneralException(DestinationErrorStatus.DESTINATION_SYNC_COORDINATE_INVALID);
+        }
+
+        return new GeneralException(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID);
     }
 
     private Destination findDestinationByIdAndValidateOwner(Long userId, Long destinationId) {

@@ -14,6 +14,8 @@ public enum DestinationErrorStatus implements BaseErrorCode {
     DESTINATION_INVALID(HttpStatus.BAD_REQUEST, "DESTINATION400", "목적지 요청 형식이 올바르지 않습니다."),
     DESTINATION_ID_INVALID(HttpStatus.BAD_REQUEST, "DESTINATION400", "목적지 ID가 올바르지 않습니다."),
     DESTINATION_UPDATE_REQUEST_INVALID(HttpStatus.BAD_REQUEST, "DESTINATION400", "수정할 목적지 정보가 올바르지 않습니다."),
+    DESTINATION_SYNC_REQUEST_INVALID(HttpStatus.BAD_REQUEST, "DESTINATION400", "목적지 정보가 올바르지 않습니다."),
+    DESTINATION_SYNC_COORDINATE_INVALID(HttpStatus.BAD_REQUEST, "DESTINATION400", "목적지 좌표가 올바르지 않습니다."),
     DESTINATION_ALIAS_INVALID(HttpStatus.BAD_REQUEST, "DESTINATION400", "위치 별명은 1자 이상 12자 이하로 입력해야 합니다."),
     DESTINATION_COORDINATE_INVALID(HttpStatus.BAD_REQUEST, "DESTINATION400",
         "좌표는 위도 -90~90, 경도 -180~180 범위의 숫자여야 합니다."),

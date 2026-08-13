@@ -4,9 +4,11 @@ import com.ringout.api.auth.CustomUserDetails;
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.destination.controller.docs.DestinationControllerApi;
 import com.ringout.api.destination.dto.request.DestinationCreateRequest;
+import com.ringout.api.destination.dto.request.DestinationSyncRequest;
 import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
 import com.ringout.api.destination.dto.response.DestinationCreateResponse;
 import com.ringout.api.destination.dto.response.DestinationResponse;
+import com.ringout.api.destination.dto.response.DestinationSyncResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.service.DestinationService;
 import com.ringout.api.destination.status.DestinationSuccessStatus;
@@ -42,6 +44,19 @@ public class DestinationController implements DestinationControllerApi {
 
         return ResponseEntity.status(DestinationSuccessStatus.DESTINATIONS_FOUND.getHttpStatus())
             .body(CustomResponse.of(DestinationSuccessStatus.DESTINATIONS_FOUND, response));
+    }
+
+    @Override
+    @PostMapping("/sync")
+    public ResponseEntity<CustomResponse<DestinationSyncResponse>> syncDestinations(
+        @Parameter(hidden = true)
+        @RequestAttribute(value = "customUserDetails", required = false) CustomUserDetails customUserDetails,
+        @RequestBody(required = false) DestinationSyncRequest request
+    ) {
+        DestinationSyncResponse response = destinationService.syncDestinations(customUserDetails.userId(), request);
+
+        return ResponseEntity.status(DestinationSuccessStatus.DESTINATIONS_SYNCED.getHttpStatus())
+            .body(CustomResponse.of(DestinationSuccessStatus.DESTINATIONS_SYNCED, response));
     }
 
     @Override
