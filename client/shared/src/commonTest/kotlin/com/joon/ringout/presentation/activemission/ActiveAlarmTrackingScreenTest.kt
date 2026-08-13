@@ -3,8 +3,14 @@ package com.joon.ringout.presentation.activemission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.MaximumAcceptedLocationAccuracyMeters
 import com.joon.ringout.alarm.MaximumTrackingLocationAgeMillis
+import com.joon.ringout.alarm.MissionLocationAccuracyState
+import com.joon.ringout.alarm.MissionLocationAuthorizationState
+import com.joon.ringout.alarm.MissionLocationServicesState
+import com.joon.ringout.alarm.MissionLocationState
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ActiveAlarmTrackingScreenTest {
@@ -90,6 +96,23 @@ class ActiveAlarmTrackingScreenTest {
         )
     }
 
+    @Test
+    fun exposesReducedAccuracyAndUnavailableTrackingStatesToMissionUi() {
+        assertEquals(
+            "정확한 위치가 꺼져 있어 도착 판정이 늦어질 수 있어요.",
+            missionLocationStatusMessage(
+                locationState(accuracy = MissionLocationAccuracyState.REDUCED),
+            ),
+        )
+        assertEquals(
+            "위치 서비스가 꺼져 있어 도착 여부를 확인할 수 없어요.",
+            missionLocationStatusMessage(
+                locationState(services = MissionLocationServicesState.DISABLED),
+            ),
+        )
+        assertNull(missionLocationStatusMessage(locationState()))
+    }
+
     private fun location(
         latitude: Double = 37.2875205998,
         longitude: Double = 127.0146478075,
@@ -100,6 +123,18 @@ class ActiveAlarmTrackingScreenTest {
         longitude = longitude,
         accuracyMeters = accuracyMeters,
         capturedAtEpochMillis = capturedAtEpochMillis,
+    )
+
+    private fun locationState(
+        services: MissionLocationServicesState = MissionLocationServicesState.ENABLED,
+        authorization: MissionLocationAuthorizationState =
+            MissionLocationAuthorizationState.ALWAYS,
+        accuracy: MissionLocationAccuracyState = MissionLocationAccuracyState.FULL,
+    ) = MissionLocationState(
+        services = services,
+        authorization = authorization,
+        accuracy = accuracy,
+        isTracking = true,
     )
 
     private companion object {

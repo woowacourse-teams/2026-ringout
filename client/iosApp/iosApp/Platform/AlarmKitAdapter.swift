@@ -90,6 +90,63 @@ final class AlarmKitAdapter: IosAlarmScheduler {
         }
     }
 
+    func scheduleRetry(
+        request: IosAlarmRetryScheduleDto,
+        callback: @escaping (IosAlarmOperationResult) -> Void
+    ) {
+        guard AlarmManager.shared.authorizationState == .authorized else {
+            callback(IosAlarmOperationResult(code: .denied, message: nil))
+            return
+        }
+        guard UUID(uuidString: request.sourceAlarmId) != nil,
+              let alarmKitId = UUID(uuidString: request.alarmKitId) else {
+            callback(IosAlarmOperationResult(code: .invalidId, message: nil))
+            return
+        }
+
+        let presentation = AlarmPresentation(alert: makeAlert(title: request.title))
+        let attributes = AlarmAttributes(
+            presentation: presentation,
+            metadata: RingoutAlarmMetadata(alarmId: request.sourceAlarmId),
+            tintColor: .orange
+        )
+        let stopIntent = StopAlarmIntent(
+            alarmId: request.sourceAlarmId,
+            occurrenceId: request.occurrenceId,
+            retryAttempt: Int(request.retryAttempt),
+            systemAlarmId: request.alarmKitId
+        )
+        let openIntent = OpenRingoutIntent(
+            alarmId: request.sourceAlarmId,
+            occurrenceId: request.occurrenceId,
+            retryAttempt: Int(request.retryAttempt),
+            systemAlarmId: request.alarmKitId
+        )
+        let fireDate = Date().addingTimeInterval(max(0, request.delaySeconds))
+        let configuration = AlarmManager.AlarmConfiguration.alarm(
+            schedule: .fixed(fireDate),
+            attributes: attributes,
+            stopIntent: stopIntent,
+            secondaryIntent: openIntent,
+            sound: .default
+        )
+        Task {
+            do {
+                _ = try await AlarmManager.shared.schedule(
+                    id: alarmKitId,
+                    configuration: configuration
+                )
+                await completeOnMain {
+                    callback(IosAlarmOperationResult(code: .success, message: nil))
+                }
+            } catch {
+                await completeOnMain {
+                    callback(mapScheduleError(error))
+                }
+            }
+        }
+    }
+
     func cancel(
         alarmId rawAlarmId: String,
         callback: @escaping (IosAlarmOperationResult) -> Void
@@ -100,6 +157,10 @@ final class AlarmKitAdapter: IosAlarmScheduler {
         }
 
         do {
+            guard try AlarmManager.shared.alarms.contains(where: { $0.id == alarmId }) else {
+                callback(IosAlarmOperationResult(code: .notFound, message: nil))
+                return
+            }
             try AlarmManager.shared.cancel(id: alarmId)
             callback(IosAlarmOperationResult(code: .success, message: nil))
         } catch {
@@ -166,8 +227,14 @@ final class AlarmKitAdapter: IosAlarmScheduler {
         return AlarmManager.AlarmConfiguration.alarm(
             schedule: schedule,
             attributes: attributes,
-            stopIntent: StopAlarmIntent(alarmId: alarmId.uuidString),
-            secondaryIntent: OpenRingoutIntent(alarmId: alarmId.uuidString),
+            stopIntent: StopAlarmIntent(
+                alarmId: alarmId.uuidString,
+                systemAlarmId: alarmId.uuidString
+            ),
+            secondaryIntent: OpenRingoutIntent(
+                alarmId: alarmId.uuidString,
+                systemAlarmId: alarmId.uuidString
+            ),
             sound: .default
         )
     }

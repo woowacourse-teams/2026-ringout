@@ -438,6 +438,13 @@ private class FakeIosAlarmScheduler(
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
     }
 
+    override fun scheduleRetry(
+        request: IosAlarmRetryScheduleDto,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
     override fun cancel(
         alarmId: String,
         callback: (IosAlarmOperationResult) -> Unit,

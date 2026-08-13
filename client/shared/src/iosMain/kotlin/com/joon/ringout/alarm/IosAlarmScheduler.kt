@@ -44,6 +44,15 @@ data class IosAlarmScheduleDto(
     val soundName: String,
 )
 
+data class IosAlarmRetryScheduleDto(
+    val alarmKitId: String,
+    val sourceAlarmId: String,
+    val occurrenceId: String,
+    val retryAttempt: Int,
+    val title: String,
+    val delaySeconds: Double = 0.0,
+)
+
 enum class IosScheduledAlarmState {
     SCHEDULED,
     ALERTING,
@@ -74,12 +83,26 @@ interface IosAlarmScheduler {
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
+    fun scheduleRetry(
+        request: IosAlarmRetryScheduleDto,
+        callback: (IosAlarmOperationResult) -> Unit,
+    )
+
     fun cancel(
         alarmId: String,
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
     fun scheduledAlarms(callback: (IosScheduledAlarmsResult) -> Unit)
+}
+
+internal suspend fun IosAlarmScheduler.scheduleRetryAwait(
+    request: IosAlarmRetryScheduleDto,
+) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        scheduleRetry(request, callback)
+    }
+    result.requireAlarmKitSuccess("미션 재울림을 시작하지 못했습니다.")
 }
 
 internal suspend fun IosAlarmScheduler.requestAuthorizationAwait():

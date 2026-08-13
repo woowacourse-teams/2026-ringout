@@ -23,8 +23,14 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
+import com.joon.ringout.alarm.DefaultMissionLocationState
 import com.joon.ringout.alarm.MaximumAcceptedLocationAccuracyMeters
 import com.joon.ringout.alarm.MaximumTrackingLocationAgeMillis
+import com.joon.ringout.alarm.MissionLocationAccuracyState
+import com.joon.ringout.alarm.MissionLocationAuthorizationState
+import com.joon.ringout.alarm.MissionLocationServicesState
+import com.joon.ringout.alarm.MissionLocationState
+import com.joon.ringout.presentation.activemission.components.ActiveAlarmLocationStatusBanner
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmMapUnavailable
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingCard
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingHeader
@@ -42,6 +48,7 @@ fun ActiveAlarmTrackingScreen(
     onBackClick: () -> Unit,
     onForceEndClick: (occurrenceId: String) -> Unit,
     onExpired: () -> Unit,
+    locationState: MissionLocationState = DefaultMissionLocationState,
     modifier: Modifier = Modifier,
     onForceEndHoldStarted: (occurrenceId: String) -> Unit = {},
     onForceEndHoldCancelled:
@@ -84,6 +91,7 @@ fun ActiveAlarmTrackingScreen(
         missionOccurrenceId = mission.occurrenceId,
         destinationName = mission.destinationName,
         countdown = formatAlarmMissionRemainingTime(remainingSeconds),
+        trackingStatusMessage = missionLocationStatusMessage(locationState),
         mapUnavailableMessage = when {
             !hasValidDestination -> "설정한 목적지의 위치 정보가 없습니다."
             mapError != null -> mapError
@@ -140,6 +148,7 @@ private fun ActiveAlarmTrackingLayout(
     missionOccurrenceId: String,
     destinationName: String,
     countdown: String,
+    trackingStatusMessage: String?,
     mapUnavailableMessage: String?,
     onBackClick: () -> Unit,
     onForceEndHoldStarted: () -> Unit,
@@ -180,6 +189,15 @@ private fun ActiveAlarmTrackingLayout(
                     .align(Alignment.TopCenter)
                     .padding(start = 10.dp, top = 18.dp, end = 11.dp),
             )
+
+            trackingStatusMessage?.let { message ->
+                ActiveAlarmLocationStatusBanner(
+                    message = message,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(start = 10.dp, top = 92.dp, end = 11.dp),
+                )
+            }
 
             key(missionOccurrenceId) {
                 ActiveAlarmTrackingCard(
@@ -234,6 +252,23 @@ internal fun isUsableActiveAlarmMapLocation(
     return location.capturedAtEpochMillis >= earliestUsableLocationEpochMillis
 }
 
+internal fun missionLocationStatusMessage(state: MissionLocationState): String? = when {
+    state.services == MissionLocationServicesState.DISABLED ->
+        "위치 서비스가 꺼져 있어 도착 여부를 확인할 수 없어요."
+
+    state.authorization == MissionLocationAuthorizationState.DENIED ||
+        state.authorization == MissionLocationAuthorizationState.RESTRICTED ->
+        "위치 권한이 없어 도착 여부를 확인할 수 없어요."
+
+    state.authorization != MissionLocationAuthorizationState.ALWAYS ->
+        "백그라운드 위치 권한이 없어 화면 밖에서는 도착 확인이 제한돼요."
+
+    state.accuracy == MissionLocationAccuracyState.REDUCED ->
+        "정확한 위치가 꺼져 있어 도착 판정이 늦어질 수 있어요."
+
+    else -> null
+}
+
 @Preview(name = "Dark active alarm map", widthDp = 402, heightDp = 941)
 @Composable
 private fun ActiveAlarmTrackingScreenDarkPreview() {
@@ -242,6 +277,7 @@ private fun ActiveAlarmTrackingScreenDarkPreview() {
             missionOccurrenceId = "preview-dark",
             destinationName = "스터디카페",
             countdown = "11:42",
+            trackingStatusMessage = null,
             mapUnavailableMessage = null,
             onBackClick = {},
             onForceEndHoldStarted = {},
@@ -269,6 +305,7 @@ private fun ActiveAlarmTrackingScreenLightPreview() {
             missionOccurrenceId = "preview-light",
             destinationName = "스터디카페",
             countdown = "11:42",
+            trackingStatusMessage = null,
             mapUnavailableMessage = null,
             onBackClick = {},
             onForceEndHoldStarted = {},
@@ -296,6 +333,7 @@ private fun ActiveAlarmTrackingForceEndDialogPreview() {
             missionOccurrenceId = "preview-dialog",
             destinationName = "스터디카페",
             countdown = "11:42",
+            trackingStatusMessage = "정확한 위치가 꺼져 있어 도착 판정이 늦어질 수 있어요.",
             mapUnavailableMessage = null,
             onBackClick = {},
             onForceEndHoldStarted = {},

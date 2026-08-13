@@ -98,14 +98,14 @@ class ActiveAlarmMissionDestinationTest {
     }
 
     @Test
-    fun acceptsFreshFixDuringTechnicalDeadlineVerificationGracePeriod() {
-        assertTrue(
+    fun rejectsFixCapturedAfterMissionDeadline() {
+        assertFalse(
             mission.hasReachedDestinationByDeadline(
                 latitude = 37.5665,
                 longitude = 126.9780,
                 accuracyMeters = 10f,
                 capturedAtEpochMillis =
-                    600_000L + DeadlineLocationGracePeriodMillis,
+                    600_001L,
             ),
         )
     }
@@ -160,7 +160,7 @@ class ActiveAlarmMissionDestinationTest {
             capturedAtEpochMillis = 600_000L,
         )
         val newestEquallyAccurateArrival = olderAccurateArrival.copy(
-            capturedAtEpochMillis = 600_500L,
+            capturedAtEpochMillis = 600_000L,
         )
 
         val selected = mission.selectBestDeadlineLocation(

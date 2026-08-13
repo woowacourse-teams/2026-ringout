@@ -40,6 +40,77 @@ final class MapsAdapter {
             listener: listener
         )
     }
+
+    @MainActor
+    func makeActiveMissionMapController(
+        destinationLatitude: Double,
+        destinationLongitude: Double
+    ) -> IosActiveMissionMapController? {
+        guard isAvailable else { return nil }
+        return ActiveMissionMapController(
+            destinationLatitude: destinationLatitude,
+            destinationLongitude: destinationLongitude
+        )
+    }
+}
+
+@MainActor
+private final class ActiveMissionMapController: @MainActor IosActiveMissionMapController {
+    private let mapView: GMSMapView
+    private let destination: CLLocationCoordinate2D
+    private let destinationMarker: GMSMarker
+    private let currentLocationMarker = GMSMarker()
+    private var hasFittedBothLocations = false
+
+    init(destinationLatitude: Double, destinationLongitude: Double) {
+        destination = CLLocationCoordinate2D(
+            latitude: destinationLatitude,
+            longitude: destinationLongitude
+        )
+        let options = GMSMapViewOptions()
+        options.camera = GMSCameraPosition.camera(
+            withTarget: destination,
+            zoom: DestinationMapDefaults.zoom
+        )
+        mapView = GMSMapView(options: options)
+        destinationMarker = GMSMarker(position: destination)
+        destinationMarker.title = "목적지"
+        destinationMarker.icon = GMSMarker.markerImage(with: .systemOrange)
+        destinationMarker.map = mapView
+        currentLocationMarker.title = "현재 위치"
+        currentLocationMarker.icon = GMSMarker.markerImage(with: .systemBlue)
+        mapView.settings.myLocationButton = false
+        mapView.settings.zoomGestures = true
+        mapView.settings.scrollGestures = true
+        mapView.padding = UIEdgeInsets(top: 80, left: 24, bottom: 280, right: 24)
+    }
+
+    func view() -> UIView { mapView }
+
+    func setDarkModeEnabled(isEnabled: Bool) {
+        mapView.overrideUserInterfaceStyle = isEnabled ? .dark : .light
+    }
+
+    func updateCurrentLocation(latitude: Double, longitude: Double) {
+        let current = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        currentLocationMarker.position = current
+        currentLocationMarker.map = mapView
+        guard !hasFittedBothLocations else { return }
+        let bounds = GMSCoordinateBounds(coordinate: destination, coordinate: current)
+        mapView.animate(with: GMSCameraUpdate.fit(bounds, withPadding: 72))
+        hasFittedBothLocations = true
+    }
+
+    func clearCurrentLocation() {
+        currentLocationMarker.map = nil
+        hasFittedBothLocations = false
+    }
+
+    func dispose() {
+        destinationMarker.map = nil
+        currentLocationMarker.map = nil
+        mapView.clear()
+    }
 }
 
 @MainActor

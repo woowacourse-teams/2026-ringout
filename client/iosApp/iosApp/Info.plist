@@ -8,6 +8,17 @@
 	<string>$(GOOGLE_IOS_SDK_API_KEY)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>현재 위치로 지도를 이동하고, 도착 알람의 목적지 설정과 도착 여부 확인을 위해 위치 정보가 필요합니다.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>화면이 꺼져도 제한 시간 동안 목적지 도착 여부를 확인하기 위해 위치를 사용합니다.</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>RingoutActiveMission</key>
+		<string>목적지 반경 안에 도착했는지 정확히 확인하기 위해 정밀 위치가 필요합니다.</string>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>설정한 시간에 도착 미션 알람을 울리기 위해 시스템 알람 권한이 필요합니다.</string>
 	<key>UILaunchScreen</key>
