@@ -1,5 +1,6 @@
 package com.ringout.api.auth.social;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -27,9 +28,23 @@ public class KakaoLoginClient implements SocialLoginClient {
             throw new IllegalArgumentException("카카오 사용자 정보를 가져올 수 없습니다.");
         }
 
-        return new SocialUserInfo(SocialProvider.KAKAO, response.id().toString());
+        String email = response.kakaoAccount() == null
+                ? null
+                : response.kakaoAccount().email();
+
+        return new SocialUserInfo(
+                SocialProvider.KAKAO,
+                response.id().toString(),
+                email
+        );
     }
 
-    private record KakaoUserResponse(Long id) {
+    private record KakaoUserResponse(
+            Long id,
+            @JsonProperty("kakao_account") KakaoAccount kakaoAccount
+    ) {
+    }
+
+    private record KakaoAccount(String email) {
     }
 }

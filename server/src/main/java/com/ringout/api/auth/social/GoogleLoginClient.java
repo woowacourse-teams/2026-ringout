@@ -28,9 +28,13 @@ public class GoogleLoginClient implements SocialLoginClient {
             throw new IllegalArgumentException("구글 사용자 정보를 가져올 수 없습니다.");
         }
 
-        return new SocialUserInfo(SocialProvider.GOOGLE, response.sub());
+        return new SocialUserInfo(
+                SocialProvider.GOOGLE,
+                response.sub(),
+                response.email()
+        );
     }
 
-    private record GoogleUserResponse(String sub) {
+    private record GoogleUserResponse(String sub, String email) {
     }
 }

@@ -55,6 +55,7 @@ public class Member extends BaseEntity {
   private Member(
       SocialProvider socialProvider,
       String socialProviderId,
+      String email,
       LocalDateTime joinedAt
   ) {
     if (socialProvider == null) {
@@ -69,6 +70,7 @@ public class Member extends BaseEntity {
 
     this.socialProvider = socialProvider;
     this.socialProviderId = socialProviderId;
+    this.email = email;
     this.lastLoginAt = joinedAt;
     this.lastAccessedAt = joinedAt;
   }
@@ -76,16 +78,20 @@ public class Member extends BaseEntity {
   public static Member register(
       SocialProvider socialProvider,
       String socialProviderId,
+      String email,
       LocalDateTime joinedAt
   ) {
-    return new Member(socialProvider, socialProviderId, joinedAt);
+    return new Member(socialProvider, socialProviderId, email, joinedAt);
   }
 
-  public void login(LocalDateTime loginAt) {
+  public void login(LocalDateTime loginAt, String email) {
     if (loginAt == null) {
       throw new IllegalArgumentException("로그인 시각은 비어 있을 수 없습니다.");
     }
     this.lastLoginAt = loginAt;
     this.lastAccessedAt = loginAt;
+    if (email != null && !email.isBlank()) {
+      this.email = email;
+    }
   }
 }

@@ -50,11 +50,12 @@ public class AuthService {
                         Member.register(
                                 socialUserInfo.provider(),
                                 socialUserInfo.providerId(),
+                                socialUserInfo.email(),
                                 loginAt
                         )
                 ));
 
-        member.login(loginAt);
+        member.login(loginAt, socialUserInfo.email());
         return socialUserInfo;
     }
 }
