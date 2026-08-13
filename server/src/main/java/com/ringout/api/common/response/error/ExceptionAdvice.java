@@ -5,6 +5,7 @@ import com.ringout.api.common.response.code.ErrorReasonResponse;
 import com.ringout.api.common.response.code.status.ErrorStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -60,14 +61,27 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
   @ExceptionHandler(value = GeneralException.class)
   public ResponseEntity onThrowException(GeneralException generalException, HttpServletRequest request) {
     ErrorReasonResponse errorReasonHttpStatus = generalException.getErrorReasonHttpStatus();
-    return handleExceptionInternal(generalException,errorReasonHttpStatus,null,request);
+    return handleExceptionInternal(generalException, errorReasonHttpStatus, null,request);
+  }
+
+  @ExceptionHandler(value = DateTimeParseException.class)
+  public ResponseEntity handleDateTimeParseException(DateTimeParseException dateTimeParseException,
+      HttpServletRequest request) {
+    WebRequest webRequest = new ServletWebRequest(request);
+    return handleExceptionInternalFalse(
+        dateTimeParseException,
+        ErrorStatus._BAD_REQUEST,
+        HttpHeaders.EMPTY,
+        ErrorStatus._BAD_REQUEST.getHttpStatus(),
+        webRequest,
+        dateTimeParseException.getMessage()
+    );
   }
 
   private ResponseEntity<Object> handleExceptionInternal(Exception e, ErrorReasonResponse reason,
       HttpHeaders headers, HttpServletRequest request) {
 
     CustomResponse<Object> body = CustomResponse.onFailure(reason.code(),reason.message(),null);
-//        e.printStackTrace();
 
     WebRequest webRequest = new ServletWebRequest(request);
     return super.handleExceptionInternal(
