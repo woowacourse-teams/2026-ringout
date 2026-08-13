@@ -190,6 +190,7 @@ fun DestinationMapScreen(
                 selection = result
                 cameraTarget = result
                 selectedSavedDestination = null
+                mapError = null
                 currentLocationError = null
                 isSearchOpen = false
                 searchResults = emptyList()
@@ -210,6 +211,7 @@ fun DestinationMapScreen(
                 selection = savedSelection
                 cameraTarget = savedSelection
                 selectedSavedDestination = savedDestination
+                mapError = null
                 currentLocationError = null
                 isSearchOpen = false
                 searchResults = emptyList()
@@ -673,6 +675,14 @@ private fun DestinationSearchPanel(
                         .fillMaxWidth()
                         .height(280.dp),
                 ) {
+                    item {
+                        Text(
+                            text = "Powered by Google",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            color = SecondaryText,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
                     items(results) { result ->
                         SearchResultRow(result = result, onClick = { onResultClick(result) })
                     }
