@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name="test", description = "테스트용 API")
 @RestController
-@RequestMapping("/api/v1")
 public class TestController {
 
     public TestController() {
