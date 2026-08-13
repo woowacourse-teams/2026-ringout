@@ -13,6 +13,16 @@ interface IosNativeServices {
 
     fun isPlacesAvailable(): Boolean
 
+    fun createDestinationMapController(
+        initialLatitude: Double,
+        initialLongitude: Double,
+        listener: IosDestinationMapListener,
+    ): IosDestinationMapController?
+
+    fun destinationSearchService(): IosDestinationSearchService
+
+    fun destinationLocationService(): IosDestinationLocationService
+
     fun alarmAuthorizationState(): IosAlarmAuthorizationState
 
     fun normalizeAlarmId(id: String): String?

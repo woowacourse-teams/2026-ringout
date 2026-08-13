@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package com.joon.ringout.data.destination
 
 import androidx.room3.Room
@@ -6,6 +8,9 @@ import com.joon.ringout.data.database.buildRingoutDatabase
 import com.joon.ringout.domain.destination.SavedDestination
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSTemporaryDirectory
+import platform.Foundation.NSUUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -113,6 +118,41 @@ class RoomDestinationDataSourceTest {
         }
     }
 
+    @Test
+    fun keepsSavedDestinationsAfterTheDatabaseIsReopened() = runBlocking {
+        val databasePath = temporaryDatabasePath()
+        try {
+            val savedDestination = buildRingoutDatabase(
+                Room.databaseBuilder<RingoutDatabase>(name = databasePath),
+            ).let { database ->
+                try {
+                    DefaultDestinationRepository(
+                        RoomDestinationDataSource(database.destinationDao()),
+                    ).save(destination(name = "집"))
+                } finally {
+                    database.close()
+                }
+            }
+
+            val reopenedDatabase = buildRingoutDatabase(
+                Room.databaseBuilder<RingoutDatabase>(name = databasePath),
+            )
+            try {
+                val reopenedRepository = DefaultDestinationRepository(
+                    RoomDestinationDataSource(reopenedDatabase.destinationDao()),
+                )
+                assertEquals(
+                    listOf(savedDestination),
+                    reopenedRepository.observeAll().first(),
+                )
+            } finally {
+                reopenedDatabase.close()
+            }
+        } finally {
+            deleteDatabaseFiles(databasePath)
+        }
+    }
+
     private suspend fun withDatabase(
         block: suspend (RingoutDatabase) -> Unit,
     ) {
@@ -135,4 +175,15 @@ class RoomDestinationDataSourceTest {
         latitude = 37.5665,
         longitude = 126.978,
     )
+
+    private fun temporaryDatabasePath(): String =
+        NSTemporaryDirectory() + "ringout-destination-${NSUUID().UUIDString}.db"
+
+    private fun deleteDatabaseFiles(databasePath: String) {
+        listOf(databasePath, "$databasePath-shm", "$databasePath-wal").forEach { path ->
+            if (NSFileManager.defaultManager.fileExistsAtPath(path)) {
+                NSFileManager.defaultManager.removeItemAtPath(path, error = null)
+            }
+        }
+    }
 }
