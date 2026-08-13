@@ -11,6 +11,21 @@ enum class IosAlarmAuthorizationState {
     AUTHORIZED,
 }
 
+data class IosAnalyticsParameterDto(
+    val name: String,
+    val textValue: String? = null,
+    val numberValue: Long? = null,
+)
+
+data class IosAnalyticsEventDto(
+    val name: String,
+    val parameters: List<IosAnalyticsParameterDto> = emptyList(),
+)
+
+interface IosAnalyticsTracker {
+    fun log(event: IosAnalyticsEventDto)
+}
+
 interface IosNativeServices {
     fun isMapsAvailable(): Boolean
 
@@ -40,6 +55,8 @@ interface IosNativeServices {
     fun alarmMissionEventInbox(): IosAlarmMissionEventInbox
 
     fun missionLocationService(): IosMissionLocationService
+
+    fun analyticsTracker(): IosAnalyticsTracker
 }
 
 val LocalIosNativeServices = staticCompositionLocalOf<IosNativeServices> {

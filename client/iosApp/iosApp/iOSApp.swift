@@ -3,6 +3,9 @@ import SwiftUI
 @main
 @MainActor
 struct iOSApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self)
+    private var appDelegate
+
     private let platformServices: PlatformServices
 
     init() {

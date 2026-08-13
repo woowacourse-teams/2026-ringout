@@ -59,6 +59,12 @@ fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewControl
             onActiveAlarmMissionForceEnd = { occurrenceId ->
                 coroutineScope.launch { alarmRuntime.forceEndActiveMission(occurrenceId) }
             },
+            onActiveAlarmMissionForceEndHoldStarted =
+                alarmRuntime::recordForceEndHoldStarted,
+            onActiveAlarmMissionForceEndHoldCancelled =
+                alarmRuntime::recordForceEndHoldCancelled,
+            onActiveAlarmMissionForceEndHoldCompleted =
+                alarmRuntime::recordForceEndHoldCompleted,
         )
     }
 }
