@@ -206,6 +206,6 @@ private object BlockParentVerticalScrollConnection : NestedScrollConnection {
     ): Velocity = Velocity(x = 0f, y = available.y)
 }
 
-private val TimePickerWheelHeight = 247.dp
+private val TimePickerWheelHeight = 210.dp
 private val TimePickerWheelItemHeight = 70.dp
 private val TimePickerWheelContentPadding = (TimePickerWheelHeight - TimePickerWheelItemHeight) / 2
