@@ -1,6 +1,7 @@
 package com.joon.ringout.alarm
 
 import com.joon.ringout.data.alarm.AlarmDataSource
+import com.joon.ringout.platform.IosAlarmAuthorizationState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.coroutineScope
@@ -23,11 +24,13 @@ class IosAlarmStoreTest {
     @Test
     fun savesNewAlarmAndPreservesEnabledStateWhenReplacingSameId() = runBlocking {
         val dataSource = FakeAlarmDataSource()
-        val store = IosAlarmStore(dataSource)
+        val scheduler = FakeIosAlarmScheduler()
+        val store = IosAlarmStore(dataSource, scheduler)
         val original = request()
 
         store.save(original)
         assertTrue(dataSource.getById(original.id)!!.enabled)
+        assertEquals(listOf("schedule:alarm-1"), scheduler.events)
 
         store.setEnabled(original.id, false)
         store.save(
@@ -43,12 +46,13 @@ class IosAlarmStoreTest {
         assertEquals("21:40", replaced.request.time)
         assertEquals("집", replaced.request.destinationName)
         assertEquals(1, dataSource.getAll().size)
+        assertEquals(listOf("schedule:alarm-1", "cancel:alarm-1"), scheduler.events)
     }
 
     @Test
     fun rejectsInvalidRequestBeforeReplacingStoredData() = runBlocking {
         val dataSource = FakeAlarmDataSource()
-        val store = IosAlarmStore(dataSource)
+        val store = IosAlarmStore(dataSource, FakeIosAlarmScheduler())
 
         assertFailsWith<IllegalArgumentException> {
             store.save(request(time = "25:00"))
@@ -60,13 +64,30 @@ class IosAlarmStoreTest {
 
     @Test
     fun missingToggleFailsAndMissingDeleteIsIdempotent() = runBlocking {
-        val store = IosAlarmStore(FakeAlarmDataSource())
+        val store = IosAlarmStore(FakeAlarmDataSource(), FakeIosAlarmScheduler())
 
         val error = assertFailsWith<IllegalStateException> {
             store.setEnabled("missing", false)
         }
         assertEquals("저장된 알람을 찾지 못했습니다.", error.message)
         store.delete("missing")
+    }
+
+    @Test
+    fun deletesDisabledAlarmWithoutCancellingAlreadyRemovedSystemSchedule() = runBlocking {
+        val dataSource = FakeAlarmDataSource()
+        val scheduler = FakeIosAlarmScheduler()
+        val store = IosAlarmStore(dataSource, scheduler)
+
+        store.save(request())
+        store.setEnabled("alarm-1", false)
+        store.delete("alarm-1")
+
+        assertEquals(
+            listOf("schedule:alarm-1", "cancel:alarm-1"),
+            scheduler.events,
+        )
+        assertEquals(null, dataSource.getById("alarm-1"))
     }
 
     @Test
@@ -84,8 +105,8 @@ class IosAlarmStoreTest {
                 events += "end:${alarm.request.time}"
             },
         )
-        val firstStore = IosAlarmStore(dataSource)
-        val secondStore = IosAlarmStore(dataSource)
+        val firstStore = IosAlarmStore(dataSource, FakeIosAlarmScheduler())
+        val secondStore = IosAlarmStore(dataSource, FakeIosAlarmScheduler())
 
         coroutineScope {
             launch { firstStore.save(request(time = "07:05")) }
@@ -104,7 +125,10 @@ class IosAlarmStoreTest {
     @Test
     fun propagatesMutationFailureAndCancellation() = runBlocking {
         val failure = IllegalStateException("write failed")
-        val failingStore = IosAlarmStore(FakeAlarmDataSource(replaceFailure = failure))
+        val failingStore = IosAlarmStore(
+            FakeAlarmDataSource(replaceFailure = failure),
+            FakeIosAlarmScheduler(),
+        )
         assertEquals(
             failure,
             assertFailsWith<IllegalStateException> { failingStore.save(request()) },
@@ -112,9 +136,126 @@ class IosAlarmStoreTest {
 
         val cancelledStore = IosAlarmStore(
             FakeAlarmDataSource(replaceFailure = CancellationException("cancelled")),
+            FakeIosAlarmScheduler(),
         )
         assertFailsWith<CancellationException> { cancelledStore.save(request()) }
         Unit
+    }
+
+    @Test
+    fun requestsAuthorizationOnlyForNotDeterminedState() = runBlocking {
+        val scheduler = FakeIosAlarmScheduler(
+            authorizationState = IosAlarmAuthorizationState.NOT_DETERMINED,
+            requestedAuthorizationState = IosAlarmAuthorizationState.AUTHORIZED,
+        )
+        val store = IosAlarmStore(FakeAlarmDataSource(), scheduler)
+
+        store.save(request())
+
+        assertEquals(1, scheduler.authorizationRequests)
+        assertEquals(
+            listOf("requestAuthorization", "schedule:alarm-1"),
+            scheduler.events,
+        )
+    }
+
+    @Test
+    fun deniedAuthorizationStopsBeforeScheduleAndRoomMutation() = runBlocking {
+        val dataSource = FakeAlarmDataSource()
+        val scheduler = FakeIosAlarmScheduler(
+            authorizationState = IosAlarmAuthorizationState.DENIED,
+        )
+        val store = IosAlarmStore(dataSource, scheduler)
+
+        val error = assertFailsWith<IosAlarmOperationException> {
+            store.save(request())
+        }
+
+        assertEquals(IosAlarmOperationCode.DENIED, error.code)
+        assertTrue(dataSource.getAll().isEmpty())
+        assertTrue(scheduler.events.isEmpty())
+    }
+
+    @Test
+    fun roomFailureAfterScheduleCancelsNewAlarmAndRestoresPreviousSchedule() = runBlocking {
+        val dataSource = FakeAlarmDataSource()
+        val scheduler = FakeIosAlarmScheduler()
+        val store = IosAlarmStore(dataSource, scheduler)
+        store.save(request())
+        dataSource.replaceFailure = IllegalStateException("write failed")
+
+        assertFailsWith<IllegalStateException> {
+            store.save(request(time = "08:10"))
+        }
+
+        assertEquals(
+            listOf(
+                "schedule:alarm-1",
+                "cancel:alarm-1",
+                "schedule:alarm-1",
+                "cancel:alarm-1",
+                "schedule:alarm-1",
+            ),
+            scheduler.events,
+        )
+        assertEquals("07:05", dataSource.getById("alarm-1")!!.request.time)
+    }
+
+    @Test
+    fun editScheduleAndRestoreFailureReportsRecoveryNeeded() = runBlocking {
+        val dataSource = FakeAlarmDataSource()
+        val scheduler = FakeIosAlarmScheduler()
+        val store = IosAlarmStore(dataSource, scheduler)
+        store.save(request())
+        scheduler.scheduleFailure = IllegalStateException("sdk failed")
+
+        val error = assertFailsWith<IllegalStateException> {
+            store.save(request(time = "08:10"))
+        }
+
+        assertTrue(error.message.orEmpty().contains("복구에 실패"))
+        assertEquals(
+            listOf(
+                "schedule:alarm-1",
+                "cancel:alarm-1",
+                "schedule:alarm-1",
+                "schedule:alarm-1",
+            ),
+            scheduler.events,
+        )
+        assertEquals("07:05", dataSource.getById("alarm-1")!!.request.time)
+    }
+
+    @Test
+    fun falseToggleResultRunsTheSameSchedulerCompensationAsAnException() = runBlocking {
+        val enableDataSource = FakeAlarmDataSource()
+        val enableScheduler = FakeIosAlarmScheduler()
+        val enableStore = IosAlarmStore(enableDataSource, enableScheduler)
+        enableStore.save(request())
+        enableStore.setEnabled("alarm-1", false)
+        enableDataSource.setEnabledResult = false
+
+        assertFailsWith<IllegalStateException> {
+            enableStore.setEnabled("alarm-1", true)
+        }
+        assertEquals(
+            listOf("schedule:alarm-1", "cancel:alarm-1", "schedule:alarm-1", "cancel:alarm-1"),
+            enableScheduler.events,
+        )
+
+        val disableDataSource = FakeAlarmDataSource()
+        val disableScheduler = FakeIosAlarmScheduler()
+        val disableStore = IosAlarmStore(disableDataSource, disableScheduler)
+        disableStore.save(request())
+        disableDataSource.setEnabledResult = false
+
+        assertFailsWith<IllegalStateException> {
+            disableStore.setEnabled("alarm-1", false)
+        }
+        assertEquals(
+            listOf("schedule:alarm-1", "cancel:alarm-1", "schedule:alarm-1"),
+            disableScheduler.events,
+        )
     }
 
     @Test
@@ -220,13 +361,15 @@ class IosAlarmStoreTest {
 }
 
 private class FakeAlarmDataSource(
-    private val replaceFailure: Throwable? = null,
+    replaceFailure: Throwable? = null,
     private val beforeReplace: suspend (SavedAlarmSchedule) -> Unit = {},
 ) : AlarmDataSource {
     private val alarms = linkedMapOf<String, SavedAlarmSchedule>()
     private val observed = MutableStateFlow<List<SavedAlarmSchedule>>(emptyList())
     var replaceCalls: Int = 0
         private set
+    var replaceFailure: Throwable? = replaceFailure
+    var setEnabledResult: Boolean = true
 
     override fun observeAll(): Flow<List<SavedAlarmSchedule>> = observed
 
@@ -247,6 +390,7 @@ private class FakeAlarmDataSource(
 
     override suspend fun setEnabled(id: String, enabled: Boolean): Boolean {
         val alarm = alarms[id] ?: return false
+        if (!setEnabledResult) return false
         alarms[id] = alarm.copy(enabled = enabled)
         observed.value = alarms.values.toList()
         return true
@@ -265,4 +409,44 @@ private class FakeAlarmDataSource(
         migrationId: String,
         completedAtEpochMillis: Long,
     ): Boolean = false
+}
+
+private class FakeIosAlarmScheduler(
+    private var authorizationState: IosAlarmAuthorizationState = IosAlarmAuthorizationState.AUTHORIZED,
+    private val requestedAuthorizationState: IosAlarmAuthorizationState = authorizationState,
+) : IosAlarmScheduler {
+    val events = mutableListOf<String>()
+    var scheduleFailure: Throwable? = null
+    var authorizationRequests = 0
+        private set
+
+    override fun authorizationState(): IosAlarmAuthorizationState = authorizationState
+
+    override fun requestAuthorization(callback: (IosAlarmAuthorizationResult) -> Unit) {
+        authorizationRequests += 1
+        events += "requestAuthorization"
+        authorizationState = requestedAuthorizationState
+        callback(IosAlarmAuthorizationResult(state = requestedAuthorizationState))
+    }
+
+    override fun schedule(
+        request: IosAlarmScheduleDto,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        events += "schedule:${request.alarmId}"
+        scheduleFailure?.let { throw it }
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
+    override fun cancel(
+        alarmId: String,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        events += "cancel:$alarmId"
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
+    override fun scheduledAlarms(callback: (IosScheduledAlarmsResult) -> Unit) {
+        callback(IosScheduledAlarmsResult())
+    }
 }

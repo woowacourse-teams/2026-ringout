@@ -8,6 +8,8 @@
 	<string>$(GOOGLE_IOS_SDK_API_KEY)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>현재 위치로 지도를 이동하고, 도착 알람의 목적지 설정과 도착 여부 확인을 위해 위치 정보가 필요합니다.</string>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>설정한 시간에 도착 미션 알람을 울리기 위해 시스템 알람 권한이 필요합니다.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

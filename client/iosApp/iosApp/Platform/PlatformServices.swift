@@ -50,4 +50,12 @@ final class PlatformServices: IosNativeServices {
     func normalizeAlarmId(id: String) -> String? {
         alarmKitAdapter.normalizeAlarmId(id)
     }
+
+    func alarmScheduler() -> IosAlarmScheduler {
+        alarmKitAdapter
+    }
+
+    func alarmMissionEventInbox() -> IosAlarmMissionEventInbox {
+        RingoutAlarmMissionEventInbox.shared
+    }
 }
