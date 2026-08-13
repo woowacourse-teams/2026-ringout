@@ -42,5 +42,6 @@ data class SavedAlarmSchedule(
 @Composable
 expect fun rememberAlarmController(
     onSaveCompleted: (AlarmScheduleRequest) -> Unit,
+    onSaveError: (AlarmScheduleRequest, String) -> Unit,
     onError: (String) -> Unit,
 ): AlarmController

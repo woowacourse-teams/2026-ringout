@@ -7,6 +7,7 @@ struct AlarmMissionEvent: Codable, Equatable {
     let occurrenceId: String
     let action: AlarmMissionEventAction
     let occurredAtEpochMillis: Int64
+    let retryAttempt: Int?
     var consumedAtEpochMillis: Int64?
 
     var isConsumed: Bool {
@@ -47,19 +48,23 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
     func record(
         alarmId rawAlarmId: String,
         action: AlarmMissionEventAction,
+        occurrenceId requestedOccurrenceId: String? = nil,
+        retryAttempt: Int = 0,
         now: Date = Date()
     ) throws -> AlarmMissionEvent {
         guard let alarmUUID = UUID(uuidString: rawAlarmId) else {
             throw AlarmMissionEventInboxError.invalidAlarmId
         }
 
-        let occurrenceId = "\(alarmUUID.uuidString):\(UUID().uuidString)"
+        let occurrenceId = requestedOccurrenceId ??
+            "\(alarmUUID.uuidString):\(UUID().uuidString)"
         let event = AlarmMissionEvent(
             eventId: UUID().uuidString,
             alarmId: alarmUUID.uuidString,
             occurrenceId: occurrenceId,
             action: action,
             occurredAtEpochMillis: Int64(now.timeIntervalSince1970 * 1_000),
+            retryAttempt: retryAttempt,
             consumedAtEpochMillis: nil
         )
 
@@ -79,7 +84,8 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                             alarmId: event.alarmId,
                             occurrenceId: event.occurrenceId,
                             action: event.action.iosAction,
-                            occurredAtEpochMillis: event.occurredAtEpochMillis
+                            occurredAtEpochMillis: event.occurredAtEpochMillis,
+                            retryAttempt: Int32(event.retryAttempt ?? 0)
                         )
                     },
                     code: .success,

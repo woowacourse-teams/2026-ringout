@@ -32,6 +32,16 @@ data class ActiveAlarmMissionLocation(
 internal fun ActiveAlarmMission.isExpiredAt(epochMillis: Long): Boolean =
     expiresAtEpochMillis <= epochMillis
 
+internal fun ActiveAlarmMission.isAwaitingDeadlineLocation(epochMillis: Long): Boolean {
+    val deadlineLocationWindowEnd =
+        if (expiresAtEpochMillis > Long.MAX_VALUE - DeadlineLocationAcquisitionTimeoutMillis) {
+            Long.MAX_VALUE
+        } else {
+            expiresAtEpochMillis + DeadlineLocationAcquisitionTimeoutMillis
+        }
+    return epochMillis < deadlineLocationWindowEnd
+}
+
 internal fun ActiveAlarmMission.hasReachedDestination(
     latitude: Double,
     longitude: Double,
@@ -104,14 +114,8 @@ internal fun ActiveAlarmMission.isUsableDeadlineLocation(
         startedAtEpochMillis,
         expiresAtEpochMillis - MaximumDeadlineLocationAgeMillis,
     )
-    val latestAcceptedLocationEpochMillis =
-        if (expiresAtEpochMillis > Long.MAX_VALUE - DeadlineLocationGracePeriodMillis) {
-            Long.MAX_VALUE
-        } else {
-            expiresAtEpochMillis + DeadlineLocationGracePeriodMillis
-        }
     return capturedAtEpochMillis in
-        earliestAcceptedLocationEpochMillis..latestAcceptedLocationEpochMillis &&
+        earliestAcceptedLocationEpochMillis..expiresAtEpochMillis &&
         isUsableDestinationLocation(
             latitude = latitude,
             longitude = longitude,
@@ -181,12 +185,4 @@ internal const val DefaultArrivalRadiusMeters = 30.0
 internal const val MaximumAcceptedLocationAccuracyMeters = 50.0
 internal const val MaximumDeadlineLocationAgeMillis = 30_000L
 internal const val DeadlineLocationAcquisitionTimeoutMillis = 5_000L
-
-/**
- * Deliberate arrival grace while the deadline receiver finishes its final
- * location check. A fix captured during these five seconds can complete the
- * mission, which avoids rejecting a user because the final GPS fix arrived
- * just after the nominal deadline.
- */
-internal const val DeadlineLocationGracePeriodMillis = 5_000L
 private const val EarthRadiusMeters = 6_371_000.0

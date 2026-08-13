@@ -113,3 +113,18 @@ interface IosDestinationMapController {
 
     fun dispose()
 }
+
+interface IosActiveMissionMapController {
+    fun view(): UIView
+
+    fun setDarkModeEnabled(isEnabled: Boolean)
+
+    fun updateCurrentLocation(
+        latitude: Double,
+        longitude: Double,
+    )
+
+    fun clearCurrentLocation()
+
+    fun dispose()
+}

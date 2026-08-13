@@ -22,6 +22,8 @@ fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewControl
         createIosAlarmRuntime(nativeServices)
     }
     val activeAlarmMission by alarmRuntime.activeMissionFlow.collectAsState()
+    val activeAlarmMissionLocation by alarmRuntime.currentLocationFlow.collectAsState()
+    val missionLocationState by alarmRuntime.locationStateFlow.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(alarmRuntime) {
@@ -42,12 +44,20 @@ fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewControl
     CompositionLocalProvider(LocalIosNativeServices provides nativeServices) {
         App(
             appVersion = appVersion,
+            useSystemLocationPermissionUiOnly = true,
             activeAlarmMission = activeAlarmMission,
+            activeAlarmMissionLocation = activeAlarmMissionLocation,
+            missionLocationState = missionLocationState,
+            onRequestWhenInUseLocation = alarmRuntime::requestWhenInUseAuthorization,
+            onRequestAlwaysLocation = alarmRuntime::requestAlwaysAuthorization,
+            onConfirmAlwaysLocationResult = alarmRuntime::confirmAlwaysAuthorizationResult,
+            onRequestTemporaryFullAccuracy =
+                alarmRuntime::requestTemporaryFullAccuracyAuthorization,
             onActiveAlarmMissionExpired = {
-                coroutineScope.launch { alarmRuntime.clearActiveMission() }
+                coroutineScope.launch { alarmRuntime.handleDeadline() }
             },
             onActiveAlarmMissionForceEnd = { occurrenceId ->
-                coroutineScope.launch { alarmRuntime.clearActiveMission(occurrenceId) }
+                coroutineScope.launch { alarmRuntime.forceEndActiveMission(occurrenceId) }
             },
         )
     }
