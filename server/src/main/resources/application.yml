@@ -33,6 +33,9 @@ springdoc:
 
 app:
   api-version: v1
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiration-millis: ${JWT_ACCESS_TOKEN_EXPIRATION_MILLIS}
   swagger:
     local-url: ${SWAGGER_LOCAL_URL:http://localhost:8080}
     production-url: ${SWAGGER_PRODUCTION_URL:}
