@@ -28,6 +28,9 @@ class RoomAlarmDataSource(
 
     override suspend fun delete(id: String): Boolean = alarmDao.delete(id) == 1
 
+    override suspend fun migrateId(oldId: String, newId: String): Boolean =
+        alarmDao.migrateId(oldId = oldId, newId = newId)
+
     override suspend fun hasStorageMigration(id: String): Boolean =
         alarmDao.hasStorageMigration(id)
 
