@@ -4,7 +4,9 @@ import com.ringout.api.auth.CustomUserDetails;
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.destination.controller.docs.DestinationControllerApi;
 import com.ringout.api.destination.dto.request.DestinationCreateRequest;
+import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
 import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.service.DestinationService;
 import com.ringout.api.destination.status.DestinationSuccessStatus;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -12,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
@@ -38,6 +41,21 @@ public class DestinationController implements DestinationControllerApi {
 
         return ResponseEntity.status(DestinationSuccessStatus.DESTINATION_CREATED.getHttpStatus())
             .body(CustomResponse.of(DestinationSuccessStatus.DESTINATION_CREATED, response));
+    }
+
+    @Override
+    @PatchMapping("/{destinationId}")
+    public ResponseEntity<CustomResponse<DestinationUpdateResponse>> updateDestination(
+        @Parameter(hidden = true)
+        @RequestAttribute(value = "customUserDetails", required = false) CustomUserDetails customUserDetails,
+        @PathVariable Long destinationId,
+        @RequestBody(required = false) DestinationUpdateRequest request
+    ) {
+        DestinationUpdateResponse response = destinationService.updateDestination(customUserDetails.userId(),
+            destinationId, request);
+
+        return ResponseEntity.status(DestinationSuccessStatus.DESTINATION_UPDATED.getHttpStatus())
+            .body(CustomResponse.of(DestinationSuccessStatus.DESTINATION_UPDATED, response));
     }
 
     @Override

@@ -8,8 +8,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.destination.domain.Coordinate;
 import com.ringout.api.destination.domain.Destination;
+import com.ringout.api.destination.domain.DestinationAlias;
+import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
 import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
 import java.util.Optional;
@@ -75,6 +79,151 @@ class DestinationServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
             verify(destinationRepository, never()).save(any(Destination.class));
+        }
+    }
+
+    @Nested
+    class 목적지_수정 {
+
+        @Test
+        void 목적지_수정에_성공한다() {
+            // given
+            Long userId = 1L;
+            Long destinationId = 10L;
+            Destination destination = Destination.create(
+                userId,
+                DestinationAlias.from("헬스장"),
+                Coordinate.of(37.4979, 127.0276)
+            );
+            ReflectionTestUtils.setField(destination, "id", destinationId);
+            given(destinationRepository.findById(destinationId)).willReturn(Optional.of(destination));
+
+            // when
+            DestinationUpdateResponse response = destinationService.updateDestination(
+                userId,
+                destinationId,
+                new DestinationUpdateRequest("회사", 37.5665, 126.9780)
+            );
+
+            // then
+            assertThat(response.destinationId()).isEqualTo(destinationId);
+            assertThat(response.alias()).isEqualTo("회사");
+            assertThat(response.latitude()).isEqualTo(37.5665);
+            assertThat(response.longitude()).isEqualTo(126.9780);
+        }
+
+        @Test
+        void 일부_필드만_수정하면_나머지는_기존_값을_유지한다() {
+            // given
+            Long userId = 1L;
+            Long destinationId = 10L;
+            Destination destination = Destination.create(
+                userId,
+                DestinationAlias.from("헬스장"),
+                Coordinate.of(37.4979, 127.0276)
+            );
+            ReflectionTestUtils.setField(destination, "id", destinationId);
+            given(destinationRepository.findById(destinationId)).willReturn(Optional.of(destination));
+
+            // when
+            DestinationUpdateResponse response = destinationService.updateDestination(
+                userId,
+                destinationId,
+                new DestinationUpdateRequest("회사", null, null)
+            );
+
+            // then
+            assertThat(response.destinationId()).isEqualTo(destinationId);
+            assertThat(response.alias()).isEqualTo("회사");
+            assertThat(response.latitude()).isEqualTo(37.4979);
+            assertThat(response.longitude()).isEqualTo(127.0276);
+        }
+
+        @Test
+        void 사용자_id가_없으면_목적지를_수정할_수_없다() {
+            // given
+            Long userId = null;
+            Long destinationId = 10L;
+
+            // when // then
+            assertThatThrownBy(
+                () -> destinationService.updateDestination(userId, destinationId,
+                    new DestinationUpdateRequest("회사", null, null)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
+            verify(destinationRepository, never()).findById(any());
+        }
+
+        @Test
+        void 목적지_id가_올바르지_않으면_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            Long destinationId = 0L;
+
+            // when // then
+            assertThatThrownBy(
+                () -> destinationService.updateDestination(userId, destinationId,
+                    new DestinationUpdateRequest("회사", null, null)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_ID_INVALID));
+            verify(destinationRepository, never()).findById(any());
+        }
+
+        @Test
+        void 수정할_정보가_올바르지_않으면_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            Long destinationId = 10L;
+            Destination destination = Destination.create(
+                userId,
+                DestinationAlias.from("헬스장"),
+                Coordinate.of(37.4979, 127.0276)
+            );
+            given(destinationRepository.findById(destinationId)).willReturn(Optional.of(destination));
+
+            // when // then
+            assertThatThrownBy(
+                () -> destinationService.updateDestination(userId, destinationId,
+                    new DestinationUpdateRequest("", null, null)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(
+                        DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID));
+        }
+
+        @Test
+        void 목적지가_없으면_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            Long destinationId = 10L;
+            given(destinationRepository.findById(destinationId)).willReturn(Optional.empty());
+
+            // when // then
+            assertThatThrownBy(
+                () -> destinationService.updateDestination(userId, destinationId,
+                    new DestinationUpdateRequest("회사", null, null)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_NOT_FOUND));
+        }
+
+        @Test
+        void 다른_사용자의_목적지는_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            Long otherUserId = 2L;
+            Long destinationId = 10L;
+            Destination destination = Destination.create(
+                otherUserId,
+                DestinationAlias.from("헬스장"),
+                Coordinate.of(37.4979, 127.0276)
+            );
+            given(destinationRepository.findById(destinationId)).willReturn(Optional.of(destination));
+
+            // when // then
+            assertThatThrownBy(
+                () -> destinationService.updateDestination(userId, destinationId,
+                    new DestinationUpdateRequest("회사", null, null)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_FORBIDDEN));
         }
     }
 
