@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package com.joon.ringout.data.alarm
 
 import androidx.room3.Room
@@ -5,8 +7,14 @@ import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.SavedAlarmSchedule
 import com.joon.ringout.data.database.RingoutDatabase
 import com.joon.ringout.data.database.buildRingoutDatabase
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSTemporaryDirectory
+import platform.Foundation.NSUUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,6 +23,65 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RoomAlarmDataSourceTest {
+    @Test
+    fun activeCollectorReceivesCreateToggleAndDeleteMutationsInOrder() = runBlocking {
+        withDatabase { database ->
+            val dataSource = RoomAlarmDataSource(database.alarmDao())
+            val emissions = Channel<List<SavedAlarmSchedule>>(Channel.UNLIMITED)
+            val collector = launch {
+                dataSource.observeAll().collect(emissions::send)
+            }
+
+            assertTrue(emissions.receiveWithinTimeout().isEmpty())
+            dataSource.replace(savedAlarm())
+            assertEquals(
+                listOf(true),
+                emissions.receiveWithinTimeout().map(SavedAlarmSchedule::enabled),
+            )
+            assertTrue(dataSource.setEnabled("alarm-1", false))
+            assertEquals(
+                listOf(false),
+                emissions.receiveWithinTimeout().map(SavedAlarmSchedule::enabled),
+            )
+            assertTrue(dataSource.setEnabled("alarm-1", true))
+            assertEquals(
+                listOf(true),
+                emissions.receiveWithinTimeout().map(SavedAlarmSchedule::enabled),
+            )
+            assertTrue(dataSource.delete("alarm-1"))
+            assertTrue(emissions.receiveWithinTimeout().isEmpty())
+
+            collector.cancel()
+            emissions.close()
+        }
+    }
+
+    @Test
+    fun replacingSameIdRemovesOldDaysAndCanonicalizesDuplicateDays() = runBlocking {
+        withDatabase { database ->
+            val dao = database.alarmDao()
+            val dataSource = RoomAlarmDataSource(dao)
+            dataSource.replace(savedAlarm(selectedDays = listOf("화", "목")))
+
+            dataSource.replace(
+                savedAlarm(selectedDays = listOf("월", "월", "금")).copy(
+                    request = savedAlarm(listOf("월", "월", "금")).request.copy(
+                        time = "20:45",
+                        destinationName = "집",
+                    ),
+                    enabled = false,
+                ),
+            )
+
+            val stored = dataSource.getAll().single()
+            assertEquals("20:45", stored.request.time)
+            assertEquals("집", stored.request.destinationName)
+            assertEquals(listOf("월", "금"), stored.request.selectedDays)
+            assertFalse(stored.enabled)
+            assertEquals(2, assertNotNull(dao.getById("alarm-1")).repeatDays.size)
+        }
+    }
+
     @Test
     fun replacesObservesTogglesAndDeletesAlarmSchedules() = runBlocking {
         withDatabase { database ->
@@ -86,6 +153,50 @@ class RoomAlarmDataSourceTest {
         }
     }
 
+    @Test
+    fun keepsOneShotRepeatDaysAndEnabledStatesAfterDatabaseReopen() = runBlocking {
+        val databasePath = temporaryDatabasePath()
+        try {
+            buildRingoutDatabase(
+                Room.databaseBuilder<RingoutDatabase>(name = databasePath),
+            ).let { database ->
+                try {
+                    val dataSource = RoomAlarmDataSource(database.alarmDao())
+                    dataSource.replace(savedAlarm(selectedDays = listOf("일", "월")))
+                    dataSource.replace(
+                        savedAlarm(selectedDays = emptyList()).copy(
+                            request = savedAlarm(emptyList()).request.copy(
+                                id = "alarm-2",
+                                time = "22:30",
+                                repeatEnabled = false,
+                            ),
+                            enabled = false,
+                        ),
+                    )
+                } finally {
+                    database.close()
+                }
+            }
+
+            val reopenedDatabase = buildRingoutDatabase(
+                Room.databaseBuilder<RingoutDatabase>(name = databasePath),
+            )
+            try {
+                val restored = RoomAlarmDataSource(reopenedDatabase.alarmDao()).getAll()
+                    .associateBy { it.request.id }
+                assertEquals(setOf("alarm-1", "alarm-2"), restored.keys)
+                assertEquals(listOf("월", "일"), restored.getValue("alarm-1").request.selectedDays)
+                assertTrue(restored.getValue("alarm-1").enabled)
+                assertTrue(restored.getValue("alarm-2").request.selectedDays.isEmpty())
+                assertFalse(restored.getValue("alarm-2").enabled)
+            } finally {
+                reopenedDatabase.close()
+            }
+        } finally {
+            deleteDatabaseFiles(databasePath)
+        }
+    }
+
     private suspend fun withDatabase(
         block: suspend (RingoutDatabase) -> Unit,
     ) {
@@ -96,6 +207,9 @@ class RoomAlarmDataSourceTest {
             database.close()
         }
     }
+
+    private suspend fun Channel<List<SavedAlarmSchedule>>.receiveWithinTimeout() =
+        withTimeout(FlowEmissionTimeoutMillis) { receive() }
 
     private fun savedAlarm(
         selectedDays: List<String> = listOf("월", "금"),
@@ -119,5 +233,17 @@ class RoomAlarmDataSourceTest {
 
     private companion object {
         const val LegacyMigrationId = "android_alarm_shared_preferences_v1"
+        const val FlowEmissionTimeoutMillis = 1_000L
+    }
+
+    private fun temporaryDatabasePath(): String =
+        NSTemporaryDirectory() + "ringout-alarm-${NSUUID().UUIDString}.db"
+
+    private fun deleteDatabaseFiles(databasePath: String) {
+        listOf(databasePath, "$databasePath-shm", "$databasePath-wal").forEach { path ->
+            if (NSFileManager.defaultManager.fileExistsAtPath(path)) {
+                NSFileManager.defaultManager.removeItemAtPath(path, error = null)
+            }
+        }
     }
 }
