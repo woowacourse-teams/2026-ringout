@@ -6,7 +6,6 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.ringoutColors
 
 @Immutable
 internal data class MyPageColors(
@@ -18,6 +17,31 @@ internal data class MyPageColors(
     val sectionSurface: Color,
     val toggleTrack: Color,
     val toggleInactiveContent: Color,
+)
+
+@Immutable
+internal data class MyPageAccountActionDialogColors(
+    val surface: Color,
+    val title: Color,
+    val description: Color,
+    val cancel: Color,
+    val logout: Color,
+    val withdraw: Color,
+    val actionContent: Color,
+    val shadow: Color,
+    val actionShadow: Color,
+)
+
+internal val MyPageAccountActionDialogPalette = MyPageAccountActionDialogColors(
+    surface = Color.White,
+    title = Color(0xFF1F2937),
+    description = Color(0xFF6B7280),
+    cancel = Color(0xFF808080),
+    logout = Color(0xFFFF6D2E),
+    withdraw = Color(0xFFFF2B01),
+    actionContent = Color.White,
+    shadow = Color(0x21000000),
+    actionShadow = Color(0x404338CA),
 )
 
 @Composable
@@ -40,7 +64,7 @@ internal fun myPageColors(): MyPageColors =
             secondaryText = MaterialTheme.colorScheme.onSurfaceVariant,
             calendarSurface = MaterialTheme.colorScheme.surface,
             calendarBorder = MaterialTheme.colorScheme.outline,
-            sectionSurface = MaterialTheme.ringoutColors.elevatedSurface,
+            sectionSurface = Color(0xFFF0F0F2),
             toggleTrack = MaterialTheme.colorScheme.surfaceVariant,
             toggleInactiveContent = MaterialTheme.colorScheme.onSurfaceVariant,
         )

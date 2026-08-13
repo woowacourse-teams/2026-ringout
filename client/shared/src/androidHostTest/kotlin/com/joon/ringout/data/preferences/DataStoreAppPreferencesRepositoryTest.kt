@@ -43,8 +43,8 @@ class DataStoreAppPreferencesRepositoryTest {
         assertEquals(ThemeMode.Light, snapshot.themeMode)
         assertTrue(snapshot.firstLaunchStatus.isOnboardingCompleted)
         assertEquals(
-            AppEntryDestination.TermsAgreement,
-            determineAppEntryDestination(snapshot.firstLaunchStatus, currentTerms),
+            AppEntryDestination.Home,
+            determineAppEntryDestination(snapshot.firstLaunchStatus),
         )
     }
 
@@ -131,7 +131,7 @@ class DataStoreAppPreferencesRepositoryTest {
     }
 
     @Test
-    fun malformedRequiredConsentPreferencesNeverRouteToHome() = withRepository(
+    fun malformedRequiredConsentPreferencesDoNotBlockHome() = withRepository(
         prefix = "ringout-malformed-consent-test",
     ) { dataStore, repository ->
         val servicePrefix = "terms.service"
@@ -168,11 +168,8 @@ class DataStoreAppPreferencesRepositoryTest {
             }
 
             assertEquals(
-                AppEntryDestination.TermsAgreement,
-                determineAppEntryDestination(
-                    repository.bootstrapState.first().firstLaunchStatus,
-                    currentTerms,
-                ),
+                AppEntryDestination.Home,
+                determineAppEntryDestination(repository.bootstrapState.first().firstLaunchStatus),
             )
         }
     }

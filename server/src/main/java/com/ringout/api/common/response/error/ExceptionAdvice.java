@@ -1,10 +1,11 @@
 package com.ringout.api.common.response.error;
 
-import com.ringout.api.common.response.ApiResponse;
+import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.common.response.code.ErrorReasonResponse;
 import com.ringout.api.common.response.code.status.ErrorStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -60,14 +61,27 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
   @ExceptionHandler(value = GeneralException.class)
   public ResponseEntity onThrowException(GeneralException generalException, HttpServletRequest request) {
     ErrorReasonResponse errorReasonHttpStatus = generalException.getErrorReasonHttpStatus();
-    return handleExceptionInternal(generalException,errorReasonHttpStatus,null,request);
+    return handleExceptionInternal(generalException, errorReasonHttpStatus, null,request);
+  }
+
+  @ExceptionHandler(value = DateTimeParseException.class)
+  public ResponseEntity handleDateTimeParseException(DateTimeParseException dateTimeParseException,
+      HttpServletRequest request) {
+    WebRequest webRequest = new ServletWebRequest(request);
+    return handleExceptionInternalFalse(
+        dateTimeParseException,
+        ErrorStatus._BAD_REQUEST,
+        HttpHeaders.EMPTY,
+        ErrorStatus._BAD_REQUEST.getHttpStatus(),
+        webRequest,
+        dateTimeParseException.getMessage()
+    );
   }
 
   private ResponseEntity<Object> handleExceptionInternal(Exception e, ErrorReasonResponse reason,
       HttpHeaders headers, HttpServletRequest request) {
 
-    ApiResponse<Object> body = ApiResponse.onFailure(reason.code(),reason.message(),null);
-//        e.printStackTrace();
+    CustomResponse<Object> body = CustomResponse.onFailure(reason.code(),reason.message(),null);
 
     WebRequest webRequest = new ServletWebRequest(request);
     return super.handleExceptionInternal(
@@ -81,7 +95,7 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
 
   private ResponseEntity<Object> handleExceptionInternalFalse(Exception e, ErrorStatus errorCommonStatus,
       HttpHeaders headers, HttpStatus status, WebRequest request, String errorPoint) {
-    ApiResponse<Object> body = ApiResponse.onFailure(errorCommonStatus.getCode(),errorCommonStatus.getMessage(),errorPoint);
+    CustomResponse<Object> body = CustomResponse.onFailure(errorCommonStatus.getCode(),errorCommonStatus.getMessage(),errorPoint);
     return super.handleExceptionInternal(
         e,
         body,
@@ -93,7 +107,7 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
 
   private ResponseEntity<Object> handleExceptionInternalArgs(Exception e, HttpHeaders headers, ErrorStatus errorCommonStatus,
       WebRequest request, Map<String, String> errorArgs) {
-    ApiResponse<Object> body = ApiResponse.onFailure(errorCommonStatus.getCode(),errorCommonStatus.getMessage(),errorArgs);
+    CustomResponse<Object> body = CustomResponse.onFailure(errorCommonStatus.getCode(),errorCommonStatus.getMessage(),errorArgs);
     return super.handleExceptionInternal(
         e,
         body,
@@ -105,7 +119,7 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
 
   private ResponseEntity<Object> handleExceptionInternalConstraint(Exception e, ErrorStatus errorCommonStatus,
       HttpHeaders headers, WebRequest request) {
-    ApiResponse<Object> body = ApiResponse.onFailure(errorCommonStatus.getCode(), errorCommonStatus.getMessage(), null);
+    CustomResponse<Object> body = CustomResponse.onFailure(errorCommonStatus.getCode(), errorCommonStatus.getMessage(), null);
     return super.handleExceptionInternal(
         e,
         body,

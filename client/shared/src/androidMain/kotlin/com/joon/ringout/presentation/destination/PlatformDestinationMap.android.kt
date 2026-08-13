@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.joon.ringout.LocalRingoutThemeMode
+import com.joon.ringout.ThemeMode
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.Granularity
@@ -37,6 +39,7 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.maps.android.compose.CameraMoveStartedReason
+import com.google.maps.android.compose.ComposeMapColorScheme
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.rememberCameraPositionState
@@ -72,6 +75,10 @@ actual fun PlatformDestinationMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val mapColorScheme = when (LocalRingoutThemeMode.current) {
+        ThemeMode.Dark -> ComposeMapColorScheme.DARK
+        ThemeMode.Light -> ComposeMapColorScheme.LIGHT
+    }
     val coroutineScope = rememberCoroutineScope()
     val currentOnCameraMoveStarted = rememberUpdatedState(onCameraMoveStarted)
     val currentOnCameraSettled = rememberUpdatedState(onCameraSettled)
@@ -358,6 +365,7 @@ actual fun PlatformDestinationMap(
             horizontal = MapHorizontalContentPadding,
             vertical = MapVerticalContentPadding,
         ),
+        mapColorScheme = mapColorScheme,
         uiSettings = mapUiSettings,
     )
 }

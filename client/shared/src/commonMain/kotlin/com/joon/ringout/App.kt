@@ -20,7 +20,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
-import com.joon.ringout.domain.terms.TermId
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.AlarmScheduleRequest
@@ -39,12 +38,11 @@ import com.joon.ringout.presentation.destination.isConfiguredDestination
 import com.joon.ringout.presentation.destination.rememberDestinationRepository
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
+import com.joon.ringout.presentation.login.LoginScreen
+import com.joon.ringout.presentation.login.SocialLoginProvider
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.settings.SettingsScreen
-import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
-import com.joon.ringout.presentation.termsagreement.termDocumentResource
-import org.jetbrains.compose.resources.stringResource
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
 import com.joon.ringout.presentation.mypage.findPolicyUrl
@@ -81,37 +79,12 @@ fun App(
     }
 
     RingoutTheme(themeMode = appBootstrapUiState.themeMode) {
-        val uriHandler = LocalUriHandler.current
-        val serviceTermUrl = stringResource(
-            requireNotNull(termDocumentResource(TermId.Service)),
-        )
-        val privacyTermUrl = stringResource(
-            requireNotNull(termDocumentResource(TermId.Privacy)),
-        )
-        val termDocumentUrls = remember(serviceTermUrl, privacyTermUrl) {
-            mapOf(
-                TermId.Service to serviceTermUrl,
-                TermId.Privacy to privacyTermUrl,
-            )
-        }
-
         when (appBootstrapUiState.destination) {
             AppEntryDestination.Onboarding ->
                 OnboardingScreen(
                     onComplete = appBootstrapViewModel::completeOnboarding,
                     completionEnabled = !appBootstrapUiState.isSaving,
                     completionRetryToken = appBootstrapUiState.onboardingRetryToken,
-                )
-
-            AppEntryDestination.TermsAgreement ->
-                TermsAgreementScreen(
-                    onStart = appBootstrapViewModel::completeTermsAgreement,
-                    onTermDetailClick = { termId ->
-                        termDocumentUrls[termId]?.let { url ->
-                            runCatching { uriHandler.openUri(url) }
-                        }
-                    },
-                    isSaving = appBootstrapUiState.isSaving,
                 )
 
             AppEntryDestination.Home ->
@@ -212,14 +185,7 @@ private fun RingoutAppContent(
         },
     )
     val alarmController = rememberAlarmController(
-        onScheduled = { request ->
-            val wasEnabled = alarms.orEmpty()
-                .firstOrNull { it.id == request.id }
-                ?.isEnabled
-                ?: true
-            alarms = alarms.orEmpty().replaceOrAppend(
-                request.toHomeAlarm(enabled = wasEnabled),
-            )
+        onSaveCompleted = {
             editingAlarmId = null
             screenName = AppScreen.Home.name
         },
@@ -377,11 +343,17 @@ private fun RingoutAppContent(
             policies = DefaultMyPagePolicies,
             onThemeModeChange = onThemeModeChange,
             onBackClick = { screenName = AppScreen.Home.name },
+            onAccountStatusClick = { screenName = AppScreen.Login.name },
             onPolicyClick = { policyId ->
                 findPolicyUrl(policyId)?.let { url ->
                     runCatching { uriHandler.openUri(url) }
                 }
             },
+        )
+
+        AppScreen.Login -> LoginScreen(
+            onBackClick = { screenName = AppScreen.MyPage.name },
+            onSocialLoginClick = { _: SocialLoginProvider -> },
         )
 
         AppScreen.AddAlarm,
@@ -477,6 +449,7 @@ private enum class AppScreen {
     Destination,
     AlarmSound,
     MyPage,
+    Login,
     Settings,
     ActiveAlarmTracking,
 }
@@ -511,12 +484,3 @@ private fun AlarmScheduleRequest.toHomeAlarm(enabled: Boolean): HomeAlarm = Home
     selectedDays = selectedDays,
     repeatEnabled = repeatEnabled,
 )
-
-private fun List<HomeAlarm>.replaceOrAppend(updatedAlarm: HomeAlarm): List<HomeAlarm> =
-    if (any { it.id == updatedAlarm.id }) {
-        map { alarm ->
-            if (alarm.id == updatedAlarm.id) updatedAlarm else alarm
-        }
-    } else {
-        this + updatedAlarm
-    }

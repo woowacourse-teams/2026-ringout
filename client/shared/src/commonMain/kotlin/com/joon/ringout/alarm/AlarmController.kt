@@ -32,8 +32,15 @@ data class SavedAlarmSchedule(
     val enabled: Boolean,
 )
 
+/**
+ * Creates the platform alarm controller.
+ *
+ * [onSaveCompleted] is invoked only after the platform's required preparation and the data
+ * mutation both succeed. On iOS this callback represents Room persistence, not AlarmKit
+ * scheduling; Android retains its stronger scheduling-and-persistence guarantee.
+ */
 @Composable
 expect fun rememberAlarmController(
-    onScheduled: (AlarmScheduleRequest) -> Unit,
+    onSaveCompleted: (AlarmScheduleRequest) -> Unit,
     onError: (String) -> Unit,
 ): AlarmController
