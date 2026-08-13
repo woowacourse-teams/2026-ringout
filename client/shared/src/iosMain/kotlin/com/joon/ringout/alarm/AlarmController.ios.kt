@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 @Composable
 actual fun rememberAlarmController(
     onSaveCompleted: (AlarmScheduleRequest) -> Unit,
+    onSaveError: (AlarmScheduleRequest, String) -> Unit,
     onError: (String) -> Unit,
 ): AlarmController {
     val nativeServices = LocalIosNativeServices.current
@@ -36,6 +37,7 @@ actual fun rememberAlarmController(
     }
     val coroutineScope = rememberCoroutineScope()
     val currentOnSaveCompleted = rememberUpdatedState(onSaveCompleted)
+    val currentOnSaveError = rememberUpdatedState(onSaveError)
     val currentOnError = rememberUpdatedState(onError)
     return remember(store, coroutineScope) {
         AlarmController(
@@ -43,7 +45,7 @@ actual fun rememberAlarmController(
                 coroutineScope.launch {
                     runIosAlarmMutation(
                         fallbackErrorMessage = "알람을 저장하지 못했습니다.",
-                        onError = { message -> currentOnError.value(message) },
+                        onError = { message -> currentOnSaveError.value(request, message) },
                         mutation = { store.save(request) },
                         onSuccess = { currentOnSaveCompleted.value(request) },
                     )

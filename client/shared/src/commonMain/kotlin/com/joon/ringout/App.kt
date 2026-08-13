@@ -59,6 +59,7 @@ import kotlinx.coroutines.flow.collect
 @Composable
 fun App(
     appVersion: String = "",
+    useSystemLocationPermissionUiOnly: Boolean = false,
     activeAlarmMission: ActiveAlarmMission? = null,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation? = null,
     missionLocationState: MissionLocationState = DefaultMissionLocationState,
@@ -101,6 +102,7 @@ fun App(
                 RingoutAppContent(
                     themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
+                    useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
                     activeAlarmMission = activeAlarmMission,
                     activeAlarmMissionLocation = activeAlarmMissionLocation,
                     missionLocationState = missionLocationState,
@@ -135,6 +137,7 @@ private fun AppBootstrapSurface() = Box(
 private fun RingoutAppContent(
     themeMode: ThemeMode,
     appVersion: String,
+    useSystemLocationPermissionUiOnly: Boolean,
     activeAlarmMission: ActiveAlarmMission?,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation?,
     missionLocationState: MissionLocationState,
@@ -175,6 +178,7 @@ private fun RingoutAppContent(
     var alarms by remember { mutableStateOf<List<HomeAlarm>?>(null) }
     var alarmScheduleError by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingAlarmRequest by remember { mutableStateOf<AlarmScheduleRequest?>(null) }
+    var isAlarmSaveInProgress by remember { mutableStateOf(false) }
     var locationPermissionDialog by remember {
         mutableStateOf<MissionLocationPermissionDecision?>(null)
     }
@@ -210,11 +214,25 @@ private fun RingoutAppContent(
         },
     )
     val alarmController = rememberAlarmController(
-        onSaveCompleted = {
-            editingAlarmId = null
-            screenName = AppScreen.Home.name
+        onSaveCompleted = { request ->
+            if (pendingAlarmRequest?.id == request.id) {
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                editingAlarmId = null
+                screenName = AppScreen.Home.name
+            }
         },
-        onError = { alarmScheduleError = it },
+        onSaveError = { request, message ->
+            if (pendingAlarmRequest?.id == request.id) {
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                didRequestFullAccuracy = false
+                alarmScheduleError = message
+            }
+        },
+        onError = {
+            alarmScheduleError = it
+        },
     )
 
     LaunchedEffect(
@@ -222,79 +240,114 @@ private fun RingoutAppContent(
         missionLocationState.revision,
     ) {
         val request = pendingAlarmRequest ?: return@LaunchedEffect
+        if (isAlarmSaveInProgress) return@LaunchedEffect
         when (
             val decision = missionLocationState.permissionDecision(
                 didRequestFullAccuracy = didRequestFullAccuracy,
             )
         ) {
             MissionLocationPermissionDecision.READY -> {
-                pendingAlarmRequest = null
                 locationPermissionDialog = null
                 didRequestFullAccuracy = false
-                alarmController.schedule(request)
+                if (!isAlarmSaveInProgress) {
+                    isAlarmSaveInProgress = true
+                    alarmController.schedule(request)
+                }
             }
 
-            MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE,
-            MissionLocationPermissionDecision.EXPLAIN_ALWAYS,
-            MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT,
-            MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY,
-            -> locationPermissionDialog = decision
+            MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->
+                if (useSystemLocationPermissionUiOnly) {
+                    locationPermissionDialog = null
+                    onRequestWhenInUseLocation()
+                } else {
+                    locationPermissionDialog = decision
+                }
+
+            MissionLocationPermissionDecision.EXPLAIN_ALWAYS ->
+                if (useSystemLocationPermissionUiOnly) {
+                    locationPermissionDialog = null
+                    onRequestAlwaysLocation()
+                } else {
+                    locationPermissionDialog = decision
+                }
+
+            MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT -> {
+                if (!useSystemLocationPermissionUiOnly) {
+                    locationPermissionDialog = decision
+                }
+            }
+
+            MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY ->
+                if (useSystemLocationPermissionUiOnly) {
+                    locationPermissionDialog = null
+                    didRequestFullAccuracy = true
+                    onRequestTemporaryFullAccuracy()
+                } else {
+                    locationPermissionDialog = decision
+                }
 
             MissionLocationPermissionDecision.SERVICES_DISABLED -> {
                 pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
                 didRequestFullAccuracy = false
                 alarmScheduleError = "위치 서비스가 꺼져 있어 목적지 알람을 시작할 수 없습니다."
             }
 
             MissionLocationPermissionDecision.DENIED -> {
                 pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
                 didRequestFullAccuracy = false
                 alarmScheduleError = "위치 권한이 없어 목적지 알람을 시작할 수 없습니다."
             }
 
-            MissionLocationPermissionDecision.ALWAYS_NOT_GRANTED -> {
+            MissionLocationPermissionDecision.ALWAYS_REQUEST_FAILED -> {
                 pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
                 didRequestFullAccuracy = false
-                alarmScheduleError =
-                    "‘항상’ 위치 권한이 설정되지 않았습니다. 설정에서 위치 접근을 ‘항상’으로 변경한 뒤 다시 시도해 주세요."
+                alarmScheduleError = "위치 권한 상태를 확인하지 못했습니다. 다시 시도해 주세요."
+                onConfirmAlwaysLocationResult()
             }
 
             MissionLocationPermissionDecision.RESTRICTED -> {
                 pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
                 didRequestFullAccuracy = false
                 alarmScheduleError = "이 기기에서는 위치 사용이 제한되어 있습니다."
             }
         }
     }
 
-    MissionLocationPermissionDialog(
-        decision = locationPermissionDialog,
-        onConfirm = {
-            when (locationPermissionDialog) {
-                MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->
-                    onRequestWhenInUseLocation()
+    if (!useSystemLocationPermissionUiOnly) {
+        MissionLocationPermissionDialog(
+            decision = locationPermissionDialog,
+            onConfirm = {
+                when (locationPermissionDialog) {
+                    MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->
+                        onRequestWhenInUseLocation()
 
-                MissionLocationPermissionDecision.EXPLAIN_ALWAYS ->
-                    onRequestAlwaysLocation()
+                    MissionLocationPermissionDecision.EXPLAIN_ALWAYS ->
+                        onRequestAlwaysLocation()
 
-                MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT ->
-                    onConfirmAlwaysLocationResult()
+                    MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT ->
+                        onConfirmAlwaysLocationResult()
 
-                MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY -> {
-                    didRequestFullAccuracy = true
-                    onRequestTemporaryFullAccuracy()
+                    MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY -> {
+                        didRequestFullAccuracy = true
+                        onRequestTemporaryFullAccuracy()
+                    }
+
+                    else -> Unit
                 }
-
-                else -> Unit
-            }
-            locationPermissionDialog = null
-        },
-        onDismiss = {
-            locationPermissionDialog = null
-            pendingAlarmRequest = null
-            didRequestFullAccuracy = false
-        },
-    )
+                locationPermissionDialog = null
+            },
+            onDismiss = {
+                locationPermissionDialog = null
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                didRequestFullAccuracy = false
+            },
+        )
+    }
     val visibleAlarms = alarms.orEmpty()
     val editingAlarm = editingAlarmId?.let { alarmId ->
         visibleAlarms.firstOrNull { it.id == alarmId }
@@ -477,9 +530,13 @@ private fun RingoutAppContent(
                 ),
                 initialSelectedDays = initialSelectedDays,
                 initialLimitMinutes = editingAlarm?.timeLimitMinutes ?: DefaultLimitMinutes,
+                isSaveInProgress = pendingAlarmRequest != null || isAlarmSaveInProgress,
                 onBackClick = {
-                    editingAlarmId = null
-                    screenName = AppScreen.Home.name
+                    if (pendingAlarmRequest == null && !isAlarmSaveInProgress) {
+                        didRequestFullAccuracy = false
+                        editingAlarmId = null
+                        screenName = AppScreen.Home.name
+                    }
                 },
                 onDestinationClick = {
                     destinationRequestId += 1L
@@ -487,6 +544,7 @@ private fun RingoutAppContent(
                 },
                 onAlarmSoundClick = { screenName = AppScreen.AlarmSound.name },
                 onSaveClick = saveAlarm@ { time, selectedDays, repeatEnabled, limitMinutes, alarmSound ->
+                    if (pendingAlarmRequest != null || isAlarmSaveInProgress) return@saveAlarm
                     val configuredDestination = destination ?: return@saveAlarm
                     didRequestFullAccuracy = false
                     pendingAlarmRequest = AlarmScheduleRequest(

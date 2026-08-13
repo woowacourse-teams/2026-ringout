@@ -65,7 +65,7 @@ private val MissionLocationPermissionDecision.dialogContent:
                 title = "위치 권한 선택을 확인할게요",
                 message =
                     "시스템 권한 화면에서 선택을 마쳤다면 확인을 눌러 주세요. " +
-                        "‘앱을 사용하는 동안’으로 유지한 경우 설정 안내가 표시됩니다.",
+                        "‘앱을 사용하는 동안’으로 유지한 경우 제한 모드로 계속 진행합니다.",
                 confirmLabel = "선택 완료",
             )
 
@@ -81,7 +81,7 @@ private val MissionLocationPermissionDecision.dialogContent:
         MissionLocationPermissionDecision.READY,
         MissionLocationPermissionDecision.SERVICES_DISABLED,
         MissionLocationPermissionDecision.DENIED,
-        MissionLocationPermissionDecision.ALWAYS_NOT_GRANTED,
+        MissionLocationPermissionDecision.ALWAYS_REQUEST_FAILED,
         MissionLocationPermissionDecision.RESTRICTED,
         -> null
     }

@@ -44,6 +44,7 @@ fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewControl
     CompositionLocalProvider(LocalIosNativeServices provides nativeServices) {
         App(
             appVersion = appVersion,
+            useSystemLocationPermissionUiOnly = true,
             activeAlarmMission = activeAlarmMission,
             activeAlarmMissionLocation = activeAlarmMissionLocation,
             missionLocationState = missionLocationState,

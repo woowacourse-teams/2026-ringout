@@ -571,6 +571,62 @@ class IosAlarmLifecycleTest {
     }
 
     @Test
+    fun restoredMissionTracksWithWhenInUseAndStopsWhenAuthorizationIsLost() = runBlocking {
+        val nowEpochMillis = Clock.System.now().toEpochMilliseconds()
+        val occurrenceId = "$CanonicalUuid:when-in-use"
+        val store = LifecycleMissionStore().apply {
+            saveActiveMission(
+                ActiveAlarmMission(
+                    alarmId = CanonicalUuid,
+                    destinationName = "회사",
+                    limitMinutes = 12,
+                    expiresAtEpochMillis = nowEpochMillis + 720_000L,
+                    occurrenceId = occurrenceId,
+                    startedAtEpochMillis = nowEpochMillis,
+                    destinationLatitude = 37.5,
+                    destinationLongitude = 127.0,
+                ),
+            )
+        }
+        val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
+        val scheduler = LifecycleScheduler()
+        val locationService = LifecycleLocationService(
+            initialAuthorization = MissionLocationAuthorizationState.WHEN_IN_USE,
+        )
+        val runtime = IosAlarmRuntime(
+            missionCoordinator = IosAlarmMissionCoordinator(
+                dataSource = dataSource,
+                inbox = LifecycleInbox(emptyList()),
+                scheduler = scheduler,
+                outcomeRecorder = LifecycleOutcomeRecorder(),
+                missionStore = store,
+            ),
+            reconciler = IosAlarmReconciler(
+                dataSource = dataSource,
+                scheduler = scheduler,
+                normalizeAlarmId = { it },
+            ),
+            locationService = locationService,
+        )
+
+        runtime.start()
+        assertEquals(listOf(occurrenceId), locationService.startedOccurrences)
+
+        locationService.updateAuthorization(MissionLocationAuthorizationState.DENIED)
+        runtime.start()
+
+        assertEquals(1, locationService.stopCount)
+        assertFalse(locationService.currentState().isTracking)
+
+        locationService.updateAuthorization(MissionLocationAuthorizationState.WHEN_IN_USE)
+        runtime.start()
+
+        assertEquals(listOf(occurrenceId, occurrenceId), locationService.startedOccurrences)
+        assertTrue(locationService.currentState().isTracking)
+        runtime.forceEndActiveMission(occurrenceId)
+    }
+
+    @Test
     fun restoredMissionStillTracksWhenInboxAndDeadlineRecoveryFail() = runBlocking {
         val nowEpochMillis = Clock.System.now().toEpochMilliseconds()
         val occurrenceId = "$CanonicalUuid:recovery-failure"
@@ -852,18 +908,24 @@ private class FailOnceLifecycleOutcomeRecorder : IosMissionOutcomeRecorder {
     }
 }
 
-private class LifecycleLocationService : IosMissionLocationService {
+private class LifecycleLocationService(
+    initialAuthorization: MissionLocationAuthorizationState =
+        MissionLocationAuthorizationState.ALWAYS,
+) : IosMissionLocationService {
     private var state = MissionLocationState(
         services = MissionLocationServicesState.ENABLED,
-        authorization = MissionLocationAuthorizationState.ALWAYS,
+        authorization = initialAuthorization,
         accuracy = MissionLocationAccuracyState.FULL,
     )
+    private var listener: IosMissionLocationListener? = null
     val startedOccurrences = mutableListOf<String>()
     var stopCount = 0
 
     override fun currentState() = state
 
-    override fun setListener(listener: IosMissionLocationListener?) = Unit
+    override fun setListener(listener: IosMissionLocationListener?) {
+        this.listener = listener
+    }
 
     override fun requestWhenInUseAuthorization() = Unit
 
@@ -886,4 +948,12 @@ private class LifecycleLocationService : IosMissionLocationService {
     override fun beginBackgroundRecovery(recoveryId: String) = Unit
 
     override fun endBackgroundRecovery(recoveryId: String) = Unit
+
+    fun updateAuthorization(authorization: MissionLocationAuthorizationState) {
+        state = state.copy(
+            authorization = authorization,
+            revision = state.revision + 1L,
+        )
+        listener?.onStateChanged(state)
+    }
 }

@@ -28,11 +28,15 @@ data class MissionLocationState(
     val isTracking: Boolean = false,
     val isAwaitingAlwaysAuthorizationResult: Boolean = false,
     val alwaysRequestDidNotUpgrade: Boolean = false,
+    val alwaysAuthorizationRequestFailed: Boolean = false,
     val revision: Long = 0L,
 ) {
-    val canTrackInBackground: Boolean
+    val canStartContinuousTracking: Boolean
         get() = services == MissionLocationServicesState.ENABLED &&
-            authorization == MissionLocationAuthorizationState.ALWAYS
+            (
+                authorization == MissionLocationAuthorizationState.WHEN_IN_USE ||
+                    authorization == MissionLocationAuthorizationState.ALWAYS
+            )
 }
 
 internal enum class MissionLocationPermissionDecision {
@@ -43,7 +47,7 @@ internal enum class MissionLocationPermissionDecision {
     WARN_REDUCED_ACCURACY,
     SERVICES_DISABLED,
     DENIED,
-    ALWAYS_NOT_GRANTED,
+    ALWAYS_REQUEST_FAILED,
     RESTRICTED,
 }
 
@@ -62,19 +66,17 @@ internal fun MissionLocationState.permissionDecision(
     authorization == MissionLocationAuthorizationState.NOT_DETERMINED ->
         MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE
 
-    authorization == MissionLocationAuthorizationState.WHEN_IN_USE ->
-        when {
-            isAwaitingAlwaysAuthorizationResult ->
-                MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT
+    alwaysAuthorizationRequestFailed ->
+        MissionLocationPermissionDecision.ALWAYS_REQUEST_FAILED
 
-            alwaysRequestDidNotUpgrade ->
-                MissionLocationPermissionDecision.ALWAYS_NOT_GRANTED
+    isAwaitingAlwaysAuthorizationResult ->
+        MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT
 
-            else -> MissionLocationPermissionDecision.EXPLAIN_ALWAYS
-        }
+    authorization == MissionLocationAuthorizationState.WHEN_IN_USE &&
+        !alwaysRequestDidNotUpgrade ->
+        MissionLocationPermissionDecision.EXPLAIN_ALWAYS
 
-    authorization == MissionLocationAuthorizationState.ALWAYS &&
-        accuracy == MissionLocationAccuracyState.REDUCED &&
+    accuracy == MissionLocationAccuracyState.REDUCED &&
         !didRequestFullAccuracy ->
         MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY
 

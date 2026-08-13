@@ -206,17 +206,21 @@ class IosAlarmRuntime(
             stopTracking()
             currentLocation.value = missionCoordinator.loadLastLocation()
             trackedOccurrenceId = mission.occurrenceId
-            if (locationState.value.canTrackInBackground) {
+            if (locationState.value.canStartContinuousTracking) {
                 locationService.startTracking(mission.occurrenceId)
                 locationState.value = locationService.currentState()
             }
             scheduleDeadline(mission)
             return
         }
-        if (
-            locationState.value.canTrackInBackground &&
-            !locationState.value.isTracking
-        ) {
+        if (!locationState.value.canStartContinuousTracking) {
+            if (locationState.value.isTracking) {
+                locationService.stopTracking()
+                locationState.value = locationService.currentState()
+            }
+            return
+        }
+        if (!locationState.value.isTracking) {
             locationService.startTracking(mission.occurrenceId)
             locationState.value = locationService.currentState()
         }

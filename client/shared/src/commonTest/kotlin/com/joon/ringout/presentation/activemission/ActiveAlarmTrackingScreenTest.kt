@@ -111,6 +111,14 @@ class ActiveAlarmTrackingScreenTest {
             ),
         )
         assertNull(missionLocationStatusMessage(locationState()))
+        assertEquals(
+            "앱을 강제 종료하면 위치 추적과 도착 확인이 중단돼요.",
+            missionLocationStatusMessage(
+                locationState(
+                    authorization = MissionLocationAuthorizationState.WHEN_IN_USE,
+                ),
+            ),
+        )
     }
 
     private fun location(

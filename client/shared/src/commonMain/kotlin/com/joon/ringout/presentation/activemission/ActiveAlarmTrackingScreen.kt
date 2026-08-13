@@ -260,8 +260,15 @@ internal fun missionLocationStatusMessage(state: MissionLocationState): String? 
         state.authorization == MissionLocationAuthorizationState.RESTRICTED ->
         "위치 권한이 없어 도착 여부를 확인할 수 없어요."
 
+    state.authorization == MissionLocationAuthorizationState.WHEN_IN_USE &&
+        state.accuracy == MissionLocationAccuracyState.REDUCED ->
+        "정확한 위치가 꺼져 있어 도착 판정이 늦어질 수 있어요. 앱을 강제 종료하면 추적이 중단돼요."
+
+    state.authorization == MissionLocationAuthorizationState.WHEN_IN_USE ->
+        "앱을 강제 종료하면 위치 추적과 도착 확인이 중단돼요."
+
     state.authorization != MissionLocationAuthorizationState.ALWAYS ->
-        "백그라운드 위치 권한이 없어 화면 밖에서는 도착 확인이 제한돼요."
+        "위치 권한을 확인하고 있어요."
 
     state.accuracy == MissionLocationAccuracyState.REDUCED ->
         "정확한 위치가 꺼져 있어 도착 판정이 늦어질 수 있어요."

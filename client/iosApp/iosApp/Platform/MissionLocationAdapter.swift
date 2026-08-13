@@ -15,6 +15,9 @@ final class MissionLocationAdapter: NSObject,
     private var backgroundRecoveryIds: Set<String> = []
     private var didRequestAlwaysAuthorization = false
     private var alwaysRequestDidNotUpgrade = false
+    private var alwaysAuthorizationRequestFailed = false
+    private var alwaysAuthorizationSession: CLServiceSession?
+    private var alwaysAuthorizationDiagnosticsTask: Task<Void, Never>?
 
     override init() {
         super.init()
@@ -25,6 +28,11 @@ final class MissionLocationAdapter: NSObject,
         manager.pausesLocationUpdatesAutomatically = false
     }
 
+    deinit {
+        alwaysAuthorizationDiagnosticsTask?.cancel()
+        alwaysAuthorizationSession?.invalidate()
+    }
+
     func currentState() -> MissionLocationState {
         MissionLocationState(
             services: CLLocationManager.locationServicesEnabled() ? .enabled : .disabled,
@@ -33,6 +41,7 @@ final class MissionLocationAdapter: NSObject,
             isTracking: occurrenceId != nil,
             isAwaitingAlwaysAuthorizationResult: didRequestAlwaysAuthorization,
             alwaysRequestDidNotUpgrade: alwaysRequestDidNotUpgrade,
+            alwaysAuthorizationRequestFailed: alwaysAuthorizationRequestFailed,
             revision: revision
         )
     }
@@ -51,21 +60,55 @@ final class MissionLocationAdapter: NSObject,
     }
 
     func requestAlwaysAuthorization() {
-        guard manager.authorizationStatus == .authorizedWhenInUse else {
+        guard
+            manager.authorizationStatus == .authorizedWhenInUse,
+            !didRequestAlwaysAuthorization
+        else {
             emitState()
             return
         }
         didRequestAlwaysAuthorization = true
         alwaysRequestDidNotUpgrade = false
-        manager.requestAlwaysAuthorization()
+        alwaysAuthorizationRequestFailed = false
+        let session = CLServiceSession(authorization: .always)
+        alwaysAuthorizationSession = session
         emitState()
+        alwaysAuthorizationDiagnosticsTask = Task { @MainActor [weak self, session] in
+            do {
+                for try await diagnostic in session.diagnostics {
+                    guard
+                        let self,
+                        self.alwaysAuthorizationSession === session
+                    else {
+                        return
+                    }
+                    if diagnostic.authorizationRequestInProgress {
+                        continue
+                    }
+                    if diagnostic.alwaysAuthorizationDenied ||
+                        self.manager.authorizationStatus == .authorizedAlways {
+                        self.finishAlwaysAuthorizationRequest()
+                        return
+                    }
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self, self.alwaysAuthorizationSession === session else {
+                    return
+                }
+                self.failAlwaysAuthorizationRequest()
+            }
+        }
     }
 
     func confirmAlwaysAuthorizationResult() {
-        didRequestAlwaysAuthorization = false
-        alwaysRequestDidNotUpgrade =
-            manager.authorizationStatus == .authorizedWhenInUse
-        emitState()
+        if alwaysAuthorizationRequestFailed {
+            alwaysAuthorizationRequestFailed = false
+            emitState()
+            return
+        }
+        finishAlwaysAuthorizationRequest()
     }
 
     func requestTemporaryFullAccuracyAuthorization(purposeKey: String) {
@@ -86,7 +129,10 @@ final class MissionLocationAdapter: NSObject,
             emitError("위치 서비스가 꺼져 있습니다.")
             return
         }
-        guard manager.authorizationStatus == .authorizedAlways else {
+        guard
+            manager.authorizationStatus == .authorizedAlways ||
+            manager.authorizationStatus == .authorizedWhenInUse
+        else {
             emitState()
             return
         }
@@ -133,9 +179,17 @@ final class MissionLocationAdapter: NSObject,
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if manager.authorizationStatus == .authorizedAlways {
-            didRequestAlwaysAuthorization = false
-            alwaysRequestDidNotUpgrade = false
+        if didRequestAlwaysAuthorization {
+            switch manager.authorizationStatus {
+            case .denied, .restricted:
+                finishAlwaysAuthorizationRequest()
+                return
+            case .notDetermined, .authorizedWhenInUse, .authorizedAlways:
+                break
+            @unknown default:
+                finishAlwaysAuthorizationRequest()
+                return
+            }
         }
         emitState()
     }
@@ -188,6 +242,34 @@ final class MissionLocationAdapter: NSObject,
     private func emitState() {
         revision += 1
         listener?.onStateChanged(state: currentState())
+    }
+
+    private func finishAlwaysAuthorizationRequest() {
+        guard didRequestAlwaysAuthorization else {
+            emitState()
+            return
+        }
+        didRequestAlwaysAuthorization = false
+        alwaysAuthorizationRequestFailed = false
+        alwaysRequestDidNotUpgrade =
+            manager.authorizationStatus == .authorizedWhenInUse
+        clearAlwaysAuthorizationSession()
+        emitState()
+    }
+
+    private func failAlwaysAuthorizationRequest() {
+        didRequestAlwaysAuthorization = false
+        alwaysRequestDidNotUpgrade = false
+        alwaysAuthorizationRequestFailed = true
+        clearAlwaysAuthorizationSession()
+        emitState()
+    }
+
+    private func clearAlwaysAuthorizationSession() {
+        alwaysAuthorizationDiagnosticsTask?.cancel()
+        alwaysAuthorizationDiagnosticsTask = nil
+        alwaysAuthorizationSession?.invalidate()
+        alwaysAuthorizationSession = nil
     }
 
     private func emitError(_ message: String) {
