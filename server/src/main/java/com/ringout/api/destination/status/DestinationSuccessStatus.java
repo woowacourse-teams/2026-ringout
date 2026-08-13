@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum DestinationSuccessStatus implements BaseCode {
 
-    DESTINATION_CREATED(HttpStatus.CREATED, "DESTINATION201", "목적지 생성에 성공했습니다.");
+    DESTINATION_CREATED(HttpStatus.CREATED, "DESTINATION201", "목적지 생성에 성공했습니다."),
+    DESTINATION_DELETED(HttpStatus.OK, "DESTINATION200", "목적지가 삭제되었습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

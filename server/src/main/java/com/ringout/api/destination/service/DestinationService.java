@@ -28,4 +28,22 @@ public class DestinationService {
 
         return new DestinationCreateResponse(destinationRepository.save(destination).getId());
     }
+
+    @Transactional
+    public void deleteDestination(Long userId, Long destinationId) {
+        if (userId == null) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_UNAUTHORIZED);
+        }
+        if (destinationId == null || destinationId <= 0) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_ID_INVALID);
+        }
+
+        Destination destination = destinationRepository.findById(destinationId)
+            .orElseThrow(() -> new GeneralException(DestinationErrorStatus.DESTINATION_NOT_FOUND));
+        if (!destination.isOwnedBy(userId)) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_FORBIDDEN);
+        }
+
+        destinationRepository.delete(destination);
+    }
 }

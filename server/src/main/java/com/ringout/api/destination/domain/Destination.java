@@ -42,4 +42,8 @@ public class Destination extends BaseEntity {
   public static Destination create(Long userId, DestinationAlias alias, Coordinate coordinate) {
     return new Destination(userId, alias, coordinate);
   }
+
+  public boolean isOwnedBy(Long userId) {
+    return this.userId.equals(userId);
+  }
 }
