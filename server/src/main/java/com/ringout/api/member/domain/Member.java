@@ -1,27 +1,44 @@
 package com.ringout.api.member.domain;
 
+import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
 @Table(
-    name = "member"
+    name = "member",
+    uniqueConstraints = @UniqueConstraint(
+        name = "uk_member_social_identity",
+        columnNames = {"social_provider", "social_provider_id"}
+    )
 )
+@Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Member extends BaseEntity {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "social_provider", nullable = false, length = 20)
+  private SocialProvider socialProvider;
+
+  @Column(name = "social_provider_id", nullable = false, length = 255)
+  private String socialProviderId;
 
   @Embedded
   private Nickname nickname;
@@ -34,4 +51,41 @@ public class Member extends BaseEntity {
 
   @Column(nullable = false)
   private LocalDateTime lastAccessedAt;
+
+  private Member(
+      SocialProvider socialProvider,
+      String socialProviderId,
+      LocalDateTime joinedAt
+  ) {
+    if (socialProvider == null) {
+      throw new IllegalArgumentException("소셜 로그인 제공자는 비어 있을 수 없습니다.");
+    }
+    if (socialProviderId == null || socialProviderId.isBlank()) {
+      throw new IllegalArgumentException("소셜 사용자 식별자는 비어 있을 수 없습니다.");
+    }
+    if (joinedAt == null) {
+      throw new IllegalArgumentException("가입 시각은 비어 있을 수 없습니다.");
+    }
+
+    this.socialProvider = socialProvider;
+    this.socialProviderId = socialProviderId;
+    this.lastLoginAt = joinedAt;
+    this.lastAccessedAt = joinedAt;
+  }
+
+  public static Member register(
+      SocialProvider socialProvider,
+      String socialProviderId,
+      LocalDateTime joinedAt
+  ) {
+    return new Member(socialProvider, socialProviderId, joinedAt);
+  }
+
+  public void login(LocalDateTime loginAt) {
+    if (loginAt == null) {
+      throw new IllegalArgumentException("로그인 시각은 비어 있을 수 없습니다.");
+    }
+    this.lastLoginAt = loginAt;
+    this.lastAccessedAt = loginAt;
+  }
 }
