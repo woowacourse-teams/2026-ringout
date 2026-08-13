@@ -22,11 +22,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.joon.ringout.LocalRingoutThemeMode
+import com.joon.ringout.ThemeMode
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
+import com.google.maps.android.compose.ComposeMapColorScheme
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
@@ -69,6 +72,10 @@ private fun GoogleActiveAlarmMap(
     modifier: Modifier = Modifier,
 ) {
     val currentOnMapError = rememberUpdatedState(onMapError)
+    val mapColorScheme = when (LocalRingoutThemeMode.current) {
+        ThemeMode.Dark -> ComposeMapColorScheme.DARK
+        ThemeMode.Light -> ComposeMapColorScheme.LIGHT
+    }
     val pointPadding = with(LocalDensity.current) { MapPointPadding.roundToPx() }
     val destinationMarker = rememberMarkerBitmap(
         painter = painterResource(ActiveAlarmDestinationMarkerResource),
@@ -142,6 +149,7 @@ private fun GoogleActiveAlarmMap(
         cameraPositionState = cameraPositionState,
         contentDescription = "알람 목적지 추적 지도",
         contentPadding = MapContentPadding,
+        mapColorScheme = mapColorScheme,
         uiSettings = uiSettings,
         onMapLoaded = { isMapLoaded = true },
     ) {
