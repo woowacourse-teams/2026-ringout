@@ -10,35 +10,36 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSDateFormatter
 import platform.Foundation.NSLocale
 
-internal class RoomIosMissionOutcomeRecorder : IosMissionOutcomeRecorder {
-    private val recordMissionResult = RecordMissionResult(
+internal class RoomIosMissionOutcomeRecorder(
+    private val recordMissionResult: RecordMissionResult = RecordMissionResult(
         DefaultMissionHistoryRepository(
             RoomMissionHistoryDataSource(getRingoutDatabase().missionHistoryDao()),
         ),
-    )
+    ),
+) : IosMissionOutcomeRecorder {
 
-    override suspend fun recordSuccess(occurrenceId: String, completedAtEpochMillis: Long) {
-        recordMissionResult(MissionResult.SUCCESS, missionDate(completedAtEpochMillis), occurrenceId)
+    override suspend fun recordSuccess(occurrenceId: String, completedAt: String) {
+        recordMissionResult(MissionResult.SUCCESS, MissionDate.parse(completedAt), occurrenceId)
     }
 
-    override suspend fun recordFailure(occurrenceId: String, completedAtEpochMillis: Long) {
-        recordMissionResult(MissionResult.FAILURE, missionDate(completedAtEpochMillis), occurrenceId)
+    override suspend fun recordFailure(occurrenceId: String, completedAt: String) {
+        recordMissionResult(MissionResult.FAILURE, MissionDate.parse(completedAt), occurrenceId)
     }
 }
 
-private fun missionDate(epochMillis: Long): MissionDate {
+internal fun iosMissionDate(epochMillis: Double): String {
     val formatter = NSDateFormatter().apply {
         locale = NSLocale(localeIdentifier = "en_US_POSIX")
         dateFormat = "yyyy-MM-dd"
     }
-    return MissionDate.parse(
-        formatter.stringFromDate(
-            NSDate(
-                timeIntervalSinceReferenceDate =
-                    epochMillis / 1_000.0 - SecondsFromUnixEpochToAppleReferenceDate,
-            ),
+    return formatter.stringFromDate(
+        NSDate(
+            timeIntervalSinceReferenceDate =
+                epochMillis / 1_000.0 - SecondsFromUnixEpochToAppleReferenceDate,
         ),
     )
 }
+
+internal fun iosMissionDate(epochMillis: Long): String = iosMissionDate(epochMillis.toDouble())
 
 private const val SecondsFromUnixEpochToAppleReferenceDate = 978_307_200.0

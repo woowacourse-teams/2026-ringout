@@ -214,6 +214,15 @@ class IosAlarmLifecycleTest {
         assertTrue(outcomes.failures.isEmpty())
         assertNull(coordinator.activeMissionFlow.value)
         assertNull(store.loadLastLocation())
+
+        assertFalse(
+            coordinator.onLocationUpdated(
+                occurrenceId = event.occurrenceId,
+                location = ActiveAlarmMissionLocation(37.5, 127.0, 5f, 2_100L),
+                evaluatedAtEpochMillis = 2_100L,
+            ),
+        )
+        assertEquals(listOf(event.occurrenceId), outcomes.successes)
     }
 
     @Test
@@ -469,6 +478,52 @@ class IosAlarmLifecycleTest {
         assertTrue(outcomes.successes.isEmpty())
         assertNull(coordinator.activeMissionFlow.value)
         assertTrue(store.isConsumed(retryOccurrenceId))
+
+        coordinator.clearActiveMission(event.occurrenceId)
+        assertEquals(listOf(event.occurrenceId), outcomes.failures)
+    }
+
+    @Test
+    fun restoredPendingTerminalHidesAndClearsTheSamePersistedActiveMission() = runBlocking {
+        val occurrenceId = "$CanonicalUuid:terminal-recovery"
+        val mission = ActiveAlarmMission(
+            alarmId = CanonicalUuid,
+            destinationName = "회사",
+            limitMinutes = 12,
+            expiresAtEpochMillis = 720_000L,
+            occurrenceId = occurrenceId,
+            startedAtEpochMillis = 0L,
+            destinationLatitude = 37.5,
+            destinationLongitude = 127.0,
+        )
+        val store = LifecycleMissionStore().apply {
+            saveActiveMission(mission)
+            savePendingTerminal(
+                IosPendingMissionTerminal(
+                    occurrenceId = occurrenceId,
+                    outcome = IosPendingMissionOutcome.SUCCESS,
+                    completedAtEpochMillis = 500_000L,
+                    completedAt = "2026-08-05",
+                ),
+            )
+        }
+        val outcomes = LifecycleOutcomeRecorder()
+        val coordinator = IosAlarmMissionCoordinator(
+            dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid))),
+            inbox = LifecycleInbox(emptyList()),
+            scheduler = LifecycleScheduler(),
+            outcomeRecorder = outcomes,
+            missionStore = store,
+        )
+
+        assertNull(coordinator.activeMissionFlow.value)
+
+        coordinator.recoverPendingTerminal()
+
+        assertNull(store.loadActiveMission())
+        assertNull(store.loadPendingTerminal())
+        assertEquals(listOf(occurrenceId), outcomes.successes)
+        assertEquals(listOf("2026-08-05"), outcomes.successDates)
     }
 
     @Test
@@ -885,11 +940,15 @@ private class LifecycleMissionStore : IosActiveAlarmMissionStore {
 private class LifecycleOutcomeRecorder : IosMissionOutcomeRecorder {
     val successes = mutableListOf<String>()
     val failures = mutableListOf<String>()
-    override suspend fun recordSuccess(occurrenceId: String, completedAtEpochMillis: Long) {
+    val successDates = mutableListOf<String>()
+    val failureDates = mutableListOf<String>()
+    override suspend fun recordSuccess(occurrenceId: String, completedAt: String) {
         successes += occurrenceId
+        successDates += completedAt
     }
-    override suspend fun recordFailure(occurrenceId: String, completedAtEpochMillis: Long) {
+    override suspend fun recordFailure(occurrenceId: String, completedAt: String) {
         failures += occurrenceId
+        failureDates += completedAt
     }
 }
 
@@ -897,9 +956,9 @@ private class FailOnceLifecycleOutcomeRecorder : IosMissionOutcomeRecorder {
     private var shouldFail = true
     val recordedFailures = mutableListOf<String>()
 
-    override suspend fun recordSuccess(occurrenceId: String, completedAtEpochMillis: Long) = Unit
+    override suspend fun recordSuccess(occurrenceId: String, completedAt: String) = Unit
 
-    override suspend fun recordFailure(occurrenceId: String, completedAtEpochMillis: Long) {
+    override suspend fun recordFailure(occurrenceId: String, completedAt: String) {
         if (shouldFail) {
             shouldFail = false
             error("simulated process interruption")

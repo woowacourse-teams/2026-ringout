@@ -47,7 +47,11 @@ class IosAlarmMissionCoordinator(
     private val missionStore: IosActiveAlarmMissionStore = UserDefaultsIosActiveAlarmMissionStore(),
 ) {
     private val mutex = Mutex()
-    private val activeMission = MutableStateFlow(missionStore.loadActiveMission())
+    private val activeMission = MutableStateFlow(
+        missionStore.loadActiveMission().takeUnless { mission ->
+            missionStore.loadPendingTerminal()?.occurrenceId == mission?.occurrenceId
+        },
+    )
 
     val activeMissionFlow: StateFlow<ActiveAlarmMission?> = activeMission.asStateFlow()
 
@@ -413,11 +417,13 @@ class IosAlarmMissionCoordinator(
         mission: ActiveAlarmMission,
         outcome: IosPendingMissionOutcome,
     ) {
+        val completedAtEpochMillis = Clock.System.now().toEpochMilliseconds()
         missionStore.savePendingTerminal(
             IosPendingMissionTerminal(
                 occurrenceId = mission.occurrenceId,
                 outcome = outcome,
-                completedAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
+                completedAtEpochMillis = completedAtEpochMillis,
+                completedAt = iosMissionDate(completedAtEpochMillis),
             ),
         )
         missionStore.clearActiveMission()
@@ -429,8 +435,10 @@ class IosAlarmMissionCoordinator(
 
     private suspend fun recoverPendingTerminalLocked() {
         val pending = missionStore.loadPendingTerminal() ?: return
-        if (activeMission.value?.occurrenceId == pending.occurrenceId) {
+        if (missionStore.loadActiveMission()?.occurrenceId == pending.occurrenceId) {
             missionStore.clearActiveMission()
+        }
+        if (activeMission.value?.occurrenceId == pending.occurrenceId) {
             activeMission.value = null
         }
         missionStore.clearLastLocation()
@@ -440,13 +448,13 @@ class IosAlarmMissionCoordinator(
             IosPendingMissionOutcome.SUCCESS ->
                 outcomeRecorder.recordSuccess(
                     pending.occurrenceId,
-                    pending.completedAtEpochMillis,
+                    pending.completedAt,
                 )
 
             IosPendingMissionOutcome.FAILURE ->
                 outcomeRecorder.recordFailure(
                     pending.occurrenceId,
-                    pending.completedAtEpochMillis,
+                    pending.completedAt,
                 )
         }
         missionStore.clearPendingTerminal()
@@ -484,11 +492,12 @@ data class IosPendingMissionTerminal(
     val occurrenceId: String,
     val outcome: IosPendingMissionOutcome,
     val completedAtEpochMillis: Long,
+    val completedAt: String,
 )
 
 interface IosMissionOutcomeRecorder {
-    suspend fun recordSuccess(occurrenceId: String, completedAtEpochMillis: Long)
-    suspend fun recordFailure(occurrenceId: String, completedAtEpochMillis: Long)
+    suspend fun recordSuccess(occurrenceId: String, completedAt: String)
+    suspend fun recordFailure(occurrenceId: String, completedAt: String)
 }
 
 interface IosActiveAlarmMissionStore {
@@ -692,12 +701,15 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
             ?.map { value -> value as? String ?: return null }
             ?: return null
         if (record.size !in LegacyPendingTerminalRecordSize..PendingTerminalRecordSize) return null
+        val completedAtEpochMillis = record.getOrNull(2)?.toLongOrNull()
+            ?: Clock.System.now().toEpochMilliseconds()
         return IosPendingMissionTerminal(
             occurrenceId = record[0].takeIf(String::isNotBlank) ?: return null,
             outcome = runCatching { IosPendingMissionOutcome.valueOf(record[1]) }.getOrNull()
                 ?: return null,
-            completedAtEpochMillis = record.getOrNull(2)?.toLongOrNull()
-                ?: Clock.System.now().toEpochMilliseconds(),
+            completedAtEpochMillis = completedAtEpochMillis,
+            completedAt = record.getOrNull(3)?.takeIf(String::isNotBlank)
+                ?: iosMissionDate(completedAtEpochMillis),
         )
     }
 
@@ -707,6 +719,7 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
                 pending.occurrenceId,
                 pending.outcome.name,
                 pending.completedAtEpochMillis.toString(),
+                pending.completedAt.orEmpty(),
             ),
             forKey = KeyPendingTerminal,
         )
@@ -738,7 +751,7 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
         const val DeadlineAlarmRecordSizeV2 = 14
         const val DeadlineAlarmRecordSize = 15
         const val LegacyPendingTerminalRecordSize = 2
-        const val PendingTerminalRecordSize = 3
+        const val PendingTerminalRecordSize = 4
     }
 }
 
