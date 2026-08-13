@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -49,6 +50,16 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
         });
 
     return handleExceptionInternalArgs(e,HttpHeaders.EMPTY,ErrorStatus.valueOf("_BAD_REQUEST"),request,errors);
+  }
+
+  @Override
+  public ResponseEntity<Object> handleMissingServletRequestParameter(MissingServletRequestParameterException e,
+      HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+
+    String errorPoint = String.format("%s 파라미터가 누락되었습니다.", e.getParameterName());
+
+    return handleExceptionInternalFalse(e, ErrorStatus._BAD_REQUEST, HttpHeaders.EMPTY,
+        ErrorStatus._BAD_REQUEST.getHttpStatus(), request, errorPoint);
   }
 
   @ExceptionHandler

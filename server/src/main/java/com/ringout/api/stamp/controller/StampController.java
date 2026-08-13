@@ -5,10 +5,12 @@ import com.ringout.api.common.response.code.status.SuccessStatus;
 import com.ringout.api.stamp.controller.docs.StampControllerApi;
 import com.ringout.api.stamp.dto.response.CreateGiveUpResponse;
 import com.ringout.api.stamp.dto.response.CreateStampResponse;
+import com.ringout.api.stamp.dto.response.FindMonthlyStampsResponse;
 import com.ringout.api.stamp.service.StampService;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,7 +24,7 @@ public class StampController implements StampControllerApi {
 
   private final StampService stampService;
 
-  @PostMapping
+  @PostMapping("/success")
   public ResponseEntity<CustomResponse<CreateStampResponse>> createStamp(
       @RequestHeader(value = "Authorization", required = false) String authorization,
       @RequestParam LocalDate completedAt
@@ -44,6 +46,19 @@ public class StampController implements StampControllerApi {
 
     return ResponseEntity.status(SuccessStatus.STAMP_GIVE_UP.getHttpStatus())
         .body(CustomResponse.of(SuccessStatus.STAMP_GIVE_UP, response));
+  }
+
+  @GetMapping
+  public ResponseEntity<CustomResponse<FindMonthlyStampsResponse>> findMonthlyStamps(
+      @RequestHeader(value = "Authorization", required = false) String authorization,
+      @RequestParam(required = true) Integer year,
+      @RequestParam(required = true) Integer month
+  ) {
+    Long memberId = resolveMemberId(authorization);
+    FindMonthlyStampsResponse response = stampService.findMonthlyStamps(memberId, year, month);
+
+    return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
+        .body(CustomResponse.of(SuccessStatus._OK, response));
   }
 
   /*
