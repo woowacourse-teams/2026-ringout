@@ -103,6 +103,8 @@ interface IosDestinationMapListener {
 interface IosDestinationMapController {
     fun view(): UIView
 
+    fun setDarkModeEnabled(isEnabled: Boolean)
+
     fun moveCamera(
         latitude: Double,
         longitude: Double,

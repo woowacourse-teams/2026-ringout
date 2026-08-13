@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.UIKitInteropInteractionMode
 import androidx.compose.ui.viewinterop.UIKitInteropProperties
 import androidx.compose.ui.viewinterop.UIKitView
+import com.joon.ringout.LocalRingoutThemeMode
+import com.joon.ringout.ThemeMode
 import com.joon.ringout.platform.IosDestinationLocation
 import com.joon.ringout.platform.IosDestinationLocationCallback
 import com.joon.ringout.platform.IosDestinationLocationError
@@ -56,6 +58,7 @@ actual fun PlatformDestinationMap(
     modifier: Modifier,
 ) {
     val nativeServices = LocalIosNativeServices.current
+    val isDarkModeEnabled = LocalRingoutThemeMode.current == ThemeMode.Dark
     val locationService = remember(nativeServices) {
         nativeServices.destinationLocationService()
     }
@@ -119,7 +122,9 @@ actual fun PlatformDestinationMap(
             initialLatitude = initialLatitude,
             initialLongitude = initialLongitude,
             listener = mapListener,
-        )
+        )?.also { controller ->
+            controller.setDarkModeEnabled(isDarkModeEnabled)
+        }
     }
 
     if (mapController == null) {
@@ -128,6 +133,10 @@ actual fun PlatformDestinationMap(
         }
         UnavailableDestinationMap(modifier)
         return
+    }
+
+    LaunchedEffect(mapController, isDarkModeEnabled) {
+        mapController.setDarkModeEnabled(isDarkModeEnabled)
     }
 
     fun moveToLocation(location: IosDestinationLocation) {

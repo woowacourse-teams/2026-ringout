@@ -74,6 +74,10 @@ private final class DestinationMapController: NSObject, @MainActor IosDestinatio
         mapView
     }
 
+    func setDarkModeEnabled(isEnabled: Bool) {
+        mapView.overrideUserInterfaceStyle = isEnabled ? .dark : .light
+    }
+
     func moveCamera(
         latitude: Double,
         longitude: Double,
