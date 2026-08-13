@@ -1,6 +1,8 @@
 package com.joon.ringout.platform
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.joon.ringout.alarm.IosAlarmMissionEventInbox
+import com.joon.ringout.alarm.IosAlarmScheduler
 
 enum class IosAlarmAuthorizationState {
     NOT_DETERMINED,
@@ -26,6 +28,10 @@ interface IosNativeServices {
     fun alarmAuthorizationState(): IosAlarmAuthorizationState
 
     fun normalizeAlarmId(id: String): String?
+
+    fun alarmScheduler(): IosAlarmScheduler
+
+    fun alarmMissionEventInbox(): IosAlarmMissionEventInbox
 }
 
 val LocalIosNativeServices = staticCompositionLocalOf<IosNativeServices> {

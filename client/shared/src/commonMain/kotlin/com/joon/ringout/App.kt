@@ -23,6 +23,7 @@ import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.AlarmScheduleRequest
+import com.joon.ringout.alarm.newAlarmId
 import com.joon.ringout.alarm.rememberAlarmController
 import com.joon.ringout.presentation.activemission.ActiveAlarmTrackingScreen
 import com.joon.ringout.presentation.alarmsound.AlarmSoundScreen
@@ -49,7 +50,6 @@ import com.joon.ringout.presentation.mypage.findPolicyUrl
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
 import kotlinx.coroutines.flow.collect
-import kotlin.random.Random
 
 @Composable
 fun App(
@@ -385,8 +385,7 @@ private fun RingoutAppContent(
                     val configuredDestination = destination ?: return@saveAlarm
                     alarmController.schedule(
                         AlarmScheduleRequest(
-                            id = editingAlarmId
-                                ?: "alarm-${Random.nextInt(1, Int.MAX_VALUE)}",
+                            id = editingAlarmId ?: newAlarmId(),
                             time = time,
                             selectedDays = selectedDays,
                             repeatEnabled = repeatEnabled,
