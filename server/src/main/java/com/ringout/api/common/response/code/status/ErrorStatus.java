@@ -25,6 +25,8 @@ public enum ErrorStatus implements BaseErrorCode {
   TERMS_AGREED_AT_INVALID(HttpStatus.BAD_REQUEST, "TERMS400", "동의 시각이 올바르지 않습니다."),
   TERMS_ALREADY_AGREED(HttpStatus.CONFLICT, "TERMS409", "이미 동의한 약관입니다."),
 
+  STAMP_ALREADY_CREATED(HttpStatus.CONFLICT, "STAMP409", "이미 기록된 날짜입니다."),
+
   DESTINATION_NOT_FOUND(HttpStatus.NOT_FOUND, "DESTINATION404", "존재하지 않는 목적지입니다.");
 
   private final HttpStatus httpStatus;
