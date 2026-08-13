@@ -2,6 +2,7 @@ package com.joon.ringout.alarm
 
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.analytics.IosAlarmAnalytics
 import com.joon.ringout.platform.IosNativeServices
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
@@ -147,6 +148,24 @@ class IosAlarmRuntime(
         locationService.requestTemporaryFullAccuracyAuthorization(
             ActiveMissionFullAccuracyPurposeKey,
         )
+    }
+
+    fun recordForceEndHoldStarted(occurrenceId: String) {
+        missionCoordinator.recordForceEndHoldStarted(occurrenceId)
+    }
+
+    fun recordForceEndHoldCancelled(
+        occurrenceId: String,
+        holdDurationMillis: Long,
+    ) {
+        missionCoordinator.recordForceEndHoldCancelled(occurrenceId, holdDurationMillis)
+    }
+
+    fun recordForceEndHoldCompleted(
+        occurrenceId: String,
+        holdDurationMillis: Long,
+    ) {
+        missionCoordinator.recordForceEndHoldCompleted(occurrenceId, holdDurationMillis)
     }
 
     private suspend fun handleLocation(
@@ -388,12 +407,14 @@ class IosAlarmRuntime(
 
 fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
     val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
+    val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker())
     return IosAlarmRuntime(
         missionCoordinator = IosAlarmMissionCoordinator(
             dataSource = dataSource,
             inbox = nativeServices.alarmMissionEventInbox(),
             scheduler = nativeServices.alarmScheduler(),
             outcomeRecorder = RoomIosMissionOutcomeRecorder(),
+            analytics = analytics,
         ),
         reconciler = IosAlarmReconciler(
             dataSource = dataSource,
