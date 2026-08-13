@@ -42,7 +42,7 @@ import kotlin.coroutines.coroutineContext
 
 @Composable
 actual fun rememberAlarmController(
-    onScheduled: (AlarmScheduleRequest) -> Unit,
+    onSaveCompleted: (AlarmScheduleRequest) -> Unit,
     onError: (String) -> Unit,
 ): AlarmController {
     val context = LocalContext.current
@@ -53,7 +53,7 @@ actual fun rememberAlarmController(
     }
     val pendingAction = remember { mutableStateOf<PendingAlarmAction?>(null) }
     val isScheduleInFlight = remember { mutableStateOf(false) }
-    val currentOnScheduled = rememberUpdatedState(onScheduled)
+    val currentOnSaveCompleted = rememberUpdatedState(onSaveCompleted)
     val currentOnError = rememberUpdatedState(onError)
 
     fun failPendingAction(message: String) {
@@ -90,7 +90,7 @@ actual fun rememberAlarmController(
             try {
                 scheduler.schedule(request)
                 pendingAction.value = null
-                currentOnScheduled.value(request)
+                currentOnSaveCompleted.value(request)
                 requestFullScreenPermissionIfNeeded()
             } catch (error: CancellationException) {
                 throw error

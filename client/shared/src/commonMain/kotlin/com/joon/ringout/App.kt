@@ -185,14 +185,7 @@ private fun RingoutAppContent(
         },
     )
     val alarmController = rememberAlarmController(
-        onScheduled = { request ->
-            val wasEnabled = alarms.orEmpty()
-                .firstOrNull { it.id == request.id }
-                ?.isEnabled
-                ?: true
-            alarms = alarms.orEmpty().replaceOrAppend(
-                request.toHomeAlarm(enabled = wasEnabled),
-            )
+        onSaveCompleted = {
             editingAlarmId = null
             screenName = AppScreen.Home.name
         },
@@ -491,12 +484,3 @@ private fun AlarmScheduleRequest.toHomeAlarm(enabled: Boolean): HomeAlarm = Home
     selectedDays = selectedDays,
     repeatEnabled = repeatEnabled,
 )
-
-private fun List<HomeAlarm>.replaceOrAppend(updatedAlarm: HomeAlarm): List<HomeAlarm> =
-    if (any { it.id == updatedAlarm.id }) {
-        map { alarm ->
-            if (alarm.id == updatedAlarm.id) updatedAlarm else alarm
-        }
-    } else {
-        this + updatedAlarm
-    }
