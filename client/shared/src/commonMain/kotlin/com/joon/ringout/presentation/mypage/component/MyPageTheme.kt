@@ -6,7 +6,6 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.ringoutColors
 
 @Immutable
 internal data class MyPageColors(
@@ -65,7 +64,7 @@ internal fun myPageColors(): MyPageColors =
             secondaryText = MaterialTheme.colorScheme.onSurfaceVariant,
             calendarSurface = MaterialTheme.colorScheme.surface,
             calendarBorder = MaterialTheme.colorScheme.outline,
-            sectionSurface = MaterialTheme.ringoutColors.elevatedSurface,
+            sectionSurface = Color(0xFFF0F0F2),
             toggleTrack = MaterialTheme.colorScheme.surfaceVariant,
             toggleInactiveContent = MaterialTheme.colorScheme.onSurfaceVariant,
         )

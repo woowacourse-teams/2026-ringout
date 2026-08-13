@@ -32,8 +32,16 @@ data class SavedAlarmSchedule(
     val enabled: Boolean,
 )
 
+/**
+ * Creates the platform alarm controller.
+ *
+ * [onSaveCompleted] is invoked only after the platform's required preparation and the data
+ * mutation both succeed. On both platforms this means the system alarm side effect and Room
+ * persistence have completed successfully.
+ */
 @Composable
 expect fun rememberAlarmController(
-    onScheduled: (AlarmScheduleRequest) -> Unit,
+    onSaveCompleted: (AlarmScheduleRequest) -> Unit,
+    onSaveError: (AlarmScheduleRequest, String) -> Unit,
     onError: (String) -> Unit,
 ): AlarmController

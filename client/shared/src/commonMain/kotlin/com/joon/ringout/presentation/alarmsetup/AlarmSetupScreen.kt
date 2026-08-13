@@ -51,6 +51,7 @@ fun AlarmSetupScreen(
         alarmSound: AlarmSoundSelection,
     ) -> Unit,
     modifier: Modifier = Modifier,
+    isSaveInProgress: Boolean = false,
 ) {
     val initialSelectedDaysValue = initialSelectedDays.joinToString(",")
     val initialAlarmTime = initialTime.toAlarmTimePickerValue()
@@ -97,7 +98,10 @@ fun AlarmSetupScreen(
     ).to24HourString()
     val colors = alarmSetupColors()
 
-    PlatformBackHandler(onBack = onBackClick)
+    PlatformBackHandler(
+        enabled = !isSaveInProgress,
+        onBack = onBackClick,
+    )
 
     Box(
         modifier = modifier
@@ -118,7 +122,10 @@ fun AlarmSetupScreen(
                 ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SetupBackButton(onClick = onBackClick)
+            SetupBackButton(
+                enabled = !isSaveInProgress,
+                onClick = onBackClick,
+            )
             TimePickerCard(
                 isAm = alarmIsAm,
                 hour = alarmHour,
@@ -162,7 +169,8 @@ fun AlarmSetupScreen(
             contentAlignment = Alignment.Center,
         ) {
             SaveAlarmButton(
-                enabled = isDestinationSet,
+                enabled = isDestinationSet && !isSaveInProgress,
+                isInProgress = isSaveInProgress,
                 onClick = {
                     onSaveClick(
                         alarmTime,

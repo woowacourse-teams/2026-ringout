@@ -5,6 +5,7 @@ import com.ringout.api.common.response.code.ErrorReasonResponse;
 import com.ringout.api.common.response.code.status.ErrorStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -14,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -50,6 +52,16 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
     return handleExceptionInternalArgs(e,HttpHeaders.EMPTY,ErrorStatus.valueOf("_BAD_REQUEST"),request,errors);
   }
 
+  @Override
+  public ResponseEntity<Object> handleMissingServletRequestParameter(MissingServletRequestParameterException e,
+      HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+
+    String errorPoint = String.format("%s 파라미터가 누락되었습니다.", e.getParameterName());
+
+    return handleExceptionInternalFalse(e, ErrorStatus._BAD_REQUEST, HttpHeaders.EMPTY,
+        ErrorStatus._BAD_REQUEST.getHttpStatus(), request, errorPoint);
+  }
+
   @ExceptionHandler
   public ResponseEntity<Object> exception(Exception e, WebRequest request) {
     e.printStackTrace();
@@ -57,17 +69,43 @@ public class ExceptionAdvice extends ResponseEntityExceptionHandler {
     return handleExceptionInternalFalse(e, ErrorStatus._INTERNAL_SERVER_ERROR, HttpHeaders.EMPTY, ErrorStatus._INTERNAL_SERVER_ERROR.getHttpStatus(),request, e.getMessage());
   }
 
+  @ExceptionHandler(value = IllegalStateException.class)
+  public ResponseEntity handleIllegalStateException(IllegalStateException illegalStateException,
+      HttpServletRequest request) {
+    WebRequest webRequest = new ServletWebRequest(request);
+    return handleExceptionInternalFalse(
+        illegalStateException,
+        ErrorStatus.STAMP_ALREADY_CREATED,
+        HttpHeaders.EMPTY,
+        ErrorStatus.STAMP_ALREADY_CREATED.getHttpStatus(),
+        webRequest,
+        illegalStateException.getMessage());
+  }
+
   @ExceptionHandler(value = GeneralException.class)
   public ResponseEntity onThrowException(GeneralException generalException, HttpServletRequest request) {
     ErrorReasonResponse errorReasonHttpStatus = generalException.getErrorReasonHttpStatus();
-    return handleExceptionInternal(generalException,errorReasonHttpStatus,null,request);
+    return handleExceptionInternal(generalException, errorReasonHttpStatus, null,request);
+  }
+
+  @ExceptionHandler(value = DateTimeParseException.class)
+  public ResponseEntity handleDateTimeParseException(DateTimeParseException dateTimeParseException,
+      HttpServletRequest request) {
+    WebRequest webRequest = new ServletWebRequest(request);
+    return handleExceptionInternalFalse(
+        dateTimeParseException,
+        ErrorStatus._BAD_REQUEST,
+        HttpHeaders.EMPTY,
+        ErrorStatus._BAD_REQUEST.getHttpStatus(),
+        webRequest,
+        dateTimeParseException.getMessage()
+    );
   }
 
   private ResponseEntity<Object> handleExceptionInternal(Exception e, ErrorReasonResponse reason,
       HttpHeaders headers, HttpServletRequest request) {
 
     CustomResponse<Object> body = CustomResponse.onFailure(reason.code(),reason.message(),null);
-//        e.printStackTrace();
 
     WebRequest webRequest = new ServletWebRequest(request);
     return super.handleExceptionInternal(

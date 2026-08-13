@@ -124,3 +124,33 @@ source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/logi
 ```
 
 The Login screen always follows the app theme, including its background, content colors, and system bar icon contrast.
+
+## 2026-08-13T01:50:12.174Z — the-my-page-theme-row-uses-f0f0f2-as-its
+
+```omd-meta
+id: pref_msqv2bc5_adb658fc
+timestamp: 2026-08-13T01:50:12.174Z
+scope: color
+signal: user-statement
+confidence: explicit
+status: pending
+source_agent: codex
+source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/mypage/component/MyPageThemeCard.kt"
+```
+
+The My Page theme row uses #F0F0F2 as its light-theme background color.
+
+## 2026-08-13T04:40:12.000Z — the-ios-launch-screen-background-color-i
+
+```omd-meta
+id: pref_msr14y5f_187ff23b
+timestamp: 2026-08-13T04:40:12.000Z
+scope: color
+signal: user-statement
+confidence: explicit
+status: pending
+source_agent: codex
+source_context: "iosApp/iosApp/Assets.xcassets/LaunchBackground.colorset/Contents.json"
+```
+
+The iOS launch screen background color is exactly #F85E24.

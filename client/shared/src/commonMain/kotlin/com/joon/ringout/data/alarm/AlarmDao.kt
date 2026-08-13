@@ -40,6 +40,9 @@ interface AlarmDao {
     suspend fun upsertAlarm(alarm: AlarmEntity)
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAlarm(alarm: AlarmEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertRepeatDays(repeatDays: List<AlarmRepeatDayEntity>)
 
     @Query("DELETE FROM alarm_repeat_days WHERE alarm_id = :alarmId")
@@ -61,6 +64,27 @@ interface AlarmDao {
         if (alarm.repeatDays.isNotEmpty()) {
             insertRepeatDays(alarm.repeatDays)
         }
+    }
+
+    @Transaction
+    suspend fun migrateId(
+        oldId: String,
+        newId: String,
+    ): Boolean {
+        require(oldId.isNotBlank()) { "Old alarm id must not be blank." }
+        require(newId.isNotBlank()) { "New alarm id must not be blank." }
+        if (oldId == newId) return getById(oldId) != null
+        val existing = getById(oldId) ?: return false
+        check(getById(newId) == null) { "Alarm id already exists: $newId" }
+
+        insertAlarm(existing.alarm.copy(id = newId))
+        if (existing.repeatDays.isNotEmpty()) {
+            insertRepeatDays(
+                existing.repeatDays.map { repeatDay -> repeatDay.copy(alarmId = newId) },
+            )
+        }
+        check(delete(oldId) == 1) { "Failed to remove migrated alarm: $oldId" }
+        return true
     }
 
     @Transaction

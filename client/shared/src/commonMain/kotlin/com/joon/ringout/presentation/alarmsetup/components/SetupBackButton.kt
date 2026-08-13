@@ -23,6 +23,7 @@ import org.jetbrains.compose.resources.painterResource
 fun SetupBackButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val colors = alarmSetupColors()
 
@@ -37,6 +38,7 @@ fun SetupBackButton(
                 .requiredSize(44.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .clickable(
+                    enabled = enabled,
                     role = Role.Button,
                     onClickLabel = "이전 화면으로 이동",
                     onClick = onClick,

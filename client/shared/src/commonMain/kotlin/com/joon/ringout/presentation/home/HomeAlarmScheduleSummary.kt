@@ -51,8 +51,10 @@ internal fun nextAlarmDescription(
 }
 
 private fun HomeAlarm.minutesUntilNext(clock: LocalClockSnapshot): Int? {
-    val hour = time.substringBefore(":").toIntOrNull()?.coerceIn(0, 23) ?: return null
-    val minute = time.substringAfter(":", "0").toIntOrNull()?.coerceIn(0, 59) ?: return null
+    if (!AlarmTimePattern.matches(time)) return null
+
+    val hour = time.substringBefore(":").toInt()
+    val minute = time.substringAfter(":").toInt()
     val alarmMinuteOfDay = hour * MinutesPerHour + minute
     val currentMinuteOfDay = clock.hour * MinutesPerHour + clock.minute
     val repeatDayIndexes = if (repeatEnabled) {
@@ -81,6 +83,8 @@ private const val MinuteInMilliseconds = 60_000L
 private const val MinutesPerHour = 60
 private const val MinutesPerDay = 24 * MinutesPerHour
 private const val DaysPerWeek = 7
+
+private val AlarmTimePattern = Regex("(?:[01]\\d|2[0-3]):[0-5]\\d")
 
 private val DayIndexByKorean = mapOf(
     "월" to 0,
