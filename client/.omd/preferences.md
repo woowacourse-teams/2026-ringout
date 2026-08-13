@@ -139,3 +139,18 @@ source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/mypa
 ```
 
 The My Page theme row uses #F0F0F2 as its light-theme background color.
+
+## 2026-08-13T04:40:12.000Z — the-ios-launch-screen-background-color-i
+
+```omd-meta
+id: pref_msr14y5f_187ff23b
+timestamp: 2026-08-13T04:40:12.000Z
+scope: color
+signal: user-statement
+confidence: explicit
+status: pending
+source_agent: codex
+source_context: "iosApp/iosApp/Assets.xcassets/LaunchBackground.colorset/Contents.json"
+```
+
+The iOS launch screen background color is exactly #F85E24.
