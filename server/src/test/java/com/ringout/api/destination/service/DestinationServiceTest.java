@@ -13,9 +13,11 @@ import com.ringout.api.destination.domain.Destination;
 import com.ringout.api.destination.domain.DestinationAlias;
 import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
 import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.response.DestinationResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -36,6 +38,68 @@ class DestinationServiceTest {
     @BeforeEach
     void setUp() {
         destinationService = new DestinationService(destinationRepository);
+    }
+
+    @Nested
+    class 목적지_조회 {
+
+        @Test
+        void 목적지_목록_조회에_성공한다() {
+            // given
+            Long userId = 1L;
+            Destination firstDestination = Destination.create(
+                userId,
+                DestinationAlias.from("런닝 장소"),
+                Coordinate.of(37.5665, 126.9780)
+            );
+            Destination secondDestination = Destination.create(
+                userId,
+                DestinationAlias.from("헬스장"),
+                Coordinate.of(37.4979, 127.0276)
+            );
+            ReflectionTestUtils.setField(firstDestination, "id", 1L);
+            ReflectionTestUtils.setField(secondDestination, "id", 2L);
+            given(destinationRepository.findOwnedDestinations(userId))
+                .willReturn(List.of(firstDestination, secondDestination));
+
+            // when
+            List<DestinationResponse> responses = destinationService.getDestinations(userId);
+
+            // then
+            assertThat(responses).hasSize(2);
+            assertThat(responses.get(0).destinationId()).isEqualTo(1L);
+            assertThat(responses.get(0).alias()).isEqualTo("런닝 장소");
+            assertThat(responses.get(0).latitude()).isEqualTo(37.5665);
+            assertThat(responses.get(0).longitude()).isEqualTo(126.9780);
+            assertThat(responses.get(1).destinationId()).isEqualTo(2L);
+            assertThat(responses.get(1).alias()).isEqualTo("헬스장");
+            verify(destinationRepository).findOwnedDestinations(userId);
+        }
+
+        @Test
+        void 목적지가_없으면_빈_목록을_조회한다() {
+            // given
+            Long userId = 1L;
+            given(destinationRepository.findOwnedDestinations(userId)).willReturn(List.of());
+
+            // when
+            List<DestinationResponse> responses = destinationService.getDestinations(userId);
+
+            // then
+            assertThat(responses).isEmpty();
+        }
+
+        @Test
+        void 사용자_id가_없으면_목적지_목록을_조회할_수_없다() {
+            // given
+            Long userId = null;
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.getDestinations(userId))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
+            verify(destinationRepository, never()).findOwnedDestinations(any());
+        }
     }
 
     @Nested
@@ -166,6 +230,22 @@ class DestinationServiceTest {
                     new DestinationUpdateRequest("회사", null, null)))
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_ID_INVALID));
+            verify(destinationRepository, never()).findById(any());
+        }
+
+        @Test
+        void 수정할_정보가_없으면_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            Long destinationId = 10L;
+
+            // when // then
+            assertThatThrownBy(
+                () -> destinationService.updateDestination(userId, destinationId,
+                    new DestinationUpdateRequest(null, null, null)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(
+                        DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID));
             verify(destinationRepository, never()).findById(any());
         }
 

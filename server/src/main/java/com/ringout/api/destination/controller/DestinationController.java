@@ -6,14 +6,17 @@ import com.ringout.api.destination.controller.docs.DestinationControllerApi;
 import com.ringout.api.destination.dto.request.DestinationCreateRequest;
 import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
 import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.response.DestinationResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.service.DestinationService;
 import com.ringout.api.destination.status.DestinationSuccessStatus;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,6 +31,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class DestinationController implements DestinationControllerApi {
 
     private final DestinationService destinationService;
+
+    @Override
+    @GetMapping
+    public ResponseEntity<CustomResponse<List<DestinationResponse>>> findDestinations(
+        @Parameter(hidden = true)
+        @RequestAttribute(value = "customUserDetails", required = false) CustomUserDetails customUserDetails
+    ) {
+        List<DestinationResponse> response = destinationService.getDestinations(customUserDetails.userId());
+
+        return ResponseEntity.status(DestinationSuccessStatus.DESTINATIONS_FOUND.getHttpStatus())
+            .body(CustomResponse.of(DestinationSuccessStatus.DESTINATIONS_FOUND, response));
+    }
 
     @Override
     @PostMapping

@@ -30,4 +30,7 @@ public record DestinationUpdateRequest(
     Double longitude
 ) {
 
+    public boolean hasNoUpdateField() {
+        return alias == null && latitude == null && longitude == null;
+    }
 }

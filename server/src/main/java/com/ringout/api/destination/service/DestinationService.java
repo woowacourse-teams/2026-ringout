@@ -6,9 +6,11 @@ import com.ringout.api.destination.domain.Destination;
 import com.ringout.api.destination.domain.DestinationAlias;
 import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
 import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.response.DestinationResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +29,15 @@ public class DestinationService {
             Coordinate.of(latitude, longitude));
 
         return new DestinationCreateResponse(destinationRepository.save(destination).getId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<DestinationResponse> getDestinations(Long userId) {
+        validateAuthenticatedUserExists(userId);
+
+        return destinationRepository.findOwnedDestinations(userId).stream()
+            .map(DestinationResponse::from)
+            .toList();
     }
 
     @Transactional
@@ -65,7 +76,7 @@ public class DestinationService {
     }
 
     private void validateDestinationUpdateRequestBodyExists(DestinationUpdateRequest request) {
-        if (request == null) {
+        if (request == null || request.hasNoUpdateField()) {
             throw new GeneralException(DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID);
         }
     }

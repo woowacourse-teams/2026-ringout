@@ -5,6 +5,7 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.destination.dto.request.DestinationCreateRequest;
 import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
 import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.response.DestinationResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,11 +16,66 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 
 @Tag(name = "Destination", description = "목적지 API")
 public interface DestinationControllerApi {
+
+    @Operation(
+        summary = "목적지 전체 조회",
+        description = "사용자가 소유한 목적지들을 ID 오름차순으로 전체 조회합니다.",
+        security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "목적지 전체 조회 성공",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": true,
+                      "code": "DESTINATION200",
+                      "message": "조회되었습니다.",
+                      "result": [
+                        {
+                          "destinationId": 1,
+                          "alias": "런닝 장소",
+                          "latitude": 37.5665,
+                          "longitude": 126.9780
+                        },
+                        {
+                          "destinationId": 2,
+                          "alias": "헬스장",
+                          "latitude": 37.4979,
+                          "longitude": 127.0276
+                        }
+                      ]
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "DESTINATION401",
+                      "message": "인증되지 않은 사용자입니다."
+                    }
+                    """)
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<List<DestinationResponse>>> findDestinations(
+        @Parameter(hidden = true)
+        CustomUserDetails customUserDetails
+    );
 
     @Operation(
         summary = "목적지 저장",
