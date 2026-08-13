@@ -21,6 +21,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class RoomAlarmDataSourceTest {
     @Test
@@ -197,6 +198,39 @@ class RoomAlarmDataSourceTest {
         }
     }
 
+    @Test
+    fun migratesAlarmIdAtomicallyWithRepeatDaysAndState() = runBlocking {
+        withDatabase { database ->
+            val dataSource = RoomAlarmDataSource(database.alarmDao())
+            val original = savedAlarm(selectedDays = listOf("월", "일")).copy(enabled = false)
+            dataSource.replace(original)
+
+            assertTrue(dataSource.migrateId("alarm-1", MigratedUuid))
+            assertNull(dataSource.getById("alarm-1"))
+            val migrated = assertNotNull(dataSource.getById(MigratedUuid))
+            assertEquals(MigratedUuid, migrated.request.id)
+            assertEquals(listOf("월", "일"), migrated.request.selectedDays)
+            assertFalse(migrated.enabled)
+        }
+    }
+
+    @Test
+    fun idMigrationRejectsCollisionWithoutChangingEitherAlarm() = runBlocking {
+        withDatabase { database ->
+            val dataSource = RoomAlarmDataSource(database.alarmDao())
+            dataSource.replace(savedAlarm())
+            dataSource.replace(
+                savedAlarm().copy(request = savedAlarm().request.copy(id = MigratedUuid)),
+            )
+
+            assertFailsWith<IllegalStateException> {
+                dataSource.migrateId("alarm-1", MigratedUuid)
+            }
+            assertNotNull(dataSource.getById("alarm-1"))
+            assertNotNull(dataSource.getById(MigratedUuid))
+        }
+    }
+
     private suspend fun withDatabase(
         block: suspend (RingoutDatabase) -> Unit,
     ) {
@@ -234,6 +268,7 @@ class RoomAlarmDataSourceTest {
     private companion object {
         const val LegacyMigrationId = "android_alarm_shared_preferences_v1"
         const val FlowEmissionTimeoutMillis = 1_000L
+        const val MigratedUuid = "D08814F5-0B28-4454-91F0-F6931224EBD6"
     }
 
     private fun temporaryDatabasePath(): String =

@@ -18,6 +18,12 @@ interface AlarmDataSource {
 
     suspend fun delete(id: String): Boolean
 
+    /** Atomically replaces a persisted alarm primary key while preserving its full snapshot. */
+    suspend fun migrateId(
+        oldId: String,
+        newId: String,
+    ): Boolean = false
+
     suspend fun hasStorageMigration(id: String): Boolean
 
     suspend fun importLegacyIfNeeded(

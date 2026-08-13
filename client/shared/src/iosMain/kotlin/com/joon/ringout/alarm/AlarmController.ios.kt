@@ -6,6 +6,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.platform.LocalIosNativeServices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -18,8 +19,20 @@ actual fun rememberAlarmController(
     onSaveCompleted: (AlarmScheduleRequest) -> Unit,
     onError: (String) -> Unit,
 ): AlarmController {
+    val nativeServices = LocalIosNativeServices.current
     val store = remember {
-        IosAlarmStore(RoomAlarmDataSource(getRingoutDatabase().alarmDao()))
+        val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
+        val scheduler = nativeServices.alarmScheduler()
+        val reconciler = IosAlarmReconciler(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            normalizeAlarmId = nativeServices::normalizeAlarmId,
+        )
+        IosAlarmStore(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            reconciler = reconciler,
+        )
     }
     val coroutineScope = rememberCoroutineScope()
     val currentOnSaveCompleted = rememberUpdatedState(onSaveCompleted)
