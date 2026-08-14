@@ -5,11 +5,10 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import com.ringout.api.member.domain.Role;
+import com.ringout.api.config.security.CustomUserDetails;
 import java.io.IOException;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -37,11 +36,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         && SecurityContextHolder.getContext().getAuthentication() == null) {
       Long userId = jwtProvider.getUserId(token);
       Role role = jwtProvider.getRole(token);
+      CustomUserDetails userDetails = new CustomUserDetails(userId, role);
       UsernamePasswordAuthenticationToken authentication =
           new UsernamePasswordAuthenticationToken(
-              userId,
+              userDetails,
               null,
-              List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
+              userDetails.getAuthorities()
           );
       SecurityContextHolder.getContext().setAuthentication(authentication);
     }
