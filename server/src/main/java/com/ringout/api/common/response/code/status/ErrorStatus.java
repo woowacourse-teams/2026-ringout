@@ -17,6 +17,7 @@ public enum ErrorStatus implements BaseErrorCode {
   _METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "COMMON405", "지원하지 않는 HTTP 메서드입니다."),
 
   MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "MEMBER404", "존재하지 않는 회원입니다."),
+  MEMBER_ALREADY_EXISTS(HttpStatus.CONFLICT, "MEMBER409", "이미 가입한 회원입니다."),
   MEMBER_NICKNAME_INVALID(HttpStatus.BAD_REQUEST, "MEMBER400", "닉네임 형식이 올바르지 않습니다."),
 
   TERMS_NOT_FOUND(HttpStatus.NOT_FOUND, "TERMS404", "존재하지 않는 약관입니다."),

@@ -40,6 +40,10 @@ public class Member extends BaseEntity {
   @Column(name = "social_provider_id", nullable = false, length = 255)
   private String socialProviderId;
 
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 20)
+  private Role role;
+
   @Embedded
   private Nickname nickname;
 
@@ -70,6 +74,7 @@ public class Member extends BaseEntity {
 
     this.socialProvider = socialProvider;
     this.socialProviderId = socialProviderId;
+    this.role = Role.USER;
     this.email = email;
     this.lastLoginAt = joinedAt;
     this.lastAccessedAt = joinedAt;
