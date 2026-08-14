@@ -1,20 +1,22 @@
 package com.joon.ringout.alarm
 
+import com.joon.ringout.analytics.IosAlarmAnalytics
+import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
-import com.joon.ringout.analytics.IosAlarmAnalytics
 import com.joon.ringout.platform.IosNativeServices
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -22,20 +24,32 @@ import kotlinx.coroutines.sync.withLock
 import platform.Foundation.NSUUID
 
 class IosAlarmRuntime(
+    private val dataSource: AlarmDataSource,
+    private val scheduler: IosAlarmScheduler,
+    private val eventInbox: IosAlarmMissionEventInbox,
     private val missionCoordinator: IosAlarmMissionCoordinator,
     private val reconciler: IosAlarmReconciler,
     private val locationService: IosMissionLocationService,
+    private val ringingHandoffGraceMillis: Long = DefaultRingingHandoffGraceMillis,
+    private val runtimeDispatcher: CoroutineDispatcher = Dispatchers.Main,
 ) {
     private val startMutex = Mutex()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope = CoroutineScope(SupervisorJob() + runtimeDispatcher)
     private val currentLocation = MutableStateFlow(missionCoordinator.loadLastLocation())
     private val locationState = MutableStateFlow(locationService.currentState())
+    private val ringingAlarm = MutableStateFlow<IosRingingAlarm?>(null)
+    private val ringingDismissMutex = Mutex()
+    private val ringingTransitionMutex = Mutex()
     private var trackedOccurrenceId: String? = null
     private var lastAcceptedFix: TrackingLocationFix? = null
     private var deadlineJob: Job? = null
     private var deadlineRecoveryJob: Job? = null
     private var terminalRecoveryJob: Job? = null
     private var retryDeliveryRecoveryJob: Job? = null
+    private var ringingHandoffJob: Job? = null
+    private var ringingHandoffSystemAlarmId: String? = null
+    private var isDismissingRingingAlarm = false
+    internal val ringingAlarmFlow: StateFlow<IosRingingAlarm?> = ringingAlarm.asStateFlow()
     val activeMissionFlow: StateFlow<ActiveAlarmMission?> =
         missionCoordinator.activeMissionFlow
     val currentLocationFlow: StateFlow<ActiveAlarmMissionLocation?> =
@@ -63,7 +77,23 @@ class IosAlarmRuntime(
         }
     }
 
+    private val alarmStateListener = object : IosAlarmStateListener {
+        override fun onAlarmsChanged(alarms: List<IosScheduledAlarmDto>) {
+            scope.launch { handleAlarmSnapshot(alarms) }
+        }
+
+        override fun onError(message: String) = Unit
+    }
+
+    private val missionEventListener = object : IosAlarmMissionEventListener {
+        override fun onEventRecorded() {
+            scope.launch { handleMissionEventRecorded() }
+        }
+    }
+
     suspend fun start() = startMutex.withLock {
+        scheduler.setStateListener(alarmStateListener)
+        eventInbox.setEventListener(missionEventListener)
         locationService.setListener(locationListener)
         locationState.value = locationService.currentState()
         runStartupStep { missionCoordinator.recoverPendingTerminal() }
@@ -75,18 +105,62 @@ class IosAlarmRuntime(
         } catch (_: Throwable) {
             if (missionCoordinator.hasPendingTerminal()) scheduleTerminalRecovery()
         }
-        runStartupStep { missionCoordinator.processPendingEvents() }
+        var startedMission: ActiveAlarmMission? = null
+        runStartupStep {
+            startedMission = missionCoordinator.processPendingEvents()
+        }
+        startedMission?.let(::clearRingingIfMissionMatches)
         if (missionCoordinator.hasPendingTerminal()) scheduleTerminalRecovery()
         if (
             activeMissionFlow.value == null &&
-            !missionCoordinator.hasPendingDeadlineAlarm()
+            !missionCoordinator.hasPendingDeadlineAlarm() &&
+            ringingAlarm.value == null
         ) {
             runStartupStep { reconciler.reconcile() }
         }
         syncTracking()
         ensureDeadlineAlarmOrScheduleRecovery()
         scheduleRetryDeliveryRecoveryIfNeeded()
+        runStartupStep { refreshRingingAlarmSnapshot() }
     }
+
+    internal suspend fun dismissRingingAlarm(expectedSystemAlarmId: String): Boolean =
+        ringingDismissMutex.withLock {
+            val ringing = ringingAlarm.value ?: return@withLock true
+            if (ringing.systemAlarmId != expectedSystemAlarmId) return@withLock false
+            val activeMission = activeMissionFlow.value
+            if (
+                ringing.occurrenceId != null &&
+                activeMission?.occurrenceId == ringing.occurrenceId
+            ) {
+                ringingAlarm.value = null
+                return@withLock true
+            }
+
+            isDismissingRingingAlarm = true
+            try {
+                scheduler.stopAwait(ringing.systemAlarmId)
+                eventInbox.recordOpenEventAwait(
+                    alarmId = ringing.alarmId,
+                    occurrenceId = ringing.occurrenceId,
+                    retryAttempt = ringing.retryAttempt,
+                )
+                missionCoordinator.processPendingEvents()
+                if (ringingAlarm.value?.systemAlarmId == expectedSystemAlarmId) {
+                    cancelRingingHandoff()
+                    ringingAlarm.value = null
+                }
+                true
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                false
+            } finally {
+                isDismissingRingingAlarm = false
+                syncTracking()
+                scheduleRetryDeliveryRecoveryIfNeeded()
+            }
+        }
 
     suspend fun forceEndActiveMission(occurrenceId: String? = null) {
         try {
@@ -243,6 +317,181 @@ class IosAlarmRuntime(
             locationService.startTracking(mission.occurrenceId)
             locationState.value = locationService.currentState()
         }
+    }
+
+    private suspend fun refreshRingingAlarmSnapshot() {
+        handleAlarmSnapshot(scheduler.scheduledAlarmsAwait())
+    }
+
+    private suspend fun handleAlarmSnapshot(alarms: List<IosScheduledAlarmDto>) =
+        ringingTransitionMutex.withLock {
+            val currentSystemAlarmId = ringingAlarm.value?.systemAlarmId
+            val alertingAlarmIds = alarms
+                .filter { alarm -> alarm.state == IosScheduledAlarmState.ALERTING }
+                .map(IosScheduledAlarmDto::alarmId)
+                .distinct()
+                .sorted()
+                .let { ids ->
+                    currentSystemAlarmId
+                        ?.takeIf { current -> current in ids }
+                        ?.let { current -> listOf(current) + ids.filterNot { it == current } }
+                        ?: ids
+                }
+            for (systemAlarmId in alertingAlarmIds) {
+                val resolved = resolveIosRingingAlarm(
+                    systemAlarmId = systemAlarmId,
+                    dataSource = dataSource,
+                    deadlineAlarm = missionCoordinator.deadlineAlarmForSystemId(systemAlarmId),
+                )
+                if (resolved != null) {
+                    cancelRingingHandoff()
+                    if (activeMissionFlow.value?.matches(resolved) == true) {
+                        if (ringingAlarm.value?.systemAlarmId == resolved.systemAlarmId) {
+                            ringingAlarm.value = null
+                        }
+                        return@withLock
+                    }
+                    if (ringingAlarm.value?.systemAlarmId != resolved.systemAlarmId) {
+                        ringingAlarm.value = resolved
+                    }
+                    return@withLock
+                }
+            }
+
+            val startedMission = processPendingMissionEventsOrNull()
+            if (startedMission != null) {
+                clearRingingIfMissionMatches(startedMission)
+                syncTracking()
+            }
+
+            val currentRinging = ringingAlarm.value
+            if (
+                currentRinging != null &&
+                activeMissionFlow.value?.matches(currentRinging) == true
+            ) {
+                cancelRingingHandoff()
+                ringingAlarm.value = null
+                return@withLock
+            }
+            if (!isDismissingRingingAlarm && currentRinging != null) {
+                scheduleRingingHandoff(currentRinging.systemAlarmId)
+            }
+        }
+
+    private suspend fun handleMissionEventRecorded() = ringingTransitionMutex.withLock {
+        val startedMission = processPendingMissionEventsOrNull()
+        startedMission?.let(::clearRingingIfMissionMatches)
+        activeMissionFlow.value?.let(::clearRingingIfMissionMatches)
+        syncTracking()
+        scheduleRetryDeliveryRecoveryIfNeeded()
+    }
+
+    private suspend fun processPendingMissionEventsOrNull(): ActiveAlarmMission? = try {
+        missionCoordinator.processPendingEvents()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun scheduleRingingHandoff(
+        expectedSystemAlarmId: String,
+        remainingRetries: Int = MaxRingingHandoffRetries,
+    ) {
+        if (
+            ringingHandoffSystemAlarmId == expectedSystemAlarmId &&
+            ringingHandoffJob?.isActive == true
+        ) {
+            return
+        }
+        cancelRingingHandoff()
+        ringingHandoffSystemAlarmId = expectedSystemAlarmId
+        ringingHandoffJob = scope.launch {
+            delay(ringingHandoffGraceMillis)
+            var shouldRetry = false
+            ringingTransitionMutex.withLock {
+                if (ringingAlarm.value?.systemAlarmId != expectedSystemAlarmId) {
+                    return@withLock
+                }
+                val stoppedRinging = ringingAlarm.value ?: return@withLock
+                val latestAlarms = scheduledAlarmsOrNull()
+                when {
+                    latestAlarms == null -> shouldRetry = true
+                    latestAlarms.any { alarm ->
+                        alarm.alarmId == expectedSystemAlarmId &&
+                            alarm.state == IosScheduledAlarmState.ALERTING
+                    } -> Unit
+                    else -> {
+                        var startedMission = processPendingMissionEventsOrNull()
+                        if (startedMission == null && activeMissionFlow.value == null) {
+                            startedMission = recordStoppedRingingAndStartMission(stoppedRinging)
+                        }
+                        if (startedMission != null || activeMissionFlow.value != null) {
+                            startedMission?.let(::clearRingingIfMissionMatches)
+                            if (ringingAlarm.value?.systemAlarmId == expectedSystemAlarmId) {
+                                ringingAlarm.value = null
+                            }
+                            syncTracking()
+                        } else {
+                            shouldRetry = true
+                        }
+                    }
+                }
+                ringingHandoffSystemAlarmId = null
+                ringingHandoffJob = null
+            }
+            if (
+                shouldRetry &&
+                remainingRetries > 0 &&
+                !isDismissingRingingAlarm &&
+                ringingAlarm.value?.systemAlarmId == expectedSystemAlarmId
+            ) {
+                scheduleRingingHandoff(expectedSystemAlarmId, remainingRetries - 1)
+            }
+        }
+    }
+
+    private suspend fun scheduledAlarmsOrNull(): List<IosScheduledAlarmDto>? = try {
+        scheduler.scheduledAlarmsAwait()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Throwable) {
+        null
+    }
+
+    private suspend fun recordStoppedRingingAndStartMission(
+        ringing: IosRingingAlarm,
+    ): ActiveAlarmMission? = try {
+        eventInbox.recordStopEventAwait(
+            alarmId = ringing.alarmId,
+            occurrenceId = ringing.occurrenceId,
+            retryAttempt = ringing.retryAttempt,
+        )
+        missionCoordinator.processPendingEvents()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun clearRingingIfMissionMatches(mission: ActiveAlarmMission) {
+        val current = ringingAlarm.value ?: return
+        if (!mission.matches(current)) return
+        cancelRingingHandoff()
+        ringingAlarm.value = null
+    }
+
+    private fun ActiveAlarmMission.matches(ringing: IosRingingAlarm): Boolean =
+        if (ringing.occurrenceId != null) {
+            occurrenceId == ringing.occurrenceId
+        } else {
+            alarmId == ringing.alarmId
+        }
+
+    private fun cancelRingingHandoff() {
+        ringingHandoffJob?.cancel()
+        ringingHandoffJob = null
+        ringingHandoffSystemAlarmId = null
     }
 
     private fun scheduleDeadline(mission: ActiveAlarmMission) {
@@ -408,17 +657,22 @@ class IosAlarmRuntime(
 fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
     val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
     val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker())
+    val scheduler = nativeServices.alarmScheduler()
+    val eventInbox = nativeServices.alarmMissionEventInbox()
     return IosAlarmRuntime(
+        dataSource = dataSource,
+        scheduler = scheduler,
+        eventInbox = eventInbox,
         missionCoordinator = IosAlarmMissionCoordinator(
             dataSource = dataSource,
-            inbox = nativeServices.alarmMissionEventInbox(),
-            scheduler = nativeServices.alarmScheduler(),
+            inbox = eventInbox,
+            scheduler = scheduler,
             outcomeRecorder = RoomIosMissionOutcomeRecorder(),
             analytics = analytics,
         ),
         reconciler = IosAlarmReconciler(
             dataSource = dataSource,
-            scheduler = nativeServices.alarmScheduler(),
+            scheduler = scheduler,
             normalizeAlarmId = nativeServices::normalizeAlarmId,
         ),
         locationService = nativeServices.missionLocationService(),
@@ -431,3 +685,5 @@ private fun currentElapsedRealtimeNanos(): Long =
 private const val NanosPerSecond = 1_000_000_000.0
 private const val DeadlineRecoveryDelayMillis = 5_000L
 private const val RetryDeliveryGraceMillis = 5_000L
+private const val DefaultRingingHandoffGraceMillis = 1_500L
+private const val MaxRingingHandoffRetries = 2

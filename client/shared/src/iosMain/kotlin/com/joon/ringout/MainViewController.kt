@@ -12,6 +12,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.joon.ringout.alarm.createIosAlarmRuntime
+import com.joon.ringout.alarm.iosAlarmDateText
+import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.platform.IosNativeServices
 import com.joon.ringout.platform.LocalIosNativeServices
 import platform.Foundation.NSBundle
@@ -21,6 +23,7 @@ fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewControl
     val alarmRuntime = remember(nativeServices) {
         createIosAlarmRuntime(nativeServices)
     }
+    val ringingAlarm by alarmRuntime.ringingAlarmFlow.collectAsState()
     val activeAlarmMission by alarmRuntime.activeMissionFlow.collectAsState()
     val activeAlarmMissionLocation by alarmRuntime.currentLocationFlow.collectAsState()
     val missionLocationState by alarmRuntime.locationStateFlow.collectAsState()
@@ -41,10 +44,20 @@ fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewControl
     val appVersion = NSBundle.mainBundle
         .objectForInfoDictionaryKey("CFBundleShortVersionString") as? String
         ?: ""
+    val ringingAlarmUiState = ringingAlarm?.let { alarm ->
+        AlarmRingingUiState(
+            id = alarm.systemAlarmId,
+            alarmTime = alarm.alarmTime,
+            dateText = iosAlarmDateText(alarm.startedAtEpochMillis),
+            limitMinutes = alarm.limitMinutes,
+            destinationName = alarm.destinationName,
+        )
+    }
     CompositionLocalProvider(LocalIosNativeServices provides nativeServices) {
         App(
             appVersion = appVersion,
             useSystemLocationPermissionUiOnly = true,
+            ringingAlarm = ringingAlarmUiState,
             activeAlarmMission = activeAlarmMission,
             activeAlarmMissionLocation = activeAlarmMissionLocation,
             missionLocationState = missionLocationState,
@@ -53,6 +66,11 @@ fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewControl
             onConfirmAlwaysLocationResult = alarmRuntime::confirmAlwaysAuthorizationResult,
             onRequestTemporaryFullAccuracy =
                 alarmRuntime::requestTemporaryFullAccuracyAuthorization,
+            onRingingAlarmDismiss = { systemAlarmId ->
+                coroutineScope.launch {
+                    alarmRuntime.dismissRingingAlarm(systemAlarmId)
+                }
+            },
             onActiveAlarmMissionExpired = {
                 coroutineScope.launch { alarmRuntime.handleDeadline() }
             },

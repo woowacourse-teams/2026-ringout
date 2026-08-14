@@ -48,6 +48,8 @@ import com.joon.ringout.presentation.login.LoginScreen
 import com.joon.ringout.presentation.login.SocialLoginProvider
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
+import com.joon.ringout.presentation.ringing.AlarmRingingScreen
+import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.settings.SettingsScreen
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
@@ -60,6 +62,7 @@ import kotlinx.coroutines.flow.collect
 fun App(
     appVersion: String = "",
     useSystemLocationPermissionUiOnly: Boolean = false,
+    ringingAlarm: AlarmRingingUiState? = null,
     activeAlarmMission: ActiveAlarmMission? = null,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation? = null,
     missionLocationState: MissionLocationState = DefaultMissionLocationState,
@@ -67,6 +70,7 @@ fun App(
     onRequestAlwaysLocation: () -> Unit = {},
     onConfirmAlwaysLocationResult: () -> Unit = {},
     onRequestTemporaryFullAccuracy: () -> Unit = {},
+    onRingingAlarmDismiss: (String) -> Unit = {},
     onActiveAlarmMissionExpired: () -> Unit = {},
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit = { _ -> },
     onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit = { _ -> },
@@ -103,6 +107,7 @@ fun App(
                     themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
+                    ringingAlarm = ringingAlarm,
                     activeAlarmMission = activeAlarmMission,
                     activeAlarmMissionLocation = activeAlarmMissionLocation,
                     missionLocationState = missionLocationState,
@@ -110,6 +115,7 @@ fun App(
                     onRequestAlwaysLocation = onRequestAlwaysLocation,
                     onConfirmAlwaysLocationResult = onConfirmAlwaysLocationResult,
                     onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
+                    onRingingAlarmDismiss = onRingingAlarmDismiss,
                     onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
                     onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
                     onActiveAlarmMissionForceEndHoldStarted =
@@ -138,6 +144,7 @@ private fun RingoutAppContent(
     themeMode: ThemeMode,
     appVersion: String,
     useSystemLocationPermissionUiOnly: Boolean,
+    ringingAlarm: AlarmRingingUiState?,
     activeAlarmMission: ActiveAlarmMission?,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation?,
     missionLocationState: MissionLocationState,
@@ -145,6 +152,7 @@ private fun RingoutAppContent(
     onRequestAlwaysLocation: () -> Unit,
     onConfirmAlwaysLocationResult: () -> Unit,
     onRequestTemporaryFullAccuracy: () -> Unit,
+    onRingingAlarmDismiss: (String) -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
     onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit,
@@ -198,16 +206,17 @@ private fun RingoutAppContent(
         uri = alarmSoundUri,
     )
     val requestedScreen = AppScreen.valueOf(screenName)
-    val screen = if (
-        requestedScreen == AppScreen.ActiveAlarmTracking &&
-        activeAlarmMission == null
-    ) {
-        AppScreen.Home
-    } else {
-        requestedScreen
+    val screen = when {
+        ringingAlarm != null -> AppScreen.AlarmRinging
+        requestedScreen == AppScreen.ActiveAlarmTracking && activeAlarmMission == null ->
+            AppScreen.Home
+        else -> requestedScreen
     }
     SystemBarAppearanceEffect(
-        themeMode = if (screen == AppScreen.ActiveAlarmTracking) {
+        themeMode = if (
+            screen == AppScreen.ActiveAlarmTracking ||
+            screen == AppScreen.AlarmRinging
+        ) {
             ThemeMode.Dark
         } else {
             themeMode
@@ -238,7 +247,9 @@ private fun RingoutAppContent(
     LaunchedEffect(
         pendingAlarmRequest,
         missionLocationState.revision,
+        screen,
     ) {
+        if (screen == AppScreen.AlarmRinging) return@LaunchedEffect
         val request = pendingAlarmRequest ?: return@LaunchedEffect
         if (isAlarmSaveInProgress) return@LaunchedEffect
         when (
@@ -317,7 +328,7 @@ private fun RingoutAppContent(
         }
     }
 
-    if (!useSystemLocationPermissionUiOnly) {
+    if (!useSystemLocationPermissionUiOnly && screen != AppScreen.AlarmRinging) {
         MissionLocationPermissionDialog(
             decision = locationPermissionDialog,
             onConfirm = {
@@ -406,12 +417,12 @@ private fun RingoutAppContent(
             handledActiveAlarmOccurrenceId != occurrenceId -> {
                 handledActiveAlarmOccurrenceId = occurrenceId
                 editingAlarmId = null
-                screenName = AppScreen.Home.name
+                screenName = AppScreen.ActiveAlarmTracking.name
             }
         }
     }
 
-    if (alarmScheduleError != null) {
+    if (screen != AppScreen.AlarmRinging && alarmScheduleError != null) {
         AlertDialog(
             onDismissRequest = { alarmScheduleError = null },
             title = { Text("알람을 처리할 수 없습니다") },
@@ -424,7 +435,11 @@ private fun RingoutAppContent(
         )
     }
 
-    if (alarmScheduleError == null && destinationUiState.errorMessage != null) {
+    if (
+        screen != AppScreen.AlarmRinging &&
+        alarmScheduleError == null &&
+        destinationUiState.errorMessage != null
+    ) {
         AlertDialog(
             onDismissRequest = destinationViewModel::clearError,
             title = { Text("목적지를 처리할 수 없습니다") },
@@ -438,6 +453,19 @@ private fun RingoutAppContent(
     }
 
     when (screen) {
+        AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
+            AlarmRingingScreen(
+                alarmTime = alarm.alarmTime,
+                dateText = alarm.dateText,
+                limitMinutes = alarm.limitMinutes,
+                destinationName = alarm.destinationName,
+                onDismissAndNavigateClick = {
+                    screenName = AppScreen.ActiveAlarmTracking.name
+                    onRingingAlarmDismiss(alarm.id)
+                },
+            )
+        }
+
         AppScreen.Home -> HomeScreen(
             alarms = visibleAlarms,
             activeAlarmMission = activeAlarmMission,
@@ -604,6 +632,7 @@ private fun RingoutAppContent(
 }
 
 private enum class AppScreen {
+    AlarmRinging,
     Home,
     AddAlarm,
     EditAlarm,

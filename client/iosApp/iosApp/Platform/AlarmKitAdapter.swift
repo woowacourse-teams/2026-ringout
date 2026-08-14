@@ -8,9 +8,25 @@ private struct RingoutAlarmMetadata: AlarmMetadata {
     let alarmId: String
 }
 
-final class AlarmKitAdapter: IosAlarmScheduler {
+@MainActor
+final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
     private typealias RingoutAlarmConfiguration =
         AlarmManager.AlarmConfiguration<RingoutAlarmMetadata>
+    private weak var stateListener: IosAlarmStateListener?
+    private var alarmUpdatesTask: Task<Void, Never>?
+
+    init() {
+        alarmUpdatesTask = Task { [weak self] in
+            for await alarms in AlarmManager.shared.alarmUpdates {
+                guard !Task.isCancelled else { return }
+                self?.publishAlarmSnapshot(alarms)
+            }
+        }
+    }
+
+    deinit {
+        alarmUpdatesTask?.cancel()
+    }
 
     func authorizationState() -> IosAlarmAuthorizationState {
         mapAuthorizationState(AlarmManager.shared.authorizationState)
@@ -24,7 +40,7 @@ final class AlarmKitAdapter: IosAlarmScheduler {
         Task {
             do {
                 let state = try await AlarmManager.shared.requestAuthorization()
-                await completeOnMain {
+                completeOnMain {
                     callback(
                         IosAlarmAuthorizationResult(
                             state: mapAuthorizationState(state),
@@ -34,7 +50,7 @@ final class AlarmKitAdapter: IosAlarmScheduler {
                     )
                 }
             } catch {
-                await completeOnMain {
+                completeOnMain {
                     callback(
                         IosAlarmAuthorizationResult(
                             state: .notDetermined,
@@ -69,11 +85,11 @@ final class AlarmKitAdapter: IosAlarmScheduler {
                         id: alarmId,
                         configuration: configuration
                     )
-                    await completeOnMain {
+                    completeOnMain {
                         callback(IosAlarmOperationResult(code: .success, message: nil))
                     }
                 } catch {
-                    await completeOnMain {
+                    completeOnMain {
                         callback(mapScheduleError(error))
                     }
                 }
@@ -136,11 +152,11 @@ final class AlarmKitAdapter: IosAlarmScheduler {
                     id: alarmKitId,
                     configuration: configuration
                 )
-                await completeOnMain {
+                completeOnMain {
                     callback(IosAlarmOperationResult(code: .success, message: nil))
                 }
             } catch {
-                await completeOnMain {
+                completeOnMain {
                     callback(mapScheduleError(error))
                 }
             }
@@ -173,16 +189,39 @@ final class AlarmKitAdapter: IosAlarmScheduler {
         }
     }
 
+    func stop(
+        alarmId rawAlarmId: String,
+        callback: @escaping (IosAlarmOperationResult) -> Void
+    ) {
+        guard let alarmId = UUID(uuidString: rawAlarmId) else {
+            callback(IosAlarmOperationResult(code: .invalidId, message: nil))
+            return
+        }
+
+        Task {
+            do {
+                guard try AlarmManager.shared.alarms.contains(where: { $0.id == alarmId }) else {
+                    callback(IosAlarmOperationResult(code: .notFound, message: nil))
+                    return
+                }
+                try AlarmManager.shared.stop(id: alarmId)
+                callback(IosAlarmOperationResult(code: .success, message: nil))
+            } catch {
+                callback(
+                    IosAlarmOperationResult(
+                        code: .sdkError,
+                        message: error.localizedDescription
+                    )
+                )
+            }
+        }
+    }
+
     func scheduledAlarms(callback: @escaping (IosScheduledAlarmsResult) -> Void) {
         do {
             callback(
                 IosScheduledAlarmsResult(
-                    alarms: try AlarmManager.shared.alarms.map { alarm in
-                        IosScheduledAlarmDto(
-                            alarmId: alarm.id.uuidString,
-                            state: mapAlarmState(alarm.state)
-                        )
-                    },
+                    alarms: try AlarmManager.shared.alarms.map(makeScheduledAlarmDto),
                     code: .success,
                     message: nil
                 )
@@ -195,6 +234,15 @@ final class AlarmKitAdapter: IosAlarmScheduler {
                     message: error.localizedDescription
                 )
             )
+        }
+    }
+
+    func setStateListener(listener: IosAlarmStateListener?) {
+        stateListener = listener
+        do {
+            publishAlarmSnapshot(try AlarmManager.shared.alarms)
+        } catch {
+            listener?.onError(message: error.localizedDescription)
         }
     }
 
@@ -328,6 +376,19 @@ final class AlarmKitAdapter: IosAlarmScheduler {
         @unknown default:
             return .unknown
         }
+    }
+
+    private func makeScheduledAlarmDto(_ alarm: Alarm) -> IosScheduledAlarmDto {
+        IosScheduledAlarmDto(
+            alarmId: alarm.id.uuidString,
+            state: mapAlarmState(alarm.state)
+        )
+    }
+
+    private func publishAlarmSnapshot(_ alarms: [Alarm]) {
+        stateListener?.onAlarmsChanged(
+            alarms: alarms.map(makeScheduledAlarmDto)
+        )
     }
 
     private func mapScheduleError(_ error: Error) -> IosAlarmOperationResult {

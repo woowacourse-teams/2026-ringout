@@ -73,6 +73,12 @@ data class IosScheduledAlarmsResult(
     val message: String? = null,
 )
 
+interface IosAlarmStateListener {
+    fun onAlarmsChanged(alarms: List<IosScheduledAlarmDto>)
+
+    fun onError(message: String)
+}
+
 interface IosAlarmScheduler {
     fun authorizationState(): IosAlarmAuthorizationState
 
@@ -93,7 +99,14 @@ interface IosAlarmScheduler {
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
+    fun stop(
+        alarmId: String,
+        callback: (IosAlarmOperationResult) -> Unit,
+    )
+
     fun scheduledAlarms(callback: (IosScheduledAlarmsResult) -> Unit)
+
+    fun setStateListener(listener: IosAlarmStateListener?)
 }
 
 internal suspend fun IosAlarmScheduler.scheduleRetryAwait(
@@ -122,6 +135,14 @@ internal suspend fun IosAlarmScheduler.cancelAwait(alarmId: String) {
     }
     if (result.code == IosAlarmOperationCode.NOT_FOUND) return
     result.requireAlarmKitSuccess("AlarmKit 알람을 해제하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmScheduler.stopAwait(alarmId: String) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        stop(alarmId, callback)
+    }
+    if (result.code == IosAlarmOperationCode.NOT_FOUND) return
+    result.requireAlarmKitSuccess("AlarmKit 알람을 중지하지 못했습니다.")
 }
 
 internal suspend fun IosAlarmScheduler.scheduledAlarmsAwait(): List<IosScheduledAlarmDto> {

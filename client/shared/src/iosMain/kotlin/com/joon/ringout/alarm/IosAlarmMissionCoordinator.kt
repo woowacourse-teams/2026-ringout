@@ -31,7 +31,27 @@ data class IosAlarmMissionEventsResult(
     val message: String? = null,
 )
 
+interface IosAlarmMissionEventListener {
+    fun onEventRecorded()
+}
+
 interface IosAlarmMissionEventInbox {
+    fun setEventListener(listener: IosAlarmMissionEventListener?)
+
+    fun recordStopEvent(
+        alarmId: String,
+        occurrenceId: String?,
+        retryAttempt: Int,
+        callback: (IosAlarmOperationResult) -> Unit,
+    )
+
+    fun recordOpenEvent(
+        alarmId: String,
+        occurrenceId: String?,
+        retryAttempt: Int,
+        callback: (IosAlarmOperationResult) -> Unit,
+    )
+
     fun pendingEvents(callback: (IosAlarmMissionEventsResult) -> Unit)
 
     fun markConsumed(
@@ -62,6 +82,11 @@ class IosAlarmMissionCoordinator(
     fun hasPendingDeadlineAlarm(): Boolean = missionStore.loadDeadlineAlarm() != null
 
     fun hasPendingTerminal(): Boolean = missionStore.loadPendingTerminal() != null
+
+    internal fun deadlineAlarmForSystemId(systemAlarmId: String): IosMissionDeadlineAlarm? =
+        missionStore.loadDeadlineAlarm()?.takeIf { registration ->
+            registration.alarmKitId == systemAlarmId
+        }
 
     suspend fun recoverPendingTerminal() = mutex.withLock {
         recoverPendingTerminalLocked()
@@ -235,12 +260,19 @@ class IosAlarmMissionCoordinator(
             event.copy(retryAttempt = matchingRetry.retryAttempt),
         ) ?: run {
             val savedAlarm = dataSource.getById(event.alarmId)
-            val requiresEnabledSourceAlarm = event.retryAttempt == 0
-            if (savedAlarm == null || (requiresEnabledSourceAlarm && !savedAlarm.enabled)) {
+            val isDeliveredOneTimeOccurrence = savedAlarm?.let { alarm ->
+                !alarm.enabled &&
+                    !alarm.request.repeatEnabled &&
+                    alarm.request.selectedDays.isEmpty()
+            } == true
+            if (savedAlarm == null || (!savedAlarm.enabled && !isDeliveredOneTimeOccurrence)) {
                 missionStore.markConsumed(event.occurrenceId)
                 inbox.markConsumedAwait(event.eventId)
                 return null
             }
+            // A fired one-time AlarmKit alarm disappears before its stop intent is
+            // delivered. Reconciliation may therefore disable the future schedule
+            // first; the durable user-action event still owns this occurrence.
             savedAlarm.request.toActiveAlarmMission(event)
         }
 
@@ -889,6 +921,38 @@ internal suspend fun IosAlarmMissionEventInbox.pendingEventsAwait():
     IosAlarmOperationResult(result.code, result.message)
         .requireAlarmKitSuccess("알람 미션 이벤트를 읽지 못했습니다.")
     return result.events
+}
+
+internal suspend fun IosAlarmMissionEventInbox.recordOpenEventAwait(
+    alarmId: String,
+    occurrenceId: String?,
+    retryAttempt: Int,
+) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        recordOpenEvent(
+            alarmId = alarmId,
+            occurrenceId = occurrenceId,
+            retryAttempt = retryAttempt,
+            callback = callback,
+        )
+    }
+    result.requireAlarmKitSuccess("알람 미션 이벤트를 저장하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmMissionEventInbox.recordStopEventAwait(
+    alarmId: String,
+    occurrenceId: String?,
+    retryAttempt: Int,
+) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        recordStopEvent(
+            alarmId = alarmId,
+            occurrenceId = occurrenceId,
+            retryAttempt = retryAttempt,
+            callback = callback,
+        )
+    }
+    result.requireAlarmKitSuccess("알람 중지 이벤트를 저장하지 못했습니다.")
 }
 
 internal suspend fun IosAlarmMissionEventInbox.markConsumedAwait(eventId: String) {

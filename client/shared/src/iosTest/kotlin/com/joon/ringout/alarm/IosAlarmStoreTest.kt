@@ -453,7 +453,17 @@ private class FakeIosAlarmScheduler(
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
     }
 
+    override fun stop(
+        alarmId: String,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        events += "stop:$alarmId"
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
     override fun scheduledAlarms(callback: (IosScheduledAlarmsResult) -> Unit) {
         callback(IosScheduledAlarmsResult())
     }
+
+    override fun setStateListener(listener: IosAlarmStateListener?) = Unit
 }
