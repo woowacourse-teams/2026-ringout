@@ -1,6 +1,7 @@
 package com.joon.ringout.alarm
 
 import com.joon.ringout.data.alarm.AlarmDataSource
+import com.joon.ringout.analytics.IosAlarmAnalyticsRecorder
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +46,7 @@ class IosAlarmMissionCoordinator(
     private val scheduler: IosAlarmScheduler,
     private val outcomeRecorder: IosMissionOutcomeRecorder,
     private val missionStore: IosActiveAlarmMissionStore = UserDefaultsIosActiveAlarmMissionStore(),
+    private val analytics: IosAlarmAnalyticsRecorder? = null,
 ) {
     private val mutex = Mutex()
     private val activeMission = MutableStateFlow(
@@ -147,6 +149,10 @@ class IosAlarmMissionCoordinator(
             inbox.markConsumedAwait(event.eventId)
             return null
         }
+        analytics?.recordAlarmRingingStarted(
+            occurrenceId = event.occurrenceId,
+            retryAttempt = event.retryAttempt,
+        )
         val current = activeMission.value
         if (current != null) {
             if (current.occurrenceId == event.occurrenceId) {
@@ -158,6 +164,10 @@ class IosAlarmMissionCoordinator(
                 ensureDeadlineAlarmLocked(current)
                 missionStore.markConsumed(event.occurrenceId)
                 inbox.markConsumedAwait(event.eventId)
+                analytics?.recordMissionStarted(
+                    occurrenceId = current.occurrenceId,
+                    retryAttempt = current.retryAttempt,
+                )
                 return current
             }
         }
@@ -244,6 +254,10 @@ class IosAlarmMissionCoordinator(
         ensureDeadlineAlarmLocked(mission)
         missionStore.markConsumed(event.occurrenceId)
         inbox.markConsumedAwait(event.eventId)
+        analytics?.recordMissionStarted(
+            occurrenceId = mission.occurrenceId,
+            retryAttempt = mission.retryAttempt,
+        )
         return mission
     }
 
@@ -256,6 +270,30 @@ class IosAlarmMissionCoordinator(
         val current = activeMission.value ?: return@withLock
         if (occurrenceId != null && current.occurrenceId != occurrenceId) return@withLock
         completeTerminalLocked(current, IosPendingMissionOutcome.FAILURE)
+    }
+
+    fun recordForceEndHoldStarted(occurrenceId: String) {
+        val mission = activeMission.value?.takeIf { it.occurrenceId == occurrenceId } ?: return
+        analytics?.recordForceEndHoldStarted(
+            occurrenceId = mission.occurrenceId,
+            retryAttempt = mission.retryAttempt,
+        )
+    }
+
+    fun recordForceEndHoldCancelled(
+        occurrenceId: String,
+        holdDurationMillis: Long,
+    ) {
+        if (activeMission.value?.occurrenceId != occurrenceId) return
+        analytics?.recordForceEndHoldCancelled(occurrenceId, holdDurationMillis)
+    }
+
+    fun recordForceEndHoldCompleted(
+        occurrenceId: String,
+        holdDurationMillis: Long,
+    ) {
+        if (activeMission.value?.occurrenceId != occurrenceId) return
+        analytics?.recordForceEndHoldCompleted(occurrenceId, holdDurationMillis)
     }
 
     suspend fun ensureDeadlineAlarm() = mutex.withLock {
@@ -325,6 +363,11 @@ class IosAlarmMissionCoordinator(
         }
 
         ensureDeadlineAlarmLocked(current)
+        analytics?.recordMissionExpired(
+            occurrenceId = current.occurrenceId,
+            retryAttempt = current.retryAttempt,
+            startedAtEpochMillis = current.startedAtEpochMillis,
+        )
         missionStore.clearLastLocation()
         missionStore.clearDeadlineLocation()
         missionStore.clearActiveMission()
@@ -426,6 +469,19 @@ class IosAlarmMissionCoordinator(
                 completedAt = iosMissionDate(completedAtEpochMillis),
             ),
         )
+        when (outcome) {
+            IosPendingMissionOutcome.SUCCESS -> analytics?.recordMissionCompleted(
+                occurrenceId = mission.occurrenceId,
+                retryAttempt = mission.retryAttempt,
+                startedAtEpochMillis = mission.startedAtEpochMillis,
+            )
+
+            IosPendingMissionOutcome.FAILURE -> analytics?.recordMissionForceEnded(
+                occurrenceId = mission.occurrenceId,
+                retryAttempt = mission.retryAttempt,
+                startedAtEpochMillis = mission.startedAtEpochMillis,
+            )
+        }
         missionStore.clearActiveMission()
         missionStore.clearLastLocation()
         missionStore.clearDeadlineLocation()

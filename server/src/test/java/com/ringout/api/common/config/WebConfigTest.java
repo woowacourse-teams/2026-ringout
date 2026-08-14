@@ -5,6 +5,7 @@ import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ringout.api.terms.controller.TermsController;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
 import com.ringout.api.terms.service.TermsService;
 import java.time.LocalDate;
@@ -17,7 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@WebMvcTest
+@WebMvcTest(controllers = TermsController.class)
 @AutoConfigureMockMvc(addFilters = false)
 class WebConfigTest {
 
