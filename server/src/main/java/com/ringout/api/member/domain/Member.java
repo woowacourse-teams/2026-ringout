@@ -101,4 +101,8 @@ public class Member extends BaseEntity {
       this.email = email;
     }
   }
+
+  public void changeNickname(String nickname) {
+    this.nickname = new Nickname(nickname);
+  }
 }
