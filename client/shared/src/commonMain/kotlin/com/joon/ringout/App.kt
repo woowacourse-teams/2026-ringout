@@ -34,6 +34,7 @@ import com.joon.ringout.presentation.activemission.components.MissionLocationPer
 import com.joon.ringout.presentation.alarmsound.AlarmSoundScreen
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupScreen
+import com.joon.ringout.presentation.alarmsetup.PlatformDefaultAlarmSoundName
 import com.joon.ringout.presentation.alarmsetup.components.weekdaySummary
 import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationMapScreen
@@ -172,7 +173,9 @@ private fun RingoutAppContent(
     var destinationAddress by rememberSaveable { mutableStateOf("") }
     var destinationLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
     var destinationLongitude by rememberSaveable { mutableStateOf<Double?>(null) }
-    var alarmSoundName by rememberSaveable { mutableStateOf(DefaultAlarmSoundName) }
+    var alarmSoundName by rememberSaveable {
+        mutableStateOf(PlatformDefaultAlarmSoundName)
+    }
     var alarmSoundUri by rememberSaveable { mutableStateOf<String?>(null) }
     var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
     var handledActiveAlarmOccurrenceId by rememberSaveable {
@@ -202,7 +205,11 @@ private fun RingoutAppContent(
         }
     }
     val alarmSound = AlarmSoundSelection(
-        name = alarmSoundName,
+        name = if (alarmSoundUri == null) {
+            PlatformDefaultAlarmSoundName
+        } else {
+            alarmSoundName.ifBlank { PlatformDefaultAlarmSoundName }
+        },
         uri = alarmSoundUri,
     )
     val requestedScreen = AppScreen.valueOf(screenName)
@@ -477,7 +484,7 @@ private fun RingoutAppContent(
                 destinationAddress = ""
                 destinationLatitude = null
                 destinationLongitude = null
-                alarmSoundName = DefaultAlarmSoundName
+                alarmSoundName = PlatformDefaultAlarmSoundName
                 alarmSoundUri = null
                 screenName = AppScreen.AddAlarm.name
             },
@@ -488,8 +495,10 @@ private fun RingoutAppContent(
                     destinationAddress = alarm.targetAddress
                     destinationLatitude = alarm.targetLatitude
                     destinationLongitude = alarm.targetLongitude
-                    alarmSoundName = alarm.alarmSoundName.ifBlank {
-                        DefaultAlarmSoundName
+                    alarmSoundName = if (alarm.alarmSoundUri == null) {
+                        PlatformDefaultAlarmSoundName
+                    } else {
+                        alarm.alarmSoundName.ifBlank { PlatformDefaultAlarmSoundName }
                     }
                     alarmSoundUri = alarm.alarmSoundUri
                     screenName = AppScreen.EditAlarm.name
@@ -647,8 +656,6 @@ private enum class AppScreen {
 private const val UnavailableEditingAlarmTime = "06:20"
 private val DefaultSelectedDays = listOf("월", "화", "수", "목", "금", "토", "일")
 private const val DefaultLimitMinutes = 13
-private const val DefaultAlarmSoundName = "Ring Ring Ring"
-
 internal fun alarmSetupInitialTime(
     editingAlarmId: String?,
     editingAlarmTime: String?,

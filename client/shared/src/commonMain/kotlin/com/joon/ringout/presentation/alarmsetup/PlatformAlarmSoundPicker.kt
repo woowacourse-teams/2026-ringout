@@ -7,6 +7,8 @@ data class AlarmSoundSelection(
     val uri: String?,
 )
 
+internal expect val PlatformDefaultAlarmSoundName: String
+
 class DeviceAlarmSoundController internal constructor(
     val sounds: List<AlarmSoundSelection>,
     private val previewSound: (AlarmSoundSelection) -> Unit,

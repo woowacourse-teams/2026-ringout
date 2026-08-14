@@ -10,6 +10,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 
+internal actual val PlatformDefaultAlarmSoundName = "Ring Ring Ring"
+
 @Composable
 actual fun rememberDeviceAlarmSoundController(): DeviceAlarmSoundController {
     val applicationContext = LocalContext.current.applicationContext
