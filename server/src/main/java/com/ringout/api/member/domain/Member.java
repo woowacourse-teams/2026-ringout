@@ -2,6 +2,7 @@ package com.ringout.api.member.domain;
 
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.BaseEntity;
+import com.ringout.api.member.utils.NicknameGenerator;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -74,6 +75,7 @@ public class Member extends BaseEntity {
 
     this.socialProvider = socialProvider;
     this.socialProviderId = socialProviderId;
+    this.nickname = new Nickname(NicknameGenerator.generate());
     this.role = Role.USER;
     this.email = email;
     this.lastLoginAt = joinedAt;
@@ -98,5 +100,9 @@ public class Member extends BaseEntity {
     if (email != null && !email.isBlank()) {
       this.email = email;
     }
+  }
+
+  public void changeNickname(String nickname) {
+    this.nickname = new Nickname(nickname);
   }
 }
