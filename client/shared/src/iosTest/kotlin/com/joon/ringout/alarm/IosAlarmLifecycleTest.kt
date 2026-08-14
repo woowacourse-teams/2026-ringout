@@ -2,6 +2,9 @@ package com.joon.ringout.alarm
 
 import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.platform.IosAlarmAuthorizationState
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -10,7 +13,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class IosAlarmLifecycleTest {
@@ -599,14 +604,18 @@ class IosAlarmLifecycleTest {
         val scheduler = LifecycleScheduler()
         val outcomes = LifecycleOutcomeRecorder()
         val locationService = LifecycleLocationService()
+        val inbox = LifecycleInbox(emptyList())
         val coordinator = IosAlarmMissionCoordinator(
             dataSource = dataSource,
-            inbox = LifecycleInbox(emptyList()),
+            inbox = inbox,
             scheduler = scheduler,
             outcomeRecorder = outcomes,
             missionStore = store,
         )
         val runtime = IosAlarmRuntime(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            eventInbox = inbox,
             missionCoordinator = coordinator,
             reconciler = IosAlarmReconciler(
                 dataSource = dataSource,
@@ -648,10 +657,14 @@ class IosAlarmLifecycleTest {
         val locationService = LifecycleLocationService(
             initialAuthorization = MissionLocationAuthorizationState.WHEN_IN_USE,
         )
+        val inbox = LifecycleInbox(emptyList())
         val runtime = IosAlarmRuntime(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            eventInbox = inbox,
             missionCoordinator = IosAlarmMissionCoordinator(
                 dataSource = dataSource,
-                inbox = LifecycleInbox(emptyList()),
+                inbox = inbox,
                 scheduler = scheduler,
                 outcomeRecorder = LifecycleOutcomeRecorder(),
                 missionStore = store,
@@ -710,17 +723,21 @@ class IosAlarmLifecycleTest {
         val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
         val scheduler = LifecycleScheduler(snapshotCode = IosAlarmOperationCode.SDK_ERROR)
         val locationService = LifecycleLocationService()
+        val inbox = LifecycleInbox(
+            pending = emptyList(),
+            resultCode = IosAlarmOperationCode.SDK_ERROR,
+        )
         val coordinator = IosAlarmMissionCoordinator(
             dataSource = dataSource,
-            inbox = LifecycleInbox(
-                pending = emptyList(),
-                resultCode = IosAlarmOperationCode.SDK_ERROR,
-            ),
+            inbox = inbox,
             scheduler = scheduler,
             outcomeRecorder = LifecycleOutcomeRecorder(),
             missionStore = store,
         )
         val runtime = IosAlarmRuntime(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            eventInbox = inbox,
             missionCoordinator = coordinator,
             reconciler = IosAlarmReconciler(
                 dataSource = dataSource,
@@ -735,6 +752,408 @@ class IosAlarmLifecycleTest {
         assertEquals(listOf(occurrenceId), locationService.startedOccurrences)
         assertEquals(occurrenceId, runtime.activeMissionFlow.value?.occurrenceId)
         runtime.forceEndActiveMission(occurrenceId)
+    }
+
+    @Test
+    fun alertingSnapshotPresentsSavedAlarmAsRinging() = runBlocking {
+        val fixture = ringingRuntimeFixture()
+        fixture.runtime.start()
+
+        val ringing = fixture.presentRingingAlarm()
+
+        assertEquals(CanonicalUuid, ringing.systemAlarmId)
+        assertEquals(CanonicalUuid, ringing.alarmId)
+        assertEquals("07:05", ringing.alarmTime)
+        assertEquals("회사", ringing.destinationName)
+        assertEquals(12, ringing.limitMinutes)
+        assertNull(ringing.occurrenceId)
+        assertEquals(0, ringing.retryAttempt)
+    }
+
+    @Test
+    fun repeatedSnapshotForSameAlarmRetainsRingingInstanceAndStartedAt() = runBlocking {
+        val fixture = ringingRuntimeFixture()
+        fixture.runtime.start()
+        val first = fixture.presentRingingAlarm()
+        delay(10)
+
+        fixture.scheduler.emitSnapshot(
+            listOf(IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.ALERTING)),
+        )
+        fixture.runtime.start()
+
+        val retained = fixture.runtime.ringingAlarmFlow.value
+        assertSame(first, retained)
+        assertEquals(first.startedAtEpochMillis, retained?.startedAtEpochMillis)
+    }
+
+    @Test
+    fun multipleAlertingAlarmsKeepCurrentlyPresentedAlarmAheadOfSortedIds() = runBlocking {
+        val fixture = ringingRuntimeFixture(
+            alarmIds = listOf(CanonicalUuid, EarlierSortingUuid),
+        )
+        fixture.runtime.start()
+        val current = fixture.presentRingingAlarm(CanonicalUuid)
+        delay(10)
+
+        fixture.scheduler.emitSnapshot(
+            listOf(
+                IosScheduledAlarmDto(EarlierSortingUuid, IosScheduledAlarmState.ALERTING),
+                IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.ALERTING),
+            ),
+        )
+        fixture.runtime.start()
+
+        assertSame(current, fixture.runtime.ringingAlarmFlow.value)
+        assertEquals(CanonicalUuid, fixture.runtime.ringingAlarmFlow.value?.systemAlarmId)
+    }
+
+    @Test
+    fun disappearingAlertingAlarmFallsBackToMissionWhenNativeStopEventIsMissing() = runBlocking {
+        val fixture = ringingRuntimeFixture()
+        fixture.runtime.start()
+        val ringing = fixture.presentRingingAlarm()
+
+        fixture.scheduler.emitSnapshot(emptyList())
+        fixture.runtime.start()
+
+        assertSame(ringing, fixture.runtime.ringingAlarmFlow.value)
+        val mission = fixture.awaitActiveMission()
+        fixture.awaitRingingCleared()
+
+        assertNull(fixture.runtime.ringingAlarmFlow.value)
+        assertEquals(CanonicalUuid, mission.alarmId)
+        assertEquals(
+            1,
+            fixture.inbox.events.count { event -> event.startsWith("stop:$CanonicalUuid:") },
+        )
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
+    fun failedStopFallbackKeepsRingingScreenInsteadOfSilentlyEndingAlarm() = runBlocking {
+        val fixture = ringingRuntimeFixture(
+            recordStopCode = IosAlarmOperationCode.SDK_ERROR,
+        )
+        fixture.runtime.start()
+        val ringing = fixture.presentRingingAlarm()
+
+        fixture.scheduler.emitSnapshot(emptyList())
+        fixture.runtime.start()
+        fixture.awaitInboxEvent("stop:$CanonicalUuid:")
+
+        assertSame(ringing, fixture.runtime.ringingAlarmFlow.value)
+        assertNull(fixture.runtime.activeMissionFlow.value)
+    }
+
+    @Test
+    fun stopEventRecordedAfterAlertDisappearsStartsMissionAndClearsRinging() = runBlocking {
+        val fixture = ringingRuntimeFixture(handoffGraceMillis = 100L)
+        fixture.runtime.start()
+        val ringing = fixture.presentRingingAlarm()
+
+        fixture.scheduler.emitSnapshot(emptyList())
+        fixture.runtime.start()
+        assertSame(ringing, fixture.runtime.ringingAlarmFlow.value)
+
+        fixture.inbox.enqueue(currentStopEvent(), notifyListener = true)
+        val mission = fixture.awaitActiveMission()
+
+        assertEquals(CanonicalUuid, mission.alarmId)
+        assertNull(fixture.runtime.ringingAlarmFlow.value)
+        assertEquals(
+            1,
+            fixture.store.events.count { event -> event.startsWith("save:") },
+        )
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
+    fun stopEventRecordedBeforeAlertDisappearsStartsMissionOnlyOnce() = runBlocking {
+        val fixture = ringingRuntimeFixture()
+        fixture.runtime.start()
+        fixture.presentRingingAlarm()
+
+        val event = currentStopEvent()
+        fixture.inbox.enqueue(event, notifyListener = true)
+        val mission = fixture.awaitActiveMission()
+        fixture.inbox.enqueue(
+            event.copy(eventId = "event-runtime-duplicate"),
+            notifyListener = true,
+        )
+        delay(10)
+
+        assertNull(fixture.runtime.ringingAlarmFlow.value)
+        assertEquals(
+            1,
+            fixture.store.events.count { stored -> stored.startsWith("save:") },
+        )
+        fixture.scheduler.emitSnapshot(
+            listOf(IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.ALERTING)),
+        )
+        fixture.runtime.start()
+        assertNull(fixture.runtime.ringingAlarmFlow.value)
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
+    fun pendingStopEventOnColdStartRestoresMissionWithoutRingingScreen() = runBlocking {
+        val fixture = ringingRuntimeFixture(pendingEvents = listOf(currentStopEvent()))
+
+        fixture.runtime.start()
+
+        val mission = assertNotNull(fixture.runtime.activeMissionFlow.value)
+        assertEquals(CanonicalUuid, mission.alarmId)
+        assertNull(fixture.runtime.ringingAlarmFlow.value)
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
+    fun ringingOneTimeAlarmDefersReconciliationUntilLateStopEventStartsMission() = runBlocking {
+        val fixture = ringingRuntimeFixture(
+            repeatEnabled = false,
+            selectedDays = emptyList(),
+            currentMinuteOfDay = { 23 * 60 + 59 },
+            handoffGraceMillis = 100L,
+        )
+        fixture.presentRingingAlarm()
+
+        fixture.scheduler.emitSnapshot(emptyList())
+        fixture.runtime.start()
+        assertTrue(assertNotNull(fixture.dataSource.getById(CanonicalUuid)).enabled)
+
+        fixture.inbox.enqueue(currentStopEvent(), notifyListener = true)
+        val mission = fixture.awaitActiveMission()
+
+        assertEquals(CanonicalUuid, mission.alarmId)
+        assertNull(fixture.runtime.ringingAlarmFlow.value)
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
+    fun deliveredStopEventStartsMissionAfterOneTimeSourceWasDisabled() = runBlocking {
+        val fixture = ringingRuntimeFixture(
+            repeatEnabled = false,
+            selectedDays = emptyList(),
+        )
+        fixture.dataSource.setEnabled(CanonicalUuid, false)
+        fixture.inbox.enqueue(currentStopEvent(), notifyListener = true)
+
+        fixture.runtime.start()
+
+        val mission = assertNotNull(fixture.runtime.activeMissionFlow.value)
+        assertEquals(CanonicalUuid, mission.alarmId)
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
+    fun deliveredStopEventForDisabledRepeatingAlarmIsIgnored() = runBlocking {
+        val fixture = ringingRuntimeFixture()
+        fixture.dataSource.setEnabled(CanonicalUuid, false)
+        fixture.inbox.enqueue(currentStopEvent(), notifyListener = true)
+
+        fixture.runtime.start()
+
+        assertNull(fixture.runtime.activeMissionFlow.value)
+        assertTrue(
+            fixture.inbox.events.any { event -> event == "consume:event-runtime" },
+        )
+    }
+
+    @Test
+    fun expectedDismissStopsAlarmCreatesOneMissionAndIsIdempotent() = runBlocking {
+        val fixture = ringingRuntimeFixture()
+        fixture.runtime.start()
+        fixture.presentRingingAlarm()
+
+        assertTrue(fixture.runtime.dismissRingingAlarm(CanonicalUuid))
+
+        val mission = assertNotNull(fixture.runtime.activeMissionFlow.value)
+        assertEquals(CanonicalUuid, mission.alarmId)
+        assertEquals(
+            1,
+            fixture.scheduler.events.count { event -> event == "stop:$CanonicalUuid" },
+        )
+        assertEquals(
+            1,
+            fixture.inbox.events.count { event -> event.startsWith("open:$CanonicalUuid:") },
+        )
+        assertEquals(
+            1,
+            fixture.store.events.count { event -> event.startsWith("save:") },
+        )
+        assertNull(fixture.runtime.ringingAlarmFlow.value)
+
+        assertTrue(fixture.runtime.dismissRingingAlarm(CanonicalUuid))
+        assertEquals(
+            1,
+            fixture.scheduler.events.count { event -> event == "stop:$CanonicalUuid" },
+        )
+        assertEquals(
+            1,
+            fixture.inbox.events.count { event -> event.startsWith("open:$CanonicalUuid:") },
+        )
+        assertEquals(
+            1,
+            fixture.store.events.count { event -> event.startsWith("save:") },
+        )
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
+    fun alertingReplacementEmittedBeforeStopCallbackSurvivesDismissCompletion() = runBlocking {
+        val fixture = ringingRuntimeFixture(
+            alarmIds = listOf(CanonicalUuid, EarlierSortingUuid),
+        )
+        fixture.runtime.start()
+        fixture.presentRingingAlarm(CanonicalUuid)
+        fixture.scheduler.deferNextStopAfterEmitting(
+            listOf(
+                IosScheduledAlarmDto(EarlierSortingUuid, IosScheduledAlarmState.ALERTING),
+            ),
+        )
+
+        val dismissal = async(start = CoroutineStart.UNDISPATCHED) {
+            fixture.runtime.dismissRingingAlarm(CanonicalUuid)
+        }
+        fixture.runtime.start()
+        val replacement = assertNotNull(fixture.runtime.ringingAlarmFlow.value)
+        assertEquals(EarlierSortingUuid, replacement.systemAlarmId)
+        fixture.scheduler.completePendingStop()
+
+        assertTrue(dismissal.await())
+        assertSame(replacement, fixture.runtime.ringingAlarmFlow.value)
+        assertEquals(EarlierSortingUuid, fixture.runtime.ringingAlarmFlow.value?.systemAlarmId)
+        val mission = assertNotNull(fixture.runtime.activeMissionFlow.value)
+        assertEquals(CanonicalUuid, mission.alarmId)
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
+    fun staleDismissIdDoesNotStopAlarmOrChangeRingingState() = runBlocking {
+        val fixture = ringingRuntimeFixture()
+        fixture.runtime.start()
+        val ringing = fixture.presentRingingAlarm()
+
+        assertFalse(fixture.runtime.dismissRingingAlarm("stale-alarm-id"))
+
+        assertSame(ringing, fixture.runtime.ringingAlarmFlow.value)
+        assertTrue(fixture.scheduler.events.none { event -> event.startsWith("stop:") })
+        assertTrue(fixture.inbox.events.none { event -> event.startsWith("open:") })
+        assertNull(fixture.runtime.activeMissionFlow.value)
+    }
+
+    @Test
+    fun openEventFailurePreservesRingingStateAndDoesNotCreateMission() = runBlocking {
+        val fixture = ringingRuntimeFixture(
+            recordOpenCode = IosAlarmOperationCode.SDK_ERROR,
+        )
+        fixture.runtime.start()
+        val ringing = fixture.presentRingingAlarm()
+
+        assertFalse(fixture.runtime.dismissRingingAlarm(CanonicalUuid))
+
+        assertSame(ringing, fixture.runtime.ringingAlarmFlow.value)
+        assertEquals(
+            1,
+            fixture.scheduler.events.count { event -> event == "stop:$CanonicalUuid" },
+        )
+        assertEquals(
+            1,
+            fixture.inbox.events.count { event -> event.startsWith("open:$CanonicalUuid:") },
+        )
+        assertNull(fixture.runtime.activeMissionFlow.value)
+    }
+
+    private fun ringingRuntimeFixture(
+        alarmIds: List<String> = listOf(CanonicalUuid),
+        recordStopCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
+        recordOpenCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
+        pendingEvents: List<IosAlarmMissionEventDto> = emptyList(),
+        handoffGraceMillis: Long = 20L,
+        repeatEnabled: Boolean = true,
+        selectedDays: List<String> = listOf("월"),
+        currentMinuteOfDay: () -> Int = { 0 },
+    ): RingingRuntimeFixture {
+        val dataSource = LifecycleAlarmDataSource(
+            alarmIds.map { id ->
+                savedAlarm(
+                    id = id,
+                    repeatEnabled = repeatEnabled,
+                    selectedDays = selectedDays,
+                )
+            },
+        )
+        val scheduler = LifecycleScheduler()
+        val inbox = LifecycleInbox(
+            pending = pendingEvents,
+            recordStopCode = recordStopCode,
+            recordOpenCode = recordOpenCode,
+        )
+        val store = LifecycleMissionStore()
+        val coordinator = IosAlarmMissionCoordinator(
+            dataSource = dataSource,
+            inbox = inbox,
+            scheduler = scheduler,
+            outcomeRecorder = LifecycleOutcomeRecorder(),
+            missionStore = store,
+        )
+        return RingingRuntimeFixture(
+            runtime = IosAlarmRuntime(
+                dataSource = dataSource,
+                scheduler = scheduler,
+                eventInbox = inbox,
+                missionCoordinator = coordinator,
+                reconciler = IosAlarmReconciler(
+                    dataSource = dataSource,
+                    scheduler = scheduler,
+                    normalizeAlarmId = { id -> id },
+                    currentMinuteOfDay = currentMinuteOfDay,
+                ),
+                locationService = LifecycleLocationService(),
+                ringingHandoffGraceMillis = handoffGraceMillis,
+                runtimeDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            ),
+            scheduler = scheduler,
+            inbox = inbox,
+            store = store,
+            dataSource = dataSource,
+        )
+    }
+
+    private suspend fun RingingRuntimeFixture.presentRingingAlarm(
+        systemAlarmId: String = CanonicalUuid,
+    ): IosRingingAlarm {
+        scheduler.emitSnapshot(
+            listOf(IosScheduledAlarmDto(systemAlarmId, IosScheduledAlarmState.ALERTING)),
+        )
+        runtime.start()
+        return assertNotNull(runtime.ringingAlarmFlow.value)
+            .also { ringing -> assertEquals(systemAlarmId, ringing.systemAlarmId) }
+    }
+
+    private suspend fun RingingRuntimeFixture.awaitActiveMission(): ActiveAlarmMission {
+        repeat(100) {
+            runtime.activeMissionFlow.value?.let { mission -> return mission }
+            delay(1)
+        }
+        return assertNotNull(runtime.activeMissionFlow.value)
+    }
+
+    private suspend fun RingingRuntimeFixture.awaitRingingCleared() {
+        repeat(100) {
+            if (runtime.ringingAlarmFlow.value == null) return
+            delay(1)
+        }
+        assertNull(runtime.ringingAlarmFlow.value)
+    }
+
+    private suspend fun RingingRuntimeFixture.awaitInboxEvent(prefix: String) {
+        repeat(100) {
+            if (inbox.events.any { event -> event.startsWith(prefix) }) return
+            delay(1)
+        }
+        assertTrue(inbox.events.any { event -> event.startsWith(prefix) })
     }
 
     private fun coordinator(
@@ -756,6 +1175,10 @@ class IosAlarmLifecycleTest {
         occurrenceId = "$CanonicalUuid:occurrence-runtime",
         action = IosAlarmMissionAction.STOP,
         occurredAtEpochMillis = 1_000L,
+    )
+
+    private fun currentStopEvent() = missionEvent().copy(
+        occurredAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
     )
 
     private fun savedAlarm(
@@ -781,9 +1204,18 @@ class IosAlarmLifecycleTest {
     )
 
     private companion object {
+        const val EarlierSortingUuid = "A08814F5-0B28-4454-91F0-F6931224EBD6"
         const val CanonicalUuid = "D08814F5-0B28-4454-91F0-F6931224EBD6"
         fun canonicalUuid(id: String): String? = id.takeIf { it.length == CanonicalUuid.length }
     }
+
+    private data class RingingRuntimeFixture(
+        val runtime: IosAlarmRuntime,
+        val scheduler: LifecycleScheduler,
+        val inbox: LifecycleInbox,
+        val store: LifecycleMissionStore,
+        val dataSource: LifecycleAlarmDataSource,
+    )
 }
 
 private class LifecycleAlarmDataSource(initial: List<SavedAlarmSchedule>) : AlarmDataSource {
@@ -821,6 +1253,9 @@ private class LifecycleScheduler(
     private val scheduledAlarms = alarms.associateByTo(linkedMapOf()) { it.alarmId }
     private var remainingRetryScheduleFailures = retryScheduleFailures
     private var remainingCancelFailures = 0
+    private var stateListener: IosAlarmStateListener? = null
+    private var nextStopSnapshot: List<IosScheduledAlarmDto>? = null
+    private var pendingStopCompletion: (() -> Unit)? = null
     val events = mutableListOf<String>()
     val retryAlarmKitIds = mutableListOf<String>()
 
@@ -834,6 +1269,23 @@ private class LifecycleScheduler(
 
     fun failNextCancellations(count: Int = 1) {
         remainingCancelFailures += count
+    }
+
+    fun emitSnapshot(alarms: List<IosScheduledAlarmDto>) {
+        scheduledAlarms.clear()
+        scheduledAlarms.putAll(alarms.associateBy(IosScheduledAlarmDto::alarmId))
+        stateListener?.onAlarmsChanged(alarms)
+    }
+
+    fun deferNextStopAfterEmitting(alarms: List<IosScheduledAlarmDto>) {
+        check(pendingStopCompletion == null)
+        nextStopSnapshot = alarms
+    }
+
+    fun completePendingStop() {
+        val completion = checkNotNull(pendingStopCompletion)
+        pendingStopCompletion = null
+        completion()
     }
 
     override fun authorizationState() = IosAlarmAuthorizationState.AUTHORIZED
@@ -870,6 +1322,19 @@ private class LifecycleScheduler(
         scheduledAlarms.remove(alarmId)
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
     }
+    override fun stop(alarmId: String, callback: (IosAlarmOperationResult) -> Unit) {
+        events += "stop:$alarmId"
+        scheduledAlarms.remove(alarmId)
+        nextStopSnapshot?.let { snapshot ->
+            nextStopSnapshot = null
+            emitSnapshot(snapshot)
+            pendingStopCompletion = {
+                callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+            }
+            return
+        }
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
     override fun scheduledAlarms(callback: (IosScheduledAlarmsResult) -> Unit) =
         callback(
             IosScheduledAlarmsResult(
@@ -877,18 +1342,77 @@ private class LifecycleScheduler(
                 code = snapshotCode,
             ),
         )
+    override fun setStateListener(listener: IosAlarmStateListener?) {
+        stateListener = listener
+    }
 }
 
 private class LifecycleInbox(
     pending: List<IosAlarmMissionEventDto>,
     private val resultCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
+    private val recordStopCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
+    private val recordOpenCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
 ) :
     IosAlarmMissionEventInbox {
     private val pending = pending.toMutableList()
+    private var listener: IosAlarmMissionEventListener? = null
     val events = mutableListOf<String>()
 
-    fun enqueue(event: IosAlarmMissionEventDto) {
+    fun enqueue(event: IosAlarmMissionEventDto, notifyListener: Boolean = false) {
         pending += event
+        if (notifyListener) listener?.onEventRecorded()
+    }
+
+    override fun setEventListener(listener: IosAlarmMissionEventListener?) {
+        this.listener = listener
+    }
+
+    override fun recordStopEvent(
+        alarmId: String,
+        occurrenceId: String?,
+        retryAttempt: Int,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        events += "stop:$alarmId:${occurrenceId.orEmpty()}:$retryAttempt"
+        if (recordStopCode != IosAlarmOperationCode.SUCCESS) {
+            callback(IosAlarmOperationResult(recordStopCode))
+            return
+        }
+        val eventOrdinal = events.count { event -> event.startsWith("stop:") }
+        pending += IosAlarmMissionEventDto(
+            eventId = "stop-event-$eventOrdinal",
+            alarmId = alarmId,
+            occurrenceId = occurrenceId ?: "$alarmId:stop-$eventOrdinal",
+            action = IosAlarmMissionAction.STOP,
+            occurredAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
+            retryAttempt = retryAttempt,
+        )
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+        listener?.onEventRecorded()
+    }
+
+    override fun recordOpenEvent(
+        alarmId: String,
+        occurrenceId: String?,
+        retryAttempt: Int,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        events += "open:$alarmId:${occurrenceId.orEmpty()}:$retryAttempt"
+        if (recordOpenCode != IosAlarmOperationCode.SUCCESS) {
+            callback(IosAlarmOperationResult(recordOpenCode))
+            return
+        }
+        val eventOrdinal = events.count { event -> event.startsWith("open:") }
+        pending += IosAlarmMissionEventDto(
+            eventId = "open-event-$eventOrdinal",
+            alarmId = alarmId,
+            occurrenceId = occurrenceId ?: "$alarmId:open-$eventOrdinal",
+            action = IosAlarmMissionAction.OPEN_APP,
+            occurredAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
+            retryAttempt = retryAttempt,
+        )
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+        listener?.onEventRecorded()
     }
 
     override fun pendingEvents(callback: (IosAlarmMissionEventsResult) -> Unit) =
