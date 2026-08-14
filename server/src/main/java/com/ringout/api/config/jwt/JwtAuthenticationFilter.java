@@ -33,6 +33,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     if (token != null
         && jwtProvider.isValid(token)
+        && jwtProvider.isAccessToken(token)
         && SecurityContextHolder.getContext().getAuthentication() == null) {
       Long userId = jwtProvider.getUserId(token);
       Role role = jwtProvider.getRole(token);
