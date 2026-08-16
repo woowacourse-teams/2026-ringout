@@ -16,12 +16,16 @@ import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.ActiveAlarmMissionStore
 import com.joon.ringout.alarm.AlarmMissionCoordinator
+import com.joon.ringout.presentation.update.AppUpdateDialog
+import com.joon.ringout.presentation.update.PlayStoreUpdateChecker
 
 class MainActivity : ComponentActivity() {
     private lateinit var activeAlarmMissionStore: ActiveAlarmMissionStore
     private lateinit var alarmMissionCoordinator: AlarmMissionCoordinator
     private var activeAlarmMission by mutableStateOf<ActiveAlarmMission?>(null)
     private var activeAlarmMissionLocation by mutableStateOf<ActiveAlarmMissionLocation?>(null)
+    private var isUpdateDialogVisible by mutableStateOf(false)
+    private lateinit var playStoreUpdateChecker: PlayStoreUpdateChecker
     private val activeAlarmMissionPreferenceListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
             refreshActiveAlarmMission()
@@ -41,7 +45,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         activeAlarmMissionStore = ActiveAlarmMissionStore(applicationContext)
         alarmMissionCoordinator = AlarmMissionCoordinator(applicationContext)
+        playStoreUpdateChecker = PlayStoreUpdateChecker(
+            activity = this,
+            currentVersionCode = BuildConfig.VERSION_CODE,
+        )
         refreshActiveAlarmMission()
+        playStoreUpdateChecker.check {
+            isUpdateDialogVisible = true
+        }
 
         setContent {
             App(
@@ -57,6 +68,17 @@ class MainActivity : ComponentActivity() {
                 onActiveAlarmMissionForceEndHoldCompleted =
                     alarmMissionCoordinator::recordForceEndHoldCompleted,
             )
+            if (isUpdateDialogVisible) {
+                RingoutTheme(themeMode = ThemeMode.Light) {
+                    AppUpdateDialog(
+                        onDismissRequest = { isUpdateDialogVisible = false },
+                        onUpdateClick = {
+                            isUpdateDialogVisible = false
+                            playStoreUpdateChecker.openStore()
+                        },
+                    )
+                }
+            }
         }
     }
 

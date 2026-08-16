@@ -65,7 +65,12 @@ dependencies {
     implementation(projects.shared)
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material3)
     implementation(libs.google.places)
+    implementation(libs.google.play.app.update)
+    implementation(libs.google.play.app.update.ktx)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
