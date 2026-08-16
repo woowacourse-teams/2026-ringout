@@ -20,5 +20,6 @@ class DefaultDestinationRepository(
     override suspend fun updateName(id: Long, name: String): Boolean =
         dataSource.updateName(id, name)
 
-    override suspend fun delete(id: Long): Boolean = dataSource.delete(id)
+    override suspend fun delete(id: Long): Boolean =
+        remoteDataSource?.delete(id) ?: dataSource.delete(id)
 }

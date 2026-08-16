@@ -9,6 +9,7 @@ import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.destination.SavedDestination
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -17,6 +18,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonElement
 
 class KtorDestinationRemoteDataSource(
     private val httpClient: HttpClient,
@@ -48,6 +50,16 @@ class KtorDestinationRemoteDataSource(
         check(body.isSuccess) { body.message }
         val result = checkNotNull(body.result) { "목적지 저장 응답이 비어 있어요." }
         return destination.copy(id = result.destinationId)
+    }
+
+    override suspend fun delete(id: Long): Boolean {
+        val accessToken = requireAccessToken()
+        val response = httpClient.delete(ApiConfig.url("/api/v1/destinations/$id")) {
+            bearerAuth(accessToken)
+        }
+        val body = response.decodeOrThrow<JsonElement>()
+        check(body.isSuccess) { body.message }
+        return true
     }
 
     private suspend fun requireAccessToken(): String =

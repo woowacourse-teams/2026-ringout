@@ -104,6 +104,33 @@ class KtorDestinationRemoteDataSourceTest {
         assertEquals("서울특별시 중구 세종대로 110", saved.address)
         client.close()
     }
+
+    @Test
+    fun `목적지 삭제 요청에 destination id와 Ringout access token을 전송한다`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals(HttpMethod.Delete, request.method)
+            assertEquals("/api/v1/destinations/42", request.url.encodedPath)
+            assertEquals("Bearer ringout-access", request.headers[HttpHeaders.Authorization])
+            respond(
+                content = """
+                    {
+                      "isSuccess": true,
+                      "code": "DESTINATION200",
+                      "message": "삭제되었습니다.",
+                      "result": null
+                    }
+                """.trimIndent(),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }) {
+            configureRingoutHttpClient()
+        }
+        val dataSource = KtorDestinationRemoteDataSource(client, FakeTokenStorage())
+
+        assertTrue(dataSource.delete(42L))
+        client.close()
+    }
 }
 
 private class FakeTokenStorage : SecureTokenStorage {

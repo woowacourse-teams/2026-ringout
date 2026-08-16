@@ -6,4 +6,6 @@ interface DestinationRemoteDataSource {
     suspend fun fetchAll(): List<SavedDestination>
 
     suspend fun create(destination: SavedDestination): SavedDestination
+
+    suspend fun delete(id: Long): Boolean
 }

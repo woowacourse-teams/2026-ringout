@@ -138,18 +138,33 @@ class DestinationViewModel(
     }
 
     fun delete(destinationId: Long) {
+        if (uiState.isSaving) return
+
+        uiState = uiState.copy(
+            isSaving = true,
+            errorMessage = null,
+        )
         viewModelScope.launch {
             try {
                 val deleted = mutationMutex.withLock {
                     repository.delete(destinationId)
                 }
-                if (!deleted) {
-                    uiState = uiState.copy(errorMessage = "삭제할 목적지를 찾지 못했어요.")
+                uiState = if (deleted) {
+                    uiState.copy(
+                        destinations = uiState.destinations.filterNot { it.id == destinationId },
+                        isSaving = false,
+                    )
+                } else {
+                    uiState.copy(
+                        isSaving = false,
+                        errorMessage = "삭제할 목적지를 찾지 못했어요.",
+                    )
                 }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
                 uiState = uiState.copy(
+                    isSaving = false,
                     errorMessage = error.message ?: "목적지를 삭제하지 못했어요.",
                 )
             }
