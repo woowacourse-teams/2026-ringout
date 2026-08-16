@@ -51,10 +51,12 @@ fun MyPageScreen(
     themeMode: ThemeMode,
     appVersion: String,
     policies: List<PolicyInfo>,
+    accountUiState: MyPageAccountUiState,
     onThemeModeChange: (ThemeMode) -> Unit,
     onBackClick: () -> Unit,
     onAccountStatusClick: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
+    onLogoutConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MyPageViewModel = rememberMyPageViewModel(),
 ) {
@@ -67,12 +69,14 @@ fun MyPageScreen(
         themeMode = themeMode,
         appVersion = appVersion,
         policies = policies,
+        accountUiState = accountUiState,
         onThemeModeChange = onThemeModeChange,
         onPreviousMonthClick = viewModel::onPreviousMonthClick,
         onNextMonthClick = viewModel::onNextMonthClick,
         onBackClick = onBackClick,
         onAccountStatusClick = onAccountStatusClick,
         onPolicyClick = onPolicyClick,
+        onLogoutConfirm = onLogoutConfirm,
         modifier = modifier,
     )
 }
@@ -121,6 +125,14 @@ fun MyPageScreenContent(
         item { Spacer(Modifier.height(6.dp)) }
         item {
             when (accountUiState) {
+                MyPageAccountUiState.Loading -> {
+                    Text(
+                        text = "로그인 상태 확인 중…",
+                        color = colors.secondaryText,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+
                 MyPageAccountUiState.LoggedOut -> {
                     MyPageAccountStatus(onClick = onAccountStatusClick)
                 }

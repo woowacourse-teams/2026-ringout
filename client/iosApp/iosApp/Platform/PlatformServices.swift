@@ -8,6 +8,7 @@ final class PlatformServices: @preconcurrency IosNativeServices {
     private let alarmKitAdapter: AlarmKitAdapter
     private let missionLocationAdapter: MissionLocationAdapter
     private let firebaseAnalyticsAdapter: FirebaseAnalyticsAdapter
+    private let googleSignInAdapter: GoogleSignInAdapter
 
     init(googleSdkConfiguration: GoogleSdkConfiguration) {
         mapsAdapter = MapsAdapter(configurationState: googleSdkConfiguration.maps)
@@ -16,6 +17,7 @@ final class PlatformServices: @preconcurrency IosNativeServices {
         alarmKitAdapter = AlarmKitAdapter()
         missionLocationAdapter = MissionLocationAdapter()
         firebaseAnalyticsAdapter = FirebaseAnalyticsAdapter()
+        googleSignInAdapter = GoogleSignInAdapter()
     }
 
     func isMapsAvailable() -> Bool {
@@ -78,5 +80,9 @@ final class PlatformServices: @preconcurrency IosNativeServices {
 
     func analyticsTracker() -> IosAnalyticsTracker {
         firebaseAnalyticsAdapter
+    }
+
+    func googleSignInService() -> IosGoogleSignInService {
+        googleSignInAdapter
     }
 }

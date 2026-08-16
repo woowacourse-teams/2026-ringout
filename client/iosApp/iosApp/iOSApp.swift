@@ -1,4 +1,5 @@
 import SwiftUI
+import GoogleSignIn
 
 @main
 @MainActor
@@ -17,6 +18,9 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(nativeServices: platformServices)
+                .onOpenURL { url in
+                    GIDSignIn.sharedInstance.handle(url)
+                }
         }
     }
 }

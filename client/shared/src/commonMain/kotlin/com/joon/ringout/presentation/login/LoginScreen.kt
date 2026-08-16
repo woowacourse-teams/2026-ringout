@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -21,6 +22,7 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.login.component.LoginHeader
 import com.joon.ringout.presentation.login.component.LoginHero
+import com.joon.ringout.presentation.login.component.LoginStatus
 import com.joon.ringout.presentation.login.component.SocialLoginButtons
 import com.joon.ringout.presentation.login.component.loginColors
 import com.joon.ringout.presentation.login.component.loginDimensions
@@ -34,13 +36,40 @@ enum class SocialLoginProvider {
 @Composable
 fun LoginScreen(
     onBackClick: () -> Unit,
-    onSocialLoginClick: (SocialLoginProvider) -> Unit,
+    onAuthenticated: () -> Unit,
+    onSignupRequired: (String) -> Unit,
+    viewModel: LoginViewModel,
     modifier: Modifier = Modifier,
 ) {
+    val uiState = viewModel.uiState
+    val launchGoogleSignIn = rememberGoogleAccessTokenLauncher(
+        onResult = viewModel::handleGoogleAccessTokenResult,
+    )
+    val completion = uiState.completion
+    LaunchedEffect(completion) {
+        when (completion) {
+            is LoginCompletion.Authenticated -> onAuthenticated()
+            is LoginCompletion.SignupRequired -> onSignupRequired(completion.signupToken)
+            null -> return@LaunchedEffect
+        }
+        viewModel.consumeCompletion(completion.eventId)
+    }
+
     PlatformBackHandler(onBack = onBackClick)
     LoginScreenContent(
         onBackClick = onBackClick,
-        onSocialLoginClick = onSocialLoginClick,
+        onSocialLoginClick = { provider ->
+            when (provider) {
+                SocialLoginProvider.Google -> {
+                    if (viewModel.beginGoogleSignIn()) launchGoogleSignIn()
+                }
+
+                SocialLoginProvider.Kakao,
+                SocialLoginProvider.Naver,
+                -> viewModel.showUnavailableProvider(provider)
+            }
+        },
+        uiState = uiState,
         modifier = modifier,
     )
 }
@@ -50,6 +79,7 @@ internal fun LoginScreenContent(
     onBackClick: () -> Unit,
     onSocialLoginClick: (SocialLoginProvider) -> Unit,
     modifier: Modifier = Modifier,
+    uiState: LoginUiState = LoginUiState(),
 ) {
     val colors = loginColors()
     val dimensions = loginDimensions()
@@ -67,7 +97,14 @@ internal fun LoginScreenContent(
         Spacer(Modifier.height(dimensions.headerContainerToImageSpacing))
         LoginHero()
         Spacer(Modifier.height(dimensions.textToSocialSpacing))
-        SocialLoginButtons(onSocialLoginClick = onSocialLoginClick)
+        SocialLoginButtons(
+            onSocialLoginClick = onSocialLoginClick,
+            enabled = !uiState.isLoading,
+        )
+        LoginStatus(
+            isLoading = uiState.isLoading,
+            errorMessage = uiState.errorMessage,
+        )
     }
 }
 
@@ -78,6 +115,7 @@ private fun LoginScreenDarkPreview() {
         LoginScreenContent(
             onBackClick = {},
             onSocialLoginClick = {},
+            uiState = LoginUiState(),
         )
     }
 }
@@ -89,6 +127,9 @@ private fun LoginScreenLightPreview() {
         LoginScreenContent(
             onBackClick = {},
             onSocialLoginClick = {},
+            uiState = LoginUiState(
+                errorMessage = "로그인하지 못했어요. 다시 시도해 주세요.",
+            ),
         )
     }
 }

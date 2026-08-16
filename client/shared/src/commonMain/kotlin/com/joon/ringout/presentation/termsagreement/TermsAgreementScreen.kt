@@ -38,6 +38,7 @@ fun TermsAgreementScreen(
     onTermDetailClick: (TermId) -> Unit,
     modifier: Modifier = Modifier,
     isSaving: Boolean = false,
+    errorMessage: String? = null,
     viewModel: TermsAgreementViewModel = viewModel { TermsAgreementViewModel() },
 ) {
     TermsAgreementScreenContent(
@@ -55,6 +56,7 @@ fun TermsAgreementScreen(
             }
         },
         startEnabled = !isSaving,
+        errorMessage = errorMessage,
         modifier = modifier,
     )
 }
@@ -68,6 +70,7 @@ internal fun TermsAgreementScreenContent(
     onStartClick: () -> Unit,
     modifier: Modifier = Modifier,
     startEnabled: Boolean = true,
+    errorMessage: String? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -128,6 +131,16 @@ internal fun TermsAgreementScreenContent(
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
+                errorMessage?.let { message ->
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                    )
+                }
                 TermsStartButton(
                     enabled = uiState.canStart && startEnabled,
                     onClick = onStartClick,
