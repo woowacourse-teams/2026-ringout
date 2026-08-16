@@ -2,6 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+#if RINGOUT_ALLOW_INSECURE_HTTP
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+#endif
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
