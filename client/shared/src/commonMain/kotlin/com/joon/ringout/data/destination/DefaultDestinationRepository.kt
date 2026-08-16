@@ -3,17 +3,34 @@ package com.joon.ringout.data.destination
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 class DefaultDestinationRepository(
     private val dataSource: DestinationDataSource,
+    private val remoteDataSource: DestinationRemoteDataSource? = null,
 ) : DestinationRepository {
     override fun observeAll(): Flow<List<SavedDestination>> = dataSource.observeAll()
 
-    override suspend fun save(destination: SavedDestination): SavedDestination =
-        dataSource.save(destination)
+    override suspend fun fetchAll(): List<SavedDestination> =
+        remoteDataSource?.fetchAll() ?: dataSource.observeAll().first()
+
+    override suspend fun sync(): List<SavedDestination> {
+        val localDestinations = dataSource.observeAll().first()
+        return remoteDataSource?.sync(localDestinations) ?: localDestinations
+    }
+
+    override suspend fun save(destination: SavedDestination): SavedDestination {
+        val remote = remoteDataSource
+        return if (remote != null && remote.hasAccessToken()) {
+            remote.create(destination)
+        } else {
+            dataSource.save(destination)
+        }
+    }
 
     override suspend fun updateName(id: Long, name: String): Boolean =
-        dataSource.updateName(id, name)
+        remoteDataSource?.updateName(id, name) ?: dataSource.updateName(id, name)
 
-    override suspend fun delete(id: Long): Boolean = dataSource.delete(id)
+    override suspend fun delete(id: Long): Boolean =
+        remoteDataSource?.delete(id) ?: dataSource.delete(id)
 }

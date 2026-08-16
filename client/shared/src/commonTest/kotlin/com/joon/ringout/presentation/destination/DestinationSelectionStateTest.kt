@@ -134,6 +134,46 @@ class DestinationSelectionStateTest {
     }
 
     @Test
+    fun savedDestinationWithoutAddressStartsAddressResolutionAtCameraPosition() {
+        val savedDestination = DestinationSelection(
+            name = "회사",
+            address = "",
+            latitude = 37.5665,
+            longitude = 126.9780,
+        )
+
+        val settled = destinationAtCameraPosition(
+            cameraTarget = savedDestination,
+            latitude = savedDestination.latitude,
+            longitude = savedDestination.longitude,
+        )
+
+        assertEquals("회사", settled.name)
+        assertEquals(ResolvingDestinationAddress, settled.address)
+        assertTrue(settled.requiresAddressResolution())
+    }
+
+    @Test
+    fun resolvedAddressPreservesSavedDestinationNickname() {
+        val savedDestination = DestinationSelection(
+            name = "회사",
+            address = ResolvingDestinationAddress,
+            latitude = 37.5665,
+            longitude = 126.9780,
+        )
+
+        assertEquals(
+            savedDestination.copy(address = "서울특별시 중구 세종대로 110"),
+            savedDestination.withResolvedAddress(
+                latitude = savedDestination.latitude,
+                longitude = savedDestination.longitude,
+                placeName = "서울시청",
+                address = "서울특별시 중구 세종대로 110",
+            ),
+        )
+    }
+
+    @Test
     fun resolvedAddressUpdatesOnlyMatchingCameraPosition() {
         val pending = DestinationSelection(
             name = SelectedDestinationFallbackName,

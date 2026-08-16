@@ -199,7 +199,7 @@ private fun RingoutAppContent(
         LoginViewModel(authRepository)
     }
     val signupViewModel: SignupViewModel = viewModel {
-        SignupViewModel(authRepository)
+        SignupViewModel(authRepository, destinationRepository)
     }
     var destinationName by rememberSaveable { mutableStateOf("") }
     var destinationAddress by rememberSaveable { mutableStateOf("") }
@@ -715,6 +715,8 @@ private fun RingoutAppContent(
                 DestinationMapScreen(
                     initialSelection = destination ?: DefaultDestinationSelection,
                     requestCurrentLocationOnStart = false,
+                    isAuthenticated = authSessionState == AuthSessionState.Authenticated,
+                    onEntered = destinationViewModel::onScreenEntered,
                     onBackClick = { screenName = alarmSetupScreen.name },
                     onConfirmClick = { destination ->
                         destinationViewModel.save(
