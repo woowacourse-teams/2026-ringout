@@ -7,6 +7,8 @@ interface DestinationRepository {
 
     suspend fun fetchAll(): List<SavedDestination>
 
+    suspend fun sync(): List<SavedDestination>
+
     suspend fun save(destination: SavedDestination): SavedDestination
 
     suspend fun updateName(id: Long, name: String): Boolean

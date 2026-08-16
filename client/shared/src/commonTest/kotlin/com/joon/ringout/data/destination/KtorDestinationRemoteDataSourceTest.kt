@@ -106,6 +106,59 @@ class KtorDestinationRemoteDataSourceTest {
     }
 
     @Test
+    fun `기기 목적지 목록을 동기화하고 서버 id가 적용된 목록을 반환한다`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals(HttpMethod.Post, request.method)
+            assertEquals("/api/v1/destinations/sync", request.url.encodedPath)
+            assertEquals("Bearer ringout-access", request.headers[HttpHeaders.Authorization])
+            val requestBody = (request.body as TextContent).text
+            assertTrue(requestBody.contains("\"clientDestinationId\":7"))
+            assertTrue(requestBody.contains("\"alias\":\"집\""))
+            respond(
+                content = """
+                    {
+                      "isSuccess": true,
+                      "code": "DESTINATION200",
+                      "message": "목적지를 동기화했습니다.",
+                      "result": {
+                        "destinations": [
+                          {
+                            "clientDestinationId": 7,
+                            "destinationId": 101,
+                            "alias": "집",
+                            "latitude": 37.4979,
+                            "longitude": 127.0276
+                          }
+                        ]
+                      }
+                    }
+                """.trimIndent(),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }) {
+            configureRingoutHttpClient()
+        }
+        val dataSource = KtorDestinationRemoteDataSource(client, FakeTokenStorage())
+
+        val synced = dataSource.sync(
+            listOf(
+                SavedDestination(
+                    id = 7,
+                    name = "집",
+                    address = "서울특별시 강남구",
+                    latitude = 37.4979,
+                    longitude = 127.0276,
+                ),
+            ),
+        )
+
+        assertEquals(101L, synced.single().id)
+        assertEquals("서울특별시 강남구", synced.single().address)
+        client.close()
+    }
+
+    @Test
     fun `목적지 삭제 요청에 destination id와 Ringout access token을 전송한다`() = runTest {
         val client = HttpClient(MockEngine { request ->
             assertEquals(HttpMethod.Delete, request.method)

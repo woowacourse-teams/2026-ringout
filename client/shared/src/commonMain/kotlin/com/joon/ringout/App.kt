@@ -199,7 +199,7 @@ private fun RingoutAppContent(
         LoginViewModel(authRepository)
     }
     val signupViewModel: SignupViewModel = viewModel {
-        SignupViewModel(authRepository)
+        SignupViewModel(authRepository, destinationRepository)
     }
     var destinationName by rememberSaveable { mutableStateOf("") }
     var destinationAddress by rememberSaveable { mutableStateOf("") }

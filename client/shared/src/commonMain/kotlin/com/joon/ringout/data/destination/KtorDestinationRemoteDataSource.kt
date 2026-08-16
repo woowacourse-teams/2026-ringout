@@ -25,6 +25,9 @@ class KtorDestinationRemoteDataSource(
     private val httpClient: HttpClient,
     private val tokenStorage: SecureTokenStorage,
 ) : DestinationRemoteDataSource {
+    override suspend fun hasAccessToken(): Boolean =
+        tokenStorage.read()?.accessToken?.isNotBlank() == true
+
     override suspend fun fetchAll(): List<SavedDestination> {
         val accessToken = requireAccessToken()
         val response = httpClient.get(ApiConfig.url("/api/v1/destinations")) {
@@ -33,6 +36,41 @@ class KtorDestinationRemoteDataSource(
         val body = response.decodeOrThrow<List<DestinationResponse>>()
         check(body.isSuccess) { body.message }
         return body.result.orEmpty().map(DestinationResponse::toDomain)
+    }
+
+    override suspend fun sync(destinations: List<SavedDestination>): List<SavedDestination> {
+        val accessToken = requireAccessToken()
+        val destinationsByClientId = destinations.associateBy(SavedDestination::id)
+        val response = httpClient.post(ApiConfig.url("/api/v1/destinations/sync")) {
+            bearerAuth(accessToken)
+            setBody(
+                DestinationSyncRequest(
+                    destinations = destinations.map { destination ->
+                        require(destination.id > 0L) {
+                            "동기화할 목적지의 기기 ID가 올바르지 않아요."
+                        }
+                        DestinationSyncItemRequest(
+                            clientDestinationId = destination.id,
+                            alias = destination.name,
+                            latitude = destination.latitude,
+                            longitude = destination.longitude,
+                        )
+                    },
+                ),
+            )
+        }
+        val body = response.decodeOrThrow<DestinationSyncResponse>()
+        check(body.isSuccess) { body.message }
+        val result = checkNotNull(body.result) { "목적지 동기화 응답이 비어 있어요." }
+        return result.destinations.map { synced ->
+            SavedDestination(
+                id = synced.destinationId,
+                name = synced.alias,
+                address = destinationsByClientId[synced.clientDestinationId]?.address.orEmpty(),
+                latitude = synced.latitude,
+                longitude = synced.longitude,
+            )
+        }
     }
 
     override suspend fun create(destination: SavedDestination): SavedDestination {
@@ -83,6 +121,33 @@ class KtorDestinationRemoteDataSource(
 
 @Serializable
 private data class DestinationCreateRequest(
+    val alias: String,
+    val latitude: Double,
+    val longitude: Double,
+)
+
+@Serializable
+private data class DestinationSyncRequest(
+    val destinations: List<DestinationSyncItemRequest>,
+)
+
+@Serializable
+private data class DestinationSyncItemRequest(
+    val clientDestinationId: Long,
+    val alias: String,
+    val latitude: Double,
+    val longitude: Double,
+)
+
+@Serializable
+private data class DestinationSyncResponse(
+    val destinations: List<DestinationSyncItemResponse>,
+)
+
+@Serializable
+private data class DestinationSyncItemResponse(
+    val clientDestinationId: Long,
+    val destinationId: Long,
     val alias: String,
     val latitude: Double,
     val longitude: Double,

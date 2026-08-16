@@ -14,8 +14,19 @@ class DefaultDestinationRepository(
     override suspend fun fetchAll(): List<SavedDestination> =
         remoteDataSource?.fetchAll() ?: dataSource.observeAll().first()
 
-    override suspend fun save(destination: SavedDestination): SavedDestination =
-        remoteDataSource?.create(destination) ?: dataSource.save(destination)
+    override suspend fun sync(): List<SavedDestination> {
+        val localDestinations = dataSource.observeAll().first()
+        return remoteDataSource?.sync(localDestinations) ?: localDestinations
+    }
+
+    override suspend fun save(destination: SavedDestination): SavedDestination {
+        val remote = remoteDataSource
+        return if (remote != null && remote.hasAccessToken()) {
+            remote.create(destination)
+        } else {
+            dataSource.save(destination)
+        }
+    }
 
     override suspend fun updateName(id: Long, name: String): Boolean =
         remoteDataSource?.updateName(id, name) ?: dataSource.updateName(id, name)
