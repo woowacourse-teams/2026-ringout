@@ -1,16 +1,21 @@
 import Shared
 
-final class PlatformServices: IosNativeServices {
+@MainActor
+final class PlatformServices: @preconcurrency IosNativeServices {
     private let mapsAdapter: MapsAdapter
     private let placesAdapter: PlacesAdapter
     private let destinationLocationAdapter: DestinationLocationAdapter
     private let alarmKitAdapter: AlarmKitAdapter
+    private let missionLocationAdapter: MissionLocationAdapter
+    private let firebaseAnalyticsAdapter: FirebaseAnalyticsAdapter
 
     init(googleSdkConfiguration: GoogleSdkConfiguration) {
         mapsAdapter = MapsAdapter(configurationState: googleSdkConfiguration.maps)
         placesAdapter = PlacesAdapter(configurationState: googleSdkConfiguration.places)
         destinationLocationAdapter = DestinationLocationAdapter()
         alarmKitAdapter = AlarmKitAdapter()
+        missionLocationAdapter = MissionLocationAdapter()
+        firebaseAnalyticsAdapter = FirebaseAnalyticsAdapter()
     }
 
     func isMapsAvailable() -> Bool {
@@ -26,17 +31,25 @@ final class PlatformServices: IosNativeServices {
         initialLongitude: Double,
         listener: IosDestinationMapListener
     ) -> IosDestinationMapController? {
-        MainActor.assumeIsolated {
-            mapsAdapter.makeDestinationMapController(
-                initialLatitude: initialLatitude,
-                initialLongitude: initialLongitude,
-                listener: listener
-            )
-        }
+        mapsAdapter.makeDestinationMapController(
+            initialLatitude: initialLatitude,
+            initialLongitude: initialLongitude,
+            listener: listener
+        )
     }
 
     func destinationSearchService() -> IosDestinationSearchService {
         placesAdapter
+    }
+
+    func createActiveMissionMapController(
+        destinationLatitude: Double,
+        destinationLongitude: Double
+    ) -> IosActiveMissionMapController? {
+        mapsAdapter.makeActiveMissionMapController(
+            destinationLatitude: destinationLatitude,
+            destinationLongitude: destinationLongitude
+        )
     }
 
     func destinationLocationService() -> IosDestinationLocationService {
@@ -57,5 +70,13 @@ final class PlatformServices: IosNativeServices {
 
     func alarmMissionEventInbox() -> IosAlarmMissionEventInbox {
         RingoutAlarmMissionEventInbox.shared
+    }
+
+    func missionLocationService() -> IosMissionLocationService {
+        missionLocationAdapter
+    }
+
+    func analyticsTracker() -> IosAnalyticsTracker {
+        firebaseAnalyticsAdapter
     }
 }

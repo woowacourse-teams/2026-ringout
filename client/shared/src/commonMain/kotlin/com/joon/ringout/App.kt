@@ -23,12 +23,18 @@ import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.AlarmScheduleRequest
+import com.joon.ringout.alarm.DefaultMissionLocationState
+import com.joon.ringout.alarm.MissionLocationPermissionDecision
+import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.alarm.newAlarmId
+import com.joon.ringout.alarm.permissionDecision
 import com.joon.ringout.alarm.rememberAlarmController
 import com.joon.ringout.presentation.activemission.ActiveAlarmTrackingScreen
+import com.joon.ringout.presentation.activemission.components.MissionLocationPermissionDialog
 import com.joon.ringout.presentation.alarmsound.AlarmSoundScreen
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupScreen
+import com.joon.ringout.presentation.alarmsetup.PlatformDefaultAlarmSoundName
 import com.joon.ringout.presentation.alarmsetup.components.weekdaySummary
 import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationMapScreen
@@ -43,6 +49,8 @@ import com.joon.ringout.presentation.login.LoginScreen
 import com.joon.ringout.presentation.login.SocialLoginProvider
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
+import com.joon.ringout.presentation.ringing.AlarmRingingScreen
+import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.settings.SettingsScreen
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
@@ -54,8 +62,16 @@ import kotlinx.coroutines.flow.collect
 @Composable
 fun App(
     appVersion: String = "",
+    useSystemLocationPermissionUiOnly: Boolean = false,
+    ringingAlarm: AlarmRingingUiState? = null,
     activeAlarmMission: ActiveAlarmMission? = null,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation? = null,
+    missionLocationState: MissionLocationState = DefaultMissionLocationState,
+    onRequestWhenInUseLocation: () -> Unit = {},
+    onRequestAlwaysLocation: () -> Unit = {},
+    onConfirmAlwaysLocationResult: () -> Unit = {},
+    onRequestTemporaryFullAccuracy: () -> Unit = {},
+    onRingingAlarmDismiss: (String) -> Unit = {},
     onActiveAlarmMissionExpired: () -> Unit = {},
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit = { _ -> },
     onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit = { _ -> },
@@ -91,8 +107,16 @@ fun App(
                 RingoutAppContent(
                     themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
+                    useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
+                    ringingAlarm = ringingAlarm,
                     activeAlarmMission = activeAlarmMission,
                     activeAlarmMissionLocation = activeAlarmMissionLocation,
+                    missionLocationState = missionLocationState,
+                    onRequestWhenInUseLocation = onRequestWhenInUseLocation,
+                    onRequestAlwaysLocation = onRequestAlwaysLocation,
+                    onConfirmAlwaysLocationResult = onConfirmAlwaysLocationResult,
+                    onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
+                    onRingingAlarmDismiss = onRingingAlarmDismiss,
                     onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
                     onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
                     onActiveAlarmMissionForceEndHoldStarted =
@@ -120,8 +144,16 @@ private fun AppBootstrapSurface() = Box(
 private fun RingoutAppContent(
     themeMode: ThemeMode,
     appVersion: String,
+    useSystemLocationPermissionUiOnly: Boolean,
+    ringingAlarm: AlarmRingingUiState?,
     activeAlarmMission: ActiveAlarmMission?,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation?,
+    missionLocationState: MissionLocationState,
+    onRequestWhenInUseLocation: () -> Unit,
+    onRequestAlwaysLocation: () -> Unit,
+    onConfirmAlwaysLocationResult: () -> Unit,
+    onRequestTemporaryFullAccuracy: () -> Unit,
+    onRingingAlarmDismiss: (String) -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
     onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit,
@@ -141,7 +173,9 @@ private fun RingoutAppContent(
     var destinationAddress by rememberSaveable { mutableStateOf("") }
     var destinationLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
     var destinationLongitude by rememberSaveable { mutableStateOf<Double?>(null) }
-    var alarmSoundName by rememberSaveable { mutableStateOf(DefaultAlarmSoundName) }
+    var alarmSoundName by rememberSaveable {
+        mutableStateOf(PlatformDefaultAlarmSoundName)
+    }
     var alarmSoundUri by rememberSaveable { mutableStateOf<String?>(null) }
     var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
     var handledActiveAlarmOccurrenceId by rememberSaveable {
@@ -154,6 +188,12 @@ private fun RingoutAppContent(
     var destinationRequestId by rememberSaveable { mutableStateOf(0L) }
     var alarms by remember { mutableStateOf<List<HomeAlarm>?>(null) }
     var alarmScheduleError by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingAlarmRequest by remember { mutableStateOf<AlarmScheduleRequest?>(null) }
+    var isAlarmSaveInProgress by remember { mutableStateOf(false) }
+    var locationPermissionDialog by remember {
+        mutableStateOf<MissionLocationPermissionDecision?>(null)
+    }
+    var didRequestFullAccuracy by rememberSaveable { mutableStateOf(false) }
     val destination = destinationLatitude?.let { latitude ->
         destinationLongitude?.let { longitude ->
             DestinationSelection(
@@ -165,32 +205,167 @@ private fun RingoutAppContent(
         }
     }
     val alarmSound = AlarmSoundSelection(
-        name = alarmSoundName,
+        name = if (alarmSoundUri == null) {
+            PlatformDefaultAlarmSoundName
+        } else {
+            alarmSoundName.ifBlank { PlatformDefaultAlarmSoundName }
+        },
         uri = alarmSoundUri,
     )
     val requestedScreen = AppScreen.valueOf(screenName)
-    val screen = if (
-        requestedScreen == AppScreen.ActiveAlarmTracking &&
-        activeAlarmMission == null
-    ) {
-        AppScreen.Home
-    } else {
-        requestedScreen
+    val screen = when {
+        ringingAlarm != null -> AppScreen.AlarmRinging
+        requestedScreen == AppScreen.ActiveAlarmTracking && activeAlarmMission == null ->
+            AppScreen.Home
+        else -> requestedScreen
     }
     SystemBarAppearanceEffect(
-        themeMode = if (screen == AppScreen.ActiveAlarmTracking) {
+        themeMode = if (
+            screen == AppScreen.ActiveAlarmTracking ||
+            screen == AppScreen.AlarmRinging
+        ) {
             ThemeMode.Dark
         } else {
             themeMode
         },
     )
     val alarmController = rememberAlarmController(
-        onSaveCompleted = {
-            editingAlarmId = null
-            screenName = AppScreen.Home.name
+        onSaveCompleted = { request ->
+            if (pendingAlarmRequest?.id == request.id) {
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                editingAlarmId = null
+                screenName = AppScreen.Home.name
+            }
         },
-        onError = { alarmScheduleError = it },
+        onSaveError = { request, message ->
+            if (pendingAlarmRequest?.id == request.id) {
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                didRequestFullAccuracy = false
+                alarmScheduleError = message
+            }
+        },
+        onError = {
+            alarmScheduleError = it
+        },
     )
+
+    LaunchedEffect(
+        pendingAlarmRequest,
+        missionLocationState.revision,
+        screen,
+    ) {
+        if (screen == AppScreen.AlarmRinging) return@LaunchedEffect
+        val request = pendingAlarmRequest ?: return@LaunchedEffect
+        if (isAlarmSaveInProgress) return@LaunchedEffect
+        when (
+            val decision = missionLocationState.permissionDecision(
+                didRequestFullAccuracy = didRequestFullAccuracy,
+            )
+        ) {
+            MissionLocationPermissionDecision.READY -> {
+                locationPermissionDialog = null
+                didRequestFullAccuracy = false
+                if (!isAlarmSaveInProgress) {
+                    isAlarmSaveInProgress = true
+                    alarmController.schedule(request)
+                }
+            }
+
+            MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->
+                if (useSystemLocationPermissionUiOnly) {
+                    locationPermissionDialog = null
+                    onRequestWhenInUseLocation()
+                } else {
+                    locationPermissionDialog = decision
+                }
+
+            MissionLocationPermissionDecision.EXPLAIN_ALWAYS ->
+                if (useSystemLocationPermissionUiOnly) {
+                    locationPermissionDialog = null
+                    onRequestAlwaysLocation()
+                } else {
+                    locationPermissionDialog = decision
+                }
+
+            MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT -> {
+                if (!useSystemLocationPermissionUiOnly) {
+                    locationPermissionDialog = decision
+                }
+            }
+
+            MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY ->
+                if (useSystemLocationPermissionUiOnly) {
+                    locationPermissionDialog = null
+                    didRequestFullAccuracy = true
+                    onRequestTemporaryFullAccuracy()
+                } else {
+                    locationPermissionDialog = decision
+                }
+
+            MissionLocationPermissionDecision.SERVICES_DISABLED -> {
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                didRequestFullAccuracy = false
+                alarmScheduleError = "위치 서비스가 꺼져 있어 목적지 알람을 시작할 수 없습니다."
+            }
+
+            MissionLocationPermissionDecision.DENIED -> {
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                didRequestFullAccuracy = false
+                alarmScheduleError = "위치 권한이 없어 목적지 알람을 시작할 수 없습니다."
+            }
+
+            MissionLocationPermissionDecision.ALWAYS_REQUEST_FAILED -> {
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                didRequestFullAccuracy = false
+                alarmScheduleError = "위치 권한 상태를 확인하지 못했습니다. 다시 시도해 주세요."
+                onConfirmAlwaysLocationResult()
+            }
+
+            MissionLocationPermissionDecision.RESTRICTED -> {
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                didRequestFullAccuracy = false
+                alarmScheduleError = "이 기기에서는 위치 사용이 제한되어 있습니다."
+            }
+        }
+    }
+
+    if (!useSystemLocationPermissionUiOnly && screen != AppScreen.AlarmRinging) {
+        MissionLocationPermissionDialog(
+            decision = locationPermissionDialog,
+            onConfirm = {
+                when (locationPermissionDialog) {
+                    MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->
+                        onRequestWhenInUseLocation()
+
+                    MissionLocationPermissionDecision.EXPLAIN_ALWAYS ->
+                        onRequestAlwaysLocation()
+
+                    MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT ->
+                        onConfirmAlwaysLocationResult()
+
+                    MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY -> {
+                        didRequestFullAccuracy = true
+                        onRequestTemporaryFullAccuracy()
+                    }
+
+                    else -> Unit
+                }
+                locationPermissionDialog = null
+            },
+            onDismiss = {
+                locationPermissionDialog = null
+                pendingAlarmRequest = null
+                isAlarmSaveInProgress = false
+                didRequestFullAccuracy = false
+            },
+        )
+    }
     val visibleAlarms = alarms.orEmpty()
     val editingAlarm = editingAlarmId?.let { alarmId ->
         visibleAlarms.firstOrNull { it.id == alarmId }
@@ -249,12 +424,12 @@ private fun RingoutAppContent(
             handledActiveAlarmOccurrenceId != occurrenceId -> {
                 handledActiveAlarmOccurrenceId = occurrenceId
                 editingAlarmId = null
-                screenName = AppScreen.Home.name
+                screenName = AppScreen.ActiveAlarmTracking.name
             }
         }
     }
 
-    if (alarmScheduleError != null) {
+    if (screen != AppScreen.AlarmRinging && alarmScheduleError != null) {
         AlertDialog(
             onDismissRequest = { alarmScheduleError = null },
             title = { Text("알람을 처리할 수 없습니다") },
@@ -267,7 +442,11 @@ private fun RingoutAppContent(
         )
     }
 
-    if (alarmScheduleError == null && destinationUiState.errorMessage != null) {
+    if (
+        screen != AppScreen.AlarmRinging &&
+        alarmScheduleError == null &&
+        destinationUiState.errorMessage != null
+    ) {
         AlertDialog(
             onDismissRequest = destinationViewModel::clearError,
             title = { Text("목적지를 처리할 수 없습니다") },
@@ -281,6 +460,19 @@ private fun RingoutAppContent(
     }
 
     when (screen) {
+        AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
+            AlarmRingingScreen(
+                alarmTime = alarm.alarmTime,
+                dateText = alarm.dateText,
+                limitMinutes = alarm.limitMinutes,
+                destinationName = alarm.destinationName,
+                onDismissAndNavigateClick = {
+                    screenName = AppScreen.ActiveAlarmTracking.name
+                    onRingingAlarmDismiss(alarm.id)
+                },
+            )
+        }
+
         AppScreen.Home -> HomeScreen(
             alarms = visibleAlarms,
             activeAlarmMission = activeAlarmMission,
@@ -292,7 +484,7 @@ private fun RingoutAppContent(
                 destinationAddress = ""
                 destinationLatitude = null
                 destinationLongitude = null
-                alarmSoundName = DefaultAlarmSoundName
+                alarmSoundName = PlatformDefaultAlarmSoundName
                 alarmSoundUri = null
                 screenName = AppScreen.AddAlarm.name
             },
@@ -303,8 +495,10 @@ private fun RingoutAppContent(
                     destinationAddress = alarm.targetAddress
                     destinationLatitude = alarm.targetLatitude
                     destinationLongitude = alarm.targetLongitude
-                    alarmSoundName = alarm.alarmSoundName.ifBlank {
-                        DefaultAlarmSoundName
+                    alarmSoundName = if (alarm.alarmSoundUri == null) {
+                        PlatformDefaultAlarmSoundName
+                    } else {
+                        alarm.alarmSoundName.ifBlank { PlatformDefaultAlarmSoundName }
                     }
                     alarmSoundUri = alarm.alarmSoundUri
                     screenName = AppScreen.EditAlarm.name
@@ -326,6 +520,7 @@ private fun RingoutAppContent(
             ActiveAlarmTrackingScreen(
                 mission = mission,
                 currentLocation = activeAlarmMissionLocation,
+                locationState = missionLocationState,
                 onBackClick = { screenName = AppScreen.Home.name },
                 onForceEndClick = onActiveAlarmMissionForceEnd,
                 onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
@@ -372,9 +567,13 @@ private fun RingoutAppContent(
                 ),
                 initialSelectedDays = initialSelectedDays,
                 initialLimitMinutes = editingAlarm?.timeLimitMinutes ?: DefaultLimitMinutes,
+                isSaveInProgress = pendingAlarmRequest != null || isAlarmSaveInProgress,
                 onBackClick = {
-                    editingAlarmId = null
-                    screenName = AppScreen.Home.name
+                    if (pendingAlarmRequest == null && !isAlarmSaveInProgress) {
+                        didRequestFullAccuracy = false
+                        editingAlarmId = null
+                        screenName = AppScreen.Home.name
+                    }
                 },
                 onDestinationClick = {
                     destinationRequestId += 1L
@@ -382,21 +581,21 @@ private fun RingoutAppContent(
                 },
                 onAlarmSoundClick = { screenName = AppScreen.AlarmSound.name },
                 onSaveClick = saveAlarm@ { time, selectedDays, repeatEnabled, limitMinutes, alarmSound ->
+                    if (pendingAlarmRequest != null || isAlarmSaveInProgress) return@saveAlarm
                     val configuredDestination = destination ?: return@saveAlarm
-                    alarmController.schedule(
-                        AlarmScheduleRequest(
-                            id = editingAlarmId ?: newAlarmId(),
-                            time = time,
-                            selectedDays = selectedDays,
-                            repeatEnabled = repeatEnabled,
-                            limitMinutes = limitMinutes,
-                            destinationName = configuredDestination.name,
-                            destinationAddress = configuredDestination.address,
-                            destinationLatitude = configuredDestination.latitude,
-                            destinationLongitude = configuredDestination.longitude,
-                            alarmSoundName = alarmSound.name,
-                            alarmSoundUri = alarmSound.uri,
-                        ),
+                    didRequestFullAccuracy = false
+                    pendingAlarmRequest = AlarmScheduleRequest(
+                        id = editingAlarmId ?: newAlarmId(),
+                        time = time,
+                        selectedDays = selectedDays,
+                        repeatEnabled = repeatEnabled,
+                        limitMinutes = limitMinutes,
+                        destinationName = configuredDestination.name,
+                        destinationAddress = configuredDestination.address,
+                        destinationLatitude = configuredDestination.latitude,
+                        destinationLongitude = configuredDestination.longitude,
+                        alarmSoundName = alarmSound.name,
+                        alarmSoundUri = alarmSound.uri,
                     )
                 },
             )
@@ -404,7 +603,7 @@ private fun RingoutAppContent(
             if (screen == AppScreen.Destination) {
                 DestinationMapScreen(
                     initialSelection = destination ?: DefaultDestinationSelection,
-                    requestCurrentLocationOnStart = destination == null,
+                    requestCurrentLocationOnStart = false,
                     onBackClick = { screenName = alarmSetupScreen.name },
                     onConfirmClick = { destination ->
                         destinationViewModel.save(
@@ -442,6 +641,7 @@ private fun RingoutAppContent(
 }
 
 private enum class AppScreen {
+    AlarmRinging,
     Home,
     AddAlarm,
     EditAlarm,
@@ -456,8 +656,6 @@ private enum class AppScreen {
 private const val UnavailableEditingAlarmTime = "06:20"
 private val DefaultSelectedDays = listOf("월", "화", "수", "목", "금", "토", "일")
 private const val DefaultLimitMinutes = 13
-private const val DefaultAlarmSoundName = "Ring Ring Ring"
-
 internal fun alarmSetupInitialTime(
     editingAlarmId: String?,
     editingAlarmTime: String?,

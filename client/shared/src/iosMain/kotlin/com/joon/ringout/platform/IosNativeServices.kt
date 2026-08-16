@@ -3,11 +3,27 @@ package com.joon.ringout.platform
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.joon.ringout.alarm.IosAlarmMissionEventInbox
 import com.joon.ringout.alarm.IosAlarmScheduler
+import com.joon.ringout.alarm.IosMissionLocationService
 
 enum class IosAlarmAuthorizationState {
     NOT_DETERMINED,
     DENIED,
     AUTHORIZED,
+}
+
+data class IosAnalyticsParameterDto(
+    val name: String,
+    val textValue: String? = null,
+    val numberValue: Long? = null,
+)
+
+data class IosAnalyticsEventDto(
+    val name: String,
+    val parameters: List<IosAnalyticsParameterDto> = emptyList(),
+)
+
+interface IosAnalyticsTracker {
+    fun log(event: IosAnalyticsEventDto)
 }
 
 interface IosNativeServices {
@@ -21,6 +37,11 @@ interface IosNativeServices {
         listener: IosDestinationMapListener,
     ): IosDestinationMapController?
 
+    fun createActiveMissionMapController(
+        destinationLatitude: Double,
+        destinationLongitude: Double,
+    ): IosActiveMissionMapController?
+
     fun destinationSearchService(): IosDestinationSearchService
 
     fun destinationLocationService(): IosDestinationLocationService
@@ -32,6 +53,10 @@ interface IosNativeServices {
     fun alarmScheduler(): IosAlarmScheduler
 
     fun alarmMissionEventInbox(): IosAlarmMissionEventInbox
+
+    fun missionLocationService(): IosMissionLocationService
+
+    fun analyticsTracker(): IosAnalyticsTracker
 }
 
 val LocalIosNativeServices = staticCompositionLocalOf<IosNativeServices> {

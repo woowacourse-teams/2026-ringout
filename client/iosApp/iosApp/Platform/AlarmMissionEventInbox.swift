@@ -7,6 +7,8 @@ struct AlarmMissionEvent: Codable, Equatable {
     let occurrenceId: String
     let action: AlarmMissionEventAction
     let occurredAtEpochMillis: Int64
+    let retryAttempt: Int?
+    let source: AlarmMissionEventSource?
     var consumedAtEpochMillis: Int64?
 
     var isConsumed: Bool {
@@ -28,6 +30,12 @@ enum AlarmMissionEventAction: String, Codable {
     }
 }
 
+enum AlarmMissionEventSource: String, Codable {
+    case nativeIntent
+    case runtimeFallback
+    case runtimeCustom
+}
+
 final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
     static let shared = RingoutAlarmMissionEventInbox()
 
@@ -35,6 +43,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let lock = NSLock()
+    private var listener: IosAlarmMissionEventListener?
 
     private init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -43,30 +52,108 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         decoder = JSONDecoder()
     }
 
+    func setEventListener(listener: IosAlarmMissionEventListener?) {
+        lock.withLock {
+            self.listener = listener
+        }
+    }
+
     @discardableResult
     func record(
         alarmId rawAlarmId: String,
         action: AlarmMissionEventAction,
+        occurrenceId requestedOccurrenceId: String? = nil,
+        retryAttempt: Int = 0,
+        source: AlarmMissionEventSource = .nativeIntent,
         now: Date = Date()
     ) throws -> AlarmMissionEvent {
         guard let alarmUUID = UUID(uuidString: rawAlarmId) else {
             throw AlarmMissionEventInboxError.invalidAlarmId
         }
 
-        let occurrenceId = "\(alarmUUID.uuidString):\(UUID().uuidString)"
-        let event = AlarmMissionEvent(
-            eventId: UUID().uuidString,
-            alarmId: alarmUUID.uuidString,
-            occurrenceId: occurrenceId,
-            action: action,
-            occurredAtEpochMillis: Int64(now.timeIntervalSince1970 * 1_000),
-            consumedAtEpochMillis: nil
-        )
-
-        try mutateEvents { events in
+        let alarmId = alarmUUID.uuidString
+        let occurredAtEpochMillis = Int64(now.timeIntervalSince1970 * 1_000)
+        let event = try mutateEvents { events in
+            let recentOccurrenceId = events.reversed().first { existing in
+                let existingRetryAttempt = existing.retryAttempt ?? 0
+                let elapsedMillis = occurredAtEpochMillis - existing.occurredAtEpochMillis
+                let isFallbackDeliveryPair =
+                    (source == .runtimeFallback && existing.source == .nativeIntent) ||
+                    (source == .nativeIntent && existing.source == .runtimeFallback) ||
+                    (source == .runtimeFallback && existing.source == .runtimeFallback)
+                return existing.alarmId == alarmId &&
+                    existingRetryAttempt == retryAttempt &&
+                    isFallbackDeliveryPair &&
+                    elapsedMillis >= 0 &&
+                    elapsedMillis <= Self.occurrenceCoalescingWindowMillis
+            }?.occurrenceId
+            let occurrenceId = requestedOccurrenceId ?? recentOccurrenceId ??
+                "\(alarmId):\(UUID().uuidString)"
+            let event = AlarmMissionEvent(
+                eventId: UUID().uuidString,
+                alarmId: alarmId,
+                occurrenceId: occurrenceId,
+                action: action,
+                occurredAtEpochMillis: occurredAtEpochMillis,
+                retryAttempt: retryAttempt,
+                source: source,
+                consumedAtEpochMillis: nil
+            )
             events.append(event)
+            return event
         }
+        notifyEventRecorded()
         return event
+    }
+
+    func recordOpenEvent(
+        alarmId: String,
+        occurrenceId: String?,
+        retryAttempt: Int32,
+        callback: @escaping (IosAlarmOperationResult) -> Void
+    ) {
+        do {
+            try record(
+                alarmId: alarmId,
+                action: .open,
+                occurrenceId: occurrenceId,
+                retryAttempt: Int(retryAttempt),
+                source: .runtimeCustom
+            )
+            callback(IosAlarmOperationResult(code: .success, message: nil))
+        } catch {
+            callback(
+                IosAlarmOperationResult(
+                    code: .sdkError,
+                    message: error.localizedDescription
+                )
+            )
+        }
+    }
+
+    func recordStopEvent(
+        alarmId: String,
+        occurrenceId: String?,
+        retryAttempt: Int32,
+        callback: @escaping (IosAlarmOperationResult) -> Void
+    ) {
+        do {
+            try record(
+                alarmId: alarmId,
+                action: .stop,
+                occurrenceId: occurrenceId,
+                retryAttempt: Int(retryAttempt),
+                source: .runtimeFallback
+            )
+            callback(IosAlarmOperationResult(code: .success, message: nil))
+        } catch {
+            callback(
+                IosAlarmOperationResult(
+                    code: .sdkError,
+                    message: error.localizedDescription
+                )
+            )
+        }
     }
 
     func pendingEvents(callback: @escaping (IosAlarmMissionEventsResult) -> Void) {
@@ -79,7 +166,8 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                             alarmId: event.alarmId,
                             occurrenceId: event.occurrenceId,
                             action: event.action.iosAction,
-                            occurredAtEpochMillis: event.occurredAtEpochMillis
+                            occurredAtEpochMillis: event.occurredAtEpochMillis,
+                            retryAttempt: Int32(event.retryAttempt ?? 0)
                         )
                     },
                     code: .success,
@@ -137,11 +225,23 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         }
     }
 
-    private func mutateEvents(_ mutation: (inout [AlarmMissionEvent]) -> Void) throws {
+    private func mutateEvents<Result>(
+        _ mutation: (inout [AlarmMissionEvent]) -> Result
+    ) throws -> Result {
         try lock.withLock {
             var events = try readEventsUnlocked()
-            mutation(&events)
+            let result = mutation(&events)
             try writeEventsUnlocked(events)
+            return result
+        }
+    }
+
+    private static let occurrenceCoalescingWindowMillis: Int64 = 10_000
+
+    private func notifyEventRecorded() {
+        let currentListener = lock.withLock { listener }
+        DispatchQueue.main.async {
+            currentListener?.onEventRecorded()
         }
     }
 

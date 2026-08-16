@@ -6,6 +6,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.analytics.IosAlarmAnalytics
 import com.joon.ringout.platform.LocalIosNativeServices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -17,11 +18,17 @@ import kotlinx.coroutines.launch
 @Composable
 actual fun rememberAlarmController(
     onSaveCompleted: (AlarmScheduleRequest) -> Unit,
+    onSaveError: (AlarmScheduleRequest, String) -> Unit,
     onError: (String) -> Unit,
 ): AlarmController {
     val nativeServices = LocalIosNativeServices.current
-    val store = remember {
-        val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
+    val dataSource = remember {
+        RoomAlarmDataSource(getRingoutDatabase().alarmDao())
+    }
+    val analytics = remember(nativeServices) {
+        IosAlarmAnalytics(nativeServices.analyticsTracker())
+    }
+    val store = remember(dataSource, nativeServices) {
         val scheduler = nativeServices.alarmScheduler()
         val reconciler = IosAlarmReconciler(
             dataSource = dataSource,
@@ -36,15 +43,26 @@ actual fun rememberAlarmController(
     }
     val coroutineScope = rememberCoroutineScope()
     val currentOnSaveCompleted = rememberUpdatedState(onSaveCompleted)
+    val currentOnSaveError = rememberUpdatedState(onSaveError)
     val currentOnError = rememberUpdatedState(onError)
-    return remember(store, coroutineScope) {
+    return remember(store, coroutineScope, analytics) {
         AlarmController(
             schedule = { request ->
                 coroutineScope.launch {
                     runIosAlarmMutation(
                         fallbackErrorMessage = "알람을 저장하지 못했습니다.",
-                        onError = { message -> currentOnError.value(message) },
-                        mutation = { store.save(request) },
+                        onError = { message -> currentOnSaveError.value(request, message) },
+                        mutation = {
+                            val isNewAlarm = dataSource.getById(request.id) == null
+                            store.save(request)
+                            if (isNewAlarm) {
+                                analytics.recordAlarmCreated(
+                                    alarmId = request.id,
+                                    repeatEnabled = request.repeatEnabled,
+                                    repeatDayCount = request.selectedDays.distinct().size,
+                                )
+                            }
+                        },
                         onSuccess = { currentOnSaveCompleted.value(request) },
                     )
                 }

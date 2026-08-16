@@ -24,6 +24,7 @@ fun SaveAlarmButton(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isInProgress: Boolean = false,
 ) {
     val colors = alarmSetupColors()
 
@@ -41,7 +42,11 @@ fun SaveAlarmButton(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = if (enabled) "저장" else "목적지를 설정해주세요",
+            text = when {
+                isInProgress -> "저장 중"
+                enabled -> "저장"
+                else -> "목적지를 설정해주세요"
+            },
             color = colors.selectedContent,
             style = MaterialTheme.typography.titleMedium.copy(
                 fontSize = 18.sp,
@@ -68,6 +73,20 @@ private fun SaveAlarmButtonDisabledPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         AlarmSetupPreviewSurface {
             SaveAlarmButton(enabled = false, onClick = {})
+        }
+    }
+}
+
+@Preview(widthDp = 292, showBackground = true)
+@Composable
+private fun SaveAlarmButtonInProgressPreview() {
+    RingoutTheme(themeMode = ThemeMode.Dark) {
+        AlarmSetupPreviewSurface {
+            SaveAlarmButton(
+                enabled = false,
+                isInProgress = true,
+                onClick = {},
+            )
         }
     }
 }

@@ -1,14 +1,20 @@
 package com.joon.ringout.presentation.activemission
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.viewinterop.UIKitInteropInteractionMode
+import androidx.compose.ui.viewinterop.UIKitInteropProperties
+import androidx.compose.ui.viewinterop.UIKitView
+import com.joon.ringout.LocalRingoutThemeMode
+import com.joon.ringout.ThemeMode
+import com.joon.ringout.platform.LocalIosNativeServices
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 actual fun PlatformActiveAlarmMap(
     destinationLatitude: Double,
@@ -18,16 +24,43 @@ actual fun PlatformActiveAlarmMap(
     onMapError: (String) -> Unit,
     modifier: Modifier,
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center,
+    val nativeServices = LocalIosNativeServices.current
+    val isDarkMode = LocalRingoutThemeMode.current == ThemeMode.Dark
+    val controller = remember(
+        nativeServices,
+        destinationLatitude,
+        destinationLongitude,
     ) {
-        Text(
-            text = "지도는 현재 Android에서 지원됩니다.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
+        nativeServices.createActiveMissionMapController(
+            destinationLatitude = destinationLatitude,
+            destinationLongitude = destinationLongitude,
         )
     }
+    if (controller == null) {
+        LaunchedEffect(Unit) { onMapError("지도를 표시할 수 없습니다.") }
+        return
+    }
+
+    LaunchedEffect(controller, isDarkMode) {
+        controller.setDarkModeEnabled(isDarkMode)
+    }
+    LaunchedEffect(controller, currentLatitude, currentLongitude) {
+        if (currentLatitude != null && currentLongitude != null) {
+            controller.updateCurrentLocation(currentLatitude, currentLongitude)
+        } else {
+            controller.clearCurrentLocation()
+        }
+    }
+    DisposableEffect(controller) {
+        onDispose { controller.dispose() }
+    }
+    UIKitView(
+        factory = controller::view,
+        modifier = modifier.fillMaxSize(),
+        onRelease = { controller.dispose() },
+        properties = UIKitInteropProperties(
+            interactionMode = UIKitInteropInteractionMode.NonCooperative,
+            isNativeAccessibilityEnabled = false,
+        ),
+    )
 }

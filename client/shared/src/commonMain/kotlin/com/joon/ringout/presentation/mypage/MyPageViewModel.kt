@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -21,6 +22,7 @@ data class MyPageUiState(
 class MyPageViewModel(
     private val getMissionSuccessDates: GetMissionSuccessDates,
     initialMonth: MissionYearMonth,
+    coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     var uiState by mutableStateOf(
         MyPageUiState(selectedMonth = MyPageCalendarMonth(initialMonth)),
@@ -29,14 +31,14 @@ class MyPageViewModel(
 
     private var loadJob: Job? = null
     private var requestId = 0L
-
-    init {
-        load(initialMonth)
-    }
+    private val scope = coroutineScope ?: viewModelScope
 
     fun onPreviousMonthClick() = selectMonth(uiState.selectedMonth.value.previous())
 
     fun onNextMonthClick() = selectMonth(uiState.selectedMonth.value.next())
+
+    /** Reloads the selected month whenever My Page becomes visible again. */
+    fun onScreenEntered() = load(uiState.selectedMonth.value)
 
     fun retry() = load(uiState.selectedMonth.value)
 
@@ -53,7 +55,7 @@ class MyPageViewModel(
             successDates = emptySet(),
             errorMessage = null,
         )
-        loadJob = viewModelScope.launch {
+        loadJob = scope.launch {
             runCatching { getMissionSuccessDates(month) }
                 .onSuccess { successDates ->
                     if (currentRequestId == requestId && uiState.selectedMonth.value == month) {

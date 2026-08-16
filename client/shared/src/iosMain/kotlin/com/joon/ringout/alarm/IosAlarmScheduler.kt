@@ -44,6 +44,15 @@ data class IosAlarmScheduleDto(
     val soundName: String,
 )
 
+data class IosAlarmRetryScheduleDto(
+    val alarmKitId: String,
+    val sourceAlarmId: String,
+    val occurrenceId: String,
+    val retryAttempt: Int,
+    val title: String,
+    val delaySeconds: Double = 0.0,
+)
+
 enum class IosScheduledAlarmState {
     SCHEDULED,
     ALERTING,
@@ -64,6 +73,12 @@ data class IosScheduledAlarmsResult(
     val message: String? = null,
 )
 
+interface IosAlarmStateListener {
+    fun onAlarmsChanged(alarms: List<IosScheduledAlarmDto>)
+
+    fun onError(message: String)
+}
+
 interface IosAlarmScheduler {
     fun authorizationState(): IosAlarmAuthorizationState
 
@@ -74,12 +89,33 @@ interface IosAlarmScheduler {
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
+    fun scheduleRetry(
+        request: IosAlarmRetryScheduleDto,
+        callback: (IosAlarmOperationResult) -> Unit,
+    )
+
     fun cancel(
         alarmId: String,
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
+    fun stop(
+        alarmId: String,
+        callback: (IosAlarmOperationResult) -> Unit,
+    )
+
     fun scheduledAlarms(callback: (IosScheduledAlarmsResult) -> Unit)
+
+    fun setStateListener(listener: IosAlarmStateListener?)
+}
+
+internal suspend fun IosAlarmScheduler.scheduleRetryAwait(
+    request: IosAlarmRetryScheduleDto,
+) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        scheduleRetry(request, callback)
+    }
+    result.requireAlarmKitSuccess("미션 재울림을 시작하지 못했습니다.")
 }
 
 internal suspend fun IosAlarmScheduler.requestAuthorizationAwait():
@@ -99,6 +135,14 @@ internal suspend fun IosAlarmScheduler.cancelAwait(alarmId: String) {
     }
     if (result.code == IosAlarmOperationCode.NOT_FOUND) return
     result.requireAlarmKitSuccess("AlarmKit 알람을 해제하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmScheduler.stopAwait(alarmId: String) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        stop(alarmId, callback)
+    }
+    if (result.code == IosAlarmOperationCode.NOT_FOUND) return
+    result.requireAlarmKitSuccess("AlarmKit 알람을 중지하지 못했습니다.")
 }
 
 internal suspend fun IosAlarmScheduler.scheduledAlarmsAwait(): List<IosScheduledAlarmDto> {

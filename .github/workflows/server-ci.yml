@@ -63,7 +63,11 @@ jobs:
             'DB_URL=jdbc:mysql://ringout-mysql-smoke:3306/ringringring?serverTimezone=Asia/Seoul&characterEncoding=UTF-8' \
             'DB_USERNAME=ringringring' \
             'DB_PASSWORD=ringringring' \
-            'SPRING_PROFILES_ACTIVE=prod' \
+            'DDL_AUTO=update' \
+            'JWT_SECRET=FAKE_SMOKE_TEST_ONLY_DO_NOT_USE_IN_PRODUCTION_0123456789' \
+            'JWT_ACCESS_TOKEN_EXPIRATION_MILLIS=1000' \
+            'JWT_REFRESH_TOKEN_EXPIRATION_MILLIS=2000' \
+            'JWT_SIGNUP_TOKEN_EXPIRATION_MILLIS=1000' \
             > .env
 
       - name: Build Docker image
