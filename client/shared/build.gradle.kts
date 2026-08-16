@@ -46,6 +46,7 @@ kotlin {
             implementation(libs.google.maps.compose)
             implementation(libs.google.places)
             implementation(libs.google.play.services.location)
+            implementation(libs.ktor.client.okhttp)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -63,9 +64,17 @@ kotlin {
             implementation(libs.androidx.sqlite.async)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ksafe)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.serialization.kotlinx.json)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
     }
 }
