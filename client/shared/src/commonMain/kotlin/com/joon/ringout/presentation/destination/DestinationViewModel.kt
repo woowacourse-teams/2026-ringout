@@ -9,6 +9,7 @@ import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -41,9 +42,31 @@ class DestinationViewModel(
 
     private val mutationMutex = Mutex()
     private var nextSavedEventId = 0L
+    private var fetchJob: Job? = null
 
     init {
         observeDestinations()
+    }
+
+    fun onScreenEntered() {
+        fetchJob?.cancel()
+        uiState = uiState.copy(isLoading = true, errorMessage = null)
+        fetchJob = viewModelScope.launch {
+            try {
+                val destinations = repository.fetchAll()
+                uiState = uiState.copy(
+                    destinations = destinations,
+                    isLoading = false,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                uiState = uiState.copy(
+                    isLoading = false,
+                    errorMessage = error.message ?: "목적지를 불러오지 못했어요.",
+                )
+            }
+        }
     }
 
     fun save(

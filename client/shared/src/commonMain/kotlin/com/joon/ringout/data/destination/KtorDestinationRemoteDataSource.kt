@@ -9,6 +9,7 @@ import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.destination.SavedDestination
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -21,10 +22,18 @@ class KtorDestinationRemoteDataSource(
     private val httpClient: HttpClient,
     private val tokenStorage: SecureTokenStorage,
 ) : DestinationRemoteDataSource {
-    override suspend fun create(destination: SavedDestination): SavedDestination {
-        val accessToken = checkNotNull(tokenStorage.read()?.accessToken) {
-            "로그인이 필요한 기능이에요."
+    override suspend fun fetchAll(): List<SavedDestination> {
+        val accessToken = requireAccessToken()
+        val response = httpClient.get(ApiConfig.url("/api/v1/destinations")) {
+            bearerAuth(accessToken)
         }
+        val body = response.decodeOrThrow<List<DestinationResponse>>()
+        check(body.isSuccess) { body.message }
+        return body.result.orEmpty().map(DestinationResponse::toDomain)
+    }
+
+    override suspend fun create(destination: SavedDestination): SavedDestination {
+        val accessToken = requireAccessToken()
         val response = httpClient.post(ApiConfig.url("/api/v1/destinations")) {
             bearerAuth(accessToken)
             setBody(
@@ -40,6 +49,11 @@ class KtorDestinationRemoteDataSource(
         val result = checkNotNull(body.result) { "목적지 저장 응답이 비어 있어요." }
         return destination.copy(id = result.destinationId)
     }
+
+    private suspend fun requireAccessToken(): String =
+        checkNotNull(tokenStorage.read()?.accessToken) {
+            "로그인이 필요한 기능이에요."
+        }
 }
 
 @Serializable
@@ -52,6 +66,22 @@ private data class DestinationCreateRequest(
 @Serializable
 private data class DestinationCreateResponse(
     val destinationId: Long,
+)
+
+@Serializable
+private data class DestinationResponse(
+    val destinationId: Long,
+    val alias: String,
+    val latitude: Double,
+    val longitude: Double,
+)
+
+private fun DestinationResponse.toDomain(): SavedDestination = SavedDestination(
+    id = destinationId,
+    name = alias,
+    address = "",
+    latitude = latitude,
+    longitude = longitude,
 )
 
 private suspend inline fun <reified T> HttpResponse.decodeOrThrow(): ApiResponse<T> {

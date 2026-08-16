@@ -715,6 +715,8 @@ private fun RingoutAppContent(
                 DestinationMapScreen(
                     initialSelection = destination ?: DefaultDestinationSelection,
                     requestCurrentLocationOnStart = false,
+                    isAuthenticated = authSessionState == AuthSessionState.Authenticated,
+                    onEntered = destinationViewModel::onScreenEntered,
                     onBackClick = { screenName = alarmSetupScreen.name },
                     onConfirmClick = { destination ->
                         destinationViewModel.save(

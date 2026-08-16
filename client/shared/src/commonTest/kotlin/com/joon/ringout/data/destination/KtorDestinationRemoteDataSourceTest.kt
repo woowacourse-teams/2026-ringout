@@ -21,6 +21,49 @@ import kotlin.test.assertTrue
 
 class KtorDestinationRemoteDataSourceTest {
     @Test
+    fun `목적지 전체 조회 응답을 저장 목적지 목록으로 변환한다`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals(HttpMethod.Get, request.method)
+            assertEquals("/api/v1/destinations", request.url.encodedPath)
+            assertEquals("Bearer ringout-access", request.headers[HttpHeaders.Authorization])
+            respond(
+                content = """
+                    {
+                      "isSuccess": true,
+                      "code": "DESTINATION200",
+                      "message": "목적지를 조회했습니다.",
+                      "result": [
+                        {
+                          "destinationId": 1,
+                          "alias": "집",
+                          "latitude": 37.4979,
+                          "longitude": 127.0276
+                        },
+                        {
+                          "destinationId": 2,
+                          "alias": "회사",
+                          "latitude": 37.5665,
+                          "longitude": 126.978
+                        }
+                      ]
+                    }
+                """.trimIndent(),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }) {
+            configureRingoutHttpClient()
+        }
+        val dataSource = KtorDestinationRemoteDataSource(client, FakeTokenStorage())
+
+        val destinations = dataSource.fetchAll()
+
+        assertEquals(listOf("집", "회사"), destinations.map(SavedDestination::name))
+        assertEquals(127.0276, destinations.first().longitude)
+        client.close()
+    }
+
+    @Test
     fun `목적지 저장 요청에 Ringout access token과 좌표를 전송한다`() = runTest {
         val client = HttpClient(MockEngine { request ->
             assertEquals(HttpMethod.Post, request.method)
