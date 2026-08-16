@@ -6,6 +6,7 @@ import com.joon.ringout.data.auth.remote.model.LoginRequest
 import com.joon.ringout.data.auth.remote.model.SignupRequest
 import com.joon.ringout.data.auth.remote.model.TermsType
 import com.joon.ringout.domain.auth.AuthRepository
+import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthTerm
 import com.joon.ringout.domain.auth.AuthTokens
 import com.joon.ringout.domain.auth.SecureTokenStorage
@@ -14,6 +15,7 @@ import com.joon.ringout.domain.auth.SocialLoginOutcome
 class DefaultAuthRepository(
     private val authApi: AuthApi,
     private val tokenStorage: SecureTokenStorage,
+    private val authSession: AuthSession,
 ) : AuthRepository {
     override suspend fun loginWithGoogle(idToken: String): SocialLoginOutcome {
         require(idToken.isNotBlank()) { "Google ID token must not be blank." }
@@ -42,6 +44,7 @@ class DefaultAuthRepository(
                     },
                 ),
             )
+            authSession.markAuthenticated()
             SocialLoginOutcome.Authenticated
         }
     }
@@ -70,5 +73,6 @@ class DefaultAuthRepository(
                 refreshToken = signup.refreshToken,
             ),
         )
+        authSession.markAuthenticated()
     }
 }

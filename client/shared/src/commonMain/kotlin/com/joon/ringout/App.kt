@@ -17,9 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.auth.rememberAuthRepository
+import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
+import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
@@ -177,7 +178,8 @@ private fun RingoutAppContent(
         DestinationViewModel(destinationRepository)
     }
     val destinationUiState = destinationViewModel.uiState
-    val authRepository = rememberAuthRepository()
+    val authSession = remember { AuthSession() }
+    val authRepository = rememberAuthRepository(authSession)
     val loginViewModel: LoginViewModel = viewModel {
         LoginViewModel(authRepository)
     }

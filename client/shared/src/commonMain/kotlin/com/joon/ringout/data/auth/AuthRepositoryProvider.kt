@@ -7,18 +7,20 @@ import com.joon.ringout.data.auth.local.rememberSecureTokenStorage
 import com.joon.ringout.data.auth.remote.KtorAuthApi
 import com.joon.ringout.data.network.createRingoutHttpClient
 import com.joon.ringout.domain.auth.AuthRepository
+import com.joon.ringout.domain.auth.AuthSession
 
 @Composable
-fun rememberAuthRepository(): AuthRepository {
+fun rememberAuthRepository(authSession: AuthSession): AuthRepository {
     val tokenStorage = rememberSecureTokenStorage()
     val httpClient = remember { createRingoutHttpClient() }
     DisposableEffect(httpClient) {
         onDispose(httpClient::close)
     }
-    return remember(httpClient, tokenStorage) {
+    return remember(httpClient, tokenStorage, authSession) {
         DefaultAuthRepository(
             authApi = KtorAuthApi(httpClient),
             tokenStorage = tokenStorage,
+            authSession = authSession,
         )
     }
 }
