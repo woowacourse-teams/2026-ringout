@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -21,6 +22,7 @@ import com.ringout.api.destination.dto.response.DestinationSyncResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
+import com.ringout.api.member.domain.MemberRepository;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -39,11 +41,15 @@ class DestinationServiceTest {
     @Mock
     private DestinationRepository destinationRepository;
 
+    @Mock
+    private MemberRepository memberRepository;
+
     private DestinationService destinationService;
 
     @BeforeEach
     void setUp() {
-        destinationService = new DestinationService(destinationRepository);
+        destinationService = new DestinationService(destinationRepository, memberRepository);
+        lenient().when(memberRepository.existsById(any())).thenReturn(true);
     }
 
     @Nested
@@ -99,6 +105,19 @@ class DestinationServiceTest {
         void 사용자_id가_없으면_목적지_목록을_조회할_수_없다() {
             // given
             Long userId = null;
+
+            // when // then
+            assertThatThrownBy(() -> destinationService.getDestinations(userId))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
+            verify(destinationRepository, never()).findOwnedDestinations(any());
+        }
+
+        @Test
+        void 사용자가_존재하지_않으면_목적지_목록을_조회할_수_없다() {
+            // given
+            Long userId = 1L;
+            given(memberRepository.existsById(userId)).willReturn(false);
 
             // when // then
             assertThatThrownBy(() -> destinationService.getDestinations(userId))
