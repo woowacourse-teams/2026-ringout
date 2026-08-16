@@ -8,9 +8,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -21,6 +23,7 @@ import com.joon.ringout.data.auth.rememberAuthRepository
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
 import com.joon.ringout.domain.auth.AuthSession
+import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
@@ -59,11 +62,13 @@ import com.joon.ringout.presentation.termsagreement.TermId
 import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
+import com.joon.ringout.presentation.mypage.MyPageAccountUiState
 import com.joon.ringout.presentation.mypage.PolicyId
 import com.joon.ringout.presentation.mypage.findPolicyUrl
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 @Composable
 fun App(
@@ -177,6 +182,13 @@ private fun RingoutAppContent(
     val destinationUiState = destinationViewModel.uiState
     val authSession = remember { AuthSession() }
     val authRepository = rememberAuthRepository(authSession)
+    val authSessionState by authSession.state.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
+    val myPageAccountUiState = when (authSessionState) {
+        AuthSessionState.Restoring -> MyPageAccountUiState.Loading
+        AuthSessionState.Unauthenticated -> MyPageAccountUiState.LoggedOut
+        AuthSessionState.Authenticated -> MyPageAccountUiState.LoggedIn()
+    }
     val loginViewModel: LoginViewModel = viewModel {
         LoginViewModel(authRepository)
     }
@@ -209,6 +221,10 @@ private fun RingoutAppContent(
         mutableStateOf<MissionLocationPermissionDecision?>(null)
     }
     var didRequestFullAccuracy by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(authRepository) {
+        authRepository.restoreSession()
+    }
     val destination = destinationLatitude?.let { latitude ->
         destinationLongitude?.let { longitude ->
             DestinationSelection(
@@ -551,9 +567,17 @@ private fun RingoutAppContent(
             themeMode = themeMode,
             appVersion = appVersion,
             policies = DefaultMyPagePolicies,
+            accountUiState = myPageAccountUiState,
             onThemeModeChange = onThemeModeChange,
             onBackClick = { screenName = AppScreen.Home.name },
             onAccountStatusClick = { screenName = AppScreen.Login.name },
+            onLogoutConfirm = {
+                coroutineScope.launch {
+                    authRepository.logout()
+                    pendingSignupToken = null
+                    screenName = AppScreen.Login.name
+                }
+            },
             onPolicyClick = { policyId ->
                 findPolicyUrl(policyId)?.let { url ->
                     runCatching { uriHandler.openUri(url) }

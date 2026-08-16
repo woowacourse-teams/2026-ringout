@@ -17,6 +17,14 @@ class DefaultAuthRepository(
     private val tokenStorage: SecureTokenStorage,
     private val authSession: AuthSession,
 ) : AuthRepository {
+    override suspend fun restoreSession() {
+        if (tokenStorage.read() == null) {
+            authSession.clear()
+        } else {
+            authSession.markAuthenticated()
+        }
+    }
+
     override suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome {
         require(accessToken.isNotBlank()) { "Google access token must not be blank." }
 
@@ -28,6 +36,8 @@ class DefaultAuthRepository(
         val login = checkNotNull(response.result) { "로그인 응답이 비어 있어요." }
 
         return if (login.isNewUser) {
+            tokenStorage.clear()
+            authSession.clear()
             SocialLoginOutcome.SignupRequired(
                 signupToken = requireNotNull(login.signupToken?.takeIf(String::isNotBlank)) {
                     "가입 토큰이 비어 있어요."
@@ -74,5 +84,10 @@ class DefaultAuthRepository(
             ),
         )
         authSession.markAuthenticated()
+    }
+
+    override suspend fun logout() {
+        tokenStorage.clear()
+        authSession.clear()
     }
 }

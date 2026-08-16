@@ -5,12 +5,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class AuthSessionState {
+    Restoring,
     Unauthenticated,
     Authenticated,
 }
 
 class AuthSession {
-    private val mutableState = MutableStateFlow(AuthSessionState.Unauthenticated)
+    private val mutableState = MutableStateFlow(AuthSessionState.Restoring)
 
     val state: StateFlow<AuthSessionState> = mutableState.asStateFlow()
 

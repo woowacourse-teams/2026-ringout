@@ -21,6 +21,43 @@ import kotlin.test.assertNull
 
 class DefaultAuthRepositoryTest {
     @Test
+    fun restoreSessionAuthenticatesWhenStoredTokensExist() = runTest {
+        val storage = FakeTokenStorage().apply {
+            tokens = AuthTokens("stored-access", "stored-refresh")
+        }
+        val session = AuthSession()
+        val repository = DefaultAuthRepository(FakeAuthApi(), storage, session)
+
+        repository.restoreSession()
+
+        assertEquals(AuthSessionState.Authenticated, session.state.value)
+    }
+
+    @Test
+    fun restoreSessionClearsSessionWhenStoredTokensDoNotExist() = runTest {
+        val session = AuthSession()
+        val repository = DefaultAuthRepository(FakeAuthApi(), FakeTokenStorage(), session)
+
+        repository.restoreSession()
+
+        assertEquals(AuthSessionState.Unauthenticated, session.state.value)
+    }
+
+    @Test
+    fun logoutDeletesStoredTokensAndClearsSession() = runTest {
+        val storage = FakeTokenStorage().apply {
+            tokens = AuthTokens("stored-access", "stored-refresh")
+        }
+        val session = AuthSession().apply { markAuthenticated() }
+        val repository = DefaultAuthRepository(FakeAuthApi(), storage, session)
+
+        repository.logout()
+
+        assertNull(storage.tokens)
+        assertEquals(AuthSessionState.Unauthenticated, session.state.value)
+    }
+
+    @Test
     fun existingGoogleUserStoresRingoutTokens() = runTest {
         val api = FakeAuthApi(
             loginResponse = LoginResponse(

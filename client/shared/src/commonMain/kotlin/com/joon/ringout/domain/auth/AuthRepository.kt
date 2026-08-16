@@ -9,6 +9,8 @@ sealed interface SocialLoginOutcome {
 }
 
 interface AuthRepository {
+    suspend fun restoreSession()
+
     suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome
 
     suspend fun signup(
@@ -16,6 +18,8 @@ interface AuthRepository {
         agreedTerms: Set<AuthTerm>,
         agreedAt: String,
     )
+
+    suspend fun logout()
 }
 
 enum class AuthTerm {
