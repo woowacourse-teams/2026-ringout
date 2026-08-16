@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
+import com.joon.ringout.data.auth.rememberAuthRepository
 import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
@@ -46,14 +47,18 @@ import com.joon.ringout.presentation.destination.rememberDestinationRepository
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.login.LoginScreen
-import com.joon.ringout.presentation.login.SocialLoginProvider
+import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.settings.SettingsScreen
+import com.joon.ringout.presentation.termsagreement.SignupViewModel
+import com.joon.ringout.presentation.termsagreement.TermId
+import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
+import com.joon.ringout.presentation.mypage.PolicyId
 import com.joon.ringout.presentation.mypage.findPolicyUrl
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
@@ -62,6 +67,7 @@ import kotlinx.coroutines.flow.collect
 @Composable
 fun App(
     appVersion: String = "",
+    googleServerClientId: String = "",
     useSystemLocationPermissionUiOnly: Boolean = false,
     ringingAlarm: AlarmRingingUiState? = null,
     activeAlarmMission: ActiveAlarmMission? = null,
@@ -107,6 +113,7 @@ fun App(
                 RingoutAppContent(
                     themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
+                    googleServerClientId = googleServerClientId,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
                     ringingAlarm = ringingAlarm,
                     activeAlarmMission = activeAlarmMission,
@@ -144,6 +151,7 @@ private fun AppBootstrapSurface() = Box(
 private fun RingoutAppContent(
     themeMode: ThemeMode,
     appVersion: String,
+    googleServerClientId: String,
     useSystemLocationPermissionUiOnly: Boolean,
     ringingAlarm: AlarmRingingUiState?,
     activeAlarmMission: ActiveAlarmMission?,
@@ -169,6 +177,13 @@ private fun RingoutAppContent(
         DestinationViewModel(destinationRepository)
     }
     val destinationUiState = destinationViewModel.uiState
+    val authRepository = rememberAuthRepository()
+    val loginViewModel: LoginViewModel = viewModel {
+        LoginViewModel(authRepository)
+    }
+    val signupViewModel: SignupViewModel = viewModel {
+        SignupViewModel(authRepository)
+    }
     var destinationName by rememberSaveable { mutableStateOf("") }
     var destinationAddress by rememberSaveable { mutableStateOf("") }
     var destinationLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
@@ -178,6 +193,7 @@ private fun RingoutAppContent(
     }
     var alarmSoundUri by rememberSaveable { mutableStateOf<String?>(null) }
     var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
+    var pendingSignupToken by remember { mutableStateOf<String?>(null) }
     var handledActiveAlarmOccurrenceId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -548,8 +564,48 @@ private fun RingoutAppContent(
 
         AppScreen.Login -> LoginScreen(
             onBackClick = { screenName = AppScreen.MyPage.name },
-            onSocialLoginClick = { _: SocialLoginProvider -> },
+            googleServerClientId = googleServerClientId,
+            onAuthenticated = { screenName = AppScreen.Home.name },
+            onSignupRequired = { signupToken ->
+                pendingSignupToken = signupToken
+                screenName = AppScreen.TermsAgreement.name
+            },
+            viewModel = loginViewModel,
         )
+
+        AppScreen.TermsAgreement -> {
+            val signupToken = pendingSignupToken
+            if (signupToken == null) {
+                LaunchedEffect(Unit) {
+                    screenName = AppScreen.Login.name
+                }
+            } else {
+                val signupUiState = signupViewModel.uiState
+                val completedEventId = signupUiState.completedEventId
+                LaunchedEffect(completedEventId) {
+                    completedEventId ?: return@LaunchedEffect
+                    pendingSignupToken = null
+                    signupViewModel.consumeCompletedEvent(completedEventId)
+                    screenName = AppScreen.Home.name
+                }
+                TermsAgreementScreen(
+                    onStart = { agreedTerms ->
+                        signupViewModel.signup(signupToken, agreedTerms)
+                    },
+                    onTermDetailClick = { termId ->
+                        val policyId = when (termId) {
+                            TermId.Service -> PolicyId("terms")
+                            TermId.Privacy -> PolicyId("privacy")
+                            else -> null
+                        }
+                        val policyUrl = policyId?.let(::findPolicyUrl)
+                        policyUrl?.let { url -> runCatching { uriHandler.openUri(url) } }
+                    },
+                    isSaving = signupUiState.isSaving,
+                    errorMessage = signupUiState.errorMessage,
+                )
+            }
+        }
 
         AppScreen.AddAlarm,
         AppScreen.EditAlarm,
@@ -649,6 +705,7 @@ private enum class AppScreen {
     AlarmSound,
     MyPage,
     Login,
+    TermsAgreement,
     Settings,
     ActiveAlarmTracking,
 }

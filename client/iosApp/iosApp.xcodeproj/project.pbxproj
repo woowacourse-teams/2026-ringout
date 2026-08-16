@@ -10,6 +10,7 @@
 		7629DCA7302E11DA0036CA91 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 7629DCA6302E11DA0036CA91 /* FirebaseAnalytics */; };
 		AA0000000000000000000001 /* GoogleMaps in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000021 /* GoogleMaps */; };
 		AA0000000000000000000002 /* GooglePlacesSwift in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000022 /* GooglePlacesSwift */; };
+		AA0000000000000000000003 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000023 /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -49,6 +50,7 @@
 			files = (
 				AA0000000000000000000001 /* GoogleMaps in Frameworks */,
 				AA0000000000000000000002 /* GooglePlacesSwift in Frameworks */,
+				AA0000000000000000000003 /* GoogleSignIn in Frameworks */,
 				7629DCA7302E11DA0036CA91 /* FirebaseAnalytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -96,6 +98,7 @@
 			packageProductDependencies = (
 				AA0000000000000000000021 /* GoogleMaps */,
 				AA0000000000000000000022 /* GooglePlacesSwift */,
+				AA0000000000000000000023 /* GoogleSignIn */,
 				7629DCA6302E11DA0036CA91 /* FirebaseAnalytics */,
 			);
 			productName = iosApp;
@@ -129,6 +132,7 @@
 			packageReferences = (
 				AA0000000000000000000011 /* XCRemoteSwiftPackageReference "ios-maps-sdk" */,
 				AA0000000000000000000012 /* XCRemoteSwiftPackageReference "ios-places-sdk" */,
+				AA0000000000000000000013 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				7629DCA5302E11DA0036CA91 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -417,6 +421,14 @@
 				version = 11.0.0;
 			};
 		};
+		AA0000000000000000000013 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -434,6 +446,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA0000000000000000000012 /* XCRemoteSwiftPackageReference "ios-places-sdk" */;
 			productName = GooglePlacesSwift;
+		};
+		AA0000000000000000000023 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000000000000000000013 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

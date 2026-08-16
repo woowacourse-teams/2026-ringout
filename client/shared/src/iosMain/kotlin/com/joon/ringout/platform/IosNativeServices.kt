@@ -26,6 +26,18 @@ interface IosAnalyticsTracker {
     fun log(event: IosAnalyticsEventDto)
 }
 
+interface IosGoogleSignInCallback {
+    fun onSuccess(idToken: String)
+
+    fun onCancelled()
+
+    fun onFailure(message: String)
+}
+
+interface IosGoogleSignInService {
+    fun signIn(callback: IosGoogleSignInCallback)
+}
+
 interface IosNativeServices {
     fun isMapsAvailable(): Boolean
 
@@ -57,6 +69,8 @@ interface IosNativeServices {
     fun missionLocationService(): IosMissionLocationService
 
     fun analyticsTracker(): IosAnalyticsTracker
+
+    fun googleSignInService(): IosGoogleSignInService
 }
 
 val LocalIosNativeServices = staticCompositionLocalOf<IosNativeServices> {

@@ -39,6 +39,10 @@ val mapsApiKey = localProperties.getProperty("MAPS_API_KEY")
     ?.takeIf(String::isNotBlank)
     ?: providers.environmentVariable("MAPS_API_KEY").orNull.orEmpty()
 
+val googleServerClientId = localProperties.getProperty("GOOGLE_SERVER_CLIENT_ID")
+    ?.takeIf(String::isNotBlank)
+    ?: providers.environmentVariable("GOOGLE_SERVER_CLIENT_ID").orNull.orEmpty()
+
 val escapedMapsApiKey = mapsApiKey
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
@@ -85,6 +89,11 @@ android {
         versionCode = 2026101
         versionName = "1.0.1"
         buildConfigField("String", "MAPS_API_KEY", "\"$escapedMapsApiKey\"")
+        buildConfigField(
+            "String",
+            "GOOGLE_SERVER_CLIENT_ID",
+            "\"${googleServerClientId.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
+        )
         manifestPlaceholders["mapsApiKey"] = mapsApiKey
     }
     buildFeatures {
