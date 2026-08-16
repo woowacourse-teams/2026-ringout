@@ -62,6 +62,7 @@ kotlin {
             implementation(libs.androidx.sqlite.bundled)
             implementation(libs.androidx.sqlite.async)
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.ksafe)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
