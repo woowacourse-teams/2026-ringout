@@ -8,17 +8,23 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.joon.ringout.data.auth.rememberAuthRepository
+import com.joon.ringout.data.member.rememberMemberRepository
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
+import com.joon.ringout.domain.auth.AuthSession
+import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
@@ -46,18 +52,25 @@ import com.joon.ringout.presentation.destination.rememberDestinationRepository
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.login.LoginScreen
-import com.joon.ringout.presentation.login.SocialLoginProvider
+import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.settings.SettingsScreen
+import com.joon.ringout.presentation.termsagreement.SignupViewModel
+import com.joon.ringout.presentation.termsagreement.TermId
+import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
 import com.joon.ringout.presentation.mypage.MyPageScreen
+import com.joon.ringout.presentation.mypage.MyPageAccountUiState
+import com.joon.ringout.presentation.mypage.PolicyId
 import com.joon.ringout.presentation.mypage.findPolicyUrl
+import com.joon.ringout.presentation.nickname.NicknameChangeScreen
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 @Composable
 fun App(
@@ -169,6 +182,25 @@ private fun RingoutAppContent(
         DestinationViewModel(destinationRepository)
     }
     val destinationUiState = destinationViewModel.uiState
+    val authSession = remember { AuthSession() }
+    val authRepository = rememberAuthRepository(authSession)
+    val memberRepository = rememberMemberRepository()
+    val authSessionState by authSession.state.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
+    var myPageNickname by rememberSaveable { mutableStateOf("로그인됨") }
+    val myPageAccountUiState = when (authSessionState) {
+        AuthSessionState.Restoring -> MyPageAccountUiState.Loading
+        AuthSessionState.Unauthenticated -> MyPageAccountUiState.LoggedOut
+        AuthSessionState.Authenticated -> MyPageAccountUiState.LoggedIn(
+            nickname = myPageNickname,
+        )
+    }
+    val loginViewModel: LoginViewModel = viewModel {
+        LoginViewModel(authRepository)
+    }
+    val signupViewModel: SignupViewModel = viewModel {
+        SignupViewModel(authRepository)
+    }
     var destinationName by rememberSaveable { mutableStateOf("") }
     var destinationAddress by rememberSaveable { mutableStateOf("") }
     var destinationLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
@@ -178,6 +210,7 @@ private fun RingoutAppContent(
     }
     var alarmSoundUri by rememberSaveable { mutableStateOf<String?>(null) }
     var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
+    var pendingSignupToken by remember { mutableStateOf<String?>(null) }
     var handledActiveAlarmOccurrenceId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -194,6 +227,10 @@ private fun RingoutAppContent(
         mutableStateOf<MissionLocationPermissionDecision?>(null)
     }
     var didRequestFullAccuracy by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(authRepository) {
+        authRepository.restoreSession()
+    }
     val destination = destinationLatitude?.let { latitude ->
         destinationLongitude?.let { longitude ->
             DestinationSelection(
@@ -536,9 +573,23 @@ private fun RingoutAppContent(
             themeMode = themeMode,
             appVersion = appVersion,
             policies = DefaultMyPagePolicies,
+            accountUiState = myPageAccountUiState,
             onThemeModeChange = onThemeModeChange,
             onBackClick = { screenName = AppScreen.Home.name },
             onAccountStatusClick = { screenName = AppScreen.Login.name },
+            onEditProfileClick = {
+                if (myPageAccountUiState is MyPageAccountUiState.LoggedIn) {
+                    screenName = AppScreen.NicknameChange.name
+                }
+            },
+            onLogoutConfirm = {
+                coroutineScope.launch {
+                    authRepository.logout()
+                    myPageNickname = "로그인됨"
+                    pendingSignupToken = null
+                    screenName = AppScreen.Login.name
+                }
+            },
             onPolicyClick = { policyId ->
                 findPolicyUrl(policyId)?.let { url ->
                     runCatching { uriHandler.openUri(url) }
@@ -546,10 +597,70 @@ private fun RingoutAppContent(
             },
         )
 
+        AppScreen.NicknameChange -> {
+            val account = myPageAccountUiState as? MyPageAccountUiState.LoggedIn
+            if (account == null) {
+                LaunchedEffect(authSessionState) {
+                    if (authSessionState != AuthSessionState.Restoring) {
+                        screenName = AppScreen.MyPage.name
+                    }
+                }
+            } else {
+                NicknameChangeScreen(
+                    initialNickname = account.nickname,
+                    memberRepository = memberRepository,
+                    onBackClick = { screenName = AppScreen.MyPage.name },
+                    onConfirmClick = { updatedNickname ->
+                        myPageNickname = updatedNickname
+                        screenName = AppScreen.MyPage.name
+                    },
+                )
+            }
+        }
+
         AppScreen.Login -> LoginScreen(
             onBackClick = { screenName = AppScreen.MyPage.name },
-            onSocialLoginClick = { _: SocialLoginProvider -> },
+            onAuthenticated = { screenName = AppScreen.Home.name },
+            onSignupRequired = { signupToken ->
+                pendingSignupToken = signupToken
+                screenName = AppScreen.TermsAgreement.name
+            },
+            viewModel = loginViewModel,
         )
+
+        AppScreen.TermsAgreement -> {
+            val signupToken = pendingSignupToken
+            if (signupToken == null) {
+                LaunchedEffect(Unit) {
+                    screenName = AppScreen.Login.name
+                }
+            } else {
+                val signupUiState = signupViewModel.uiState
+                val completedEventId = signupUiState.completedEventId
+                LaunchedEffect(completedEventId) {
+                    completedEventId ?: return@LaunchedEffect
+                    pendingSignupToken = null
+                    signupViewModel.consumeCompletedEvent(completedEventId)
+                    screenName = AppScreen.Home.name
+                }
+                TermsAgreementScreen(
+                    onStart = { agreedTerms ->
+                        signupViewModel.signup(signupToken, agreedTerms)
+                    },
+                    onTermDetailClick = { termId ->
+                        val policyId = when (termId) {
+                            TermId.Service -> PolicyId("terms")
+                            TermId.Privacy -> PolicyId("privacy")
+                            else -> null
+                        }
+                        val policyUrl = policyId?.let(::findPolicyUrl)
+                        policyUrl?.let { url -> runCatching { uriHandler.openUri(url) } }
+                    },
+                    isSaving = signupUiState.isSaving,
+                    errorMessage = signupUiState.errorMessage,
+                )
+            }
+        }
 
         AppScreen.AddAlarm,
         AppScreen.EditAlarm,
@@ -648,7 +759,9 @@ private enum class AppScreen {
     Destination,
     AlarmSound,
     MyPage,
+    NicknameChange,
     Login,
+    TermsAgreement,
     Settings,
     ActiveAlarmTracking,
 }

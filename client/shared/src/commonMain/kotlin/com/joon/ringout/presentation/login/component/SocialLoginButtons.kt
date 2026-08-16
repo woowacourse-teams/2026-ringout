@@ -39,6 +39,7 @@ import org.jetbrains.compose.resources.painterResource
 internal fun SocialLoginButtons(
     onSocialLoginClick: (SocialLoginProvider) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val colors = loginColors()
     val dimensions = loginDimensions()
@@ -55,6 +56,7 @@ internal fun SocialLoginButtons(
                 provider = provider,
                 colors = colors,
                 dimensions = dimensions,
+                enabled = enabled,
                 onClick = { onSocialLoginClick(provider) },
             )
         }
@@ -68,6 +70,7 @@ private fun SocialLoginButton(
     dimensions: LoginDimensions,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val style = provider.buttonStyle(colors)
     val shape = RoundedCornerShape(8.dp)
@@ -86,6 +89,7 @@ private fun SocialLoginButton(
             .background(style.backgroundColor)
             .then(borderModifier)
             .clickable(
+                enabled = enabled,
                 role = Role.Button,
                 onClickLabel = style.label,
                 onClick = onClick,

@@ -10,10 +10,11 @@
 		7629DCA7302E11DA0036CA91 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 7629DCA6302E11DA0036CA91 /* FirebaseAnalytics */; };
 		AA0000000000000000000001 /* GoogleMaps in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000021 /* GoogleMaps */; };
 		AA0000000000000000000002 /* GooglePlacesSwift in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000022 /* GooglePlacesSwift */; };
+		AA0000000000000000000003 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000023 /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		D4AF531677E404E06FE184C2 /* 링아웃.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "링아웃.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D4AF531677E404E06FE184C2 /* Ringout.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ringout.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -49,6 +50,7 @@
 			files = (
 				AA0000000000000000000001 /* GoogleMaps in Frameworks */,
 				AA0000000000000000000002 /* GooglePlacesSwift in Frameworks */,
+				AA0000000000000000000003 /* GoogleSignIn in Frameworks */,
 				7629DCA7302E11DA0036CA91 /* FirebaseAnalytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -68,7 +70,7 @@
 		E77BFC93116D4324A2C2477A /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D4AF531677E404E06FE184C2 /* 링아웃.app */,
+				D4AF531677E404E06FE184C2 /* Ringout.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -96,10 +98,11 @@
 			packageProductDependencies = (
 				AA0000000000000000000021 /* GoogleMaps */,
 				AA0000000000000000000022 /* GooglePlacesSwift */,
+				AA0000000000000000000023 /* GoogleSignIn */,
 				7629DCA6302E11DA0036CA91 /* FirebaseAnalytics */,
 			);
 			productName = iosApp;
-			productReference = D4AF531677E404E06FE184C2 /* 링아웃.app */;
+			productReference = D4AF531677E404E06FE184C2 /* Ringout.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -129,6 +132,7 @@
 			packageReferences = (
 				AA0000000000000000000011 /* XCRemoteSwiftPackageReference "ios-maps-sdk" */,
 				AA0000000000000000000012 /* XCRemoteSwiftPackageReference "ios-places-sdk" */,
+				AA0000000000000000000013 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				7629DCA5302E11DA0036CA91 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -192,11 +196,15 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 202600001;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 475GWW72JW;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
+				INFOPLIST_PREPROCESS = YES;
+				INFOPLIST_PREPROCESSOR_DEFINITIONS = "RINGOUT_ALLOW_INSECURE_HTTP=1";
+				INFOPLIST_KEY_CFBundleDisplayName = "링아웃";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = NO;
@@ -206,6 +214,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.0.1;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -220,11 +229,14 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 202600001;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
-				DEVELOPMENT_TEAM = "${TEAM_ID}";
+				DEVELOPMENT_TEAM = 475GWW72JW;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iosApp/Info.plist;
+				INFOPLIST_PREPROCESS = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "링아웃";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = NO;
@@ -234,6 +246,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 0.0.1;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -411,6 +424,14 @@
 				version = 11.0.0;
 			};
 		};
+		AA0000000000000000000013 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -428,6 +449,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA0000000000000000000012 /* XCRemoteSwiftPackageReference "ios-places-sdk" */;
 			productName = GooglePlacesSwift;
+		};
+		AA0000000000000000000023 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000000000000000000013 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
