@@ -100,7 +100,7 @@ internal fun NicknameChangeScreenContent(
                 isValid = uiState.validation.isValid,
                 onNicknameChange = onNicknameChange,
                 onDone = onConfirmClick,
-                modifier = Modifier.widthIn(max = NicknameChangeMainContentMaxWidth),
+                modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(NicknameInputToValidationSpacing))
             NicknameValidationList(

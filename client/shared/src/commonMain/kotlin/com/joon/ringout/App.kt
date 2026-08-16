@@ -65,6 +65,7 @@ import com.joon.ringout.presentation.mypage.MyPageScreen
 import com.joon.ringout.presentation.mypage.MyPageAccountUiState
 import com.joon.ringout.presentation.mypage.PolicyId
 import com.joon.ringout.presentation.mypage.findPolicyUrl
+import com.joon.ringout.presentation.nickname.NicknameChangeScreen
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
 import kotlinx.coroutines.flow.collect
@@ -571,6 +572,11 @@ private fun RingoutAppContent(
             onThemeModeChange = onThemeModeChange,
             onBackClick = { screenName = AppScreen.Home.name },
             onAccountStatusClick = { screenName = AppScreen.Login.name },
+            onEditProfileClick = {
+                if (myPageAccountUiState is MyPageAccountUiState.LoggedIn) {
+                    screenName = AppScreen.NicknameChange.name
+                }
+            },
             onLogoutConfirm = {
                 coroutineScope.launch {
                     authRepository.logout()
@@ -584,6 +590,23 @@ private fun RingoutAppContent(
                 }
             },
         )
+
+        AppScreen.NicknameChange -> {
+            val account = myPageAccountUiState as? MyPageAccountUiState.LoggedIn
+            if (account == null) {
+                LaunchedEffect(authSessionState) {
+                    if (authSessionState != AuthSessionState.Restoring) {
+                        screenName = AppScreen.MyPage.name
+                    }
+                }
+            } else {
+                NicknameChangeScreen(
+                    initialNickname = account.nickname,
+                    onBackClick = { screenName = AppScreen.MyPage.name },
+                    onConfirmClick = {},
+                )
+            }
+        }
 
         AppScreen.Login -> LoginScreen(
             onBackClick = { screenName = AppScreen.MyPage.name },
@@ -726,6 +749,7 @@ private enum class AppScreen {
     Destination,
     AlarmSound,
     MyPage,
+    NicknameChange,
     Login,
     TermsAgreement,
     Settings,
