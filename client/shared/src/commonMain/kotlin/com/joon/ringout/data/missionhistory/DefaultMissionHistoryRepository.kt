@@ -24,12 +24,11 @@ class DefaultMissionHistoryRepository(
             "Mission occurrence ID must not be blank."
         }
         val remote = remoteDataSource
-        return if (
-            entry.result == MissionResult.SUCCESS &&
-            remote != null &&
-            remote.hasAccessToken()
-        ) {
-            remote.recordSuccess(entry.completedAt)
+        return if (remote != null && remote.hasAccessToken()) {
+            when (entry.result) {
+                MissionResult.SUCCESS -> remote.recordSuccess(entry.completedAt)
+                MissionResult.FAILURE -> remote.recordFailure(entry.completedAt)
+            }
         } else {
             dataSource.record(entry.toDto())
         }

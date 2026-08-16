@@ -9,4 +9,6 @@ interface MissionHistoryRemoteDataSource {
     suspend fun getHistory(month: MissionYearMonth): List<MissionHistoryDto>
 
     suspend fun recordSuccess(completedAt: MissionDate): Boolean
+
+    suspend fun recordFailure(terminatedAt: MissionDate): Boolean
 }

@@ -84,6 +84,37 @@ class KtorMissionHistoryRemoteDataSourceTest {
         assertEquals(true, dataSource.recordSuccess(MissionDate.parse("2026-08-13")))
         client.close()
     }
+
+    @Test
+    fun `강제 종료 날짜와 access token으로 스탬프 실패 기록을 저장한다`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals(HttpMethod.Post, request.method)
+            assertEquals("/api/v1/stamp/give-ups", request.url.encodedPath)
+            assertEquals("2026-08-13", request.url.parameters["terminatedAt"])
+            assertEquals("Bearer ringout-access", request.headers[HttpHeaders.Authorization])
+            respond(
+                content = """
+                    {
+                      "isSuccess": true,
+                      "code": "STAMP201",
+                      "message": "목표 실패가 기록되었습니다.",
+                      "result": {
+                        "terminatedAt": "2026-08-13",
+                        "goalResult": "FAILURE"
+                      }
+                    }
+                """.trimIndent(),
+                status = HttpStatusCode.Created,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }) {
+            configureRingoutHttpClient()
+        }
+        val dataSource = KtorMissionHistoryRemoteDataSource(client, FakeStampTokenStorage())
+
+        assertEquals(true, dataSource.recordFailure(MissionDate.parse("2026-08-13")))
+        client.close()
+    }
 }
 
 private class FakeStampTokenStorage : SecureTokenStorage {

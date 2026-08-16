@@ -66,6 +66,23 @@ class KtorMissionHistoryRemoteDataSource(
         }
         return true
     }
+
+    override suspend fun recordFailure(terminatedAt: MissionDate): Boolean {
+        val accessToken = checkNotNull(tokenStorage.read()?.accessToken) {
+            "로그인이 필요한 기능이에요."
+        }
+        val response = httpClient.post(ApiConfig.url("/api/v1/stamp/give-ups")) {
+            bearerAuth(accessToken)
+            parameter("terminatedAt", terminatedAt.iso8601)
+        }
+        val body = response.decodeOrThrow<CreateGiveUpResponse>()
+        check(body.isSuccess) { body.message }
+        val result = checkNotNull(body.result) { "스탬프 실패 기록 응답이 비어 있어요." }
+        check(result.terminatedAt == terminatedAt.iso8601 && result.goalResult == MissionResult.FAILURE.persistedValue) {
+            "스탬프 실패 기록 응답이 올바르지 않아요."
+        }
+        return true
+    }
 }
 
 @Serializable
@@ -78,6 +95,12 @@ private data class MonthlyStampsResponse(
 @Serializable
 private data class CreateStampResponse(
     val completedAt: String,
+    val goalResult: String,
+)
+
+@Serializable
+private data class CreateGiveUpResponse(
+    val terminatedAt: String,
     val goalResult: String,
 )
 
