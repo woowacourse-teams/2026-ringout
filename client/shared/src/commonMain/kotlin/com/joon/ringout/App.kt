@@ -68,7 +68,6 @@ import kotlinx.coroutines.flow.collect
 @Composable
 fun App(
     appVersion: String = "",
-    googleServerClientId: String = "",
     useSystemLocationPermissionUiOnly: Boolean = false,
     ringingAlarm: AlarmRingingUiState? = null,
     activeAlarmMission: ActiveAlarmMission? = null,
@@ -114,7 +113,6 @@ fun App(
                 RingoutAppContent(
                     themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
-                    googleServerClientId = googleServerClientId,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
                     ringingAlarm = ringingAlarm,
                     activeAlarmMission = activeAlarmMission,
@@ -152,7 +150,6 @@ private fun AppBootstrapSurface() = Box(
 private fun RingoutAppContent(
     themeMode: ThemeMode,
     appVersion: String,
-    googleServerClientId: String,
     useSystemLocationPermissionUiOnly: Boolean,
     ringingAlarm: AlarmRingingUiState?,
     activeAlarmMission: ActiveAlarmMission?,
@@ -566,7 +563,6 @@ private fun RingoutAppContent(
 
         AppScreen.Login -> LoginScreen(
             onBackClick = { screenName = AppScreen.MyPage.name },
-            googleServerClientId = googleServerClientId,
             onAuthenticated = { screenName = AppScreen.Home.name },
             onSignupRequired = { signupToken ->
                 pendingSignupToken = signupToken

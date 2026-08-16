@@ -46,9 +46,7 @@ kotlin {
             implementation(libs.google.maps.compose)
             implementation(libs.google.places)
             implementation(libs.google.play.services.location)
-            implementation(libs.androidx.credentials)
-            implementation(libs.androidx.credentials.play.services.auth)
-            implementation(libs.google.id)
+            implementation(libs.google.play.services.auth)
             implementation(libs.ktor.client.okhttp)
         }
         commonMain.dependencies {

@@ -44,9 +44,6 @@ fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewControl
     val appVersion = NSBundle.mainBundle
         .objectForInfoDictionaryKey("CFBundleShortVersionString") as? String
         ?: ""
-    val googleServerClientId = NSBundle.mainBundle
-        .objectForInfoDictionaryKey("GIDServerClientID") as? String
-        ?: ""
     val ringingAlarmUiState = ringingAlarm?.let { alarm ->
         AlarmRingingUiState(
             id = alarm.systemAlarmId,
@@ -59,7 +56,6 @@ fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewControl
     CompositionLocalProvider(LocalIosNativeServices provides nativeServices) {
         App(
             appVersion = appVersion,
-            googleServerClientId = googleServerClientId,
             useSystemLocationPermissionUiOnly = true,
             ringingAlarm = ringingAlarmUiState,
             activeAlarmMission = activeAlarmMission,

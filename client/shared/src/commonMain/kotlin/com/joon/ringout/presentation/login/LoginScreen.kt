@@ -36,16 +36,14 @@ enum class SocialLoginProvider {
 @Composable
 fun LoginScreen(
     onBackClick: () -> Unit,
-    googleServerClientId: String,
     onAuthenticated: () -> Unit,
     onSignupRequired: (String) -> Unit,
     viewModel: LoginViewModel,
     modifier: Modifier = Modifier,
 ) {
     val uiState = viewModel.uiState
-    val launchGoogleSignIn = rememberGoogleIdTokenLauncher(
-        serverClientId = googleServerClientId,
-        onResult = viewModel::handleGoogleIdTokenResult,
+    val launchGoogleSignIn = rememberGoogleAccessTokenLauncher(
+        onResult = viewModel::handleGoogleAccessTokenResult,
     )
     val completion = uiState.completion
     LaunchedEffect(completion) {

@@ -17,12 +17,12 @@ class DefaultAuthRepository(
     private val tokenStorage: SecureTokenStorage,
     private val authSession: AuthSession,
 ) : AuthRepository {
-    override suspend fun loginWithGoogle(idToken: String): SocialLoginOutcome {
-        require(idToken.isNotBlank()) { "Google ID token must not be blank." }
+    override suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome {
+        require(accessToken.isNotBlank()) { "Google access token must not be blank." }
 
         val response = authApi.login(
             provider = AuthProvider.Google,
-            request = LoginRequest(socialAccessToken = idToken),
+            request = LoginRequest(socialAccessToken = accessToken),
         )
         check(response.isSuccess) { response.message }
         val login = checkNotNull(response.result) { "로그인 응답이 비어 있어요." }

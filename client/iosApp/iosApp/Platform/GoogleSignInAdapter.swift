@@ -43,12 +43,12 @@ final class GoogleSignInAdapter: @preconcurrency IosGoogleSignInService {
                 }
                 return
             }
-            guard let idToken = result?.user.idToken?.tokenString,
-                  !idToken.isEmpty else {
-                callback.onFailure(message: "Google ID Token을 받지 못했어요.")
+            guard let accessToken = result?.user.accessToken.tokenString,
+                  !accessToken.isEmpty else {
+                callback.onFailure(message: "Google Access Token을 받지 못했어요.")
                 return
             }
-            callback.onSuccess(idToken: idToken)
+            callback.onSuccess(accessToken: accessToken)
         }
     }
 

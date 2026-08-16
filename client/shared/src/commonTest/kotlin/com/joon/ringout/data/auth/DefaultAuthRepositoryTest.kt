@@ -33,11 +33,11 @@ class DefaultAuthRepositoryTest {
         val session = AuthSession()
         val repository = DefaultAuthRepository(api, storage, session)
 
-        val outcome = repository.loginWithGoogle("google-id-token")
+        val outcome = repository.loginWithGoogle("google-access-token")
 
         assertIs<SocialLoginOutcome.Authenticated>(outcome)
         assertEquals(AuthProvider.Google, api.loginProvider)
-        assertEquals("google-id-token", api.loginRequest?.socialAccessToken)
+        assertEquals("google-access-token", api.loginRequest?.socialAccessToken)
         assertEquals(AuthTokens("ringout-access", "ringout-refresh"), storage.tokens)
         assertEquals(AuthSessionState.Authenticated, session.state.value)
     }
@@ -57,7 +57,7 @@ class DefaultAuthRepositoryTest {
             authSession = session,
         )
 
-        val outcome = repository.loginWithGoogle("google-id-token")
+        val outcome = repository.loginWithGoogle("google-access-token")
 
         assertEquals(
             SocialLoginOutcome.SignupRequired("signup-token"),

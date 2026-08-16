@@ -8,24 +8,23 @@ import com.joon.ringout.platform.IosGoogleSignInCallback
 import com.joon.ringout.platform.LocalIosNativeServices
 
 @Composable
-internal actual fun rememberGoogleIdTokenLauncher(
-    serverClientId: String,
-    onResult: (GoogleIdTokenResult) -> Unit,
+internal actual fun rememberGoogleAccessTokenLauncher(
+    onResult: (GoogleAccessTokenResult) -> Unit,
 ): () -> Unit {
     val nativeServices = LocalIosNativeServices.current
     val currentOnResult by rememberUpdatedState(onResult)
     val callback = remember {
         object : IosGoogleSignInCallback {
-            override fun onSuccess(idToken: String) {
-                currentOnResult(GoogleIdTokenResult.Success(idToken))
+            override fun onSuccess(accessToken: String) {
+                currentOnResult(GoogleAccessTokenResult.Success(accessToken))
             }
 
             override fun onCancelled() {
-                currentOnResult(GoogleIdTokenResult.Cancelled)
+                currentOnResult(GoogleAccessTokenResult.Cancelled)
             }
 
             override fun onFailure(message: String) {
-                currentOnResult(GoogleIdTokenResult.Failure(message))
+                currentOnResult(GoogleAccessTokenResult.Failure(message))
             }
         }
     }

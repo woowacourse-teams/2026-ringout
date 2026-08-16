@@ -43,20 +43,20 @@ class LoginViewModel(
         return true
     }
 
-    fun handleGoogleIdTokenResult(result: GoogleIdTokenResult) {
+    fun handleGoogleAccessTokenResult(result: GoogleAccessTokenResult) {
         when (result) {
-            GoogleIdTokenResult.Cancelled -> {
+            GoogleAccessTokenResult.Cancelled -> {
                 uiState = uiState.copy(isLoading = false)
             }
 
-            is GoogleIdTokenResult.Failure -> {
+            is GoogleAccessTokenResult.Failure -> {
                 uiState = uiState.copy(
                     isLoading = false,
                     errorMessage = result.message,
                 )
             }
 
-            is GoogleIdTokenResult.Success -> loginWithGoogle(result.idToken)
+            is GoogleAccessTokenResult.Success -> loginWithGoogle(result.accessToken)
         }
     }
 
@@ -73,10 +73,10 @@ class LoginViewModel(
         }
     }
 
-    private fun loginWithGoogle(idToken: String) {
+    private fun loginWithGoogle(accessToken: String) {
         viewModelScope.launch {
             try {
-                val completion = when (val outcome = authRepository.loginWithGoogle(idToken)) {
+                val completion = when (val outcome = authRepository.loginWithGoogle(accessToken)) {
                     SocialLoginOutcome.Authenticated ->
                         LoginCompletion.Authenticated(++nextEventId)
 

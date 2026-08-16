@@ -46,7 +46,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             App(
                 appVersion = BuildConfig.VERSION_NAME,
-                googleServerClientId = BuildConfig.GOOGLE_SERVER_CLIENT_ID,
                 activeAlarmMission = activeAlarmMission,
                 activeAlarmMissionLocation = activeAlarmMissionLocation,
                 onActiveAlarmMissionExpired = ::handleActiveAlarmMissionExpired,

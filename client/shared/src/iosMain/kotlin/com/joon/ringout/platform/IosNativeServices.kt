@@ -27,7 +27,7 @@ interface IosAnalyticsTracker {
 }
 
 interface IosGoogleSignInCallback {
-    fun onSuccess(idToken: String)
+    fun onSuccess(accessToken: String)
 
     fun onCancelled()
 

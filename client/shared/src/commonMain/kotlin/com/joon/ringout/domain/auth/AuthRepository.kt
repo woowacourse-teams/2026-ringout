@@ -9,7 +9,7 @@ sealed interface SocialLoginOutcome {
 }
 
 interface AuthRepository {
-    suspend fun loginWithGoogle(idToken: String): SocialLoginOutcome
+    suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome
 
     suspend fun signup(
         signupToken: String,
