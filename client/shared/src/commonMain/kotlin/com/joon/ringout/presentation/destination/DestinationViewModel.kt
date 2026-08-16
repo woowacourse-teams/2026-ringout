@@ -119,7 +119,16 @@ class DestinationViewModel(
                     repository.updateName(destinationId, nickname)
                 }
                 uiState = if (renamed) {
-                    uiState.copy(isSaving = false)
+                    uiState.copy(
+                        destinations = uiState.destinations.map { destination ->
+                            if (destination.id == destinationId) {
+                                destination.copy(name = nickname)
+                            } else {
+                                destination
+                            }
+                        },
+                        isSaving = false,
+                    )
                 } else {
                     uiState.copy(
                         isSaving = false,

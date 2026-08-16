@@ -11,6 +11,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -62,6 +63,18 @@ class KtorDestinationRemoteDataSource(
         return true
     }
 
+    override suspend fun updateName(id: Long, name: String): Boolean {
+        val accessToken = requireAccessToken()
+        val response = httpClient.patch(ApiConfig.url("/api/v1/destinations/$id")) {
+            bearerAuth(accessToken)
+            setBody(DestinationUpdateRequest(alias = name))
+        }
+        val body = response.decodeOrThrow<DestinationResponse>()
+        check(body.isSuccess) { body.message }
+        checkNotNull(body.result) { "목적지 수정 응답이 비어 있어요." }
+        return true
+    }
+
     private suspend fun requireAccessToken(): String =
         checkNotNull(tokenStorage.read()?.accessToken) {
             "로그인이 필요한 기능이에요."
@@ -78,6 +91,11 @@ private data class DestinationCreateRequest(
 @Serializable
 private data class DestinationCreateResponse(
     val destinationId: Long,
+)
+
+@Serializable
+private data class DestinationUpdateRequest(
+    val alias: String,
 )
 
 @Serializable

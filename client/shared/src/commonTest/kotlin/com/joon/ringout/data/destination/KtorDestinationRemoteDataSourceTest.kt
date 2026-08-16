@@ -131,6 +131,40 @@ class KtorDestinationRemoteDataSourceTest {
         assertTrue(dataSource.delete(42L))
         client.close()
     }
+
+    @Test
+    fun `목적지 별명 수정 요청에 destination id와 alias를 전송한다`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals(HttpMethod.Patch, request.method)
+            assertEquals("/api/v1/destinations/42", request.url.encodedPath)
+            assertEquals("Bearer ringout-access", request.headers[HttpHeaders.Authorization])
+            val requestBody = (request.body as TextContent).text
+            assertEquals("{\"alias\":\"새 회사\"}", requestBody)
+            respond(
+                content = """
+                    {
+                      "isSuccess": true,
+                      "code": "DESTINATION200",
+                      "message": "수정되었습니다.",
+                      "result": {
+                        "destinationId": 42,
+                        "alias": "새 회사",
+                        "latitude": 37.5665,
+                        "longitude": 126.978
+                      }
+                    }
+                """.trimIndent(),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }) {
+            configureRingoutHttpClient()
+        }
+        val dataSource = KtorDestinationRemoteDataSource(client, FakeTokenStorage())
+
+        assertTrue(dataSource.updateName(id = 42L, name = "새 회사"))
+        client.close()
+    }
 }
 
 private class FakeTokenStorage : SecureTokenStorage {
