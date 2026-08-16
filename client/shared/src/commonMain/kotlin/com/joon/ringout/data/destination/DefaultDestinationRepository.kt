@@ -6,11 +6,12 @@ import kotlinx.coroutines.flow.Flow
 
 class DefaultDestinationRepository(
     private val dataSource: DestinationDataSource,
+    private val remoteDataSource: DestinationRemoteDataSource? = null,
 ) : DestinationRepository {
     override fun observeAll(): Flow<List<SavedDestination>> = dataSource.observeAll()
 
     override suspend fun save(destination: SavedDestination): SavedDestination =
-        dataSource.save(destination)
+        remoteDataSource?.create(destination) ?: dataSource.save(destination)
 
     override suspend fun updateName(id: Long, name: String): Boolean =
         dataSource.updateName(id, name)
