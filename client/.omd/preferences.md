@@ -154,3 +154,18 @@ source_context: "iosApp/iosApp/Assets.xcassets/LaunchBackground.colorset/Content
 ```
 
 The iOS launch screen background color is exactly #F85E24.
+
+## 2026-08-16T06:37:57.000Z — nickname-input-fills-the-available-width
+
+```omd-meta
+id: pref_msvfnx8v_f07dd3d3
+timestamp: 2026-08-16T06:37:57.000Z
+scope: components.input
+signal: user-correction
+confidence: explicit
+status: pending
+source_agent: codex
+source_context: "shared/src/commonMain/kotlin/com/joon/ringout/presentation/nickname/NicknameChangeScreen.kt"
+```
+
+The nickname input fills the available screen width inside the screen's horizontal padding.

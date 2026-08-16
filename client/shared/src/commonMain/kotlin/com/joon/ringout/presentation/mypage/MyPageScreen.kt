@@ -56,6 +56,7 @@ fun MyPageScreen(
     onBackClick: () -> Unit,
     onAccountStatusClick: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
+    onEditProfileClick: () -> Unit,
     onLogoutConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MyPageViewModel = rememberMyPageViewModel(),
@@ -76,6 +77,7 @@ fun MyPageScreen(
         onBackClick = onBackClick,
         onAccountStatusClick = onAccountStatusClick,
         onPolicyClick = onPolicyClick,
+        onEditProfileClick = onEditProfileClick,
         onLogoutConfirm = onLogoutConfirm,
         modifier = modifier,
     )
