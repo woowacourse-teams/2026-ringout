@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.nickname.component.NicknameChangeHeader
 import com.joon.ringout.presentation.nickname.component.NicknameConfirmButton
@@ -38,19 +40,26 @@ import com.joon.ringout.presentation.nickname.component.nicknameChangeColors
 @Composable
 fun NicknameChangeScreen(
     initialNickname: String,
+    memberRepository: MemberRepository,
     onBackClick: () -> Unit,
     onConfirmClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val viewModel: NicknameChangeViewModel = viewModel(key = initialNickname) {
-        NicknameChangeViewModel(initialNickname)
+        NicknameChangeViewModel(initialNickname, memberRepository)
+    }
+    val uiState = viewModel.uiState
+    LaunchedEffect(uiState.completedNickname) {
+        val updatedNickname = uiState.completedNickname ?: return@LaunchedEffect
+        onConfirmClick(updatedNickname)
+        viewModel.consumeCompletedNickname()
     }
     PlatformBackHandler(onBack = onBackClick)
     NicknameChangeScreenContent(
-        uiState = viewModel.uiState,
+        uiState = uiState,
         onNicknameChange = viewModel::onNicknameChange,
         onBackClick = onBackClick,
-        onConfirmClick = { onConfirmClick(viewModel.uiState.nickname) },
+        onConfirmClick = viewModel::confirm,
         modifier = modifier,
     )
 }
@@ -108,6 +117,14 @@ internal fun NicknameChangeScreenContent(
                 hasOnlyAllowedCharacters = uiState.validation.hasOnlyAllowedCharacters,
                 modifier = Modifier.widthIn(max = NicknameValidationMaxWidth),
             )
+            uiState.errorMessage?.let { message ->
+                Spacer(Modifier.height(NicknameInputToValidationSpacing))
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
 
         Box(
@@ -121,7 +138,7 @@ internal fun NicknameChangeScreenContent(
                 ),
         ) {
             NicknameConfirmButton(
-                enabled = uiState.validation.isValid,
+                enabled = uiState.validation.isValid && !uiState.isSaving,
                 onClick = onConfirmClick,
             )
         }

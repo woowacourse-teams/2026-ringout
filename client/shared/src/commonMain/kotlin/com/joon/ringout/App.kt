@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.data.auth.rememberAuthRepository
+import com.joon.ringout.data.member.rememberMemberRepository
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
 import com.joon.ringout.domain.auth.AuthSession
@@ -183,12 +184,16 @@ private fun RingoutAppContent(
     val destinationUiState = destinationViewModel.uiState
     val authSession = remember { AuthSession() }
     val authRepository = rememberAuthRepository(authSession)
+    val memberRepository = rememberMemberRepository()
     val authSessionState by authSession.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+    var myPageNickname by rememberSaveable { mutableStateOf("로그인됨") }
     val myPageAccountUiState = when (authSessionState) {
         AuthSessionState.Restoring -> MyPageAccountUiState.Loading
         AuthSessionState.Unauthenticated -> MyPageAccountUiState.LoggedOut
-        AuthSessionState.Authenticated -> MyPageAccountUiState.LoggedIn()
+        AuthSessionState.Authenticated -> MyPageAccountUiState.LoggedIn(
+            nickname = myPageNickname,
+        )
     }
     val loginViewModel: LoginViewModel = viewModel {
         LoginViewModel(authRepository)
@@ -580,6 +585,7 @@ private fun RingoutAppContent(
             onLogoutConfirm = {
                 coroutineScope.launch {
                     authRepository.logout()
+                    myPageNickname = "로그인됨"
                     pendingSignupToken = null
                     screenName = AppScreen.Login.name
                 }
@@ -602,8 +608,12 @@ private fun RingoutAppContent(
             } else {
                 NicknameChangeScreen(
                     initialNickname = account.nickname,
+                    memberRepository = memberRepository,
                     onBackClick = { screenName = AppScreen.MyPage.name },
-                    onConfirmClick = {},
+                    onConfirmClick = { updatedNickname ->
+                        myPageNickname = updatedNickname
+                        screenName = AppScreen.MyPage.name
+                    },
                 )
             }
         }
