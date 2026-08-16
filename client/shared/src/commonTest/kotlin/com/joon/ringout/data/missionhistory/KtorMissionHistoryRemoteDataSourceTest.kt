@@ -4,6 +4,7 @@ import com.joon.ringout.data.network.configureRingoutHttpClient
 import com.joon.ringout.domain.auth.AuthTokens
 import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
+import com.joon.ringout.domain.missionhistory.MissionDate
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -50,6 +51,37 @@ class KtorMissionHistoryRemoteDataSourceTest {
 
         assertEquals(listOf("2026-08-01", "2026-08-13"), history.map { it.completedAt })
         assertEquals(listOf("SUCCESS", "SUCCESS"), history.map { it.result })
+        client.close()
+    }
+
+    @Test
+    fun `미션 성공 날짜와 access token으로 스탬프 성공 기록을 저장한다`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals(HttpMethod.Post, request.method)
+            assertEquals("/api/v1/stamp/success", request.url.encodedPath)
+            assertEquals("2026-08-13", request.url.parameters["completedAt"])
+            assertEquals("Bearer ringout-access", request.headers[HttpHeaders.Authorization])
+            respond(
+                content = """
+                    {
+                      "isSuccess": true,
+                      "code": "STAMP201",
+                      "message": "목적지 도착 성공 결과가 저장되었습니다.",
+                      "result": {
+                        "completedAt": "2026-08-13",
+                        "goalResult": "SUCCESS"
+                      }
+                    }
+                """.trimIndent(),
+                status = HttpStatusCode.Created,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }) {
+            configureRingoutHttpClient()
+        }
+        val dataSource = KtorMissionHistoryRemoteDataSource(client, FakeStampTokenStorage())
+
+        assertEquals(true, dataSource.recordSuccess(MissionDate.parse("2026-08-13")))
         client.close()
     }
 }

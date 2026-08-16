@@ -7,7 +7,10 @@ import eu.anifantakis.lib.ksafe.KSafe
 
 @Composable
 internal actual fun rememberSecureTokenStorage(): SecureTokenStorage = remember {
+    createSecureTokenStorage()
+}
+
+internal fun createSecureTokenStorage(): SecureTokenStorage =
     KSafeTokenStorage(
         kSafe = KSafe(fileName = AUTH_VAULT_FILE_NAME),
     )
-}

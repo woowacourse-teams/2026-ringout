@@ -1,9 +1,12 @@
 package com.joon.ringout.alarm
 
 import android.content.Context
+import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.data.missionhistory.DefaultMissionHistoryRepository
+import com.joon.ringout.data.missionhistory.KtorMissionHistoryRemoteDataSource
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
+import com.joon.ringout.data.network.getRingoutHttpClient
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.RecordMissionResult
@@ -11,10 +14,15 @@ import java.time.Instant
 import java.time.ZoneId
 
 internal class MissionOutcomeRecorder(context: Context) {
+    private val applicationContext = context.applicationContext
     private val recordMissionResult = RecordMissionResult(
         DefaultMissionHistoryRepository(
-            RoomMissionHistoryDataSource(
-                getRingoutDatabase(context.applicationContext).missionHistoryDao(),
+            dataSource = RoomMissionHistoryDataSource(
+                getRingoutDatabase(applicationContext).missionHistoryDao(),
+            ),
+            remoteDataSource = KtorMissionHistoryRemoteDataSource(
+                httpClient = getRingoutHttpClient(),
+                tokenStorage = createSecureTokenStorage(applicationContext),
             ),
         ),
     )

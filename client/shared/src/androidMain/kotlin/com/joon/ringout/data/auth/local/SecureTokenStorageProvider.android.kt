@@ -10,11 +10,14 @@ import eu.anifantakis.lib.ksafe.KSafe
 internal actual fun rememberSecureTokenStorage(): SecureTokenStorage {
     val applicationContext = LocalContext.current.applicationContext
     return remember(applicationContext) {
-        KSafeTokenStorage(
-            kSafe = KSafe(
-                context = applicationContext,
-                fileName = AUTH_VAULT_FILE_NAME,
-            ),
-        )
+        createSecureTokenStorage(applicationContext)
     }
 }
+
+internal fun createSecureTokenStorage(context: android.content.Context): SecureTokenStorage =
+    KSafeTokenStorage(
+        kSafe = KSafe(
+            context = context.applicationContext,
+            fileName = AUTH_VAULT_FILE_NAME,
+        ),
+    )
