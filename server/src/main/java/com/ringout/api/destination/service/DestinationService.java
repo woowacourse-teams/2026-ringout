@@ -14,6 +14,7 @@ import com.ringout.api.destination.dto.response.DestinationSyncResponse.Destinat
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
+import com.ringout.api.member.domain.MemberRepository;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class DestinationService {
 
     private final DestinationRepository destinationRepository;
+    private final MemberRepository memberRepository;
 
     @Transactional
     public DestinationCreateResponse createDestination(Long userId, String alias, Double latitude, Double longitude) {
@@ -87,7 +89,7 @@ public class DestinationService {
     }
 
     private void validateAuthenticatedUserExists(Long userId) {
-        if (userId == null) {
+        if (userId == null || !memberRepository.existsById(userId)) {
             throw new GeneralException(DestinationErrorStatus.DESTINATION_UNAUTHORIZED);
         }
     }

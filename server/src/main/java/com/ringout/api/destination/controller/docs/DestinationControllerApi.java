@@ -1,7 +1,8 @@
 package com.ringout.api.destination.controller.docs;
 
-import com.ringout.api.auth.CustomUserDetails;
 import com.ringout.api.common.response.CustomResponse;
+import com.ringout.api.config.SwaggerConfig;
+import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.destination.dto.request.DestinationCreateRequest;
 import com.ringout.api.destination.dto.request.DestinationSyncRequest;
 import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
@@ -28,7 +29,7 @@ public interface DestinationControllerApi {
     @Operation(
         summary = "목적지 전체 조회",
         description = "사용자가 소유한 목적지들을 ID 오름차순으로 전체 조회합니다.",
-        security = @SecurityRequirement(name = "bearerAuth")
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
         @ApiResponse(
@@ -82,7 +83,7 @@ public interface DestinationControllerApi {
     @Operation(
         summary = "목적지 저장",
         description = "사용자의 목적지를 저장합니다.",
-        security = @SecurityRequirement(name = "bearerAuth")
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
         @ApiResponse(
@@ -170,7 +171,7 @@ public interface DestinationControllerApi {
     @Operation(
         summary = "목적지 동기화",
         description = "사용자가 회원가입 시, 기기에 저장되어 있던 목적지 정보들을 서버에 저장합니다.",
-        security = @SecurityRequirement(name = "bearerAuth")
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
         @ApiResponse(
@@ -278,7 +279,7 @@ public interface DestinationControllerApi {
     @Operation(
         summary = "목적지 수정",
         description = "목적지의 별칭 또는 위도 또는 경도를 수정합니다.",
-        security = @SecurityRequirement(name = "bearerAuth")
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
         @ApiResponse(
@@ -405,7 +406,7 @@ public interface DestinationControllerApi {
     @Operation(
         summary = "목적지 삭제",
         description = "사용자의 목적지를 삭제합니다.",
-        security = @SecurityRequirement(name = "bearerAuth")
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
         @ApiResponse(

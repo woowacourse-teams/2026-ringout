@@ -1,7 +1,7 @@
 package com.ringout.api.destination.controller;
 
-import com.ringout.api.auth.CustomUserDetails;
 import com.ringout.api.common.response.CustomResponse;
+import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.destination.controller.docs.DestinationControllerApi;
 import com.ringout.api.destination.dto.request.DestinationCreateRequest;
 import com.ringout.api.destination.dto.request.DestinationSyncRequest;
@@ -17,12 +17,12 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -38,9 +38,9 @@ public class DestinationController implements DestinationControllerApi {
     @GetMapping
     public ResponseEntity<CustomResponse<List<DestinationResponse>>> findDestinations(
         @Parameter(hidden = true)
-        @RequestAttribute(value = "customUserDetails", required = false) CustomUserDetails customUserDetails
+        @AuthenticationPrincipal CustomUserDetails customUserDetails
     ) {
-        List<DestinationResponse> response = destinationService.getDestinations(customUserDetails.userId());
+        List<DestinationResponse> response = destinationService.getDestinations(customUserDetails.getUserId());
 
         return ResponseEntity.status(DestinationSuccessStatus.DESTINATIONS_FOUND.getHttpStatus())
             .body(CustomResponse.of(DestinationSuccessStatus.DESTINATIONS_FOUND, response));
@@ -50,10 +50,10 @@ public class DestinationController implements DestinationControllerApi {
     @PostMapping("/sync")
     public ResponseEntity<CustomResponse<DestinationSyncResponse>> syncDestinations(
         @Parameter(hidden = true)
-        @RequestAttribute(value = "customUserDetails", required = false) CustomUserDetails customUserDetails,
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
         @RequestBody(required = false) DestinationSyncRequest request
     ) {
-        DestinationSyncResponse response = destinationService.syncDestinations(customUserDetails.userId(), request);
+        DestinationSyncResponse response = destinationService.syncDestinations(customUserDetails.getUserId(), request);
 
         return ResponseEntity.status(DestinationSuccessStatus.DESTINATIONS_SYNCED.getHttpStatus())
             .body(CustomResponse.of(DestinationSuccessStatus.DESTINATIONS_SYNCED, response));
@@ -63,10 +63,10 @@ public class DestinationController implements DestinationControllerApi {
     @PostMapping
     public ResponseEntity<CustomResponse<DestinationCreateResponse>> createDestination(
         @Parameter(hidden = true)
-        @RequestAttribute(value = "customUserDetails", required = false) CustomUserDetails customUserDetails,
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
         @Valid @RequestBody DestinationCreateRequest request
     ) {
-        DestinationCreateResponse response = destinationService.createDestination(customUserDetails.userId(),
+        DestinationCreateResponse response = destinationService.createDestination(customUserDetails.getUserId(),
             request.alias(), request.latitude(), request.longitude());
 
         return ResponseEntity.status(DestinationSuccessStatus.DESTINATION_CREATED.getHttpStatus())
@@ -77,11 +77,11 @@ public class DestinationController implements DestinationControllerApi {
     @PatchMapping("/{destinationId}")
     public ResponseEntity<CustomResponse<DestinationUpdateResponse>> updateDestination(
         @Parameter(hidden = true)
-        @RequestAttribute(value = "customUserDetails", required = false) CustomUserDetails customUserDetails,
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
         @PathVariable Long destinationId,
         @RequestBody(required = false) DestinationUpdateRequest request
     ) {
-        DestinationUpdateResponse response = destinationService.updateDestination(customUserDetails.userId(),
+        DestinationUpdateResponse response = destinationService.updateDestination(customUserDetails.getUserId(),
             destinationId, request);
 
         return ResponseEntity.status(DestinationSuccessStatus.DESTINATION_UPDATED.getHttpStatus())
@@ -92,10 +92,10 @@ public class DestinationController implements DestinationControllerApi {
     @DeleteMapping("/{destinationId}")
     public ResponseEntity<CustomResponse<Void>> deleteDestination(
         @Parameter(hidden = true)
-        @RequestAttribute(value = "customUserDetails", required = false) CustomUserDetails customUserDetails,
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
         @PathVariable Long destinationId
     ) {
-        destinationService.deleteDestination(customUserDetails.userId(), destinationId);
+        destinationService.deleteDestination(customUserDetails.getUserId(), destinationId);
 
         return ResponseEntity.status(DestinationSuccessStatus.DESTINATION_DELETED.getHttpStatus())
             .body(CustomResponse.of(DestinationSuccessStatus.DESTINATION_DELETED, null));
