@@ -11,6 +11,8 @@ public interface StampRepository extends JpaRepository<Stamp, Long> {
 
   boolean existsByMemberIdAndRecordDate(Long memberId, LocalDate recordDate);
 
+  void deleteAllByMemberId(Long memberId);
+
   @Query(
       value = """
             select s.record_date
