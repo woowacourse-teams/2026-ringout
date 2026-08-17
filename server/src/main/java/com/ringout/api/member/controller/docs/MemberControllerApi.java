@@ -22,8 +22,7 @@ public interface MemberControllerApi {
 
   @Operation(
       summary = "내 닉네임 수정",
-      description = "로그인한 회원의 닉네임을 최대 10자 이내로 변경합니다. 닉네임 중복은 허용됩니다.",
-      security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+      description = "로그인한 회원의 닉네임을 최대 10자 이내로 변경합니다. 닉네임 중복은 허용됩니다."
   )
   @ApiResponses({
       @ApiResponse(responseCode = "200", description = "닉네임 수정 성공"),
