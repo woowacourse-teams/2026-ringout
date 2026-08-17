@@ -8,6 +8,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface DestinationRepository extends JpaRepository<Destination, Long> {
 
+    void deleteAllByUserId(Long userId);
+
     @Query("""
         select destination
         from Destination destination
