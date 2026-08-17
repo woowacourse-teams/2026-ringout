@@ -4,6 +4,7 @@ import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Paths;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import org.springdoc.core.customizers.OpenApiCustomizer;
@@ -23,6 +24,9 @@ public class SwaggerConfig {
         @Value("${app.swagger.production-url}") String productionUrl
     ) {
         OpenAPI openAPI = new OpenAPI()
+            .addSecurityItem(
+                    new SecurityRequirement().addList(BEARER_AUTH)
+            )
             .addServersItem(new Server()
                 .url(localUrl)
                 .description("Local server"))
