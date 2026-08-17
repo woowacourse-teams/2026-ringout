@@ -38,7 +38,26 @@ public class AuthController {
 
     @Operation(
             summary = "소셜 로그인",
-            description = "카카오 또는 구글 액세스 토큰을 검증하고 소셜 사용자 정보를 반환합니다."
+            description = """
+                    Google, Kakao, Naver에서 발급받은 소셜 액세스 토큰으로 로그인합니다.
+
+                    ### 요청 방법
+                    - provider: google, kakao, naver 중 하나
+                    - Request Body: socialAccessToken에 소셜 서비스에서 발급받은 액세스 토큰을 넣어주세요.
+
+                    ### 처음 로그인하는 회원
+                    1. POST /api/v1/auth/{provider}/login을 호출합니다.
+                    2. isNewUser가 true이면 응답으로 signupToken이 반환됩니다.
+                    3. Authorization 헤더에 Bearer {signupToken}을 넣고, 약관 동의 정보와 함께 POST /api/v1/auth/signup을 호출합니다.
+                    4. 회원가입 응답으로 받은 accessToken과 refreshToken을 저장합니다.
+
+                    ### 기존 회원
+                    POST /api/v1/auth/{provider}/login을 호출하면 isNewUser가 false이고,
+                    accessToken과 refreshToken이 바로 반환됩니다.
+
+                    ### 로그인 이후
+                    인증이 필요한 API는 Authorization 헤더에 Bearer {accessToken}을 넣어 호출해주세요.
+                    """
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "로그인 성공"),
@@ -50,13 +69,13 @@ public class AuthController {
             @Parameter(
                     name = "provider",
                     in = ParameterIn.PATH,
-                    description = "소셜 로그인 제공자",
+                    description = "소셜 로그인 제공자 (google, kakao, naver 중 하나)",
                     example = "kakao",
                     required = true
             )
             @PathVariable("provider") String provider,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "소셜 제공자가 발급한 액세스 토큰",
+                    description = "소셜 제공자가 발급한 액세스 토큰을 socialAccessToken 필드에 넣어 보냅니다.",
                     required = true
             )
             @RequestBody LoginRequest request
@@ -69,7 +88,20 @@ public class AuthController {
         );
     }
 
-    @Operation(summary = "회원가입", description = "가입 토큰을 검증하고 약관 동의와 회원 생성을 완료합니다.")
+    @Operation(
+            summary = "회원가입",
+            description = """
+                    처음 소셜 로그인하는 회원의 약관 동의와 회원 생성을 완료합니다.
+
+                    ### 요청 방법
+                    - Authorization 헤더에 소셜 로그인 API에서 받은 {signupToken}을 넣어주세요.
+                    - termsTypes에 필수 약관인 SERVICE와 PRIVACY를 모두 넣어주세요.
+                    - agreedAt은 yyyy-MM-dd 형식의 동의 날짜입니다.
+
+                    회원가입이 완료되면 accessToken과 refreshToken이 반환됩니다.
+                    accessToken을 Authorization 헤더에 넣어주세요. (이 순간 부터 로그인 완료 상태입니다.)
+                    """
+    )
     @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "회원가입 성공"),
