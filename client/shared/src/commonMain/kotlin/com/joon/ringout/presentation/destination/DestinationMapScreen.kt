@@ -78,6 +78,8 @@ val DefaultDestinationSelection = DestinationSelection(
 fun DestinationMapScreen(
     initialSelection: DestinationSelection,
     requestCurrentLocationOnStart: Boolean = false,
+    isAuthenticated: Boolean = false,
+    onEntered: () -> Unit = {},
     onBackClick: () -> Unit,
     onConfirmClick: (SavedDestination) -> Unit,
     onSavedDestinationConfirmClick: (SavedDestination) -> Unit,
@@ -111,6 +113,10 @@ fun DestinationMapScreen(
     var isDestinationManagementOpen by remember { mutableStateOf(false) }
     var nicknameEditingDestination by remember { mutableStateOf<SavedDestination?>(null) }
     var selectedSavedDestination by remember { mutableStateOf<SavedDestination?>(null) }
+
+    LaunchedEffect(isAuthenticated) {
+        if (isAuthenticated) onEntered()
+    }
 
     PlatformBackHandler(onBack = {
         when {
@@ -240,15 +246,13 @@ fun DestinationMapScreen(
                         isResolvingAddress = true
                     },
                     onCameraSettled = { latitude, longitude ->
-                        val isSearchedTarget = cameraTarget?.hasSameCoordinates(
-                            latitude = latitude,
-                            longitude = longitude,
-                        ) == true
-                        selection = destinationAtCameraPosition(
+                        val settledSelection = destinationAtCameraPosition(
                             cameraTarget = cameraTarget,
                             latitude = latitude,
                             longitude = longitude,
                         )
+                        val shouldResolveAddress = settledSelection.requiresAddressResolution()
+                        selection = settledSelection
                         selectedSavedDestination = selectedSavedDestination?.takeIf { saved ->
                             saved.toDestinationSelection().hasSameCoordinates(
                                 latitude = latitude,
@@ -257,7 +261,7 @@ fun DestinationMapScreen(
                         }
                         cameraTarget = null
                         isCameraMoving = false
-                        isResolvingAddress = !isSearchedTarget
+                        isResolvingAddress = shouldResolveAddress
                     },
                     onAddressResolved = { latitude, longitude, placeName, address ->
                         if (

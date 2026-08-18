@@ -23,6 +23,13 @@ internal fun destinationAtCameraPosition(
     longitude: Double,
 ): DestinationSelection =
     cameraTarget?.takeIf { it.hasSameCoordinates(latitude, longitude) }
+        ?.let { target ->
+            if (target.address.isBlank()) {
+                target.copy(address = ResolvingDestinationAddress)
+            } else {
+                target
+            }
+        }
         ?: DestinationSelection(
             name = SelectedDestinationFallbackName,
             address = ResolvingDestinationAddress,
@@ -39,10 +46,17 @@ internal fun DestinationSelection.withResolvedAddress(
     if (!hasSameCoordinates(latitude, longitude)) return this
 
     return copy(
-        name = placeName?.takeIf(String::isNotBlank) ?: name,
+        name = if (name == SelectedDestinationFallbackName) {
+            placeName?.takeIf(String::isNotBlank) ?: name
+        } else {
+            name
+        },
         address = address?.takeIf(String::isNotBlank) ?: UnavailableDestinationAddress,
     )
 }
+
+internal fun DestinationSelection.requiresAddressResolution(): Boolean =
+    address.isBlank() || address == ResolvingDestinationAddress
 
 internal fun shouldApplyResolvedAddress(
     isResolvingAddress: Boolean,

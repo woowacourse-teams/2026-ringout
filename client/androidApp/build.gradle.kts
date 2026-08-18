@@ -43,6 +43,14 @@ val escapedMapsApiKey = mapsApiKey
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
+val kakaoNativeAppKey = localProperties.getProperty("KAKAO_NATIVE_APP_KEY")
+    ?.takeIf(String::isNotBlank)
+    ?: providers.environmentVariable("KAKAO_NATIVE_APP_KEY").orNull.orEmpty()
+
+val escapedKakaoNativeAppKey = kakaoNativeAppKey
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
 val releaseKeystorePath =
     providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
 
@@ -65,7 +73,13 @@ dependencies {
     implementation(projects.shared)
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.material3)
     implementation(libs.google.places)
+    implementation(libs.google.play.app.update)
+    implementation(libs.google.play.app.update.ktx)
+    implementation(libs.kakao.user)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
@@ -85,7 +99,9 @@ android {
         versionCode = 2026101
         versionName = "1.0.1"
         buildConfigField("String", "MAPS_API_KEY", "\"$escapedMapsApiKey\"")
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$escapedKakaoNativeAppKey\"")
         manifestPlaceholders["mapsApiKey"] = mapsApiKey
+        manifestPlaceholders["kakaoNativeAppKey"] = kakaoNativeAppKey
     }
     buildFeatures {
         buildConfig = true

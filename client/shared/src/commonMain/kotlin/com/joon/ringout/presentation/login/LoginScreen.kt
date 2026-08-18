@@ -30,7 +30,6 @@ import com.joon.ringout.presentation.login.component.loginDimensions
 enum class SocialLoginProvider {
     Google,
     Kakao,
-    Naver,
 }
 
 @Composable
@@ -44,6 +43,9 @@ fun LoginScreen(
     val uiState = viewModel.uiState
     val launchGoogleSignIn = rememberGoogleAccessTokenLauncher(
         onResult = viewModel::handleGoogleAccessTokenResult,
+    )
+    val launchKakaoSignIn = rememberKakaoAccessTokenLauncher(
+        onResult = viewModel::handleKakaoAccessTokenResult,
     )
     val completion = uiState.completion
     LaunchedEffect(completion) {
@@ -64,9 +66,9 @@ fun LoginScreen(
                     if (viewModel.beginGoogleSignIn()) launchGoogleSignIn()
                 }
 
-                SocialLoginProvider.Kakao,
-                SocialLoginProvider.Naver,
-                -> viewModel.showUnavailableProvider(provider)
+                SocialLoginProvider.Kakao -> {
+                    if (viewModel.beginKakaoSignIn()) launchKakaoSignIn()
+                }
             }
         },
         uiState = uiState,
@@ -102,7 +104,6 @@ internal fun LoginScreenContent(
             enabled = !uiState.isLoading,
         )
         LoginStatus(
-            isLoading = uiState.isLoading,
             errorMessage = uiState.errorMessage,
         )
     }

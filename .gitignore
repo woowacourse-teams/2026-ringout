@@ -19,3 +19,4 @@ captures
 node_modules/
 /client/androidApp/release/androidApp-release.aab
 /client/iosApp/Configuration/RingoutSecrets.xcconfig
+/client/androidApp/google-services.json

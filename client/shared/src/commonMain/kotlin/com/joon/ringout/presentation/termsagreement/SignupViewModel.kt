@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthTerm
+import com.joon.ringout.domain.destination.DestinationRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -18,12 +19,14 @@ data class SignupUiState(
 
 class SignupViewModel(
     private val authRepository: AuthRepository,
+    private val destinationRepository: DestinationRepository,
     private val currentDate: () -> String = ::currentAgreementDate,
 ) : ViewModel() {
     var uiState by mutableStateOf(SignupUiState())
         private set
 
     private var nextEventId = 0L
+    private var completedSignupToken: String? = null
 
     fun signup(
         signupToken: String,
@@ -40,11 +43,15 @@ class SignupViewModel(
         uiState = uiState.copy(isSaving = true, errorMessage = null)
         viewModelScope.launch {
             try {
-                authRepository.signup(
-                    signupToken = signupToken,
-                    agreedTerms = terms,
-                    agreedAt = currentDate(),
-                )
+                if (completedSignupToken != signupToken) {
+                    authRepository.signup(
+                        signupToken = signupToken,
+                        agreedTerms = terms,
+                        agreedAt = currentDate(),
+                    )
+                    completedSignupToken = signupToken
+                }
+                destinationRepository.sync()
                 uiState = uiState.copy(
                     isSaving = false,
                     completedEventId = ++nextEventId,
@@ -54,7 +61,11 @@ class SignupViewModel(
             } catch (error: Throwable) {
                 uiState = uiState.copy(
                     isSaving = false,
-                    errorMessage = error.message ?: "회원가입을 완료하지 못했어요.",
+                    errorMessage = if (completedSignupToken == signupToken) {
+                        error.message ?: "회원가입은 완료됐지만 목적지를 동기화하지 못했어요."
+                    } else {
+                        error.message ?: "회원가입을 완료하지 못했어요."
+                    },
                 )
             }
         }
@@ -63,6 +74,7 @@ class SignupViewModel(
     fun consumeCompletedEvent(eventId: Long) {
         if (uiState.completedEventId == eventId) {
             uiState = uiState.copy(completedEventId = null)
+            completedSignupToken = null
         }
     }
 }

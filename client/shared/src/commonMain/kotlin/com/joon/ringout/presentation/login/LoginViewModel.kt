@@ -38,6 +38,14 @@ class LoginViewModel(
     private var nextEventId = 0L
 
     fun beginGoogleSignIn(): Boolean {
+        return beginSocialSignIn()
+    }
+
+    fun beginKakaoSignIn(): Boolean {
+        return beginSocialSignIn()
+    }
+
+    private fun beginSocialSignIn(): Boolean {
         if (uiState.isLoading) return false
         uiState = uiState.copy(isLoading = true, errorMessage = null)
         return true
@@ -60,6 +68,23 @@ class LoginViewModel(
         }
     }
 
+    fun handleKakaoAccessTokenResult(result: KakaoAccessTokenResult) {
+        when (result) {
+            KakaoAccessTokenResult.Cancelled -> {
+                uiState = uiState.copy(isLoading = false)
+            }
+
+            is KakaoAccessTokenResult.Failure -> {
+                uiState = uiState.copy(
+                    isLoading = false,
+                    errorMessage = result.message,
+                )
+            }
+
+            is KakaoAccessTokenResult.Success -> loginWithKakao(result.accessToken)
+        }
+    }
+
     fun showUnavailableProvider(provider: SocialLoginProvider) {
         if (uiState.isLoading) return
         uiState = uiState.copy(
@@ -74,9 +99,23 @@ class LoginViewModel(
     }
 
     private fun loginWithGoogle(accessToken: String) {
+        loginWithSocialProvider {
+            authRepository.loginWithGoogle(accessToken)
+        }
+    }
+
+    private fun loginWithKakao(accessToken: String) {
+        loginWithSocialProvider {
+            authRepository.loginWithKakao(accessToken)
+        }
+    }
+
+    private fun loginWithSocialProvider(
+        login: suspend () -> SocialLoginOutcome,
+    ) {
         viewModelScope.launch {
             try {
-                val completion = when (val outcome = authRepository.loginWithGoogle(accessToken)) {
+                val completion = when (val outcome = login()) {
                     SocialLoginOutcome.Authenticated ->
                         LoginCompletion.Authenticated(++nextEventId)
 
@@ -106,5 +145,4 @@ private val SocialLoginProvider.displayName: String
     get() = when (this) {
         SocialLoginProvider.Google -> "Google"
         SocialLoginProvider.Kakao -> "카카오"
-        SocialLoginProvider.Naver -> "네이버"
     }

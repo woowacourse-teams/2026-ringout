@@ -29,4 +29,8 @@ internal fun HttpClientConfig<*>.configureRingoutHttpClient() {
 
 internal expect fun createRingoutHttpClient(): HttpClient
 
+private val sharedRingoutHttpClient: HttpClient by lazy(::createRingoutHttpClient)
+
+internal fun getRingoutHttpClient(): HttpClient = sharedRingoutHttpClient
+
 private const val HTTP_TIMEOUT_MILLIS = 20_000L
