@@ -21,6 +21,34 @@ import kotlin.test.assertTrue
 
 class DefaultMemberRepositoryTest {
     @Test
+    fun `회원 탈퇴 요청에 Ringout access token을 전송한다`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals(HttpMethod.Delete, request.method)
+            assertEquals("/api/v1/users/me", request.url.encodedPath)
+            assertEquals("Bearer ringout-access", request.headers[HttpHeaders.Authorization])
+            respond(
+                content = """
+                    {
+                      "isSuccess": true,
+                      "code": "COMMON200",
+                      "message": "성공입니다.",
+                      "result": null
+                    }
+                """.trimIndent(),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }) {
+            configureRingoutHttpClient()
+        }
+        val repository = DefaultMemberRepository(client, FakeTokenStorage())
+
+        repository.withdraw()
+
+        client.close()
+    }
+
+    @Test
     fun `닉네임 수정 요청에 Ringout access token을 전송한다`() = runTest {
         val client = HttpClient(MockEngine { request ->
             assertEquals(HttpMethod.Patch, request.method)

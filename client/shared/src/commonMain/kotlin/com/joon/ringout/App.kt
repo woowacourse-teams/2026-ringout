@@ -69,6 +69,7 @@ import com.joon.ringout.presentation.mypage.findPolicyUrl
 import com.joon.ringout.presentation.nickname.NicknameChangeScreen
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -188,6 +189,7 @@ private fun RingoutAppContent(
     val authSessionState by authSession.state.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var myPageNickname by rememberSaveable { mutableStateOf("로그인됨") }
+    var withdrawalErrorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val myPageAccountUiState = when (authSessionState) {
         AuthSessionState.Restoring -> MyPageAccountUiState.Loading
         AuthSessionState.Unauthenticated -> MyPageAccountUiState.LoggedOut
@@ -496,6 +498,22 @@ private fun RingoutAppContent(
         )
     }
 
+    if (
+        (screen == AppScreen.MyPage || screen == AppScreen.Settings) &&
+        withdrawalErrorMessage != null
+    ) {
+        AlertDialog(
+            onDismissRequest = { withdrawalErrorMessage = null },
+            title = { Text("회원 탈퇴를 완료하지 못했습니다") },
+            text = { Text(withdrawalErrorMessage.orEmpty()) },
+            confirmButton = {
+                TextButton(onClick = { withdrawalErrorMessage = null }) {
+                    Text("확인")
+                }
+            },
+        )
+    }
+
     when (screen) {
         AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
             AlarmRingingScreen(
@@ -588,6 +606,22 @@ private fun RingoutAppContent(
                     myPageNickname = "로그인됨"
                     pendingSignupToken = null
                     screenName = AppScreen.Login.name
+                }
+            },
+            onWithdrawConfirm = {
+                coroutineScope.launch {
+                    try {
+                        memberRepository.withdraw()
+                        authRepository.logout()
+                        myPageNickname = "로그인됨"
+                        pendingSignupToken = null
+                        withdrawalErrorMessage = null
+                        screenName = AppScreen.MyPage.name
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        withdrawalErrorMessage = error.message ?: "회원 탈퇴를 다시 시도해 주세요."
+                    }
                 }
             },
             onPolicyClick = { policyId ->

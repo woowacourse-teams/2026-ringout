@@ -9,6 +9,7 @@ import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.member.MemberRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.delete
 import io.ktor.client.request.patch
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -16,6 +17,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonElement
 
 class DefaultMemberRepository(
     private val httpClient: HttpClient,
@@ -32,6 +34,17 @@ class DefaultMemberRepository(
         val body = response.decodeOrThrow<UpdateNicknameResponse>()
         check(body.isSuccess) { body.message }
         return checkNotNull(body.result) { "닉네임 수정 응답이 비어 있어요." }.nickname
+    }
+
+    override suspend fun withdraw() {
+        val accessToken = checkNotNull(tokenStorage.read()?.accessToken) {
+            "로그인이 필요한 기능이에요."
+        }
+        val response = httpClient.delete(ApiConfig.url("/api/v1/users/me")) {
+            bearerAuth(accessToken)
+        }
+        val body = response.decodeOrThrow<JsonElement>()
+        check(body.isSuccess) { body.message }
     }
 }
 
