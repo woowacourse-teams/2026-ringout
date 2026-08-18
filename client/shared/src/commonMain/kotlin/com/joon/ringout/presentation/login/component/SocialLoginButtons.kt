@@ -150,16 +150,6 @@ private fun SocialLoginProvider.buttonStyle(colors: LoginColors): SocialLoginBut
         iconSize = 20.dp,
         iconSlotSize = 20.dp,
     )
-
-    SocialLoginProvider.Naver -> SocialLoginButtonStyle(
-        label = "네이버로 시작하기",
-        backgroundColor = colors.naverBackground,
-        contentColor = colors.naverText,
-        borderColor = null,
-        icon = LoginNaverIconResource,
-        iconSize = 20.dp,
-        iconSlotSize = 20.dp,
-    )
 }
 
 @Preview(widthDp = 402)

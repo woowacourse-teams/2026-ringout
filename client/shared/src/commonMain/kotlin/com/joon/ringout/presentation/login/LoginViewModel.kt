@@ -145,5 +145,4 @@ private val SocialLoginProvider.displayName: String
     get() = when (this) {
         SocialLoginProvider.Google -> "Google"
         SocialLoginProvider.Kakao -> "카카오"
-        SocialLoginProvider.Naver -> "네이버"
     }

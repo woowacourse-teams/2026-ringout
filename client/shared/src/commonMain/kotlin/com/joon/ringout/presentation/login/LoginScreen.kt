@@ -30,7 +30,6 @@ import com.joon.ringout.presentation.login.component.loginDimensions
 enum class SocialLoginProvider {
     Google,
     Kakao,
-    Naver,
 }
 
 @Composable
@@ -70,8 +69,6 @@ fun LoginScreen(
                 SocialLoginProvider.Kakao -> {
                     if (viewModel.beginKakaoSignIn()) launchKakaoSignIn()
                 }
-
-                SocialLoginProvider.Naver -> viewModel.showUnavailableProvider(provider)
             }
         },
         uiState = uiState,
