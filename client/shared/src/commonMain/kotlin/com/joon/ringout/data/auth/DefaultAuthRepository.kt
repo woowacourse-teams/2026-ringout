@@ -26,10 +26,27 @@ class DefaultAuthRepository(
     }
 
     override suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome {
-        require(accessToken.isNotBlank()) { "Google access token must not be blank." }
+        return loginWithProvider(
+            provider = AuthProvider.Google,
+            accessToken = accessToken,
+        )
+    }
+
+    override suspend fun loginWithKakao(accessToken: String): SocialLoginOutcome {
+        return loginWithProvider(
+            provider = AuthProvider.Kakao,
+            accessToken = accessToken,
+        )
+    }
+
+    private suspend fun loginWithProvider(
+        provider: AuthProvider,
+        accessToken: String,
+    ): SocialLoginOutcome {
+        require(accessToken.isNotBlank()) { "Social access token must not be blank." }
 
         val response = authApi.login(
-            provider = AuthProvider.Google,
+            provider = provider,
             request = LoginRequest(socialAccessToken = accessToken),
         )
         check(response.isSuccess) { response.message }

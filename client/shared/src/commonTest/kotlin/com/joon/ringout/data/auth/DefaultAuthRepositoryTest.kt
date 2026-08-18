@@ -105,6 +105,28 @@ class DefaultAuthRepositoryTest {
     }
 
     @Test
+    fun existingKakaoUserSendsKakaoAccessTokenAndStoresRingoutTokens() = runTest {
+        val api = FakeAuthApi(
+            loginResponse = LoginResponse(
+                accessToken = "ringout-access",
+                refreshToken = "ringout-refresh",
+                isNewUser = false,
+            ),
+        )
+        val storage = FakeTokenStorage()
+        val session = AuthSession()
+        val repository = DefaultAuthRepository(api, storage, session)
+
+        val outcome = repository.loginWithKakao("kakao-access-token")
+
+        assertIs<SocialLoginOutcome.Authenticated>(outcome)
+        assertEquals(AuthProvider.Kakao, api.loginProvider)
+        assertEquals("kakao-access-token", api.loginRequest?.socialAccessToken)
+        assertEquals(AuthTokens("ringout-access", "ringout-refresh"), storage.tokens)
+        assertEquals(AuthSessionState.Authenticated, session.state.value)
+    }
+
+    @Test
     fun signupStoresRingoutTokensAfterTermsAgreement() = runTest {
         val api = FakeAuthApi(
             signupResponse = SignupResponse(

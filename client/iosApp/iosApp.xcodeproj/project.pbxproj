@@ -11,6 +11,9 @@
 		AA0000000000000000000001 /* GoogleMaps in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000021 /* GoogleMaps */; };
 		AA0000000000000000000002 /* GooglePlacesSwift in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000022 /* GooglePlacesSwift */; };
 		AA0000000000000000000003 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000023 /* GoogleSignIn */; };
+		AA0000000000000000000004 /* KakaoSDKCommon in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000024 /* KakaoSDKCommon */; };
+		AA0000000000000000000005 /* KakaoSDKAuth in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000025 /* KakaoSDKAuth */; };
+		AA0000000000000000000006 /* KakaoSDKUser in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000026 /* KakaoSDKUser */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -51,6 +54,9 @@
 				AA0000000000000000000001 /* GoogleMaps in Frameworks */,
 				AA0000000000000000000002 /* GooglePlacesSwift in Frameworks */,
 				AA0000000000000000000003 /* GoogleSignIn in Frameworks */,
+				AA0000000000000000000004 /* KakaoSDKCommon in Frameworks */,
+				AA0000000000000000000005 /* KakaoSDKAuth in Frameworks */,
+				AA0000000000000000000006 /* KakaoSDKUser in Frameworks */,
 				7629DCA7302E11DA0036CA91 /* FirebaseAnalytics in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -99,6 +105,9 @@
 				AA0000000000000000000021 /* GoogleMaps */,
 				AA0000000000000000000022 /* GooglePlacesSwift */,
 				AA0000000000000000000023 /* GoogleSignIn */,
+				AA0000000000000000000024 /* KakaoSDKCommon */,
+				AA0000000000000000000025 /* KakaoSDKAuth */,
+				AA0000000000000000000026 /* KakaoSDKUser */,
 				7629DCA6302E11DA0036CA91 /* FirebaseAnalytics */,
 			);
 			productName = iosApp;
@@ -133,6 +142,7 @@
 				AA0000000000000000000011 /* XCRemoteSwiftPackageReference "ios-maps-sdk" */,
 				AA0000000000000000000012 /* XCRemoteSwiftPackageReference "ios-places-sdk" */,
 				AA0000000000000000000013 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				AA0000000000000000000014 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */,
 				7629DCA5302E11DA0036CA91 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -432,6 +442,14 @@
 				minimumVersion = 9.0.0;
 			};
 		};
+		AA0000000000000000000014 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kakao/kakao-ios-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.28.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -454,6 +472,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA0000000000000000000013 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignIn;
+		};
+		AA0000000000000000000024 /* KakaoSDKCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000000000000000000014 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */;
+			productName = KakaoSDKCommon;
+		};
+		AA0000000000000000000025 /* KakaoSDKAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000000000000000000014 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */;
+			productName = KakaoSDKAuth;
+		};
+		AA0000000000000000000026 /* KakaoSDKUser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000000000000000000014 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */;
+			productName = KakaoSDKUser;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
