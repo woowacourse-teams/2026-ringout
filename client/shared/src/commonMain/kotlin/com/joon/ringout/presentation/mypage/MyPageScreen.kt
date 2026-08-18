@@ -61,8 +61,15 @@ fun MyPageScreen(
     modifier: Modifier = Modifier,
     viewModel: MyPageViewModel = rememberMyPageViewModel(),
 ) {
-    LaunchedEffect(viewModel) {
-        viewModel.onScreenEntered()
+    val isLoggedIn = when (accountUiState) {
+        MyPageAccountUiState.Loading -> null
+        MyPageAccountUiState.LoggedOut -> false
+        is MyPageAccountUiState.LoggedIn -> true
+    }
+    LaunchedEffect(viewModel, isLoggedIn) {
+        if (isLoggedIn != null) {
+            viewModel.onScreenEntered()
+        }
     }
     PlatformBackHandler(onBack = onBackClick)
     MyPageScreenContent(

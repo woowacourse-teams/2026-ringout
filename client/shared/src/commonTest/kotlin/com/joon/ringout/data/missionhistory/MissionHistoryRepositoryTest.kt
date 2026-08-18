@@ -10,8 +10,48 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class MissionHistoryRepositoryTest {
+    @Test
+    fun `로그인 상태에서는 선택한 월을 서버에서 조회한다`() = runBlocking {
+        val remoteDataSource = FakeMissionHistoryRemoteDataSource(
+            hasAccessToken = true,
+            history = listOf(MissionHistoryDto("SUCCESS", "2026-08-13")),
+        )
+        val repository = DefaultMissionHistoryRepository(
+            dataSource = InMemoryMissionHistoryDataSource(emptyList()),
+            remoteDataSource = remoteDataSource,
+        )
+
+        val history = repository.getHistory(MissionYearMonth(2026, 8))
+
+        assertEquals(listOf(MissionDate.parse("2026-08-13")), history.map { it.completedAt })
+        assertEquals(listOf(MissionYearMonth(2026, 8)), remoteDataSource.requestedMonths)
+        assertTrue(remoteDataSource.getHistoryCalled)
+    }
+
+    @Test
+    fun `비로그인 상태에서는 서버에 요청하지 않고 로컬 기록을 조회한다`() = runBlocking {
+        val remoteDataSource = FakeMissionHistoryRemoteDataSource(
+            hasAccessToken = false,
+            history = listOf(MissionHistoryDto("SUCCESS", "2026-08-13")),
+        )
+        val repository = DefaultMissionHistoryRepository(
+            dataSource = InMemoryMissionHistoryDataSource(
+                listOf(MissionHistoryDto("SUCCESS", "2026-08-05")),
+            ),
+            remoteDataSource = remoteDataSource,
+        )
+
+        val history = repository.getHistory(MissionYearMonth(2026, 8))
+
+        assertEquals(listOf(MissionDate.parse("2026-08-05")), history.map { it.completedAt })
+        assertFalse(remoteDataSource.getHistoryCalled)
+        assertEquals(emptyList(), remoteDataSource.requestedMonths)
+    }
+
     @Test
     fun repositoryMapsPayloadAndUseCaseReturnsUniqueSuccessDatesInMonth() {
         runBlocking {
@@ -126,4 +166,25 @@ class MissionHistoryRepositoryTest {
             GetMissionSuccessDates(repository)(MissionYearMonth(2026, 8)),
         )
     }
+}
+
+private class FakeMissionHistoryRemoteDataSource(
+    private val hasAccessToken: Boolean,
+    private val history: List<MissionHistoryDto>,
+) : MissionHistoryRemoteDataSource {
+    var getHistoryCalled = false
+        private set
+    val requestedMonths = mutableListOf<MissionYearMonth>()
+
+    override suspend fun hasAccessToken(): Boolean = hasAccessToken
+
+    override suspend fun getHistory(month: MissionYearMonth): List<MissionHistoryDto> {
+        getHistoryCalled = true
+        requestedMonths += month
+        return history
+    }
+
+    override suspend fun recordSuccess(completedAt: MissionDate): Boolean = true
+
+    override suspend fun recordFailure(terminatedAt: MissionDate): Boolean = true
 }
