@@ -38,6 +38,18 @@ interface IosGoogleSignInService {
     fun signIn(callback: IosGoogleSignInCallback)
 }
 
+interface IosKakaoSignInCallback {
+    fun onSuccess(accessToken: String)
+
+    fun onCancelled()
+
+    fun onFailure(message: String)
+}
+
+interface IosKakaoSignInService {
+    fun signIn(callback: IosKakaoSignInCallback)
+}
+
 interface IosNativeServices {
     fun isMapsAvailable(): Boolean
 
@@ -71,6 +83,8 @@ interface IosNativeServices {
     fun analyticsTracker(): IosAnalyticsTracker
 
     fun googleSignInService(): IosGoogleSignInService
+
+    fun kakaoSignInService(): IosKakaoSignInService
 }
 
 val LocalIosNativeServices = staticCompositionLocalOf<IosNativeServices> {

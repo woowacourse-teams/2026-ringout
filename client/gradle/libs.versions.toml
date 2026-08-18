@@ -23,6 +23,7 @@ google-places = "5.3.0"
 google-play-services-location = "21.4.0"
 google-play-services-auth = "21.6.0"
 google-play-app-update = "2.1.0"
+kakao-android = "2.24.0"
 google-services = "4.5.0"
 firebase-bom = "34.16.0"
 firebase-crashlytics-plugin = "3.0.7"
@@ -65,6 +66,7 @@ google-play-services-location = { module = "com.google.android.gms:play-services
 google-play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "google-play-services-auth" }
 google-play-app-update = { module = "com.google.android.play:app-update", version.ref = "google-play-app-update" }
 google-play-app-update-ktx = { module = "com.google.android.play:app-update-ktx", version.ref = "google-play-app-update" }
+kakao-user = { module = "com.kakao.sdk:v2-user", version.ref = "kakao-android" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
 firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics" }

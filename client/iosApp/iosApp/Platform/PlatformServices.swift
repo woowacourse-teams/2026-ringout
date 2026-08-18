@@ -9,6 +9,7 @@ final class PlatformServices: @preconcurrency IosNativeServices {
     private let missionLocationAdapter: MissionLocationAdapter
     private let firebaseAnalyticsAdapter: FirebaseAnalyticsAdapter
     private let googleSignInAdapter: GoogleSignInAdapter
+    private let kakaoSignInAdapter: KakaoSignInAdapter
 
     init(googleSdkConfiguration: GoogleSdkConfiguration) {
         mapsAdapter = MapsAdapter(configurationState: googleSdkConfiguration.maps)
@@ -18,6 +19,7 @@ final class PlatformServices: @preconcurrency IosNativeServices {
         missionLocationAdapter = MissionLocationAdapter()
         firebaseAnalyticsAdapter = FirebaseAnalyticsAdapter()
         googleSignInAdapter = GoogleSignInAdapter()
+        kakaoSignInAdapter = KakaoSignInAdapter()
     }
 
     func isMapsAvailable() -> Bool {
@@ -84,5 +86,9 @@ final class PlatformServices: @preconcurrency IosNativeServices {
 
     func googleSignInService() -> IosGoogleSignInService {
         googleSignInAdapter
+    }
+
+    func kakaoSignInService() -> IosKakaoSignInService {
+        kakaoSignInAdapter
     }
 }

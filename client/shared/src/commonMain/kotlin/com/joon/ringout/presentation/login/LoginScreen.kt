@@ -45,6 +45,9 @@ fun LoginScreen(
     val launchGoogleSignIn = rememberGoogleAccessTokenLauncher(
         onResult = viewModel::handleGoogleAccessTokenResult,
     )
+    val launchKakaoSignIn = rememberKakaoAccessTokenLauncher(
+        onResult = viewModel::handleKakaoAccessTokenResult,
+    )
     val completion = uiState.completion
     LaunchedEffect(completion) {
         when (completion) {
@@ -64,9 +67,11 @@ fun LoginScreen(
                     if (viewModel.beginGoogleSignIn()) launchGoogleSignIn()
                 }
 
-                SocialLoginProvider.Kakao,
-                SocialLoginProvider.Naver,
-                -> viewModel.showUnavailableProvider(provider)
+                SocialLoginProvider.Kakao -> {
+                    if (viewModel.beginKakaoSignIn()) launchKakaoSignIn()
+                }
+
+                SocialLoginProvider.Naver -> viewModel.showUnavailableProvider(provider)
             }
         },
         uiState = uiState,
@@ -102,7 +107,6 @@ internal fun LoginScreenContent(
             enabled = !uiState.isLoading,
         )
         LoginStatus(
-            isLoading = uiState.isLoading,
             errorMessage = uiState.errorMessage,
         )
     }

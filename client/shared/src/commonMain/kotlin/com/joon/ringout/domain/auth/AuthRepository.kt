@@ -13,6 +13,8 @@ interface AuthRepository {
 
     suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome
 
+    suspend fun loginWithKakao(accessToken: String): SocialLoginOutcome
+
     suspend fun signup(
         signupToken: String,
         agreedTerms: Set<AuthTerm>,

@@ -47,6 +47,7 @@ kotlin {
             implementation(libs.google.places)
             implementation(libs.google.play.services.location)
             implementation(libs.google.play.services.auth)
+            implementation(libs.kakao.user)
             implementation(libs.ktor.client.okhttp)
         }
         commonMain.dependencies {
