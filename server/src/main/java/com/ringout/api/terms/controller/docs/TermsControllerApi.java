@@ -1,12 +1,12 @@
 package com.ringout.api.terms.controller.docs;
 
 import com.ringout.api.common.response.CustomResponse;
+import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
@@ -28,7 +28,6 @@ public interface TermsControllerApi {
           - 각 약관 타입마다 오늘 날짜 기준으로 **현재 시행 중인 버전**(시행일이 오늘보다 이후가 아닌 것 중 가장 최신 버전)을 찾아 동의 이력을 저장합니다.
           - 이미 동의한 약관 타입은 다시 저장하지 않고 건너뛰며, 요청한 약관 중 **새로 저장할 동의가 하나도 없으면** 실패합니다.
           - `agreedAt`은 `yyyy-MM-dd` 형식의 날짜 문자열이어야 합니다.
-          - Authorization 헤더는 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 담아 전달하는 임시 방식입니다. (예: `Bearer 1` 또는 `1`)
           """
   )
   @ApiResponses({
@@ -129,13 +128,8 @@ public interface TermsControllerApi {
       )
   })
   ResponseEntity<CustomResponse<TermsAgreeResponse>> termsAgree(
-      @Parameter(
-          name = "Authorization",
-          description = "임시 인증 헤더입니다. 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 전달합니다.",
-          example = "Bearer 1",
-          in = ParameterIn.HEADER
-      )
-      String authorization,
+      @Parameter(hidden = true)
+      CustomUserDetails customUserDetails,
 
       @RequestBody(
           description = "동의할 약관 타입 목록과 동의 시각",
@@ -162,7 +156,6 @@ public interface TermsControllerApi {
           현재 시행 중인 모든 필수 약관 타입(`SERVICE`, `PRIVACY`)에 대해 회원이 전부 동의했는지 확인합니다.
 
           - 필수 약관 타입 중 하나라도 오늘 날짜 기준으로 시행 중인 버전이 없으면 오류가 발생합니다.
-          - Authorization 헤더는 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 담아 전달하는 임시 방식입니다. (예: `Bearer 1` 또는 `1`)
           """
   )
   @ApiResponses({
@@ -220,12 +213,7 @@ public interface TermsControllerApi {
       )
   })
   ResponseEntity<CustomResponse<CheckRequiredTermsAgreedResponse>> checkRequiredTermsAgreed(
-      @Parameter(
-          name = "Authorization",
-          description = "임시 인증 헤더입니다. 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 전달합니다.",
-          example = "Bearer 1",
-          in = ParameterIn.HEADER
-      )
-      String authorization
+      @Parameter(hidden = true)
+      CustomUserDetails customUserDetails
   );
 }

@@ -1,6 +1,7 @@
 package com.ringout.api.stamp.controller.docs;
 
 import com.ringout.api.common.response.CustomResponse;
+import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.stamp.dto.response.CreateGiveUpResponse;
 import com.ringout.api.stamp.dto.response.CreateStampResponse;
 import com.ringout.api.stamp.dto.response.FindMonthlyStampsResponse;
@@ -25,7 +26,6 @@ public interface StampControllerApi {
           회원이 목적지에 도착 성공한 날짜를 스탬프로 저장합니다.
 
           - 동일한 회원이 같은 날짜에 이미 성공/실패 기록을 남긴 경우 실패합니다.
-          - Authorization 헤더는 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 담아 전달하는 임시 방식입니다. (예: `Bearer 1` 또는 `1`)
           """
   )
   @ApiResponses({
@@ -70,13 +70,8 @@ public interface StampControllerApi {
       )
   })
   ResponseEntity<CustomResponse<CreateStampResponse>> createStamp(
-      @Parameter(
-          name = "Authorization",
-          description = "임시 인증 헤더입니다. 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 전달합니다.",
-          example = "Bearer 1",
-          in = ParameterIn.HEADER
-      )
-      String authorization,
+      @Parameter(hidden = true)
+      CustomUserDetails customUserDetails,
 
       @Parameter(
           name = "completedAt",
@@ -94,7 +89,6 @@ public interface StampControllerApi {
           회원이 목표를 포기했거나 도착에 실패한 날짜를 기록합니다.
 
           - 동일한 회원이 같은 날짜에 이미 성공/실패 기록을 남긴 경우 실패합니다.
-          - Authorization 헤더는 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 담아 전달하는 임시 방식입니다. (예: `Bearer 1` 또는 `1`)
           """
   )
   @ApiResponses({
@@ -139,13 +133,8 @@ public interface StampControllerApi {
       )
   })
   ResponseEntity<CustomResponse<CreateGiveUpResponse>> createGiveUp(
-      @Parameter(
-          name = "Authorization",
-          description = "임시 인증 헤더입니다. 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 전달합니다.",
-          example = "Bearer 1",
-          in = ParameterIn.HEADER
-      )
-      String authorization,
+      @Parameter(hidden = true)
+      CustomUserDetails customUserDetails,
 
       @Parameter(
           name = "terminatedAt",
@@ -163,7 +152,6 @@ public interface StampControllerApi {
           요청한 연/월에 해당 회원이 목적지 도착에 성공한 날짜 목록을 조회합니다.
 
           - 실패(포기) 기록은 포함되지 않고, 도착 성공 날짜만 반환됩니다.
-          - Authorization 헤더는 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 담아 전달하는 임시 방식입니다. (예: `Bearer 1` 또는 `1`)
           """
   )
   @ApiResponses({
@@ -208,13 +196,8 @@ public interface StampControllerApi {
       )
   })
   ResponseEntity<CustomResponse<FindMonthlyStampsResponse>> findMonthlyStamps(
-      @Parameter(
-          name = "Authorization",
-          description = "임시 인증 헤더입니다. 인증/인가 기능이 구현되기 전까지 회원 ID를 그대로 전달합니다.",
-          example = "Bearer 1",
-          in = ParameterIn.HEADER
-      )
-      String authorization,
+      @Parameter(hidden = true)
+      CustomUserDetails customUserDetails,
 
       @Parameter(
           name = "year",
