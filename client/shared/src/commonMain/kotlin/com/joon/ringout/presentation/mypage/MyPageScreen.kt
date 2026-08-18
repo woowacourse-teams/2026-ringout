@@ -58,11 +58,19 @@ fun MyPageScreen(
     onPolicyClick: (PolicyId) -> Unit,
     onEditProfileClick: () -> Unit,
     onLogoutConfirm: () -> Unit,
+    onWithdrawConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MyPageViewModel = rememberMyPageViewModel(),
 ) {
-    LaunchedEffect(viewModel) {
-        viewModel.onScreenEntered()
+    val isLoggedIn = when (accountUiState) {
+        MyPageAccountUiState.Loading -> null
+        MyPageAccountUiState.LoggedOut -> false
+        is MyPageAccountUiState.LoggedIn -> true
+    }
+    LaunchedEffect(viewModel, isLoggedIn) {
+        if (isLoggedIn != null) {
+            viewModel.onScreenEntered()
+        }
     }
     PlatformBackHandler(onBack = onBackClick)
     MyPageScreenContent(
@@ -79,6 +87,7 @@ fun MyPageScreen(
         onPolicyClick = onPolicyClick,
         onEditProfileClick = onEditProfileClick,
         onLogoutConfirm = onLogoutConfirm,
+        onWithdrawConfirm = onWithdrawConfirm,
         modifier = modifier,
     )
 }

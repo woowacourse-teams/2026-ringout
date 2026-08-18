@@ -51,4 +51,6 @@ private class FakeMemberRepository : MemberRepository {
         requests += nickname
         return nickname
     }
+
+    override suspend fun withdraw() = Unit
 }
