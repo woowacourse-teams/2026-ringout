@@ -8,6 +8,7 @@ import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSUUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class IosAlarmAnalyticsTest {
     @Test
@@ -28,6 +29,15 @@ class IosAlarmAnalyticsTest {
         assertEquals(1L, event.numberParameter("creation_index"))
         assertEquals(3L, event.numberParameter("repeat_day_count"))
         assertEquals("weekly", event.textParameter("schedule_type"))
+    }
+
+    @Test
+    fun alarmAndDestinationCreationCountersAreIndependent() = withUsageStore { store ->
+        assertEquals(1L, store.claimAlarmCreation("alarm-1"))
+        assertEquals(1L, store.claimDestinationCreation("logged_in:1"))
+        assertEquals(2L, store.claimAlarmCreation("alarm-2"))
+        assertEquals(2L, store.claimDestinationCreation("logged_in:2"))
+        assertNull(store.claimDestinationCreation("logged_in:1"))
     }
 
     @Test
@@ -69,6 +79,16 @@ class IosAlarmAnalyticsTest {
                 ),
                 tracker,
             )
+        } finally {
+            preferences.removePersistentDomainForName(suiteName)
+        }
+    }
+
+    private fun withUsageStore(block: (IosAnalyticsUsageStore) -> Unit) {
+        val suiteName = "ringout-analytics-test-${NSUUID().UUIDString}"
+        val preferences = requireNotNull(NSUserDefaults(suiteName = suiteName))
+        try {
+            block(IosAnalyticsUsageStore(preferences))
         } finally {
             preferences.removePersistentDomainForName(suiteName)
         }

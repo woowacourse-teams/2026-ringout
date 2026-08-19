@@ -5,9 +5,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.joon.ringout.analytics.AnalyticsAuthProvider
+import com.joon.ringout.analytics.ProductAnalyticsRecorder
+import com.joon.ringout.diagnostics.AuthDiagnosticLogger
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.SocialLoginOutcome
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 data class LoginUiState(
@@ -26,16 +30,21 @@ sealed interface LoginCompletion {
     data class SignupRequired(
         override val eventId: Long,
         val signupToken: String,
+        val provider: AnalyticsAuthProvider,
     ) : LoginCompletion
 }
 
 class LoginViewModel(
     private val authRepository: AuthRepository,
+    private val productAnalyticsRecorder: ProductAnalyticsRecorder,
+    coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     var uiState by mutableStateOf(LoginUiState())
         private set
 
     private var nextEventId = 0L
+    private var activeProvider: AnalyticsAuthProvider? = null
+    private val scope = coroutineScope ?: viewModelScope
 
     fun beginAppleSignIn(): Boolean {
         // TODO: Apple 인증 연동 시 로그인 시작 상태 처리와 credential 결과 흐름을 연결한다.
@@ -43,50 +52,99 @@ class LoginViewModel(
     }
 
     fun beginGoogleSignIn(): Boolean {
-        return beginSocialSignIn()
+        return beginSocialSignIn(AnalyticsAuthProvider.Google)
     }
 
     fun beginKakaoSignIn(): Boolean {
-        return beginSocialSignIn()
+        return beginSocialSignIn(AnalyticsAuthProvider.Kakao)
     }
 
-    private fun beginSocialSignIn(): Boolean {
-        if (uiState.isLoading) return false
+    private fun beginSocialSignIn(provider: AnalyticsAuthProvider): Boolean {
+        if (uiState.isLoading) {
+            AuthDiagnosticLogger.debug(
+                "login_start_ignored provider=${provider.logValue} reason=already_in_progress",
+            )
+            return false
+        }
+        activeProvider = provider
         uiState = uiState.copy(isLoading = true, errorMessage = null)
+        AuthDiagnosticLogger.debug("login_started provider=${provider.logValue}")
+        runCatching {
+            productAnalyticsRecorder.recordLoginStarted(provider)
+        }.onFailure { error ->
+            AuthDiagnosticLogger.error(
+                "analytics_login_started_failed provider=${provider.logValue}",
+                error,
+            )
+        }
         return true
     }
 
     fun handleGoogleAccessTokenResult(result: GoogleAccessTokenResult) {
+        if (activeProvider != AnalyticsAuthProvider.Google) {
+            AuthDiagnosticLogger.debug(
+                "sdk_result_ignored provider=google reason=no_matching_login",
+            )
+            return
+        }
         when (result) {
             GoogleAccessTokenResult.Cancelled -> {
+                AuthDiagnosticLogger.debug("sdk_cancelled provider=google")
+                activeProvider = null
                 uiState = uiState.copy(isLoading = false)
             }
 
             is GoogleAccessTokenResult.Failure -> {
+                AuthDiagnosticLogger.error(
+                    "sdk_failed provider=google",
+                    IllegalStateException(result.message),
+                )
+                activeProvider = null
                 uiState = uiState.copy(
                     isLoading = false,
                     errorMessage = result.message,
                 )
             }
 
-            is GoogleAccessTokenResult.Success -> loginWithGoogle(result.accessToken)
+            is GoogleAccessTokenResult.Success -> {
+                AuthDiagnosticLogger.debug("sdk_succeeded provider=google token_received=true")
+                activeProvider = null
+                loginWithGoogle(result.accessToken)
+            }
         }
     }
 
     fun handleKakaoAccessTokenResult(result: KakaoAccessTokenResult) {
+        if (activeProvider != AnalyticsAuthProvider.Kakao) {
+            AuthDiagnosticLogger.debug(
+                "sdk_result_ignored provider=kakao reason=no_matching_login",
+            )
+            return
+        }
         when (result) {
             KakaoAccessTokenResult.Cancelled -> {
+                AuthDiagnosticLogger.debug("sdk_cancelled provider=kakao")
+                activeProvider = null
                 uiState = uiState.copy(isLoading = false)
             }
 
             is KakaoAccessTokenResult.Failure -> {
+                AuthDiagnosticLogger.error(
+                    "sdk_failed provider=kakao",
+                    IllegalStateException(result.message),
+                )
+                activeProvider = null
                 uiState = uiState.copy(
                     isLoading = false,
                     errorMessage = result.message,
                 )
             }
 
-            is KakaoAccessTokenResult.Success -> loginWithKakao(result.accessToken)
+            is KakaoAccessTokenResult.Success -> {
+                AuthDiagnosticLogger.debug("sdk_succeeded provider=kakao token_received=true")
+                activeProvider = null
+                loginWithKakao(result.accessToken)
+            }
         }
     }
 
@@ -104,23 +162,42 @@ class LoginViewModel(
     }
 
     private fun loginWithGoogle(accessToken: String) {
-        loginWithSocialProvider {
+        loginWithSocialProvider(AnalyticsAuthProvider.Google) {
             authRepository.loginWithGoogle(accessToken)
         }
     }
 
     private fun loginWithKakao(accessToken: String) {
-        loginWithSocialProvider {
+        loginWithSocialProvider(AnalyticsAuthProvider.Kakao) {
             authRepository.loginWithKakao(accessToken)
         }
     }
 
     private fun loginWithSocialProvider(
+        provider: AnalyticsAuthProvider,
         login: suspend () -> SocialLoginOutcome,
     ) {
-        viewModelScope.launch {
+        scope.launch {
+            AuthDiagnosticLogger.debug("backend_login_started provider=${provider.logValue}")
             try {
-                val completion = when (val outcome = login()) {
+                val outcome = login()
+                val isNewUser = outcome is SocialLoginOutcome.SignupRequired
+                AuthDiagnosticLogger.debug(
+                    "backend_login_succeeded provider=${provider.logValue} " +
+                        "is_new_user=$isNewUser",
+                )
+                runCatching {
+                    productAnalyticsRecorder.recordLoginCompleted(
+                        provider = provider,
+                        isNewUser = isNewUser,
+                    )
+                }.onFailure { error ->
+                    AuthDiagnosticLogger.error(
+                        "analytics_login_completed_failed provider=${provider.logValue}",
+                        error,
+                    )
+                }
+                val completion = when (outcome) {
                     SocialLoginOutcome.Authenticated ->
                         LoginCompletion.Authenticated(++nextEventId)
 
@@ -128,6 +205,7 @@ class LoginViewModel(
                         LoginCompletion.SignupRequired(
                             eventId = ++nextEventId,
                             signupToken = outcome.signupToken,
+                            provider = provider,
                         )
                 }
                 uiState = uiState.copy(
@@ -135,8 +213,13 @@ class LoginViewModel(
                     completion = completion,
                 )
             } catch (error: CancellationException) {
+                AuthDiagnosticLogger.debug("backend_login_cancelled provider=${provider.logValue}")
                 throw error
             } catch (error: Throwable) {
+                AuthDiagnosticLogger.error(
+                    "backend_login_failed provider=${provider.logValue}",
+                    error,
+                )
                 uiState = uiState.copy(
                     isLoading = false,
                     errorMessage = error.message ?: "로그인하지 못했어요. 다시 시도해 주세요.",
@@ -145,6 +228,13 @@ class LoginViewModel(
         }
     }
 }
+
+private val AnalyticsAuthProvider.logValue: String
+    get() = when (this) {
+        AnalyticsAuthProvider.Google -> "google"
+        AnalyticsAuthProvider.Kakao -> "kakao"
+        AnalyticsAuthProvider.Apple -> "apple"
+    }
 
 private val SocialLoginProvider.displayName: String
     get() = when (this) {

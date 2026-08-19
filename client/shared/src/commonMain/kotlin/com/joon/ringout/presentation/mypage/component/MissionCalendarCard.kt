@@ -49,6 +49,7 @@ fun MissionCalendarCard(
     onPreviousMonthClick: () -> Unit,
     onNextMonthClick: () -> Unit,
     modifier: Modifier = Modifier,
+    navigationEnabled: Boolean = true,
 ) {
     val colors = myPageColors()
     val shape = RoundedCornerShape(CalendarCornerRadius)
@@ -68,6 +69,7 @@ fun MissionCalendarCard(
             contentColor = colors.primaryText,
             onPreviousMonthClick = onPreviousMonthClick,
             onNextMonthClick = onNextMonthClick,
+            navigationEnabled = navigationEnabled,
         )
         Spacer(Modifier.height(HeaderBodySpacing))
         CalendarBody(
@@ -85,6 +87,7 @@ private fun CalendarHeader(
     contentColor: Color,
     onPreviousMonthClick: () -> Unit,
     onNextMonthClick: () -> Unit,
+    navigationEnabled: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -96,6 +99,7 @@ private fun CalendarHeader(
             direction = ChevronDirection.Previous,
             description = "이전 달",
             contentColor = contentColor,
+            enabled = navigationEnabled,
             onClick = onPreviousMonthClick,
         )
         Text(
@@ -114,6 +118,7 @@ private fun CalendarHeader(
             direction = ChevronDirection.Next,
             description = "다음 달",
             contentColor = contentColor,
+            enabled = navigationEnabled,
             onClick = onNextMonthClick,
         )
     }
@@ -124,12 +129,14 @@ private fun MonthButton(
     direction: ChevronDirection,
     description: String,
     contentColor: Color,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .size(ChevronVisualSize)
             .clickable(
+                enabled = enabled,
                 role = Role.Button,
                 onClickLabel = description,
                 onClick = onClick,
@@ -144,6 +151,7 @@ private fun MonthButton(
                 .size(ChevronVisualSize)
                 .graphicsLayer {
                     rotationZ = if (direction == ChevronDirection.Previous) 180f else 0f
+                    alpha = if (enabled) 1f else DisabledContentAlpha
                 },
         )
     }
@@ -253,6 +261,7 @@ private val ChevronVisualSize = 20.dp
 private val WeekdayHeight = 20.dp
 private val WeekdayWeeksSpacing = 8.dp
 private val WeekSpacing = 4.dp
+private const val DisabledContentAlpha = 0.38f
 
 @Preview(widthDp = 402, heightDp = 412)
 @Composable

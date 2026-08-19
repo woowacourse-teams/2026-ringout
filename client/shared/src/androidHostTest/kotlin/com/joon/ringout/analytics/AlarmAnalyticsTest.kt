@@ -42,6 +42,17 @@ class AlarmAnalyticsTest {
     }
 
     @Test
+    fun alarmAndDestinationCreationCountersAreIndependent() {
+        val store = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences())
+
+        assertEquals(1L, store.claimAlarmCreation("alarm-1"))
+        assertEquals(1L, store.claimDestinationCreation("logged_in:1"))
+        assertEquals(2L, store.claimAlarmCreation("alarm-2"))
+        assertEquals(2L, store.claimDestinationCreation("logged_in:2"))
+        assertNull(store.claimDestinationCreation("logged_in:1"))
+    }
+
+    @Test
     fun eventClaimsAreScopedToEventAndOccurrence() {
         val store = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences())
 

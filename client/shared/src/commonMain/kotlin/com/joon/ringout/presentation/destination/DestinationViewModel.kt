@@ -5,9 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.joon.ringout.analytics.AnalyticsLoginState
+import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.retryWhen
@@ -36,11 +39,14 @@ internal fun DestinationSavedEvent.belongsToDestinationRequest(
 
 class DestinationViewModel(
     private val repository: DestinationRepository,
+    private val productAnalyticsRecorder: ProductAnalyticsRecorder,
+    coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     var uiState by mutableStateOf(DestinationUiState())
         private set
 
     private val mutationMutex = Mutex()
+    private val scope = coroutineScope ?: viewModelScope
     private var nextSavedEventId = 0L
     private var fetchJob: Job? = null
 
@@ -51,7 +57,7 @@ class DestinationViewModel(
     fun onScreenEntered() {
         fetchJob?.cancel()
         uiState = uiState.copy(isLoading = true, errorMessage = null)
-        fetchJob = viewModelScope.launch {
+        fetchJob = scope.launch {
             try {
                 val destinations = repository.fetchAll()
                 uiState = uiState.copy(
@@ -72,6 +78,7 @@ class DestinationViewModel(
     fun save(
         destination: SavedDestination,
         requestId: Long,
+        loginState: AnalyticsLoginState,
     ) {
         if (uiState.isSaving) return
 
@@ -79,10 +86,18 @@ class DestinationViewModel(
             isSaving = true,
             errorMessage = null,
         )
-        viewModelScope.launch {
+        scope.launch {
             try {
                 val savedDestination = mutationMutex.withLock {
                     repository.save(destination)
+                }
+                if (destination.id == 0L && savedDestination.id > 0L) {
+                    runCatching {
+                        productAnalyticsRecorder.recordDestinationCreated(
+                            destinationId = savedDestination.id,
+                            loginState = loginState,
+                        )
+                    }
                 }
                 uiState = uiState.copy(
                     isSaving = false,
@@ -113,7 +128,7 @@ class DestinationViewModel(
             isSaving = true,
             errorMessage = null,
         )
-        viewModelScope.launch {
+        scope.launch {
             try {
                 val renamed = mutationMutex.withLock {
                     repository.updateName(destinationId, nickname)
@@ -153,7 +168,7 @@ class DestinationViewModel(
             isSaving = true,
             errorMessage = null,
         )
-        viewModelScope.launch {
+        scope.launch {
             try {
                 val deleted = mutationMutex.withLock {
                     repository.delete(destinationId)
@@ -191,7 +206,7 @@ class DestinationViewModel(
     }
 
     private fun observeDestinations() {
-        viewModelScope.launch {
+        scope.launch {
             repository.observeAll()
                 .retryWhen { error, attempt ->
                     uiState = uiState.copy(
