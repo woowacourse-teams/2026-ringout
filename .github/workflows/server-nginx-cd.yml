@@ -1,0 +1,35 @@
+name: Nginx & TLS Provisioning
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "server/deploy/**"
+      - ".github/workflows/server-nginx-cd.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ringout-nginx-provisioning
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    name: Configure nginx reverse proxy and TLS
+    runs-on: [ self-hosted, Linux, ARM64, ringout-production ]
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run nginx + certbot setup script
+        env:
+          DOMAIN: ${{ vars.DOMAIN }}
+          CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
+          APP_PORT: ${{ vars.SERVER_PORT || '8080' }}
+        run: |
+          chmod +x server/deploy/setup-nginx.sh
+          server/deploy/setup-nginx.sh

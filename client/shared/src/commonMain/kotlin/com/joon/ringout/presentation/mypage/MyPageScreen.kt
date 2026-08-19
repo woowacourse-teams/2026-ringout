@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.analytics.AnalyticsLoginState
+import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
@@ -59,17 +62,19 @@ fun MyPageScreen(
     onEditProfileClick: () -> Unit,
     onLogoutConfirm: () -> Unit,
     onWithdrawConfirm: () -> Unit,
+    productAnalyticsRecorder: ProductAnalyticsRecorder,
     modifier: Modifier = Modifier,
-    viewModel: MyPageViewModel = rememberMyPageViewModel(),
+    viewModel: MyPageViewModel = rememberMyPageViewModel(productAnalyticsRecorder),
 ) {
-    val isLoggedIn = when (accountUiState) {
+    val entryToken = remember { MyPageEntryToken() }
+    val analyticsLoginState = when (accountUiState) {
         MyPageAccountUiState.Loading -> null
-        MyPageAccountUiState.LoggedOut -> false
-        is MyPageAccountUiState.LoggedIn -> true
+        MyPageAccountUiState.LoggedOut -> AnalyticsLoginState.LoggedOut
+        is MyPageAccountUiState.LoggedIn -> AnalyticsLoginState.LoggedIn
     }
-    LaunchedEffect(viewModel, isLoggedIn) {
-        if (isLoggedIn != null) {
-            viewModel.onScreenEntered()
+    LaunchedEffect(viewModel, entryToken, analyticsLoginState) {
+        if (analyticsLoginState != null) {
+            viewModel.onScreenEntered(entryToken, analyticsLoginState)
         }
     }
     PlatformBackHandler(onBack = onBackClick)
@@ -80,8 +85,14 @@ fun MyPageScreen(
         policies = policies,
         accountUiState = accountUiState,
         onThemeModeChange = onThemeModeChange,
-        onPreviousMonthClick = viewModel::onPreviousMonthClick,
-        onNextMonthClick = viewModel::onNextMonthClick,
+        onPreviousMonthClick = {
+            analyticsLoginState?.let(viewModel::onPreviousMonthClick)
+        },
+        onNextMonthClick = {
+            analyticsLoginState?.let(viewModel::onNextMonthClick)
+        },
+        onRetry = viewModel::retry,
+        isMonthNavigationEnabled = analyticsLoginState != null,
         onBackClick = onBackClick,
         onAccountStatusClick = onAccountStatusClick,
         onPolicyClick = onPolicyClick,
@@ -93,11 +104,14 @@ fun MyPageScreen(
 }
 
 @Composable
-private fun rememberMyPageViewModel(): MyPageViewModel {
+private fun rememberMyPageViewModel(
+    productAnalyticsRecorder: ProductAnalyticsRecorder,
+): MyPageViewModel {
     val missionHistoryRepository = rememberMissionHistoryRepository()
     return viewModel {
         MyPageViewModel(
             getMissionSuccessDates = GetMissionSuccessDates(missionHistoryRepository),
+            productAnalyticsRecorder = productAnalyticsRecorder,
             initialMonth = currentMissionYearMonth(),
         )
     }
@@ -112,10 +126,12 @@ fun MyPageScreenContent(
     onThemeModeChange: (ThemeMode) -> Unit,
     onPreviousMonthClick: () -> Unit,
     onNextMonthClick: () -> Unit,
+    onRetry: () -> Unit,
     onBackClick: () -> Unit,
     onAccountStatusClick: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     accountUiState: MyPageAccountUiState = MyPageAccountUiState.LoggedOut,
+    isMonthNavigationEnabled: Boolean = true,
     onEditProfileClick: () -> Unit = {},
     onLogoutConfirm: () -> Unit = {},
     onWithdrawConfirm: () -> Unit = {},
@@ -168,6 +184,7 @@ fun MyPageScreenContent(
                     successDates = uiState.successDates,
                     onPreviousMonthClick = onPreviousMonthClick,
                     onNextMonthClick = onNextMonthClick,
+                    navigationEnabled = isMonthNavigationEnabled,
                 )
             }
         }
@@ -180,6 +197,11 @@ fun MyPageScreenContent(
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                 )
+            }
+            item {
+                TextButton(onClick = onRetry) {
+                    Text("다시 시도")
+                }
             }
         }
         item { Spacer(Modifier.height(34.dp)) }
@@ -281,6 +303,7 @@ private fun MyPageLoggedInInteractivePreview(initialThemeMode: ThemeMode) {
             onThemeModeChange = { previewThemeMode = it },
             onPreviousMonthClick = {},
             onNextMonthClick = {},
+            onRetry = {},
             onBackClick = {},
             onAccountStatusClick = {},
             onPolicyClick = {},
@@ -304,6 +327,7 @@ private fun MyPagePreview(
             onThemeModeChange = {},
             onPreviousMonthClick = {},
             onNextMonthClick = {},
+            onRetry = {},
             onBackClick = {},
             onAccountStatusClick = {},
             onPolicyClick = {},

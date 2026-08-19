@@ -9,6 +9,7 @@ import com.joon.ringout.data.network.ApiErrorResponse
 import com.joon.ringout.data.network.ApiException
 import com.joon.ringout.data.network.ApiJson
 import com.joon.ringout.data.network.ApiResponse
+import com.joon.ringout.diagnostics.AuthDiagnosticLogger
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.post
@@ -25,13 +26,24 @@ class KtorAuthApi(
         provider: AuthProvider,
         request: LoginRequest,
     ): ApiResponse<LoginResponse> {
-        val response = httpClient.post(
-            ApiConfig.url("/api/v1/auth/${provider.pathValue}/login"),
-        ) {
-            setBody(request)
+        AuthDiagnosticLogger.debug("http_login_request provider=${provider.pathValue}")
+        return try {
+            val response = httpClient.post(
+                ApiConfig.url("/api/v1/auth/${provider.pathValue}/login"),
+            ) {
+                setBody(request)
+            }
+            AuthDiagnosticLogger.debug(
+                "http_login_response provider=${provider.pathValue} status=${response.status.value}",
+            )
+            response.decodeOrThrow()
+        } catch (error: Throwable) {
+            AuthDiagnosticLogger.error(
+                "http_login_failed provider=${provider.pathValue}",
+                error,
+            )
+            throw error
         }
-
-        return response.decodeOrThrow()
     }
 
     override suspend fun signup(

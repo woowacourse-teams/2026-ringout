@@ -42,6 +42,7 @@ internal fun DestinationShortcutRow(
     onManagementClick: () -> Unit,
     onDestinationClick: (SavedDestination) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = modifier
@@ -51,7 +52,10 @@ internal fun DestinationShortcutRow(
         horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        DestinationManagementButton(onClick = onManagementClick)
+        DestinationManagementButton(
+            onClick = onManagementClick,
+            enabled = enabled,
+        )
         if (destinations.isNotEmpty()) {
             Spacer(Modifier.width(DestinationShortcutSpacing))
             LazyRow(
@@ -68,6 +72,7 @@ internal fun DestinationShortcutRow(
                     DestinationShortcutButton(
                         destination = destination,
                         onClick = { onDestinationClick(destination) },
+                        enabled = enabled,
                     )
                 }
             }
@@ -79,6 +84,7 @@ internal fun DestinationShortcutRow(
 private fun DestinationManagementButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val colors = DestinationManagementPalette
     val shape = RoundedCornerShape(15.dp)
@@ -88,6 +94,7 @@ private fun DestinationManagementButton(
         modifier = modifier
             .height(DestinationShortcutRowHeight)
             .clickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 indication = null,
                 role = Role.Button,
@@ -139,6 +146,7 @@ private fun DestinationShortcutButton(
     destination: SavedDestination,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val colors = DestinationManagementPalette
     val shape = RoundedCornerShape(DestinationShortcutCornerRadius)
@@ -148,6 +156,7 @@ private fun DestinationShortcutButton(
         modifier = modifier
             .height(DestinationShortcutRowHeight)
             .clickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 indication = null,
                 role = Role.Button,
