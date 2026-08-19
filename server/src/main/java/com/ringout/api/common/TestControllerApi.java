@@ -1,12 +1,17 @@
 package com.ringout.api.common;
 
 import com.ringout.api.common.response.CustomResponse;
+import com.ringout.api.config.SwaggerConfig;
 import com.ringout.api.config.security.CustomUserDetails;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 @Tag(name = "test", description = "테스트용 API")
@@ -25,14 +30,33 @@ public interface TestControllerApi {
     })
     ResponseEntity<CustomResponse<String>> test();
 
-    @Operation(summary = "api 권한 테스트 확인",
+    @Operation(
+        summary = "api 권한 테스트 확인",
         description = """
             테스트용 api입니다.
             Swagger에서 Authorize에 토큰을 입력한 후 사용해야 정상 작동합니다.
-            """)
+            """,
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "테스트 성공"),
-        @ApiResponse(responseCode = "COMMON401_1", description = "인증이 필요합니다.")
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "isSuccess": false,
+                          "code": "COMMON401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """
+                )
+            )
+        )
     })
     ResponseEntity<CustomResponse<String>> testAuth(
         @Parameter(hidden = true)
