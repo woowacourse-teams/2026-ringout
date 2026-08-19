@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.ringout.api.member.domain.MemberRepository;
 import com.ringout.api.stamp.domain.GoalResult;
 import com.ringout.api.stamp.domain.Stamp;
 import com.ringout.api.stamp.dto.response.CreateGiveUpResponse;
@@ -28,13 +29,16 @@ class StampServiceTest {
   @Mock
   private StampRepository stampRepository;
 
+  @Mock
+  private MemberRepository memberRepository;
+
   private StampService stampService;
 
   private final Long memberId = 1L;
 
   @BeforeEach
   void setUp() {
-    stampService = new StampService(stampRepository);
+    stampService = new StampService(stampRepository, memberRepository);
   }
 
   @Test

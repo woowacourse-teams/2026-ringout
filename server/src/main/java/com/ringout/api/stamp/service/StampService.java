@@ -1,5 +1,7 @@
 package com.ringout.api.stamp.service;
 
+import com.ringout.api.member.domain.Member;
+import com.ringout.api.member.domain.MemberRepository;
 import com.ringout.api.stamp.domain.GoalResult;
 import com.ringout.api.stamp.domain.Stamp;
 import com.ringout.api.stamp.dto.response.CreateGiveUpResponse;
@@ -19,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class StampService {
 
   private final StampRepository stampRepository;
+  private final MemberRepository memberRepository;
 
   @Transactional(isolation = Isolation.READ_COMMITTED)
   public CreateStampResponse createStamp(Long memberId, LocalDate completedAt) {
@@ -26,7 +29,8 @@ public class StampService {
       throw new IllegalStateException("이미 저장된 스탬프입니다.");
     }
 
-    Stamp stamp = Stamp.of(completedAt, GoalResult.SUCCESS, memberId);
+    Member member = memberRepository.getReferenceById(memberId);
+    Stamp stamp = Stamp.of(completedAt, GoalResult.SUCCESS, member);
     stampRepository.save(stamp);
 
     return CreateStampResponse.of(completedAt, GoalResult.SUCCESS);
@@ -38,7 +42,8 @@ public class StampService {
       throw new IllegalStateException("이미 기록된 날짜입니다.");
     }
 
-    Stamp stamp = Stamp.of(terminatedAt, GoalResult.FAILURE, memberId);
+    Member member = memberRepository.getReferenceById(memberId);
+    Stamp stamp = Stamp.of(terminatedAt, GoalResult.FAILURE, member);
     stampRepository.save(stamp);
 
     return CreateGiveUpResponse.of(terminatedAt, GoalResult.FAILURE);

@@ -2,7 +2,11 @@ package com.ringout.api.member.domain;
 
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.BaseEntity;
+import com.ringout.api.destination.domain.Destination;
 import com.ringout.api.member.utils.NicknameGenerator;
+import com.ringout.api.stamp.domain.Stamp;
+import com.ringout.api.terms.domain.MemberAgreement;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -11,9 +15,12 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -56,6 +63,15 @@ public class Member extends BaseEntity {
 
   @Column(nullable = false)
   private LocalDateTime lastAccessedAt;
+
+  @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true)
+  private List<Stamp> stamps = new ArrayList<>();
+
+  @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true)
+  private List<Destination> destinations = new ArrayList<>();
+
+  @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true)
+  private List<MemberAgreement> memberAgreements = new ArrayList<>();
 
   private Member(
       SocialProvider socialProvider,

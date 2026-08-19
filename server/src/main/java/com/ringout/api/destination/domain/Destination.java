@@ -3,12 +3,15 @@ package com.ringout.api.destination.domain;
 import com.ringout.api.common.BaseEntity;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.destination.status.DestinationErrorStatus;
-import jakarta.persistence.Column;
+import com.ringout.api.member.domain.Member;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -32,17 +35,18 @@ public class Destination extends BaseEntity {
   @Embedded
   private Coordinate coordinate;
 
-  @Column(nullable = false)
-  private Long userId;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "user_id", nullable = false)
+  private Member member;
 
-  private Destination(Long userId, DestinationAlias alias, Coordinate coordinate) {
-    this.userId = userId;
+  private Destination(Member member, DestinationAlias alias, Coordinate coordinate) {
+    this.member = member;
     this.alias = alias;
     this.coordinate = coordinate;
   }
 
-  public static Destination create(Long userId, DestinationAlias alias, Coordinate coordinate) {
-    return new Destination(userId, alias, coordinate);
+  public static Destination create(Member member, DestinationAlias alias, Coordinate coordinate) {
+    return new Destination(member, alias, coordinate);
   }
 
   public void update(String alias, Double latitude, Double longitude) {
@@ -51,7 +55,7 @@ public class Destination extends BaseEntity {
   }
 
   public boolean isOwnedBy(Long userId) {
-    return this.userId.equals(userId);
+    return this.member.getId().equals(userId);
   }
 
   private void updateAlias(String alias) {

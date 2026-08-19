@@ -8,12 +8,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface DestinationRepository extends JpaRepository<Destination, Long> {
 
-    void deleteAllByUserId(Long userId);
-
     @Query("""
         select destination
         from Destination destination
-        where destination.userId = :userId
+        where destination.member.id = :userId
         order by destination.id asc
         """)
     List<Destination> findOwnedDestinations(@Param("userId") Long userId);

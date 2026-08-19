@@ -14,6 +14,7 @@ import com.ringout.api.destination.dto.response.DestinationSyncResponse.Destinat
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
+import com.ringout.api.member.domain.Member;
 import com.ringout.api.member.domain.MemberRepository;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,7 +35,8 @@ public class DestinationService {
     public DestinationCreateResponse createDestination(Long userId, String alias, Double latitude, Double longitude) {
         validateAuthenticatedUserExists(userId);
 
-        Destination destination = Destination.create(userId, DestinationAlias.from(alias),
+        Member member = memberRepository.getReferenceById(userId);
+        Destination destination = Destination.create(member, DestinationAlias.from(alias),
             Coordinate.of(latitude, longitude));
 
         return new DestinationCreateResponse(destinationRepository.save(destination).getId());
@@ -55,9 +57,10 @@ public class DestinationService {
         validateDestinationSyncRequestBodyExists(request);
         validateSyncRequestClientDestinationIdsAreUsable(request.destinations());
 
+        Member member = memberRepository.getReferenceById(userId);
         List<DestinationSyncItemResponse> syncedDestinations = new ArrayList<>();
         for (DestinationSyncItemRequest item : request.destinations()) {
-            Destination destination = createDestinationForSync(userId, item);
+            Destination destination = createDestinationForSync(member, item);
             Destination savedDestination = destinationRepository.save(destination);
             syncedDestinations.add(DestinationSyncItemResponse.of(item.clientDestinationId(), savedDestination));
         }
@@ -139,9 +142,9 @@ public class DestinationService {
         }
     }
 
-    private Destination createDestinationForSync(Long userId, DestinationSyncItemRequest request) {
+    private Destination createDestinationForSync(Member member, DestinationSyncItemRequest request) {
         try {
-            return Destination.create(userId, DestinationAlias.from(request.alias()),
+            return Destination.create(member, DestinationAlias.from(request.alias()),
                 Coordinate.of(request.latitude(), request.longitude()));
         } catch (GeneralException exception) {
             throw convertToDestinationSyncException(exception);
