@@ -36,8 +36,8 @@ public interface MemberControllerApi {
                     value = """
                         {
                           "isSuccess": true,
-                          "code": "COMMON200_1",
-                          "message": "정상적인 요청입니다.",
+                          "code": "USER200",
+                          "message": "회원 정보 조회에 성공했습니다.",
                           "result": {
                             "nickname": "서여",
                             "email": "uio6699@naver.com"
@@ -52,16 +52,30 @@ public interface MemberControllerApi {
             description = "인증되지 않은 사용자",
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
-                examples = @ExampleObject(
-                    value = """
-                        {
-                          "isSuccess": false,
-                          "code": "COMMON401",
-                          "message": "인증되지 않은 사용자입니다.",
-                          "result": null
-                        }
-                        """
-                )
+                examples = {
+                    @ExampleObject(
+                        name = "인증 정보 없음 또는 유효하지 않은 토큰",
+                        value = """
+                            {
+                              "isSuccess": false,
+                              "code": "COMMON401",
+                              "message": "인증되지 않은 사용자입니다.",
+                              "result": null
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "만료된 액세스 토큰",
+                        value = """
+                            {
+                              "isSuccess": false,
+                              "code": "AUTH401",
+                              "message": "액세스 토큰이 만료되었습니다.",
+                              "result": null
+                            }
+                            """
+                    )
+                }
             )
         ),
         @ApiResponse(
