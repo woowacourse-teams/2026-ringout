@@ -5,10 +5,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.joon.ringout.analytics.AnalyticsAuthProvider
+import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthTerm
 import com.joon.ringout.domain.destination.DestinationRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 data class SignupUiState(
@@ -20,17 +23,21 @@ data class SignupUiState(
 class SignupViewModel(
     private val authRepository: AuthRepository,
     private val destinationRepository: DestinationRepository,
+    private val productAnalyticsRecorder: ProductAnalyticsRecorder,
     private val currentDate: () -> String = ::currentAgreementDate,
+    coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     var uiState by mutableStateOf(SignupUiState())
         private set
 
     private var nextEventId = 0L
     private var completedSignupToken: String? = null
+    private val scope = coroutineScope ?: viewModelScope
 
     fun signup(
         signupToken: String,
         agreedTermIds: Set<TermId>,
+        provider: AnalyticsAuthProvider,
     ) {
         if (uiState.isSaving) return
         val terms = agreedTermIds.mapNotNullTo(mutableSetOf()) { id ->
@@ -41,7 +48,7 @@ class SignupViewModel(
             }
         }
         uiState = uiState.copy(isSaving = true, errorMessage = null)
-        viewModelScope.launch {
+        scope.launch {
             try {
                 if (completedSignupToken != signupToken) {
                     authRepository.signup(
@@ -50,6 +57,9 @@ class SignupViewModel(
                         agreedAt = currentDate(),
                     )
                     completedSignupToken = signupToken
+                    runCatching {
+                        productAnalyticsRecorder.recordSignupCompleted(provider)
+                    }
                 }
                 destinationRepository.sync()
                 uiState = uiState.copy(

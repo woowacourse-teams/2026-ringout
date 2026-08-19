@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.login
 
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -19,15 +20,26 @@ internal actual fun rememberKakaoAccessTokenLauncher(
     return remember(context) {
         {
             val accountLoginCallback = kakaoLoginCallback(currentOnResult.value)
-            if (UserApiClient.instance.isKakaoTalkLoginAvailable(context)) {
+            val isKakaoTalkAvailable = UserApiClient.instance.isKakaoTalkLoginAvailable(context)
+            Log.d(KAKAO_AUTH_LOG_TAG, "kakao_login_requested talk_available=$isKakaoTalkAvailable")
+            if (isKakaoTalkAvailable) {
                 UserApiClient.instance.loginWithKakaoTalk(context) { token, error ->
                     when {
-                        error == null -> currentOnResult.value(token.toKakaoAccessTokenResult())
+                        error == null -> {
+                            Log.d(KAKAO_AUTH_LOG_TAG, "kakao_talk_succeeded")
+                            currentOnResult.value(token.toKakaoAccessTokenResult())
+                        }
                         error.isKakaoLoginCancellation() -> {
+                            Log.d(KAKAO_AUTH_LOG_TAG, "kakao_talk_cancelled")
                             currentOnResult.value(KakaoAccessTokenResult.Cancelled)
                         }
 
                         else -> {
+                            Log.e(
+                                KAKAO_AUTH_LOG_TAG,
+                                "kakao_talk_failed_falling_back cause=${error::class.simpleName} " +
+                                    "message=${error.message.orEmpty()}",
+                            )
                             UserApiClient.instance.loginWithKakaoAccount(
                                 context = context,
                                 callback = accountLoginCallback,
@@ -49,13 +61,26 @@ private fun kakaoLoginCallback(
     onResult: (KakaoAccessTokenResult) -> Unit,
 ): (OAuthToken?, Throwable?) -> Unit = { token, error ->
     when {
-        error == null -> onResult(token.toKakaoAccessTokenResult())
-        error.isKakaoLoginCancellation() -> onResult(KakaoAccessTokenResult.Cancelled)
-        else -> onResult(
-            KakaoAccessTokenResult.Failure(
-                message = error.message ?: "카카오 로그인에 실패했어요.",
-            ),
-        )
+        error == null -> {
+            Log.d(KAKAO_AUTH_LOG_TAG, "kakao_account_succeeded")
+            onResult(token.toKakaoAccessTokenResult())
+        }
+        error.isKakaoLoginCancellation() -> {
+            Log.d(KAKAO_AUTH_LOG_TAG, "kakao_account_cancelled")
+            onResult(KakaoAccessTokenResult.Cancelled)
+        }
+        else -> {
+            Log.e(
+                KAKAO_AUTH_LOG_TAG,
+                "kakao_account_failed cause=${error::class.simpleName} " +
+                    "message=${error.message.orEmpty()}",
+            )
+            onResult(
+                KakaoAccessTokenResult.Failure(
+                    message = error.message ?: "카카오 로그인에 실패했어요.",
+                ),
+            )
+        }
     }
 }
 
@@ -70,3 +95,5 @@ private fun OAuthToken?.toKakaoAccessTokenResult(): KakaoAccessTokenResult {
 
 private fun Throwable.isKakaoLoginCancellation(): Boolean =
     this is ClientError && reason == ClientErrorCause.Cancelled
+
+private const val KAKAO_AUTH_LOG_TAG = "RingoutAuth"

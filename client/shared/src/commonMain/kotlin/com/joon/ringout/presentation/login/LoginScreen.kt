@@ -19,6 +19,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.login.component.LoginHeader
 import com.joon.ringout.presentation.login.component.LoginHero
@@ -37,7 +38,7 @@ enum class SocialLoginProvider {
 fun LoginScreen(
     onBackClick: () -> Unit,
     onAuthenticated: () -> Unit,
-    onSignupRequired: (String) -> Unit,
+    onSignupRequired: (String, AnalyticsAuthProvider) -> Unit,
     viewModel: LoginViewModel,
     modifier: Modifier = Modifier,
 ) {
@@ -52,7 +53,10 @@ fun LoginScreen(
     LaunchedEffect(completion) {
         when (completion) {
             is LoginCompletion.Authenticated -> onAuthenticated()
-            is LoginCompletion.SignupRequired -> onSignupRequired(completion.signupToken)
+            is LoginCompletion.SignupRequired -> onSignupRequired(
+                completion.signupToken,
+                completion.provider,
+            )
             null -> return@LaunchedEffect
         }
         viewModel.consumeCompletion(completion.eventId)

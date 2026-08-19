@@ -158,6 +158,75 @@ class ProductAnalyticsRecorderTest {
     }
 
     @Test
+    fun loginStartedUsesOnlyTheStableProviderValue() {
+        val tracker = RecordingProductAnalyticsTracker()
+        val recorder = recorderWith(tracker)
+
+        AnalyticsAuthProvider.entries.forEach(recorder::recordLoginStarted)
+
+        assertEquals(
+            listOf("google", "kakao", "apple"),
+            tracker.events.map { event ->
+                assertEquals(AnalyticsEventName.LoginStarted, event.name)
+                assertEquals(setOf(AnalyticsParameterName.Provider), event.parameters.keys)
+                event.text(AnalyticsParameterName.Provider)
+            },
+        )
+    }
+
+    @Test
+    fun loginCompletedSerializesNewUserAsFirebaseNumber() {
+        val tracker = RecordingProductAnalyticsTracker()
+        val recorder = recorderWith(tracker)
+
+        recorder.recordLoginCompleted(
+            provider = AnalyticsAuthProvider.Google,
+            isNewUser = false,
+        )
+        recorder.recordLoginCompleted(
+            provider = AnalyticsAuthProvider.Kakao,
+            isNewUser = true,
+        )
+
+        assertEquals(
+            listOf("google" to 0L, "kakao" to 1L),
+            tracker.events.map { event ->
+                assertEquals(AnalyticsEventName.LoginCompleted, event.name)
+                assertEquals(
+                    setOf(
+                        AnalyticsParameterName.Provider,
+                        AnalyticsParameterName.IsNewUser,
+                    ),
+                    event.parameters.keys,
+                )
+                assertTrue(
+                    event.parameters[AnalyticsParameterName.IsNewUser] is
+                        AnalyticsParameterValue.Number,
+                )
+                event.text(AnalyticsParameterName.Provider) to
+                    event.number(AnalyticsParameterName.IsNewUser)
+            },
+        )
+    }
+
+    @Test
+    fun signupCompletedUsesOnlyTheStableProviderValue() {
+        val tracker = RecordingProductAnalyticsTracker()
+        val recorder = recorderWith(tracker)
+
+        AnalyticsAuthProvider.entries.forEach(recorder::recordSignupCompleted)
+
+        assertEquals(
+            listOf("google", "kakao", "apple"),
+            tracker.events.map { event ->
+                assertEquals(AnalyticsEventName.SignupCompleted, event.name)
+                assertEquals(setOf(AnalyticsParameterName.Provider), event.parameters.keys)
+                event.text(AnalyticsParameterName.Provider)
+            },
+        )
+    }
+
+    @Test
     fun analyticsFailuresNeverEscapeToProductFlows() {
         val recorder = DefaultProductAnalyticsRecorder(
             tracker = AnalyticsTracker { error("tracker failure") },
@@ -177,6 +246,12 @@ class ProductAnalyticsRecorderTest {
             AnalyticsLoginState.LoggedIn,
         )
         recorder.recordAccountWithdrawalCompleted()
+        recorder.recordLoginStarted(AnalyticsAuthProvider.Google)
+        recorder.recordLoginCompleted(
+            provider = AnalyticsAuthProvider.Kakao,
+            isNewUser = true,
+        )
+        recorder.recordSignupCompleted(AnalyticsAuthProvider.Apple)
 
         DefaultProductAnalyticsRecorder(
             tracker = RecordingProductAnalyticsTracker(),

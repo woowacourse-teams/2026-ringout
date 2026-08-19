@@ -109,4 +109,13 @@ private class WithdrawalProductAnalyticsRecorder(
     ) = Unit
 
     override fun recordAccountWithdrawalCompleted() = onWithdrawalRecorded()
+
+    override fun recordLoginStarted(provider: AnalyticsAuthProvider) = Unit
+
+    override fun recordLoginCompleted(
+        provider: AnalyticsAuthProvider,
+        isNewUser: Boolean,
+    ) = Unit
+
+    override fun recordSignupCompleted(provider: AnalyticsAuthProvider) = Unit
 }

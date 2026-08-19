@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.completeAccountWithdrawal
 import com.joon.ringout.analytics.rememberProductAnalyticsRecorder
@@ -207,10 +208,17 @@ private fun RingoutAppContent(
         )
     }
     val loginViewModel: LoginViewModel = viewModel {
-        LoginViewModel(authRepository)
+        LoginViewModel(
+            authRepository = authRepository,
+            productAnalyticsRecorder = productAnalyticsRecorder,
+        )
     }
     val signupViewModel: SignupViewModel = viewModel {
-        SignupViewModel(authRepository, destinationRepository)
+        SignupViewModel(
+            authRepository = authRepository,
+            destinationRepository = destinationRepository,
+            productAnalyticsRecorder = productAnalyticsRecorder,
+        )
     }
     var destinationName by rememberSaveable { mutableStateOf("") }
     var destinationAddress by rememberSaveable { mutableStateOf("") }
@@ -221,7 +229,7 @@ private fun RingoutAppContent(
     }
     var alarmSoundUri by rememberSaveable { mutableStateOf<String?>(null) }
     var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
-    var pendingSignupToken by remember { mutableStateOf<String?>(null) }
+    var pendingSignup by remember { mutableStateOf<PendingSignup?>(null) }
     var handledActiveAlarmOccurrenceId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -613,7 +621,7 @@ private fun RingoutAppContent(
                 coroutineScope.launch {
                     authRepository.logout()
                     myPageNickname = "로그인됨"
-                    pendingSignupToken = null
+                    pendingSignup = null
                     screenName = AppScreen.Login.name
                 }
             },
@@ -628,7 +636,7 @@ private fun RingoutAppContent(
                             productAnalyticsRecorder = productAnalyticsRecorder,
                         )
                         myPageNickname = "로그인됨"
-                        pendingSignupToken = null
+                        pendingSignup = null
                         withdrawalErrorMessage = null
                         screenName = AppScreen.MyPage.name
                     } catch (error: CancellationException) {
@@ -671,17 +679,23 @@ private fun RingoutAppContent(
 
         AppScreen.Login -> LoginScreen(
             onBackClick = { screenName = AppScreen.MyPage.name },
-            onAuthenticated = { screenName = AppScreen.Home.name },
-            onSignupRequired = { signupToken ->
-                pendingSignupToken = signupToken
+            onAuthenticated = {
+                pendingSignup = null
+                screenName = AppScreen.Home.name
+            },
+            onSignupRequired = { signupToken, provider ->
+                pendingSignup = PendingSignup(
+                    signupToken = signupToken,
+                    provider = provider,
+                )
                 screenName = AppScreen.TermsAgreement.name
             },
             viewModel = loginViewModel,
         )
 
         AppScreen.TermsAgreement -> {
-            val signupToken = pendingSignupToken
-            if (signupToken == null) {
+            val pending = pendingSignup
+            if (pending == null) {
                 LaunchedEffect(Unit) {
                     screenName = AppScreen.Login.name
                 }
@@ -690,13 +704,17 @@ private fun RingoutAppContent(
                 val completedEventId = signupUiState.completedEventId
                 LaunchedEffect(completedEventId) {
                     completedEventId ?: return@LaunchedEffect
-                    pendingSignupToken = null
+                    pendingSignup = null
                     signupViewModel.consumeCompletedEvent(completedEventId)
                     screenName = AppScreen.Home.name
                 }
                 TermsAgreementScreen(
                     onStart = { agreedTerms ->
-                        signupViewModel.signup(signupToken, agreedTerms)
+                        signupViewModel.signup(
+                            signupToken = pending.signupToken,
+                            agreedTermIds = agreedTerms,
+                            provider = pending.provider,
+                        )
                     },
                     onTermDetailClick = { termId ->
                         val policyId = when (termId) {
@@ -829,6 +847,11 @@ private enum class AppScreen {
     Settings,
     ActiveAlarmTracking,
 }
+
+private data class PendingSignup(
+    val signupToken: String,
+    val provider: AnalyticsAuthProvider,
+)
 
 private const val UnavailableEditingAlarmTime = "06:20"
 private val DefaultSelectedDays = listOf("월", "화", "수", "목", "금", "토", "일")

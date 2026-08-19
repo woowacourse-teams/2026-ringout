@@ -21,6 +21,14 @@ enum class StampMonthChangeDirection(
     Next("next"),
 }
 
+enum class AnalyticsAuthProvider(
+    internal val wireName: String,
+) {
+    Google("google"),
+    Kakao("kakao"),
+    Apple("apple"),
+}
+
 interface ProductAnalyticsRecorder {
     fun recordDestinationCreated(
         destinationId: Long,
@@ -46,6 +54,15 @@ interface ProductAnalyticsRecorder {
     )
 
     fun recordAccountWithdrawalCompleted()
+
+    fun recordLoginStarted(provider: AnalyticsAuthProvider)
+
+    fun recordLoginCompleted(
+        provider: AnalyticsAuthProvider,
+        isNewUser: Boolean,
+    )
+
+    fun recordSignupCompleted(provider: AnalyticsAuthProvider)
 }
 
 internal fun interface ProductAnalyticsUsageStore {
@@ -142,7 +159,50 @@ internal class DefaultProductAnalyticsRecorder(
         )
     }
 
+    override fun recordLoginStarted(provider: AnalyticsAuthProvider) = safelyRecord {
+        tracker.log(
+            AnalyticsEvent(
+                name = AnalyticsEventName.LoginStarted,
+                parameters = mapOf(
+                    AnalyticsParameterName.Provider to
+                        AnalyticsParameterValue.Text(provider.wireName),
+                ),
+            ),
+        )
+    }
+
+    override fun recordLoginCompleted(
+        provider: AnalyticsAuthProvider,
+        isNewUser: Boolean,
+    ) = safelyRecord {
+        tracker.log(
+            AnalyticsEvent(
+                name = AnalyticsEventName.LoginCompleted,
+                parameters = mapOf(
+                    AnalyticsParameterName.Provider to
+                        AnalyticsParameterValue.Text(provider.wireName),
+                    AnalyticsParameterName.IsNewUser to
+                        AnalyticsParameterValue.Number(isNewUser.toAnalyticsNumber()),
+                ),
+            ),
+        )
+    }
+
+    override fun recordSignupCompleted(provider: AnalyticsAuthProvider) = safelyRecord {
+        tracker.log(
+            AnalyticsEvent(
+                name = AnalyticsEventName.SignupCompleted,
+                parameters = mapOf(
+                    AnalyticsParameterName.Provider to
+                        AnalyticsParameterValue.Text(provider.wireName),
+                ),
+            ),
+        )
+    }
+
     private inline fun safelyRecord(action: () -> Unit) {
         runCatching(action)
     }
 }
+
+private fun Boolean.toAnalyticsNumber(): Long = if (this) 1L else 0L

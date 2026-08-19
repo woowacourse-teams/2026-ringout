@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.mypage
 
+import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
@@ -285,6 +286,15 @@ private class RecordingProductAnalyticsRecorder : ProductAnalyticsRecorder {
     }
 
     override fun recordAccountWithdrawalCompleted() = Unit
+
+    override fun recordLoginStarted(provider: AnalyticsAuthProvider) = Unit
+
+    override fun recordLoginCompleted(
+        provider: AnalyticsAuthProvider,
+        isNewUser: Boolean,
+    ) = Unit
+
+    override fun recordSignupCompleted(provider: AnalyticsAuthProvider) = Unit
 }
 
 private data class CalendarViewed(
