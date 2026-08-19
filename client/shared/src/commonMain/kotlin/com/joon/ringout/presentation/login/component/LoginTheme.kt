@@ -12,6 +12,8 @@ import com.joon.ringout.ThemeMode
 internal data class LoginColors(
     val background: Color,
     val primaryText: Color,
+    val loadingScrim: Color,
+    val loadingIndicator: Color,
     val googleBackground: Color,
     val googleBorder: Color,
     val googleText: Color,
@@ -42,6 +44,8 @@ internal data class LoginDimensions(
 private val LoginDarkColors = LoginColors(
     background = Color(0xFF0F1012),
     primaryText = Color(0xFFF5F5F6),
+    loadingScrim = Color.Black.copy(alpha = 0.5f),
+    loadingIndicator = Color(0xFFFF6D2E),
     googleBackground = Color(0xFFFFFFFF),
     googleBorder = Color(0xFFE5E7EB),
     googleText = Color(0xFF374151),
@@ -54,6 +58,8 @@ private val LoginDarkColors = LoginColors(
 private val LoginLightColors = LoginColors(
     background = Color(0xFFFFFFFF),
     primaryText = Color(0xFF111827),
+    loadingScrim = Color.Black.copy(alpha = 0.5f),
+    loadingIndicator = Color(0xFFFF6D2E),
     googleBackground = Color(0xFFFFFFFF),
     googleBorder = Color(0xFFD1D5DB),
     googleText = Color(0xFF374151),
