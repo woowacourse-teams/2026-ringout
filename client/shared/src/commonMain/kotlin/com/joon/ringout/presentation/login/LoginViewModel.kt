@@ -37,6 +37,11 @@ class LoginViewModel(
 
     private var nextEventId = 0L
 
+    fun beginAppleSignIn(): Boolean {
+        // TODO: Apple 인증 연동 시 로그인 시작 상태 처리와 credential 결과 흐름을 연결한다.
+        return false
+    }
+
     fun beginGoogleSignIn(): Boolean {
         return beginSocialSignIn()
     }
@@ -143,6 +148,7 @@ class LoginViewModel(
 
 private val SocialLoginProvider.displayName: String
     get() = when (this) {
+        SocialLoginProvider.Apple -> "Apple"
         SocialLoginProvider.Google -> "Google"
         SocialLoginProvider.Kakao -> "카카오"
     }

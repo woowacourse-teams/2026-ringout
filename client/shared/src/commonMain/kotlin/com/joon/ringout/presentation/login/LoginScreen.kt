@@ -28,6 +28,7 @@ import com.joon.ringout.presentation.login.component.loginColors
 import com.joon.ringout.presentation.login.component.loginDimensions
 
 enum class SocialLoginProvider {
+    Apple,
     Google,
     Kakao,
 }
@@ -62,6 +63,8 @@ fun LoginScreen(
         onBackClick = onBackClick,
         onSocialLoginClick = { provider ->
             when (provider) {
+                SocialLoginProvider.Apple -> viewModel.beginAppleSignIn()
+
                 SocialLoginProvider.Google -> {
                     if (viewModel.beginGoogleSignIn()) launchGoogleSignIn()
                 }

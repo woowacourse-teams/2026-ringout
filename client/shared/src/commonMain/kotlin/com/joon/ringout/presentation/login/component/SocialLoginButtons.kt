@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.login.PlatformSocialLoginProviders
 import com.joon.ringout.presentation.login.SocialLoginProvider
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -38,6 +39,7 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 internal fun SocialLoginButtons(
     onSocialLoginClick: (SocialLoginProvider) -> Unit,
+    providers: List<SocialLoginProvider> = PlatformSocialLoginProviders,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
@@ -51,28 +53,39 @@ internal fun SocialLoginButtons(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(dimensions.socialButtonSpacing),
     ) {
-        SocialLoginProvider.entries.forEach { provider ->
-            SocialLoginButton(
-                provider = provider,
-                colors = colors,
-                dimensions = dimensions,
-                enabled = enabled,
-                onClick = { onSocialLoginClick(provider) },
-            )
+        providers.forEach { provider ->
+            when (provider) {
+                SocialLoginProvider.Apple -> AppleLoginButton(
+                    onClick = { onSocialLoginClick(provider) },
+                    enabled = enabled,
+                )
+
+                SocialLoginProvider.Google -> SocialLoginButton(
+                    style = googleButtonStyle(colors),
+                    dimensions = dimensions,
+                    enabled = enabled,
+                    onClick = { onSocialLoginClick(provider) },
+                )
+
+                SocialLoginProvider.Kakao -> SocialLoginButton(
+                    style = kakaoButtonStyle(colors),
+                    dimensions = dimensions,
+                    enabled = enabled,
+                    onClick = { onSocialLoginClick(provider) },
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun SocialLoginButton(
-    provider: SocialLoginProvider,
-    colors: LoginColors,
+    style: SocialLoginButtonStyle,
     dimensions: LoginDimensions,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val style = provider.buttonStyle(colors)
     val shape = RoundedCornerShape(8.dp)
     val borderModifier = if (style.borderColor == null) {
         Modifier
@@ -130,34 +143,39 @@ private data class SocialLoginButtonStyle(
     val iconSlotSize: Dp,
 )
 
-private fun SocialLoginProvider.buttonStyle(colors: LoginColors): SocialLoginButtonStyle = when (this) {
-    SocialLoginProvider.Google -> SocialLoginButtonStyle(
-        label = "Google로 시작하기",
-        backgroundColor = colors.googleBackground,
-        contentColor = colors.googleText,
-        borderColor = colors.googleBorder,
-        icon = LoginGoogleIconResource,
-        iconSize = 25.6.dp,
-        iconSlotSize = 32.dp,
-    )
+private fun googleButtonStyle(colors: LoginColors): SocialLoginButtonStyle = SocialLoginButtonStyle(
+    label = "Google로 시작하기",
+    backgroundColor = colors.googleBackground,
+    contentColor = colors.googleText,
+    borderColor = colors.googleBorder,
+    icon = LoginGoogleIconResource,
+    iconSize = 25.6.dp,
+    iconSlotSize = 32.dp,
+)
 
-    SocialLoginProvider.Kakao -> SocialLoginButtonStyle(
-        label = "카카오로 시작하기",
-        backgroundColor = colors.kakaoBackground,
-        contentColor = colors.kakaoText,
-        borderColor = null,
-        icon = LoginKakaoIconResource,
-        iconSize = 20.dp,
-        iconSlotSize = 20.dp,
-    )
-}
+private fun kakaoButtonStyle(colors: LoginColors): SocialLoginButtonStyle = SocialLoginButtonStyle(
+    label = "카카오로 시작하기",
+    backgroundColor = colors.kakaoBackground,
+    contentColor = colors.kakaoText,
+    borderColor = null,
+    icon = LoginKakaoIconResource,
+    iconSize = 20.dp,
+    iconSlotSize = 20.dp,
+)
 
 @Preview(widthDp = 402)
 @Composable
 private fun SocialLoginButtonsPreview() {
     RingoutTheme(ThemeMode.Dark) {
         Box(Modifier.background(loginColors().background)) {
-            SocialLoginButtons(onSocialLoginClick = {})
+            SocialLoginButtons(
+                onSocialLoginClick = {},
+                providers = listOf(
+                    SocialLoginProvider.Apple,
+                    SocialLoginProvider.Google,
+                    SocialLoginProvider.Kakao,
+                ),
+            )
         }
     }
 }
