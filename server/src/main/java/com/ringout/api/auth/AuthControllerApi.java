@@ -25,11 +25,13 @@ public interface AuthControllerApi {
     @Operation(
         summary = "소셜 로그인",
         description = """
-            Google, Kakao, Naver에서 발급받은 소셜 액세스 토큰으로 로그인합니다.
+            소셜 제공자에서 발급받은 토큰으로 로그인합니다.
             
             ### 요청 방법
-            - provider: google, kakao, naver 중 하나
-            - Request Body: socialAccessToken에 소셜 서비스에서 발급받은 액세스 토큰을 넣어주세요.
+            - provider: google, kakao, naver, apple 중 하나
+            - Request Body: socialAccessToken에 소셜 제공자에서 발급받은 토큰을 넣어주세요.
+            - google, kakao, naver 로그인은 access token을 사용합니다.
+            - apple 로그인은 access token이 아닌 Apple ID Token을 사용합니다.
             
             ### 처음 로그인하는 회원
             1. POST /api/v1/auth/{provider}/login을 호출합니다.
@@ -54,14 +56,14 @@ public interface AuthControllerApi {
         @Parameter(
             name = "provider",
             in = ParameterIn.PATH,
-            description = "소셜 로그인 제공자 (google, kakao, naver 중 하나)",
-            example = "kakao",
+            description = "소셜 로그인 제공자 (google, kakao, naver, apple 중 하나)",
+            example = "apple",
             required = true
         )
         String provider,
 
         @RequestBody(
-            description = "소셜 제공자가 발급한 액세스 토큰을 socialAccessToken 필드에 넣어 보냅니다.",
+            description = "소셜 제공자가 발급한 토큰을 socialAccessToken 필드에 넣어 보냅니다. apple은 ID Token을 보냅니다.",
             required = true
         )
         LoginRequest request
