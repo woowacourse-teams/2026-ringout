@@ -27,8 +27,8 @@ import com.joon.ringout.data.auth.rememberAuthRepository
 import com.joon.ringout.data.member.rememberMemberRepository
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
-import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
@@ -191,7 +191,7 @@ private fun RingoutAppContent(
         )
     }
     val destinationUiState = destinationViewModel.uiState
-    val authSession = remember { AuthSession() }
+    val authSession = remember { getAuthSession() }
     val authRepository = rememberAuthRepository(authSession)
     val memberRepository = rememberMemberRepository()
     val authSessionState by authSession.state.collectAsState()
@@ -203,6 +203,7 @@ private fun RingoutAppContent(
     val myPageAccountUiState = when (authSessionState) {
         AuthSessionState.Restoring -> MyPageAccountUiState.Loading
         AuthSessionState.Unauthenticated -> MyPageAccountUiState.LoggedOut
+        AuthSessionState.ReauthenticationRequired -> MyPageAccountUiState.LoggedOut
         AuthSessionState.Authenticated -> MyPageAccountUiState.LoggedIn(
             nickname = myPageNickname,
         )
@@ -250,6 +251,27 @@ private fun RingoutAppContent(
     LaunchedEffect(authRepository) {
         authRepository.restoreSession()
     }
+    LaunchedEffect(
+        authSessionState,
+        alarmScheduleError,
+        destinationUiState.errorMessage,
+        locationPermissionDialog,
+        withdrawalErrorMessage,
+    ) {
+        if (authSessionState == AuthSessionState.ReauthenticationRequired) {
+            pendingSignup = null
+            alarmScheduleError = null
+            locationPermissionDialog = null
+            pendingAlarmRequest = null
+            isAlarmSaveInProgress = false
+            didRequestFullAccuracy = false
+            withdrawalErrorMessage = null
+            if (destinationUiState.errorMessage != null) {
+                destinationViewModel.clearError()
+            }
+            screenName = AppScreen.Login.name
+        }
+    }
     val destination = destinationLatitude?.let { latitude ->
         destinationLongitude?.let { longitude ->
             DestinationSelection(
@@ -269,12 +291,12 @@ private fun RingoutAppContent(
         uri = alarmSoundUri,
     )
     val requestedScreen = AppScreen.valueOf(screenName)
-    val screen = when {
-        ringingAlarm != null -> AppScreen.AlarmRinging
-        requestedScreen == AppScreen.ActiveAlarmTracking && activeAlarmMission == null ->
-            AppScreen.Home
-        else -> requestedScreen
-    }
+    val screen = resolveAppScreen(
+        requestedScreen = requestedScreen,
+        hasRingingAlarm = ringingAlarm != null,
+        hasActiveAlarmMission = activeAlarmMission != null,
+        authSessionState = authSessionState,
+    )
     SystemBarAppearanceEffect(
         themeMode = if (
             screen == AppScreen.ActiveAlarmTracking ||
@@ -391,7 +413,10 @@ private fun RingoutAppContent(
         }
     }
 
-    if (!useSystemLocationPermissionUiOnly && screen != AppScreen.AlarmRinging) {
+    if (
+        !useSystemLocationPermissionUiOnly &&
+        canShowAppDialog(screen, authSessionState)
+    ) {
         MissionLocationPermissionDialog(
             decision = locationPermissionDialog,
             onConfirm = {
@@ -485,7 +510,10 @@ private fun RingoutAppContent(
         }
     }
 
-    if (screen != AppScreen.AlarmRinging && alarmScheduleError != null) {
+    if (
+        canShowAppDialog(screen, authSessionState) &&
+        alarmScheduleError != null
+    ) {
         AlertDialog(
             onDismissRequest = { alarmScheduleError = null },
             title = { Text("알람을 처리할 수 없습니다") },
@@ -499,7 +527,7 @@ private fun RingoutAppContent(
     }
 
     if (
-        screen != AppScreen.AlarmRinging &&
+        canShowAppDialog(screen, authSessionState) &&
         alarmScheduleError == null &&
         destinationUiState.errorMessage != null
     ) {
@@ -833,7 +861,7 @@ private fun RingoutAppContent(
     }
 }
 
-private enum class AppScreen {
+internal enum class AppScreen {
     AlarmRinging,
     Home,
     AddAlarm,
@@ -869,8 +897,28 @@ internal fun alarmSetupInitialTime(
 internal fun AuthSessionState.toAnalyticsLoginStateOrNull(): AnalyticsLoginState? = when (this) {
     AuthSessionState.Restoring -> null
     AuthSessionState.Unauthenticated -> AnalyticsLoginState.LoggedOut
+    AuthSessionState.ReauthenticationRequired -> AnalyticsLoginState.LoggedOut
     AuthSessionState.Authenticated -> AnalyticsLoginState.LoggedIn
 }
+
+internal fun resolveAppScreen(
+    requestedScreen: AppScreen,
+    hasRingingAlarm: Boolean,
+    hasActiveAlarmMission: Boolean,
+    authSessionState: AuthSessionState,
+): AppScreen = when {
+    hasRingingAlarm -> AppScreen.AlarmRinging
+    authSessionState == AuthSessionState.ReauthenticationRequired -> AppScreen.Login
+    requestedScreen == AppScreen.ActiveAlarmTracking && !hasActiveAlarmMission -> AppScreen.Home
+    else -> requestedScreen
+}
+
+internal fun canShowAppDialog(
+    screen: AppScreen,
+    authSessionState: AuthSessionState,
+): Boolean =
+    screen != AppScreen.AlarmRinging &&
+        authSessionState != AuthSessionState.ReauthenticationRequired
 
 private fun AlarmScheduleRequest.toHomeAlarm(enabled: Boolean): HomeAlarm = HomeAlarm(
     id = id,

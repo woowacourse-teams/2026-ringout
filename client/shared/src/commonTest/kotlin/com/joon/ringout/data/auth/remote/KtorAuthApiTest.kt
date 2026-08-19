@@ -1,6 +1,7 @@
 package com.joon.ringout.data.auth.remote
 
 import com.joon.ringout.data.auth.remote.model.LoginRequest
+import com.joon.ringout.data.auth.remote.model.ReissueRequest
 import com.joon.ringout.data.auth.remote.model.SignupRequest
 import com.joon.ringout.data.auth.remote.model.TermsType
 import com.joon.ringout.data.network.ApiException
@@ -87,6 +88,64 @@ class KtorAuthApiTest {
         )
 
         assertEquals("refresh-token", response.result?.refreshToken)
+    }
+
+    @Test
+    fun `토큰 재발급 요청에 refresh token을 전송하고 새 토큰을 변환한다`() = runTest {
+        val api = authApi { request ->
+            assertEquals(HttpMethod.Post, request.method)
+            assertEquals("/api/v1/auth/reissue", request.url.encodedPath)
+            assertTrue(request.bodyText().contains("\"refreshToken\":\"old-refresh\""))
+            respondJson(
+                """
+                {
+                  "isSuccess": true,
+                  "code": "COMMON200",
+                  "message": "성공입니다.",
+                  "result": {
+                    "accessToken": "new-access",
+                    "refreshToken": "new-refresh"
+                  }
+                }
+                """.trimIndent(),
+            )
+        }
+
+        val response = api.reissue(ReissueRequest(refreshToken = "old-refresh"))
+
+        assertEquals("new-access", response.result?.accessToken)
+        assertEquals("new-refresh", response.result?.refreshToken)
+    }
+
+    @Test
+    fun `토큰 재발급의 COMMON401 응답을 ApiException으로 변환한다`() = runTest {
+        val api = authApi {
+            respondJson(
+                """
+                {
+                  "isSuccess": false,
+                  "code": "COMMON401",
+                  "message": "인증이 필요합니다."
+                }
+                """.trimIndent(),
+                status = HttpStatusCode.Unauthorized,
+            )
+        }
+
+        val exception = assertFailsWith<ApiException> {
+            api.reissue(ReissueRequest(refreshToken = "invalid-refresh"))
+        }
+
+        assertEquals(HttpStatusCode.Unauthorized.value, exception.statusCode)
+        assertEquals("COMMON401", exception.code)
+        assertEquals("인증이 필요합니다.", exception.apiMessage)
+    }
+
+    @Test
+    fun `빈 refresh token은 재발급 요청 전에 거부한다`() {
+        assertFailsWith<IllegalArgumentException> {
+            ReissueRequest(refreshToken = " ")
+        }
     }
 
     @Test

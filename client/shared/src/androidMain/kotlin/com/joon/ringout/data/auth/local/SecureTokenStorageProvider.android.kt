@@ -15,9 +15,18 @@ internal actual fun rememberSecureTokenStorage(): SecureTokenStorage {
 }
 
 internal fun createSecureTokenStorage(context: android.content.Context): SecureTokenStorage =
-    KSafeTokenStorage(
-        kSafe = KSafe(
-            context = context.applicationContext,
-            fileName = AUTH_VAULT_FILE_NAME,
-        ),
-    )
+    sharedTokenStorage ?: synchronized(tokenStorageLock) {
+        sharedTokenStorage ?: KSafeTokenStorage(
+            kSafe = KSafe(
+                context = context.applicationContext,
+                fileName = AUTH_VAULT_FILE_NAME,
+            ),
+        ).also { storage ->
+            sharedTokenStorage = storage
+        }
+    }
+
+private val tokenStorageLock = Any()
+
+@Volatile
+private var sharedTokenStorage: SecureTokenStorage? = null

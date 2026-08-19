@@ -27,4 +27,12 @@ class AnalyticsLoginStateMappingTest {
     fun `restoring session does not produce an analytics login state`() {
         assertNull(AuthSessionState.Restoring.toAnalyticsLoginStateOrNull())
     }
+
+    @Test
+    fun `reauthentication required session maps to logged out`() {
+        assertEquals(
+            AnalyticsLoginState.LoggedOut,
+            AuthSessionState.ReauthenticationRequired.toAnalyticsLoginStateOrNull(),
+        )
+    }
 }

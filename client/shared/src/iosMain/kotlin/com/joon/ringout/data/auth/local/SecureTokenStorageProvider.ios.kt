@@ -11,6 +11,10 @@ internal actual fun rememberSecureTokenStorage(): SecureTokenStorage = remember 
 }
 
 internal fun createSecureTokenStorage(): SecureTokenStorage =
+    sharedTokenStorage
+
+private val sharedTokenStorage: SecureTokenStorage by lazy {
     KSafeTokenStorage(
         kSafe = KSafe(fileName = AUTH_VAULT_FILE_NAME),
     )
+}

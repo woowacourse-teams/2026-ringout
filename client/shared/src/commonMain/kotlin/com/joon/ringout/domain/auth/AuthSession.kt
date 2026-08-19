@@ -8,6 +8,7 @@ enum class AuthSessionState {
     Restoring,
     Unauthenticated,
     Authenticated,
+    ReauthenticationRequired,
 }
 
 class AuthSession {
@@ -19,7 +20,15 @@ class AuthSession {
         mutableState.value = AuthSessionState.Authenticated
     }
 
+    fun requireReauthentication() {
+        mutableState.value = AuthSessionState.ReauthenticationRequired
+    }
+
     fun clear() {
         mutableState.value = AuthSessionState.Unauthenticated
     }
 }
+
+private val sharedAuthSession: AuthSession by lazy(::AuthSession)
+
+internal fun getAuthSession(): AuthSession = sharedAuthSession
