@@ -9,6 +9,10 @@
 		<true/>
 	</dict>
 #endif
+#if RINGOUT_DISABLE_ANALYTICS
+	<key>FIREBASE_ANALYTICS_COLLECTION_DEACTIVATED</key>
+	<true/>
+#endif
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
