@@ -2,6 +2,8 @@ package com.ringout.api.auth;
 
 import com.ringout.api.auth.dto.LoginRequest;
 import com.ringout.api.auth.dto.LoginResponse;
+import com.ringout.api.auth.dto.ReissueRequest;
+import com.ringout.api.auth.dto.ReissueResponse;
 import com.ringout.api.auth.dto.SignupResponse;
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.SwaggerConfig;
@@ -107,5 +109,29 @@ public interface AuthControllerApi {
             )
         )
         TermsAgreeRequest request
+    );
+
+    @Operation(
+        summary = "액세스 토큰 재발급",
+        description = """                                                                                                                                                           
+          만료된 accessToken을 refreshToken으로 재발급합니다.                                                                                                                     
+                                                                                                                                                                                  
+          ### 요청 방법                                                                                                                                                           
+          - Request Body: refreshToken에 로그인/회원가입 시 발급받은 refresh token을 넣어주세요.                                                                                  
+                                                                                                                                                                                  
+          재발급 성공 시 새로운 accessToken과 refreshToken이 함께 반환됩니다. (rotation)                                                                                          
+          기존 refreshToken은 더 이상 사용하지 말고, 이번에 받은 새 refreshToken으로 교체해서 저장해주세요.                                                                       
+          """
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "재발급 성공"),
+        @ApiResponse(responseCode = "401", description = "refreshToken이 유효하지 않거나 만료됨")
+    })
+    ResponseEntity<CustomResponse<ReissueResponse>> reissue(
+        @RequestBody(
+            description = "refreshToken 필드에 재발급용 리프레시 토큰을 넣어 보냅니다.",
+            required = true
+        )
+        ReissueRequest request
     );
 }

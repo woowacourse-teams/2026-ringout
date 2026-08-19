@@ -1,6 +1,7 @@
 package com.ringout.api.auth;
 
 import com.ringout.api.auth.dto.LoginResponse;
+import com.ringout.api.auth.dto.ReissueResponse;
 import com.ringout.api.auth.dto.SignupResponse;
 import com.ringout.api.auth.social.SocialLoginClient;
 import com.ringout.api.auth.social.SocialProvider;
@@ -77,6 +78,35 @@ public class AuthService {
 
     private void validateSignupToken(String signupToken) {
         if (!jwtProvider.isValid(signupToken) || !jwtProvider.isSignupToken(signupToken)) {
+            throw new GeneralException(ErrorStatus._UNAUTHORIZED);
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public ReissueResponse reissue(String refreshToken) {
+        validateRefreshToken(refreshToken);
+
+        Long memberId = jwtProvider.getUserId(refreshToken);
+        Member member = memberRepository.findById(memberId)
+            .orElseThrow(() -> new GeneralException(ErrorStatus.MEMBER_NOT_FOUND));
+
+        String reissuedAccessToken = jwtProvider.createAccessToken(
+            member.getId(),
+            member.getSocialProviderId(),
+            member.getRole()
+        );
+
+        String reissuedRefreshToken = jwtProvider.createRefreshToken(
+            member.getId(),
+            member.getSocialProviderId(),
+            member.getRole()
+        );
+
+        return ReissueResponse.of(reissuedAccessToken, reissuedRefreshToken);
+    }
+
+    private void validateRefreshToken(String refreshToken) {
+        if (!jwtProvider.isValid(refreshToken) || !jwtProvider.isRefreshToken(refreshToken)) {
             throw new GeneralException(ErrorStatus._UNAUTHORIZED);
         }
     }
