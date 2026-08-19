@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -22,6 +23,7 @@ import com.ringout.api.destination.dto.response.DestinationSyncResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
+import com.ringout.api.member.domain.Member;
 import com.ringout.api.member.domain.MemberRepository;
 import java.util.Collections;
 import java.util.List;
@@ -52,6 +54,12 @@ class DestinationServiceTest {
         lenient().when(memberRepository.existsById(any())).thenReturn(true);
     }
 
+    private Member memberWithId(Long id) {
+        Member member = mock(Member.class);
+        lenient().when(member.getId()).thenReturn(id);
+        return member;
+    }
+
     @Nested
     class 목적지_조회 {
 
@@ -60,12 +68,12 @@ class DestinationServiceTest {
             // given
             Long userId = 1L;
             Destination firstDestination = Destination.create(
-                userId,
+                memberWithId(userId),
                 DestinationAlias.from("런닝 장소"),
                 Coordinate.of(37.5665, 126.9780)
             );
             Destination secondDestination = Destination.create(
-                userId,
+                memberWithId(userId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -347,7 +355,7 @@ class DestinationServiceTest {
             Long userId = 1L;
             Long destinationId = 10L;
             Destination destination = Destination.create(
-                userId,
+                memberWithId(userId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -374,7 +382,7 @@ class DestinationServiceTest {
             Long userId = 1L;
             Long destinationId = 10L;
             Destination destination = Destination.create(
-                userId,
+                memberWithId(userId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -447,7 +455,7 @@ class DestinationServiceTest {
             Long userId = 1L;
             Long destinationId = 10L;
             Destination destination = Destination.create(
-                userId,
+                memberWithId(userId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -484,7 +492,7 @@ class DestinationServiceTest {
             Long otherUserId = 2L;
             Long destinationId = 10L;
             Destination destination = Destination.create(
-                otherUserId,
+                memberWithId(otherUserId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -507,7 +515,7 @@ class DestinationServiceTest {
             // given
             Long userId = 1L;
             Long destinationId = 10L;
-            Destination destination = Destination.create(userId, null, null);
+            Destination destination = Destination.create(memberWithId(userId), null, null);
             given(destinationRepository.findById(destinationId)).willReturn(Optional.of(destination));
 
             // when
@@ -565,7 +573,7 @@ class DestinationServiceTest {
             Long userId = 1L;
             Long otherUserId = 2L;
             Long destinationId = 10L;
-            Destination destination = Destination.create(otherUserId, null, null);
+            Destination destination = Destination.create(memberWithId(otherUserId), null, null);
             given(destinationRepository.findById(destinationId)).willReturn(Optional.of(destination));
 
             // when // then

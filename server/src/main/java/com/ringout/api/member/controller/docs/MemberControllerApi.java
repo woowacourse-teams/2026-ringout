@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 
 @Tag(name = "회원 (Member)", description = "회원 정보 관리 API")
 public interface MemberControllerApi {
@@ -46,7 +47,7 @@ public interface MemberControllerApi {
       ),
       @ApiResponse(responseCode = "404", description = "회원이 존재하지 않는 경우")
   })
-  CustomResponse<UpdateNicknameResponse> updateNickname(
+  ResponseEntity<CustomResponse<UpdateNicknameResponse>> updateNickname(
       @Parameter(hidden = true) CustomUserDetails userDetails,
 
       @RequestBody(
@@ -68,7 +69,7 @@ public interface MemberControllerApi {
       @ApiResponse(responseCode = "200", description = "회원 탈퇴 성공"),
       @ApiResponse(responseCode = "404", description = "회원이 존재하지 않는 경우")
   })
-  CustomResponse<Void> withdraw(
+  ResponseEntity<CustomResponse<Void>> withdraw(
       @Parameter(hidden = true) CustomUserDetails userDetails
   );
 }

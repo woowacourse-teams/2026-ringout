@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 
 import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.member.domain.MemberRepository;
 import com.ringout.api.terms.domain.Terms;
 import com.ringout.api.terms.domain.TermsType;
 import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
@@ -36,6 +37,9 @@ class TermsServiceTest {
   @Mock
   private TermsRepository termsRepository;
 
+  @Mock
+  private MemberRepository memberRepository;
+
   private TermsService termsService;
 
   private final Long memberId = 1L;
@@ -47,7 +51,7 @@ class TermsServiceTest {
   @BeforeEach
   void setUp() {
     Clock clock = Clock.fixed(today.atStartOfDay(ZoneOffset.UTC).toInstant(), ZoneOffset.UTC);
-    termsService = new TermsService(memberAgreementRepository, termsRepository, clock);
+    termsService = new TermsService(memberAgreementRepository, termsRepository, memberRepository, clock);
 
     serviceTerms = mock(Terms.class);
     privacyTerms = mock(Terms.class);

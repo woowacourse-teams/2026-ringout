@@ -2,6 +2,8 @@ package com.ringout.api.terms.service;
 
 import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.member.domain.Member;
+import com.ringout.api.member.domain.MemberRepository;
 import com.ringout.api.terms.domain.MemberAgreement;
 import com.ringout.api.terms.domain.Terms;
 import com.ringout.api.terms.domain.TermsType;
@@ -26,6 +28,7 @@ public class TermsService {
 
   private final MemberAgreementRepository memberAgreementRepository;
   private final TermsRepository termsRepository;
+  private final MemberRepository memberRepository;
   private final Clock clock;
 
   @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -71,9 +74,9 @@ public class TermsService {
   }
 
   private void saveAgreements(Long memberId, List<Terms> newlyAgreedTerms) {
+    Member member = memberRepository.getReferenceById(memberId);
     List<MemberAgreement> agreements = newlyAgreedTerms.stream()
-        .map(terms -> MemberAgreement.of(memberId, terms.getId(), terms.getType(),
-            terms.getVersion()))
+        .map(terms -> MemberAgreement.of(member, terms, terms.getType(), terms.getVersion()))
         .toList();
     memberAgreementRepository.saveAll(agreements);
   }

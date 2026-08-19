@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -31,6 +32,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -53,6 +55,7 @@ internal fun <T> TimePickerWheel(
     unselectedFontSize: TextUnit,
     fontWeight: FontWeight,
     isLooping: Boolean,
+    hapticFeedbackType: HapticFeedbackType,
     modifier: Modifier = Modifier,
 ) {
     require(values.isNotEmpty())
@@ -70,6 +73,8 @@ internal fun <T> TimePickerWheel(
     val coroutineScope = rememberCoroutineScope()
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val currentSelectedValue by rememberUpdatedState(selectedValue)
+    val currentHapticFeedback by rememberUpdatedState(LocalHapticFeedback.current)
+    val currentHapticFeedbackType by rememberUpdatedState(hapticFeedbackType)
 
     LaunchedEffect(listState, values, isLooping) {
         var lastCenteredIndex: Int? = null
@@ -78,6 +83,7 @@ internal fun <T> TimePickerWheel(
                 lastCenteredIndex = centeredIndex
                 val value = values.valueAt(centeredIndex, isLooping)
                 if (value != currentSelectedValue) {
+                    currentHapticFeedback.performHapticFeedback(currentHapticFeedbackType)
                     currentOnValueChange(value)
                 }
             }

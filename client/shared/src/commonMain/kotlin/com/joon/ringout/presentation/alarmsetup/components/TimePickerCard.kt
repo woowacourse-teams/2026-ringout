@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -69,6 +70,7 @@ fun TimePickerCard(
                 unselectedFontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
                 isLooping = false,
+                hapticFeedbackType = HapticFeedbackType.SegmentTick,
                 modifier = Modifier.width(68.dp),
             )
 
@@ -88,6 +90,7 @@ fun TimePickerCard(
                     unselectedFontSize = 62.sp,
                     fontWeight = FontWeight.Bold,
                     isLooping = true,
+                    hapticFeedbackType = HapticFeedbackType.SegmentFrequentTick,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
@@ -112,6 +115,7 @@ fun TimePickerCard(
                     unselectedFontSize = 62.sp,
                     fontWeight = FontWeight.Bold,
                     isLooping = true,
+                    hapticFeedbackType = HapticFeedbackType.SegmentFrequentTick,
                     modifier = Modifier.weight(1f),
                 )
             }
