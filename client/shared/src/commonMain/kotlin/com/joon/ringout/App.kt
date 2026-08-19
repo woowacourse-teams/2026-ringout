@@ -19,6 +19,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.joon.ringout.analytics.AnalyticsLoginState
+import com.joon.ringout.analytics.completeAccountWithdrawal
+import com.joon.ringout.analytics.rememberProductAnalyticsRecorder
 import com.joon.ringout.data.auth.rememberAuthRepository
 import com.joon.ringout.data.member.rememberMemberRepository
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
@@ -178,18 +181,24 @@ private fun RingoutAppContent(
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
+    val productAnalyticsRecorder = rememberProductAnalyticsRecorder()
     val destinationRepository = rememberDestinationRepository()
     val destinationViewModel: DestinationViewModel = viewModel {
-        DestinationViewModel(destinationRepository)
+        DestinationViewModel(
+            repository = destinationRepository,
+            productAnalyticsRecorder = productAnalyticsRecorder,
+        )
     }
     val destinationUiState = destinationViewModel.uiState
     val authSession = remember { AuthSession() }
     val authRepository = rememberAuthRepository(authSession)
     val memberRepository = rememberMemberRepository()
     val authSessionState by authSession.state.collectAsState()
+    val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
     val coroutineScope = rememberCoroutineScope()
     var myPageNickname by rememberSaveable { mutableStateOf("로그인됨") }
     var withdrawalErrorMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var isWithdrawalInProgress by remember { mutableStateOf(false) }
     val myPageAccountUiState = when (authSessionState) {
         AuthSessionState.Restoring -> MyPageAccountUiState.Loading
         AuthSessionState.Unauthenticated -> MyPageAccountUiState.LoggedOut
@@ -608,11 +617,16 @@ private fun RingoutAppContent(
                     screenName = AppScreen.Login.name
                 }
             },
-            onWithdrawConfirm = {
+            onWithdrawConfirm = withdraw@ {
+                if (isWithdrawalInProgress) return@withdraw
+                isWithdrawalInProgress = true
                 coroutineScope.launch {
                     try {
-                        memberRepository.withdraw()
-                        authRepository.logout()
+                        completeAccountWithdrawal(
+                            withdraw = memberRepository::withdraw,
+                            logout = authRepository::logout,
+                            productAnalyticsRecorder = productAnalyticsRecorder,
+                        )
                         myPageNickname = "로그인됨"
                         pendingSignupToken = null
                         withdrawalErrorMessage = null
@@ -621,6 +635,8 @@ private fun RingoutAppContent(
                         throw error
                     } catch (error: Throwable) {
                         withdrawalErrorMessage = error.message ?: "회원 탈퇴를 다시 시도해 주세요."
+                    } finally {
+                        isWithdrawalInProgress = false
                     }
                 }
             },
@@ -629,6 +645,7 @@ private fun RingoutAppContent(
                     runCatching { uriHandler.openUri(url) }
                 }
             },
+            productAnalyticsRecorder = productAnalyticsRecorder,
         )
 
         AppScreen.NicknameChange -> {
@@ -752,10 +769,12 @@ private fun RingoutAppContent(
                     isAuthenticated = authSessionState == AuthSessionState.Authenticated,
                     onEntered = destinationViewModel::onScreenEntered,
                     onBackClick = { screenName = alarmSetupScreen.name },
-                    onConfirmClick = { destination ->
+                    onConfirmClick = saveDestination@ { destination ->
+                        val loginState = analyticsLoginState ?: return@saveDestination
                         destinationViewModel.save(
                             destination = destination,
                             requestId = destinationRequestId,
+                            loginState = loginState,
                         )
                     },
                     onSavedDestinationConfirmClick = { savedDestination ->
@@ -768,7 +787,16 @@ private fun RingoutAppContent(
                     savedDestinations = destinationUiState.destinations,
                     onSavedDestinationRename = destinationViewModel::rename,
                     onSavedDestinationDeleteClick = destinationViewModel::delete,
+                    onSavedDestinationSelected = { source ->
+                        analyticsLoginState?.let { loginState ->
+                            productAnalyticsRecorder.recordDestinationSelected(
+                                source = source,
+                                loginState = loginState,
+                            )
+                        }
+                    },
                     isSaveInProgress = destinationUiState.isSaving,
+                    isDestinationActionEnabled = analyticsLoginState != null,
                 )
             }
 
@@ -813,6 +841,12 @@ internal fun alarmSetupInitialTime(
     editingAlarmId == null -> newAlarmInitialTime
     editingAlarmTime != null -> editingAlarmTime
     else -> UnavailableEditingAlarmTime
+}
+
+internal fun AuthSessionState.toAnalyticsLoginStateOrNull(): AnalyticsLoginState? = when (this) {
+    AuthSessionState.Restoring -> null
+    AuthSessionState.Unauthenticated -> AnalyticsLoginState.LoggedOut
+    AuthSessionState.Authenticated -> AnalyticsLoginState.LoggedIn
 }
 
 private fun AlarmScheduleRequest.toHomeAlarm(enabled: Boolean): HomeAlarm = HomeAlarm(

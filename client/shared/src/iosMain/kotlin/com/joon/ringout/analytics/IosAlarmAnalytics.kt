@@ -215,12 +215,21 @@ internal class IosAlarmAnalytics(
 
 internal class IosAnalyticsUsageStore(
     private val preferences: NSUserDefaults = NSUserDefaults.standardUserDefaults,
-) {
+) : ProductAnalyticsUsageStore {
     fun claimAlarmCreation(alarmId: String): Long? {
         val claimedKey = key("created", alarmId)
         if (preferences.objectForKey(claimedKey) != null) return null
         val nextIndex = preferences.integerForKey(CreationCounterKey) + 1L
         preferences.setInteger(nextIndex, CreationCounterKey)
+        preferences.setBool(true, claimedKey)
+        return nextIndex
+    }
+
+    override fun claimDestinationCreation(destinationKey: String): Long? {
+        val claimedKey = key("destination_created", destinationKey)
+        if (preferences.objectForKey(claimedKey) != null) return null
+        val nextIndex = preferences.integerForKey(DestinationCreationCounterKey) + 1L
+        preferences.setInteger(nextIndex, DestinationCreationCounterKey)
         preferences.setBool(true, claimedKey)
         return nextIndex
     }
@@ -253,6 +262,8 @@ internal class IosAnalyticsUsageStore(
     private companion object {
         const val PreferencesPrefix = "ringout.analytics"
         const val CreationCounterKey = "$PreferencesPrefix.creation_counter"
+        const val DestinationCreationCounterKey =
+            "$PreferencesPrefix.destination_creation_counter"
         const val UseCounterKey = "$PreferencesPrefix.use_counter"
     }
 }

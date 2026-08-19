@@ -12,6 +12,11 @@ internal enum class AnalyticsEventName(
     ForceEndHoldStarted("force_end_hold_started"),
     ForceEndHoldCancelled("force_end_hold_cancelled"),
     ForceEndHoldCompleted("force_end_hold_completed"),
+    DestinationCreated("destination_created"),
+    DestinationSelected("destination_selected"),
+    StampCalendarViewed("stamp_calendar_viewed"),
+    StampMonthChanged("stamp_month_changed"),
+    AccountWithdrawalCompleted("account_withdrawal_completed"),
 }
 
 internal enum class AnalyticsParameterName(
@@ -24,6 +29,11 @@ internal enum class AnalyticsParameterName(
     RepeatDayCount("repeat_day_count"),
     ElapsedBucket("elapsed_bucket"),
     HoldDurationMillis("hold_duration_ms"),
+    LoginState("login_state"),
+    Source("source"),
+    Year("year"),
+    Month("month"),
+    Direction("direction"),
 }
 
 internal sealed interface AnalyticsParameterValue {

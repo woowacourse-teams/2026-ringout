@@ -7,7 +7,7 @@ import java.security.MessageDigest
 internal class AnalyticsUsageStore internal constructor(
     private val preferences: AnalyticsUsagePreferences,
     private val lock: Any = AnalyticsUsageStoreLock,
-) {
+) : ProductAnalyticsUsageStore {
     constructor(context: Context) : this(
         preferences = SharedPreferencesAnalyticsUsagePreferences(
             context.applicationContext.getSharedPreferences(
@@ -24,6 +24,18 @@ internal class AnalyticsUsageStore internal constructor(
         val nextIndex = preferences.getLong(CreationCounterKey, 0L) + 1L
         val committed = preferences.commit(
             longValues = mapOf(CreationCounterKey to nextIndex),
+            trueFlags = setOf(claimedKey),
+        )
+        nextIndex.takeIf { committed }
+    }
+
+    override fun claimDestinationCreation(destinationKey: String): Long? = synchronized(lock) {
+        val claimedKey = destinationCreationClaimKey(destinationKey)
+        if (preferences.contains(claimedKey)) return@synchronized null
+
+        val nextIndex = preferences.getLong(DestinationCreationCounterKey, 0L) + 1L
+        val committed = preferences.commit(
+            longValues = mapOf(DestinationCreationCounterKey to nextIndex),
             trueFlags = setOf(claimedKey),
         )
         nextIndex.takeIf { committed }
@@ -64,10 +76,14 @@ internal class AnalyticsUsageStore internal constructor(
     private companion object {
         const val PreferencesName = "ringout_analytics_usage"
         const val CreationCounterKey = "creation_counter"
+        const val DestinationCreationCounterKey = "destination_creation_counter"
         const val UseCounterKey = "use_counter"
 
         fun creationClaimKey(alarmId: String): String =
             "created_${analyticsLocalKeyHash(alarmId)}"
+
+        fun destinationCreationClaimKey(destinationKey: String): String =
+            "destination_created_${analyticsLocalKeyHash(destinationKey)}"
 
         fun useIndexKey(occurrenceId: String): String =
             "use_${analyticsLocalKeyHash(analyticsRootOccurrenceId(occurrenceId))}"

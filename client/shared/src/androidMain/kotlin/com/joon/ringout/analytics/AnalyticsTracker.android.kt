@@ -4,10 +4,6 @@ import android.content.Context
 import android.os.Bundle
 import com.google.firebase.analytics.FirebaseAnalytics
 
-internal fun interface AnalyticsTracker {
-    fun log(event: AnalyticsEvent)
-}
-
 internal class FirebaseAnalyticsTracker(
     context: Context,
 ) : AnalyticsTracker {
