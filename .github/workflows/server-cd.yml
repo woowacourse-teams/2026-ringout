@@ -168,6 +168,7 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.SERVER_DOCKERHUB_TOKEN }}
           SERVER_ENV_FILE: ${{ secrets.SERVER_ENV_FILE }}
+          APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
           APP_PORT: ${{ vars.SERVER_PORT || '8080' }}
         run: |
           set -eu
@@ -177,6 +178,7 @@ jobs:
           mkdir -p "$APP_DIRECTORY"
           chmod 700 "$APP_DIRECTORY"
           printf '%s\n' "$SERVER_ENV_FILE" > "$APP_ENV_FILE.tmp"
+          printf 'APPLE_CLIENT_ID=%s\n' "$APPLE_CLIENT_ID" >> "$APP_ENV_FILE.tmp"
           printf 'SPRING_PROFILES_ACTIVE=prod\n' >> "$APP_ENV_FILE.tmp"
           chmod 600 "$APP_ENV_FILE.tmp"
           mv "$APP_ENV_FILE.tmp" "$APP_ENV_FILE"
