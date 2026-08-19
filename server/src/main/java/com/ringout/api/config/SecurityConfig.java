@@ -2,6 +2,7 @@ package com.ringout.api.config;
 
 
 import com.ringout.api.config.jwt.JwtAuthenticationFilter;
+import com.ringout.api.config.security.JwtAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,6 +18,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
     private static final String[] PERMIT_ALL_URL_ARRAY = {
             "/v3/api-docs/**", "/swagger-ui/**", "/swagger-resources/**", "/swagger-ui.html",
@@ -40,6 +42,9 @@ public class SecurityConfig {
                         .requestMatchers(PERMIT_ALL_URL_ARRAY).permitAll()
                         .anyRequest().authenticated()
                 )
+
+            .exceptionHandling(exception -> exception
+                .authenticationEntryPoint(jwtAuthenticationEntryPoint))
 
                 .addFilterBefore(
                         jwtAuthenticationFilter,

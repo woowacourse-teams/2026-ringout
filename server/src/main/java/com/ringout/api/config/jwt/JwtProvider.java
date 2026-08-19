@@ -1,6 +1,7 @@
 package com.ringout.api.config.jwt;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import com.ringout.api.member.domain.Role;
@@ -125,6 +126,17 @@ public class JwtProvider {
   public boolean isValid(String token) {
     try {
       parseClaims(token);
+      return true;
+    } catch (RuntimeException exception) {
+      return false;
+    }
+  }
+
+  public boolean isExpiredToken(String token) {
+    try {
+      parseClaims(token);
+      return false;
+    } catch (ExpiredJwtException exception) {
       return true;
     } catch (RuntimeException exception) {
       return false;

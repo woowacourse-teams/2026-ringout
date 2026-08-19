@@ -2,6 +2,8 @@ package com.ringout.api.auth;
 
 import com.ringout.api.auth.dto.LoginRequest;
 import com.ringout.api.auth.dto.LoginResponse;
+import com.ringout.api.auth.dto.ReissueRequest;
+import com.ringout.api.auth.dto.ReissueResponse;
 import com.ringout.api.auth.dto.SignupResponse;
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.CustomResponse;
@@ -50,6 +52,17 @@ public class AuthController implements AuthControllerApi {
     ) {
         String signupToken = resolveBearerToken(authorization);
         SignupResponse response = authService.signup(signupToken, request);
+
+        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+    }
+
+    @Override
+    @PostMapping("/reissue")
+    public ResponseEntity<CustomResponse<ReissueResponse>> reissue(
+        @RequestBody ReissueRequest request
+    ) {
+        ReissueResponse response = authService.reissue(request.refreshToken());
 
         return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
             .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
