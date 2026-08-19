@@ -8,10 +8,10 @@ import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.auth.social.SocialUserInfo;
 import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
-import com.ringout.api.member.domain.Member;
-import com.ringout.api.member.domain.MemberRepository;
-import com.ringout.api.member.service.MemberService;
 import com.ringout.api.config.jwt.JwtProvider;
+import com.ringout.api.member.domain.Member;
+import com.ringout.api.member.repository.MemberRepository;
+import com.ringout.api.member.service.MemberService;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import com.ringout.api.terms.service.TermsService;
 import java.time.LocalDateTime;
@@ -31,15 +31,15 @@ public class AuthService {
     private final TermsService termsService;
 
     public AuthService(
-            List<SocialLoginClient> loginClients,
-            MemberRepository memberRepository,
-            JwtProvider jwtProvider,
-            MemberService memberService,
-            TermsService termsService
+        List<SocialLoginClient> loginClients,
+        MemberRepository memberRepository,
+        JwtProvider jwtProvider,
+        MemberService memberService,
+        TermsService termsService
     ) {
         this.loginClients = new EnumMap<>(SocialProvider.class);
         loginClients.forEach(client ->
-                this.loginClients.put(client.supports(), client)
+            this.loginClients.put(client.supports(), client)
         );
         this.memberRepository = memberRepository;
         this.jwtProvider = jwtProvider;
@@ -56,22 +56,22 @@ public class AuthService {
         String email = jwtProvider.getEmail(signupToken);
 
         Member member = memberService.register(
-                socialProvider,
-                providerId,
-                email,
-                LocalDateTime.now()
+            socialProvider,
+            providerId,
+            email,
+            LocalDateTime.now()
         );
         termsService.termsAgree(member.getId(), request);
 
         String accessToken = jwtProvider.createAccessToken(
-                member.getId(),
-                member.getSocialProviderId(),
-                member.getRole()
+            member.getId(),
+            member.getSocialProviderId(),
+            member.getRole()
         );
         String refreshToken = jwtProvider.createRefreshToken(
-                member.getId(),
-                member.getSocialProviderId(),
-                member.getRole()
+            member.getId(),
+            member.getSocialProviderId(),
+            member.getRole()
         );
         return new SignupResponse(accessToken, refreshToken);
     }
@@ -127,35 +127,35 @@ public class AuthService {
         LocalDateTime loginAt = LocalDateTime.now();
 
         return memberRepository
-                .findBySocialProviderAndSocialProviderId(
-                        socialUserInfo.provider(),
-                        socialUserInfo.providerId()
+            .findBySocialProviderAndSocialProviderId(
+                socialUserInfo.provider(),
+                socialUserInfo.providerId()
+            )
+            .map(member -> loginExistingMember(member, socialUserInfo, loginAt))
+            .orElseGet(() -> LoginResponse.signupRequired(
+                jwtProvider.createSignupToken(
+                    socialUserInfo.provider(),
+                    socialUserInfo.providerId(),
+                    socialUserInfo.email()
                 )
-                .map(member -> loginExistingMember(member, socialUserInfo, loginAt))
-                .orElseGet(() -> LoginResponse.signupRequired(
-                        jwtProvider.createSignupToken(
-                                socialUserInfo.provider(),
-                                socialUserInfo.providerId(),
-                                socialUserInfo.email()
-                        )
-                ));
+            ));
     }
 
     private LoginResponse loginExistingMember(
-            Member member,
-            SocialUserInfo socialUserInfo,
-            LocalDateTime loginAt
+        Member member,
+        SocialUserInfo socialUserInfo,
+        LocalDateTime loginAt
     ) {
         member.login(loginAt, socialUserInfo.email());
         String accessToken = jwtProvider.createAccessToken(
-                member.getId(),
-                member.getSocialProviderId(),
-                member.getRole()
+            member.getId(),
+            member.getSocialProviderId(),
+            member.getRole()
         );
         String refreshToken = jwtProvider.createRefreshToken(
-                member.getId(),
-                member.getSocialProviderId(),
-                member.getRole()
+            member.getId(),
+            member.getSocialProviderId(),
+            member.getRole()
         );
         return LoginResponse.loggedIn(accessToken, refreshToken);
     }

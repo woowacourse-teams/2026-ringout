@@ -4,55 +4,64 @@ import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.member.domain.Member;
-import com.ringout.api.member.domain.MemberRepository;
 import com.ringout.api.member.dto.request.UpdateNicknameRequest;
 import com.ringout.api.member.dto.response.UpdateNicknameResponse;
+import com.ringout.api.member.dto.response.UserResponse;
+import com.ringout.api.member.repository.MemberRepository;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
 public class MemberService {
 
-  private final MemberRepository memberRepository;
+    private final MemberRepository memberRepository;
 
-  @Transactional
-  public Member register(
-      SocialProvider socialProvider,
-      String providerId,
-      String email,
-      LocalDateTime registeredAt
-  ) {
-    if (memberRepository.findBySocialProviderAndSocialProviderId(socialProvider, providerId)
-        .isPresent()) {
-      throw new GeneralException(ErrorStatus.MEMBER_ALREADY_EXISTS);
+    @Transactional(readOnly = true)
+    public UserResponse getUser(Long memberId) {
+        Member member = memberRepository.findById(memberId)
+            .orElseThrow(() -> new GeneralException(ErrorStatus.MEMBER_NOT_FOUND));
+
+        return new UserResponse(member.getNickname().getValue(), member.getEmail());
     }
 
-    return memberRepository.save(
-        Member.register(socialProvider, providerId, email, registeredAt)
-    );
-  }
+    @Transactional
+    public Member register(
+        SocialProvider socialProvider,
+        String providerId,
+        String email,
+        LocalDateTime registeredAt
+    ) {
+        if (memberRepository.findBySocialProviderAndSocialProviderId(socialProvider, providerId)
+            .isPresent()) {
+            throw new GeneralException(ErrorStatus.MEMBER_ALREADY_EXISTS);
+        }
 
-  @Transactional
-  public UpdateNicknameResponse updateNickname(
-      Long memberId,
-      UpdateNicknameRequest request
-  ) {
-    Member member = memberRepository.findById(memberId)
-        .orElseThrow(() -> new GeneralException(ErrorStatus.MEMBER_NOT_FOUND));
+        return memberRepository.save(
+            Member.register(socialProvider, providerId, email, registeredAt)
+        );
+    }
 
-    member.changeNickname(request.nickname());
+    @Transactional
+    public UpdateNicknameResponse updateNickname(
+        Long memberId,
+        UpdateNicknameRequest request
+    ) {
+        Member member = memberRepository.findById(memberId)
+            .orElseThrow(() -> new GeneralException(ErrorStatus.MEMBER_NOT_FOUND));
 
-    return new UpdateNicknameResponse(member.getNickname().getValue());
-  }
+        member.changeNickname(request.nickname());
 
-  @Transactional
-  public void withdraw(Long memberId) {
-    Member member = memberRepository.findById(memberId)
-        .orElseThrow(() -> new GeneralException(ErrorStatus.MEMBER_NOT_FOUND));
+        return new UpdateNicknameResponse(member.getNickname().getValue());
+    }
 
-    memberRepository.delete(member);
-  }
+    @Transactional
+    public void withdraw(Long memberId) {
+        Member member = memberRepository.findById(memberId)
+            .orElseThrow(() -> new GeneralException(ErrorStatus.MEMBER_NOT_FOUND));
+
+        memberRepository.delete(member);
+    }
 }
