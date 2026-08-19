@@ -2,6 +2,8 @@ package com.joon.ringout.data.auth.remote
 
 import com.joon.ringout.data.auth.remote.model.LoginRequest
 import com.joon.ringout.data.auth.remote.model.LoginResponse
+import com.joon.ringout.data.auth.remote.model.ReissueRequest
+import com.joon.ringout.data.auth.remote.model.ReissueResponse
 import com.joon.ringout.data.auth.remote.model.SignupRequest
 import com.joon.ringout.data.auth.remote.model.SignupResponse
 import com.joon.ringout.data.network.ApiConfig
@@ -56,6 +58,18 @@ class KtorAuthApi(
             ApiConfig.url("/api/v1/auth/signup"),
         ) {
             bearerAuth(signupToken)
+            setBody(request)
+        }
+
+        return response.decodeOrThrow()
+    }
+
+    override suspend fun reissue(
+        request: ReissueRequest,
+    ): ApiResponse<ReissueResponse> {
+        val response = httpClient.post(
+            ApiConfig.url("/api/v1/auth/reissue"),
+        ) {
             setBody(request)
         }
 

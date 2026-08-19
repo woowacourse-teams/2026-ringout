@@ -36,12 +36,26 @@ class KSafeTokenStorage(
     override suspend fun clear() {
         kSafe.delete(AUTH_TOKENS_KEY)
     }
+
+    override suspend fun expire() {
+        kSafe.put(
+            key = AUTH_TOKENS_KEY,
+            value = StoredAuthTokens(reauthenticationRequired = true),
+        )
+    }
+
+    override suspend fun isReauthenticationRequired(): Boolean =
+        kSafe.get(
+            key = AUTH_TOKENS_KEY,
+            defaultValue = StoredAuthTokens(),
+        ).reauthenticationRequired
 }
 
 @Serializable
 private data class StoredAuthTokens(
     val accessToken: String = "",
     val refreshToken: String = "",
+    val reauthenticationRequired: Boolean = false,
 )
 
 internal const val AUTH_VAULT_FILE_NAME = "auth_vault"

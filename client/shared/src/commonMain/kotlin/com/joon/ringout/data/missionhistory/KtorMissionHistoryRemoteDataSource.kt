@@ -1,5 +1,6 @@
 package com.joon.ringout.data.missionhistory
 
+import com.joon.ringout.data.auth.AuthenticatedRequestExecutor
 import com.joon.ringout.data.network.ApiConfig
 import com.joon.ringout.data.network.ApiErrorResponse
 import com.joon.ringout.data.network.ApiException
@@ -24,17 +25,18 @@ class KtorMissionHistoryRemoteDataSource(
     private val httpClient: HttpClient,
     private val tokenStorage: SecureTokenStorage,
 ) : MissionHistoryRemoteDataSource {
+    private val authenticatedRequests = AuthenticatedRequestExecutor(httpClient, tokenStorage)
+
     override suspend fun hasAccessToken(): Boolean =
         tokenStorage.read()?.accessToken?.isNotBlank() == true
 
     override suspend fun getHistory(month: MissionYearMonth): List<MissionHistoryDto> {
-        val accessToken = checkNotNull(tokenStorage.read()?.accessToken) {
-            "로그인이 필요한 기능이에요."
-        }
-        val response = httpClient.get(ApiConfig.url("/api/v1/stamp")) {
-            bearerAuth(accessToken)
-            parameter("year", month.year)
-            parameter("month", month.month)
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.get(ApiConfig.url("/api/v1/stamp")) {
+                bearerAuth(accessToken)
+                parameter("year", month.year)
+                parameter("month", month.month)
+            }
         }
         val body = response.decodeOrThrow<MonthlyStampsResponse>()
         check(body.isSuccess) { body.message }
@@ -51,12 +53,11 @@ class KtorMissionHistoryRemoteDataSource(
     }
 
     override suspend fun recordSuccess(completedAt: MissionDate): Boolean {
-        val accessToken = checkNotNull(tokenStorage.read()?.accessToken) {
-            "로그인이 필요한 기능이에요."
-        }
-        val response = httpClient.post(ApiConfig.url("/api/v1/stamp/success")) {
-            bearerAuth(accessToken)
-            parameter("completedAt", completedAt.iso8601)
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.post(ApiConfig.url("/api/v1/stamp/success")) {
+                bearerAuth(accessToken)
+                parameter("completedAt", completedAt.iso8601)
+            }
         }
         val body = response.decodeOrThrow<CreateStampResponse>()
         check(body.isSuccess) { body.message }
@@ -68,12 +69,11 @@ class KtorMissionHistoryRemoteDataSource(
     }
 
     override suspend fun recordFailure(terminatedAt: MissionDate): Boolean {
-        val accessToken = checkNotNull(tokenStorage.read()?.accessToken) {
-            "로그인이 필요한 기능이에요."
-        }
-        val response = httpClient.post(ApiConfig.url("/api/v1/stamp/give-ups")) {
-            bearerAuth(accessToken)
-            parameter("terminatedAt", terminatedAt.iso8601)
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.post(ApiConfig.url("/api/v1/stamp/give-ups")) {
+                bearerAuth(accessToken)
+                parameter("terminatedAt", terminatedAt.iso8601)
+            }
         }
         val body = response.decodeOrThrow<CreateGiveUpResponse>()
         check(body.isSuccess) { body.message }
