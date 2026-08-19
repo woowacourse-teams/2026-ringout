@@ -4,8 +4,8 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.common.response.code.status.SuccessStatus;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.terms.controller.docs.TermsControllerApi;
-import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
+import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
 import com.ringout.api.terms.service.TermsService;
 import jakarta.validation.Valid;
@@ -23,27 +23,27 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/terms")
 public class TermsController implements TermsControllerApi {
 
-  private final TermsService termsService;
+    private final TermsService termsService;
 
-  @PostMapping
-  public ResponseEntity<CustomResponse<TermsAgreeResponse>> termsAgree(
-      @AuthenticationPrincipal CustomUserDetails customUserDetails,
-      @Valid @RequestBody TermsAgreeRequest termsAgreeRequest) {
+    @PostMapping
+    public ResponseEntity<CustomResponse<TermsAgreeResponse>> termsAgree(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @Valid @RequestBody TermsAgreeRequest termsAgreeRequest) {
 
-    TermsAgreeResponse response = termsService.termsAgree(customUserDetails.getUserId(), termsAgreeRequest);
+        TermsAgreeResponse response = termsService.termsAgree(customUserDetails.getUserId(), termsAgreeRequest);
 
-    return ResponseEntity.status(SuccessStatus.TERMS_AGREED.getHttpStatus())
-        .body(CustomResponse.of(SuccessStatus.TERMS_AGREED, response));
-  }
+        return ResponseEntity.status(SuccessStatus.TERMS_AGREED.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus.TERMS_AGREED, response));
+    }
 
-  @GetMapping("/agreements/me")
-  public ResponseEntity<CustomResponse<CheckRequiredTermsAgreedResponse>> checkRequiredTermsAgreed(
-      @AuthenticationPrincipal CustomUserDetails customUserDetails
-  ) {
-    CheckRequiredTermsAgreedResponse response =
-        termsService.checkRequiredTermsAgreed(customUserDetails.getUserId());
+    @GetMapping("/agreements/me")
+    public ResponseEntity<CustomResponse<CheckRequiredTermsAgreedResponse>> checkRequiredTermsAgreed(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails
+    ) {
+        CheckRequiredTermsAgreedResponse response =
+            termsService.checkRequiredTermsAgreed(customUserDetails.getUserId());
 
-    return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-        .body(CustomResponse.of(SuccessStatus._OK, response));
-  }
+        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+    }
 }

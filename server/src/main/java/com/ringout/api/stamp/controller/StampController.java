@@ -23,40 +23,40 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/stamp")
 public class StampController implements StampControllerApi {
 
-  private final StampService stampService;
+    private final StampService stampService;
 
-  @PostMapping("/success")
-  public ResponseEntity<CustomResponse<CreateStampResponse>> createStamp(
-      @AuthenticationPrincipal CustomUserDetails customUserDetails,
-      @RequestParam LocalDate completedAt
-  ) {
-    CreateStampResponse response = stampService.createStamp(customUserDetails.getUserId(), completedAt);
+    @PostMapping("/success")
+    public ResponseEntity<CustomResponse<CreateStampResponse>> createStamp(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @RequestParam LocalDate completedAt
+    ) {
+        CreateStampResponse response = stampService.createStamp(customUserDetails.getUserId(), completedAt);
 
-    return ResponseEntity.status(SuccessStatus.STAMP_CREATED.getHttpStatus())
-        .body(CustomResponse.of(SuccessStatus.STAMP_CREATED, response));
-  }
+        return ResponseEntity.status(SuccessStatus.STAMP_CREATED.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus.STAMP_CREATED, response));
+    }
 
-  @PostMapping("/give-ups")
-  public ResponseEntity<CustomResponse<CreateGiveUpResponse>> createGiveUp(
-      @AuthenticationPrincipal CustomUserDetails customUserDetails,
-      @RequestParam LocalDate terminatedAt
-  ) {
-    CreateGiveUpResponse response = stampService.createGiveUp(customUserDetails.getUserId(), terminatedAt);
+    @PostMapping("/give-ups")
+    public ResponseEntity<CustomResponse<CreateGiveUpResponse>> createGiveUp(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @RequestParam LocalDate terminatedAt
+    ) {
+        CreateGiveUpResponse response = stampService.createGiveUp(customUserDetails.getUserId(), terminatedAt);
 
-    return ResponseEntity.status(SuccessStatus.STAMP_GIVE_UP.getHttpStatus())
-        .body(CustomResponse.of(SuccessStatus.STAMP_GIVE_UP, response));
-  }
+        return ResponseEntity.status(SuccessStatus.STAMP_GIVE_UP.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus.STAMP_GIVE_UP, response));
+    }
 
-  @GetMapping
-  public ResponseEntity<CustomResponse<FindMonthlyStampsResponse>> findMonthlyStamps(
-      @AuthenticationPrincipal CustomUserDetails customUserDetails,
-      @RequestParam(required = true) Integer year,
-      @RequestParam(required = true) Integer month
-  ) {
-    FindMonthlyStampsResponse response =
-        stampService.findMonthlyStamps(customUserDetails.getUserId(), year, month);
+    @GetMapping
+    public ResponseEntity<CustomResponse<FindMonthlyStampsResponse>> findMonthlyStamps(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @RequestParam(required = true) Integer year,
+        @RequestParam(required = true) Integer month
+    ) {
+        FindMonthlyStampsResponse response =
+            stampService.findMonthlyStamps(customUserDetails.getUserId(), year, month);
 
-    return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-        .body(CustomResponse.of(SuccessStatus._OK, response));
-  }
+        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+    }
 }
