@@ -897,6 +897,34 @@ class IosAlarmLifecycleTest {
     }
 
     @Test
+    fun retryStopEventPreservesOccurrenceAndAttemptWhenStartingMission() = runBlocking {
+        val retryOccurrenceId = "$CanonicalUuid:retry-2"
+        val fixture = ringingRuntimeFixture(
+            pendingEvents = listOf(
+                currentStopEvent().copy(
+                    eventId = "retry-stop",
+                    occurrenceId = retryOccurrenceId,
+                    retryAttempt = 2,
+                ),
+            ),
+        )
+
+        fixture.runtime.start()
+
+        val mission = assertNotNull(fixture.runtime.activeMissionFlow.value)
+        assertEquals(CanonicalUuid, mission.alarmId)
+        assertEquals(retryOccurrenceId, mission.occurrenceId)
+        assertEquals(2, mission.retryAttempt)
+        assertEquals(
+            1,
+            fixture.store.events.count { event -> event == "save:$retryOccurrenceId" },
+        )
+        assertEquals(listOf(retryOccurrenceId), fixture.locationService.startedOccurrences)
+        assertEquals(retryOccurrenceId, fixture.store.loadDeadlineAlarm()?.sourceOccurrenceId)
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
     fun pendingStopEventOnColdStartRestoresMissionWithoutRingingScreen() = runBlocking {
         val fixture = ringingRuntimeFixture(pendingEvents = listOf(currentStopEvent()))
 
@@ -905,6 +933,8 @@ class IosAlarmLifecycleTest {
         val mission = assertNotNull(fixture.runtime.activeMissionFlow.value)
         assertEquals(CanonicalUuid, mission.alarmId)
         assertNull(fixture.runtime.ringingAlarmFlow.value)
+        assertEquals(listOf(mission.occurrenceId), fixture.locationService.startedOccurrences)
+        assertEquals(mission.occurrenceId, fixture.store.loadDeadlineAlarm()?.sourceOccurrenceId)
         fixture.runtime.forceEndActiveMission(mission.occurrenceId)
     }
 
@@ -1091,6 +1121,7 @@ class IosAlarmLifecycleTest {
             recordOpenCode = recordOpenCode,
         )
         val store = LifecycleMissionStore()
+        val locationService = LifecycleLocationService()
         val coordinator = IosAlarmMissionCoordinator(
             dataSource = dataSource,
             inbox = inbox,
@@ -1110,7 +1141,7 @@ class IosAlarmLifecycleTest {
                     normalizeAlarmId = { id -> id },
                     currentMinuteOfDay = currentMinuteOfDay,
                 ),
-                locationService = LifecycleLocationService(),
+                locationService = locationService,
                 ringingHandoffGraceMillis = handoffGraceMillis,
                 runtimeDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
             ),
@@ -1118,6 +1149,7 @@ class IosAlarmLifecycleTest {
             inbox = inbox,
             store = store,
             dataSource = dataSource,
+            locationService = locationService,
         )
     }
 
@@ -1215,6 +1247,7 @@ class IosAlarmLifecycleTest {
         val inbox: LifecycleInbox,
         val store: LifecycleMissionStore,
         val dataSource: LifecycleAlarmDataSource,
+        val locationService: LifecycleLocationService,
     )
 }
 

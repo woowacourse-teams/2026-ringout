@@ -132,18 +132,11 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
             retryAttempt: Int(request.retryAttempt),
             systemAlarmId: request.alarmKitId
         )
-        let openIntent = OpenRingoutIntent(
-            alarmId: request.sourceAlarmId,
-            occurrenceId: request.occurrenceId,
-            retryAttempt: Int(request.retryAttempt),
-            systemAlarmId: request.alarmKitId
-        )
         let fireDate = Date().addingTimeInterval(max(0, request.delaySeconds))
         let configuration = AlarmManager.AlarmConfiguration.alarm(
             schedule: .fixed(fireDate),
             attributes: attributes,
             stopIntent: stopIntent,
-            secondaryIntent: openIntent,
             sound: .default
         )
         Task {
@@ -279,10 +272,6 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
                 alarmId: alarmId.uuidString,
                 systemAlarmId: alarmId.uuidString
             ),
-            secondaryIntent: OpenRingoutIntent(
-                alarmId: alarmId.uuidString,
-                systemAlarmId: alarmId.uuidString
-            ),
             sound: .default
         )
     }
@@ -309,17 +298,9 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
     }
 
     private func makeAlert(title: String) -> AlarmPresentation.Alert {
-        let secondaryButton = AlarmButton(
-            text: "미션 시작",
-            textColor: .white,
-            systemImageName: "figure.walk"
-        )
-
         if #available(iOS 26.1, *) {
             return AlarmPresentation.Alert(
-                title: LocalizedStringResource(String.LocalizationValue(title)),
-                secondaryButton: secondaryButton,
-                secondaryButtonBehavior: .custom
+                title: LocalizedStringResource(String.LocalizationValue(title))
             )
         } else {
             return AlarmPresentation.Alert(
@@ -328,9 +309,7 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
                     text: "중지",
                     textColor: .white,
                     systemImageName: "stop.fill"
-                ),
-                secondaryButton: secondaryButton,
-                secondaryButtonBehavior: .custom
+                )
             )
         }
     }
