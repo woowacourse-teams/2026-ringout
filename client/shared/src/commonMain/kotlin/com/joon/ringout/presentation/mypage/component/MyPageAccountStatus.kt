@@ -1,11 +1,14 @@
 package com.joon.ringout.presentation.mypage.component
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -25,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
 import ringout.shared.generated.resources.mypage_logged_out_profile
@@ -47,14 +51,19 @@ fun MyPageAccountStatus(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Image(
-            painter = painterResource(Res.drawable.mypage_logged_out_profile),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
                 .size(ProfileImageSize)
-                .clip(CircleShape),
-        )
+                .clip(CircleShape)
+                .background(MaterialTheme.ringoutColors.profileIconLoggedOutBackground),
+        ) {
+            Image(
+                painter = painterResource(Res.drawable.mypage_logged_out_profile),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Spacer(Modifier.width(ProfileTextSpacing))
         Column(
             modifier = Modifier
