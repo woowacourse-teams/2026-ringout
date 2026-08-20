@@ -28,9 +28,21 @@ class DefaultDestinationRepository(
         }
     }
 
-    override suspend fun updateName(id: Long, name: String): Boolean =
-        remoteDataSource?.updateName(id, name) ?: dataSource.updateName(id, name)
+    override suspend fun updateName(id: Long, name: String): Boolean {
+        val remote = remoteDataSource
+        return if (remote != null && remote.hasAccessToken()) {
+            remote.updateName(id, name)
+        } else {
+            dataSource.updateName(id, name)
+        }
+    }
 
-    override suspend fun delete(id: Long): Boolean =
-        remoteDataSource?.delete(id) ?: dataSource.delete(id)
+    override suspend fun delete(id: Long): Boolean {
+        val remote = remoteDataSource
+        return if (remote != null && remote.hasAccessToken()) {
+            remote.delete(id)
+        } else {
+            dataSource.delete(id)
+        }
+    }
 }
