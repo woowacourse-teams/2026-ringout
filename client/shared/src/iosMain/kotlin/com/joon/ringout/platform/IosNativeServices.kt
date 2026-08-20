@@ -38,6 +38,18 @@ interface IosGoogleSignInService {
     fun signIn(callback: IosGoogleSignInCallback)
 }
 
+interface IosAppleSignInCallback {
+    fun onSuccess(idToken: String)
+
+    fun onCancelled()
+
+    fun onFailure(message: String)
+}
+
+interface IosAppleSignInService {
+    fun signIn(callback: IosAppleSignInCallback)
+}
+
 interface IosKakaoSignInCallback {
     fun onSuccess(accessToken: String)
 
@@ -81,6 +93,8 @@ interface IosNativeServices {
     fun missionLocationService(): IosMissionLocationService
 
     fun analyticsTracker(): IosAnalyticsTracker
+
+    fun appleSignInService(): IosAppleSignInService
 
     fun googleSignInService(): IosGoogleSignInService
 
