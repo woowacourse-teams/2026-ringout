@@ -34,6 +34,7 @@ actual fun rememberAlarmController(
             dataSource = dataSource,
             scheduler = scheduler,
             normalizeAlarmId = nativeServices::normalizeAlarmId,
+            presentationMigrationState = UserDefaultsIosAlarmPresentationMigrationState(),
         )
         IosAlarmStore(
             dataSource = dataSource,
