@@ -87,6 +87,143 @@ class IosAlarmLifecycleTest {
     }
 
     @Test
+    fun presentationMigrationReschedulesIdleScheduledAlarmOnlyOnce() = runBlocking {
+        val migrationState = LifecyclePresentationMigrationState()
+        val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
+        val scheduler = LifecycleScheduler(
+            alarms = listOf(IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.SCHEDULED)),
+        )
+        val reconciler = IosAlarmReconciler(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            normalizeAlarmId = ::canonicalUuid,
+            presentationMigrationState = migrationState,
+        )
+
+        val firstReport = reconciler.reconcile()
+
+        assertTrue(firstReport.isSuccess)
+        assertEquals(listOf("schedule:$CanonicalUuid"), scheduler.events)
+        assertTrue(
+            CanonicalUuid in migrationState.migratedAlarmIds(
+                CurrentAlarmPresentationVersionForTest,
+            ),
+        )
+        assertTrue(migrationState.isMigrationComplete(CurrentAlarmPresentationVersionForTest))
+
+        scheduler.events.clear()
+        val secondReport = reconciler.reconcile()
+
+        assertTrue(secondReport.isSuccess)
+        assertTrue(scheduler.events.isEmpty())
+    }
+
+    @Test
+    fun presentationMigrationSkipsActiveStatesAndPastOneTimeAlarms() = runBlocking {
+        val countdownId = "2B2D336B-0AD7-4B4C-9200-FB8B2B143EE0"
+        val pausedId = "3B2D336B-0AD7-4B4C-9200-FB8B2B143EE0"
+        val pastOneTimeId = "4B2D336B-0AD7-4B4C-9200-FB8B2B143EE0"
+        val migrationState = LifecyclePresentationMigrationState()
+        val dataSource = LifecycleAlarmDataSource(
+            listOf(
+                savedAlarm(id = CanonicalUuid),
+                savedAlarm(id = countdownId),
+                savedAlarm(id = pausedId),
+                savedAlarm(
+                    id = pastOneTimeId,
+                    repeatEnabled = false,
+                    selectedDays = emptyList(),
+                ),
+            ),
+        )
+        val scheduler = LifecycleScheduler(
+            alarms = listOf(
+                IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.ALERTING),
+                IosScheduledAlarmDto(countdownId, IosScheduledAlarmState.COUNTDOWN),
+                IosScheduledAlarmDto(pausedId, IosScheduledAlarmState.PAUSED),
+                IosScheduledAlarmDto(pastOneTimeId, IosScheduledAlarmState.SCHEDULED),
+            ),
+        )
+
+        val reconciler = IosAlarmReconciler(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            normalizeAlarmId = ::canonicalUuid,
+            presentationMigrationState = migrationState,
+            currentMinuteOfDay = { 23 * 60 + 59 },
+        )
+
+        val report = reconciler.reconcile()
+
+        assertTrue(report.isSuccess)
+        assertTrue(scheduler.events.isEmpty())
+        assertTrue(migrationState.migrated.isEmpty())
+        assertFalse(migrationState.isMigrationComplete(CurrentAlarmPresentationVersionForTest))
+
+        scheduler.emitSnapshot(
+            listOf(
+                IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.SCHEDULED),
+                IosScheduledAlarmDto(countdownId, IosScheduledAlarmState.SCHEDULED),
+                IosScheduledAlarmDto(pausedId, IosScheduledAlarmState.SCHEDULED),
+                IosScheduledAlarmDto(pastOneTimeId, IosScheduledAlarmState.SCHEDULED),
+            ),
+        )
+        scheduler.events.clear()
+
+        val recoveredReport = reconciler.reconcile()
+
+        assertTrue(recoveredReport.isSuccess)
+        assertEquals(
+            listOf(
+                "schedule:$CanonicalUuid",
+                "schedule:$countdownId",
+                "schedule:$pausedId",
+            ),
+            scheduler.events,
+        )
+        assertTrue(migrationState.isMigrationComplete(CurrentAlarmPresentationVersionForTest))
+    }
+
+    @Test
+    fun presentationMigrationRetriesAfterScheduleFailureAndMarksRecoveredSchedule() = runBlocking {
+        val migrationState = LifecyclePresentationMigrationState()
+        val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
+        val scheduler = LifecycleScheduler(
+            alarms = listOf(IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.SCHEDULED)),
+        )
+        scheduler.failNextSchedules()
+        val reconciler = IosAlarmReconciler(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            normalizeAlarmId = ::canonicalUuid,
+            presentationMigrationState = migrationState,
+        )
+
+        val failedReport = reconciler.reconcile()
+
+        assertFalse(failedReport.isSuccess)
+        assertEquals(listOf("schedule:$CanonicalUuid"), scheduler.events)
+        assertTrue(scheduler.hasScheduledAlarm(CanonicalUuid))
+        assertFalse(
+            CanonicalUuid in migrationState.migratedAlarmIds(
+                CurrentAlarmPresentationVersionForTest,
+            ),
+        )
+
+        scheduler.events.clear()
+        val recoveredReport = reconciler.reconcile()
+
+        assertTrue(recoveredReport.isSuccess)
+        assertEquals(listOf("schedule:$CanonicalUuid"), scheduler.events)
+        assertTrue(
+            CanonicalUuid in migrationState.migratedAlarmIds(
+                CurrentAlarmPresentationVersionForTest,
+            ),
+        )
+        assertTrue(migrationState.isMigrationComplete(CurrentAlarmPresentationVersionForTest))
+    }
+
+    @Test
     fun pendingEventPersistsMissionBeforeConsumeAndDuplicateIsIdempotent() = runBlocking {
         val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
         val event = IosAlarmMissionEventDto(
@@ -897,6 +1034,34 @@ class IosAlarmLifecycleTest {
     }
 
     @Test
+    fun retryStopEventPreservesOccurrenceAndAttemptWhenStartingMission() = runBlocking {
+        val retryOccurrenceId = "$CanonicalUuid:retry-2"
+        val fixture = ringingRuntimeFixture(
+            pendingEvents = listOf(
+                currentStopEvent().copy(
+                    eventId = "retry-stop",
+                    occurrenceId = retryOccurrenceId,
+                    retryAttempt = 2,
+                ),
+            ),
+        )
+
+        fixture.runtime.start()
+
+        val mission = assertNotNull(fixture.runtime.activeMissionFlow.value)
+        assertEquals(CanonicalUuid, mission.alarmId)
+        assertEquals(retryOccurrenceId, mission.occurrenceId)
+        assertEquals(2, mission.retryAttempt)
+        assertEquals(
+            1,
+            fixture.store.events.count { event -> event == "save:$retryOccurrenceId" },
+        )
+        assertEquals(listOf(retryOccurrenceId), fixture.locationService.startedOccurrences)
+        assertEquals(retryOccurrenceId, fixture.store.loadDeadlineAlarm()?.sourceOccurrenceId)
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
+    @Test
     fun pendingStopEventOnColdStartRestoresMissionWithoutRingingScreen() = runBlocking {
         val fixture = ringingRuntimeFixture(pendingEvents = listOf(currentStopEvent()))
 
@@ -905,6 +1070,8 @@ class IosAlarmLifecycleTest {
         val mission = assertNotNull(fixture.runtime.activeMissionFlow.value)
         assertEquals(CanonicalUuid, mission.alarmId)
         assertNull(fixture.runtime.ringingAlarmFlow.value)
+        assertEquals(listOf(mission.occurrenceId), fixture.locationService.startedOccurrences)
+        assertEquals(mission.occurrenceId, fixture.store.loadDeadlineAlarm()?.sourceOccurrenceId)
         fixture.runtime.forceEndActiveMission(mission.occurrenceId)
     }
 
@@ -1091,6 +1258,7 @@ class IosAlarmLifecycleTest {
             recordOpenCode = recordOpenCode,
         )
         val store = LifecycleMissionStore()
+        val locationService = LifecycleLocationService()
         val coordinator = IosAlarmMissionCoordinator(
             dataSource = dataSource,
             inbox = inbox,
@@ -1110,7 +1278,7 @@ class IosAlarmLifecycleTest {
                     normalizeAlarmId = { id -> id },
                     currentMinuteOfDay = currentMinuteOfDay,
                 ),
-                locationService = LifecycleLocationService(),
+                locationService = locationService,
                 ringingHandoffGraceMillis = handoffGraceMillis,
                 runtimeDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
             ),
@@ -1118,6 +1286,7 @@ class IosAlarmLifecycleTest {
             inbox = inbox,
             store = store,
             dataSource = dataSource,
+            locationService = locationService,
         )
     }
 
@@ -1215,6 +1384,7 @@ class IosAlarmLifecycleTest {
         val inbox: LifecycleInbox,
         val store: LifecycleMissionStore,
         val dataSource: LifecycleAlarmDataSource,
+        val locationService: LifecycleLocationService,
     )
 }
 
@@ -1251,6 +1421,7 @@ private class LifecycleScheduler(
     retryScheduleFailures: Int = 0,
 ) : IosAlarmScheduler {
     private val scheduledAlarms = alarms.associateByTo(linkedMapOf()) { it.alarmId }
+    private var remainingScheduleFailures = 0
     private var remainingRetryScheduleFailures = retryScheduleFailures
     private var remainingCancelFailures = 0
     private var stateListener: IosAlarmStateListener? = null
@@ -1263,8 +1434,14 @@ private class LifecycleScheduler(
         scheduledAlarms.remove(alarmKitId)
     }
 
+    fun hasScheduledAlarm(alarmKitId: String) = alarmKitId in scheduledAlarms
+
     fun failNextRetrySchedules(count: Int = 1) {
         remainingRetryScheduleFailures += count
+    }
+
+    fun failNextSchedules(count: Int = 1) {
+        remainingScheduleFailures += count
     }
 
     fun failNextCancellations(count: Int = 1) {
@@ -1293,6 +1470,11 @@ private class LifecycleScheduler(
         callback(IosAlarmAuthorizationResult(IosAlarmAuthorizationState.AUTHORIZED))
     override fun schedule(request: IosAlarmScheduleDto, callback: (IosAlarmOperationResult) -> Unit) {
         events += "schedule:${request.alarmId}"
+        if (remainingScheduleFailures > 0) {
+            remainingScheduleFailures -= 1
+            callback(IosAlarmOperationResult(IosAlarmOperationCode.SDK_ERROR))
+            return
+        }
         scheduledAlarms[request.alarmId] =
             IosScheduledAlarmDto(request.alarmId, IosScheduledAlarmState.SCHEDULED)
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
@@ -1346,6 +1528,25 @@ private class LifecycleScheduler(
         stateListener = listener
     }
 }
+
+private class LifecyclePresentationMigrationState : IosAlarmPresentationMigrationState {
+    val migrated = linkedMapOf<Int, MutableSet<String>>()
+    private val completedVersions = mutableSetOf<Int>()
+
+    override fun isMigrationComplete(version: Int): Boolean = version in completedVersions
+
+    override fun migratedAlarmIds(version: Int): Set<String> = migrated[version].orEmpty()
+
+    override fun markAlarmMigrated(alarmId: String, version: Int) {
+        migrated.getOrPut(version, ::linkedSetOf) += alarmId
+    }
+
+    override fun markMigrationComplete(version: Int) {
+        completedVersions += version
+    }
+}
+
+private const val CurrentAlarmPresentationVersionForTest = 2
 
 private class LifecycleInbox(
     pending: List<IosAlarmMissionEventDto>,

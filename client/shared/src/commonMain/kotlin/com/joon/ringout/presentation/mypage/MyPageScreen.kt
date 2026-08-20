@@ -40,6 +40,7 @@ import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.mypage.component.MissionCalendarCard
 import com.joon.ringout.presentation.mypage.component.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.component.MyPageAccountActionDialog
+import com.joon.ringout.presentation.mypage.component.MyPageAccountLoadError
 import com.joon.ringout.presentation.mypage.component.MyPageAccountManagementSection
 import com.joon.ringout.presentation.mypage.component.MyPageAccountStatus
 import com.joon.ringout.presentation.mypage.component.MyPageAppVersionRow
@@ -58,6 +59,7 @@ fun MyPageScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     onBackClick: () -> Unit,
     onAccountStatusClick: () -> Unit,
+    onAccountRetry: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     onEditProfileClick: () -> Unit,
     onLogoutConfirm: () -> Unit,
@@ -70,6 +72,7 @@ fun MyPageScreen(
     val analyticsLoginState = when (accountUiState) {
         MyPageAccountUiState.Loading -> null
         MyPageAccountUiState.LoggedOut -> AnalyticsLoginState.LoggedOut
+        MyPageAccountUiState.Error -> AnalyticsLoginState.LoggedIn
         is MyPageAccountUiState.LoggedIn -> AnalyticsLoginState.LoggedIn
     }
     LaunchedEffect(viewModel, entryToken, analyticsLoginState) {
@@ -95,6 +98,7 @@ fun MyPageScreen(
         isMonthNavigationEnabled = analyticsLoginState != null,
         onBackClick = onBackClick,
         onAccountStatusClick = onAccountStatusClick,
+        onAccountRetry = onAccountRetry,
         onPolicyClick = onPolicyClick,
         onEditProfileClick = onEditProfileClick,
         onLogoutConfirm = onLogoutConfirm,
@@ -129,6 +133,7 @@ fun MyPageScreenContent(
     onRetry: () -> Unit,
     onBackClick: () -> Unit,
     onAccountStatusClick: () -> Unit,
+    onAccountRetry: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     accountUiState: MyPageAccountUiState = MyPageAccountUiState.LoggedOut,
     isMonthNavigationEnabled: Boolean = true,
@@ -154,7 +159,10 @@ fun MyPageScreenContent(
             when (accountUiState) {
                 MyPageAccountUiState.Loading -> {
                     Text(
-                        text = "로그인 상태 확인 중…",
+                        text = "회원 정보 불러오는 중…",
+                        modifier = Modifier.semantics {
+                            liveRegion = LiveRegionMode.Polite
+                        },
                         color = colors.secondaryText,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -162,6 +170,10 @@ fun MyPageScreenContent(
 
                 MyPageAccountUiState.LoggedOut -> {
                     MyPageAccountStatus(onClick = onAccountStatusClick)
+                }
+
+                MyPageAccountUiState.Error -> {
+                    MyPageAccountLoadError(onRetry = onAccountRetry)
                 }
 
                 is MyPageAccountUiState.LoggedIn -> {
@@ -222,7 +234,10 @@ fun MyPageScreenContent(
         }
         item { Spacer(Modifier.height(10.dp)) }
         item { MyPageAppVersionRow(appVersion = appVersion) }
-        if (accountUiState is MyPageAccountUiState.LoggedIn) {
+        if (
+            accountUiState is MyPageAccountUiState.LoggedIn ||
+            accountUiState == MyPageAccountUiState.Error
+        ) {
             item { Spacer(Modifier.height(10.dp)) }
             item {
                 MyPageAccountManagementSection(
@@ -285,6 +300,22 @@ private fun MyPageErrorPreview() = MyPagePreview(
     PreviewState.copy(errorMessage = "미션 기록을 불러오지 못했어요."),
 )
 
+@Preview(name = "Account Error My Page", widthDp = 402, heightDp = 941)
+@Composable
+private fun MyPageAccountErrorPreview() = MyPagePreview(
+    themeMode = ThemeMode.Light,
+    state = PreviewState,
+    accountUiState = MyPageAccountUiState.Error,
+)
+
+@Preview(name = "Account Loading My Page", widthDp = 402, heightDp = 941)
+@Composable
+private fun MyPageAccountLoadingPreview() = MyPagePreview(
+    themeMode = ThemeMode.Dark,
+    state = PreviewState,
+    accountUiState = MyPageAccountUiState.Loading,
+)
+
 private val PreviewLoggedInAccount = MyPageAccountUiState.LoggedIn(
     nickname = "닉네임닉네임12312313",
     email = "dsakdfsa@gmail.com",
@@ -306,6 +337,7 @@ private fun MyPageLoggedInInteractivePreview(initialThemeMode: ThemeMode) {
             onRetry = {},
             onBackClick = {},
             onAccountStatusClick = {},
+            onAccountRetry = {},
             onPolicyClick = {},
             accountUiState = PreviewLoggedInAccount,
         )
@@ -330,6 +362,7 @@ private fun MyPagePreview(
             onRetry = {},
             onBackClick = {},
             onAccountStatusClick = {},
+            onAccountRetry = {},
             onPolicyClick = {},
             accountUiState = accountUiState,
         )

@@ -8,8 +8,10 @@ sealed interface MyPageAccountUiState {
 
     data object LoggedOut : MyPageAccountUiState
 
+    data object Error : MyPageAccountUiState
+
     data class LoggedIn(
-        val nickname: String = "로그인됨",
-        val email: String = "회원 정보는 준비 중이에요.",
+        val nickname: String,
+        val email: String,
     ) : MyPageAccountUiState
 }

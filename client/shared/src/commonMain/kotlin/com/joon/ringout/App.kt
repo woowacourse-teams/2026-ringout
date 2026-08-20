@@ -66,8 +66,9 @@ import com.joon.ringout.presentation.termsagreement.SignupViewModel
 import com.joon.ringout.presentation.termsagreement.TermId
 import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
-import com.joon.ringout.presentation.mypage.MyPageScreen
 import com.joon.ringout.presentation.mypage.MyPageAccountUiState
+import com.joon.ringout.presentation.mypage.MyPageAccountViewModel
+import com.joon.ringout.presentation.mypage.MyPageScreen
 import com.joon.ringout.presentation.mypage.PolicyId
 import com.joon.ringout.presentation.mypage.findPolicyUrl
 import com.joon.ringout.presentation.nickname.NicknameChangeScreen
@@ -197,16 +198,21 @@ private fun RingoutAppContent(
     val authSessionState by authSession.state.collectAsState()
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
     val coroutineScope = rememberCoroutineScope()
-    var myPageNickname by rememberSaveable { mutableStateOf("로그인됨") }
+    val myPageAccountViewModel: MyPageAccountViewModel = viewModel {
+        MyPageAccountViewModel(memberRepository)
+    }
+    val myPageAccountUiState = myPageAccountViewModel.uiState
     var withdrawalErrorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var isWithdrawalInProgress by remember { mutableStateOf(false) }
-    val myPageAccountUiState = when (authSessionState) {
-        AuthSessionState.Restoring -> MyPageAccountUiState.Loading
-        AuthSessionState.Unauthenticated -> MyPageAccountUiState.LoggedOut
-        AuthSessionState.ReauthenticationRequired -> MyPageAccountUiState.LoggedOut
-        AuthSessionState.Authenticated -> MyPageAccountUiState.LoggedIn(
-            nickname = myPageNickname,
-        )
+    LaunchedEffect(authSessionState) {
+        when (authSessionState) {
+            AuthSessionState.Restoring -> myPageAccountViewModel.onSessionRestoring()
+            AuthSessionState.Unauthenticated,
+            AuthSessionState.ReauthenticationRequired,
+            -> myPageAccountViewModel.onLoggedOut()
+
+            AuthSessionState.Authenticated -> myPageAccountViewModel.onAuthenticated()
+        }
     }
     val loginViewModel: LoginViewModel = viewModel {
         LoginViewModel(
@@ -640,6 +646,7 @@ private fun RingoutAppContent(
             onThemeModeChange = onThemeModeChange,
             onBackClick = { screenName = AppScreen.Home.name },
             onAccountStatusClick = { screenName = AppScreen.Login.name },
+            onAccountRetry = myPageAccountViewModel::retry,
             onEditProfileClick = {
                 if (myPageAccountUiState is MyPageAccountUiState.LoggedIn) {
                     screenName = AppScreen.NicknameChange.name
@@ -648,7 +655,6 @@ private fun RingoutAppContent(
             onLogoutConfirm = {
                 coroutineScope.launch {
                     authRepository.logout()
-                    myPageNickname = "로그인됨"
                     pendingSignup = null
                     screenName = AppScreen.Login.name
                 }
@@ -663,7 +669,6 @@ private fun RingoutAppContent(
                             logout = authRepository::logout,
                             productAnalyticsRecorder = productAnalyticsRecorder,
                         )
-                        myPageNickname = "로그인됨"
                         pendingSignup = null
                         withdrawalErrorMessage = null
                         screenName = AppScreen.MyPage.name
@@ -698,7 +703,7 @@ private fun RingoutAppContent(
                     memberRepository = memberRepository,
                     onBackClick = { screenName = AppScreen.MyPage.name },
                     onConfirmClick = { updatedNickname ->
-                        myPageNickname = updatedNickname
+                        myPageAccountViewModel.onNicknameUpdated(updatedNickname)
                         screenName = AppScreen.MyPage.name
                     },
                 )
