@@ -47,8 +47,7 @@ class LoginViewModel(
     private val scope = coroutineScope ?: viewModelScope
 
     fun beginAppleSignIn(): Boolean {
-        // TODO: Apple 인증 연동 시 로그인 시작 상태 처리와 credential 결과 흐름을 연결한다.
-        return false
+        return beginSocialSignIn(AnalyticsAuthProvider.Apple)
     }
 
     fun beginGoogleSignIn(): Boolean {
@@ -114,6 +113,40 @@ class LoginViewModel(
         }
     }
 
+    fun handleAppleIdTokenResult(result: AppleIdTokenResult) {
+        if (activeProvider != AnalyticsAuthProvider.Apple) {
+            AuthDiagnosticLogger.debug(
+                "sdk_result_ignored provider=apple reason=no_matching_login",
+            )
+            return
+        }
+        when (result) {
+            AppleIdTokenResult.Cancelled -> {
+                AuthDiagnosticLogger.debug("sdk_cancelled provider=apple")
+                activeProvider = null
+                uiState = uiState.copy(isLoading = false)
+            }
+
+            is AppleIdTokenResult.Failure -> {
+                AuthDiagnosticLogger.error(
+                    "sdk_failed provider=apple",
+                    IllegalStateException(result.message),
+                )
+                activeProvider = null
+                uiState = uiState.copy(
+                    isLoading = false,
+                    errorMessage = result.message,
+                )
+            }
+
+            is AppleIdTokenResult.Success -> {
+                AuthDiagnosticLogger.debug("sdk_succeeded provider=apple token_received=true")
+                activeProvider = null
+                loginWithApple(result.idToken)
+            }
+        }
+    }
+
     fun handleKakaoAccessTokenResult(result: KakaoAccessTokenResult) {
         if (activeProvider != AnalyticsAuthProvider.Kakao) {
             AuthDiagnosticLogger.debug(
@@ -164,6 +197,12 @@ class LoginViewModel(
     private fun loginWithGoogle(accessToken: String) {
         loginWithSocialProvider(AnalyticsAuthProvider.Google) {
             authRepository.loginWithGoogle(accessToken)
+        }
+    }
+
+    private fun loginWithApple(idToken: String) {
+        loginWithSocialProvider(AnalyticsAuthProvider.Apple) {
+            authRepository.loginWithApple(idToken)
         }
     }
 
