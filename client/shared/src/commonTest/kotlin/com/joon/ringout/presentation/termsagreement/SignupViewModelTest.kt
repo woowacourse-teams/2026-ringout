@@ -194,6 +194,9 @@ private class FakeAuthRepository(
 
     override suspend fun restoreSession() = Unit
 
+    override suspend fun loginWithApple(idToken: String): SocialLoginOutcome =
+        SocialLoginOutcome.Authenticated
+
     override suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome =
         SocialLoginOutcome.Authenticated
 

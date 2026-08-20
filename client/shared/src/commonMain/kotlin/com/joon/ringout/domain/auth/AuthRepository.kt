@@ -11,6 +11,8 @@ sealed interface SocialLoginOutcome {
 interface AuthRepository {
     suspend fun restoreSession()
 
+    suspend fun loginWithApple(idToken: String): SocialLoginOutcome
+
     suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome
 
     suspend fun loginWithKakao(accessToken: String): SocialLoginOutcome

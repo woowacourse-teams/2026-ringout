@@ -26,6 +26,37 @@ import kotlin.test.assertTrue
 
 class KtorAuthApiTest {
     @Test
+    fun `Apple 로그인 요청에 ID Token을 기존 social access token 필드로 전송한다`() = runTest {
+        val api = authApi { request ->
+            assertEquals(HttpMethod.Post, request.method)
+            assertEquals("/api/v1/auth/apple/login", request.url.encodedPath)
+            assertTrue(request.bodyText().contains("\"socialAccessToken\":\"apple-id-token\""))
+            respondJson(
+                """
+                {
+                  "isSuccess": true,
+                  "code": "AUTH200",
+                  "message": "로그인에 성공했습니다.",
+                  "result": {
+                    "accessToken": "access-token",
+                    "refreshToken": "refresh-token",
+                    "isNewUser": false
+                  }
+                }
+                """.trimIndent(),
+            )
+        }
+
+        val response = api.login(
+            provider = AuthProvider.Apple,
+            request = LoginRequest(socialAccessToken = "apple-id-token"),
+        )
+
+        assertEquals("access-token", response.result?.accessToken)
+        assertEquals(false, response.result?.isNewUser)
+    }
+
+    @Test
     fun `카카오 로그인 요청을 보내고 응답을 변환한다`() = runTest {
         val api = authApi { request ->
             assertEquals(HttpMethod.Post, request.method)
