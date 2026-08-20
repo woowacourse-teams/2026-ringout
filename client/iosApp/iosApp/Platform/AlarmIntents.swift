@@ -4,7 +4,7 @@ import Foundation
 
 struct StopAlarmIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "알람 중지"
-    static var supportedModes: IntentModes = [.background, .foreground(.deferred)]
+    static var supportedModes: IntentModes = .foreground(.immediate)
     static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
     @Parameter(title: "Alarm ID")

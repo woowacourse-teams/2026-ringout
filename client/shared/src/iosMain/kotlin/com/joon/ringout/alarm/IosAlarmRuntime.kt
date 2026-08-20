@@ -674,6 +674,7 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
             dataSource = dataSource,
             scheduler = scheduler,
             normalizeAlarmId = nativeServices::normalizeAlarmId,
+            presentationMigrationState = UserDefaultsIosAlarmPresentationMigrationState(),
         ),
         locationService = nativeServices.missionLocationService(),
     )
