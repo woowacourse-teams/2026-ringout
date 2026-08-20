@@ -209,7 +209,10 @@ private fun RingoutAppContent(
             AuthSessionState.Restoring -> myPageAccountViewModel.onSessionRestoring()
             AuthSessionState.Unauthenticated,
             AuthSessionState.ReauthenticationRequired,
-            -> myPageAccountViewModel.onLoggedOut()
+            -> {
+                myPageAccountViewModel.onLoggedOut()
+                destinationViewModel.onLoggedOut()
+            }
 
             AuthSessionState.Authenticated -> myPageAccountViewModel.onAuthenticated()
         }

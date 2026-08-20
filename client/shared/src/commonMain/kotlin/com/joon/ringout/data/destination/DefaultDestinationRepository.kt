@@ -11,8 +11,14 @@ class DefaultDestinationRepository(
 ) : DestinationRepository {
     override fun observeAll(): Flow<List<SavedDestination>> = dataSource.observeAll()
 
-    override suspend fun fetchAll(): List<SavedDestination> =
-        remoteDataSource?.fetchAll() ?: dataSource.observeAll().first()
+    override suspend fun fetchAll(): List<SavedDestination> {
+        val remote = remoteDataSource
+        return if (remote != null && remote.hasAccessToken()) {
+            remote.fetchAll()
+        } else {
+            dataSource.observeAll().first()
+        }
+    }
 
     override suspend fun sync(): List<SavedDestination> {
         val localDestinations = dataSource.observeAll().first()
