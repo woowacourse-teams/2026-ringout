@@ -107,6 +107,28 @@ class DefaultAuthRepositoryTest {
     }
 
     @Test
+    fun existingAppleUserSendsIdTokenAndStoresRingoutTokens() = runTest {
+        val api = FakeAuthApi(
+            loginResponse = LoginResponse(
+                accessToken = "ringout-access",
+                refreshToken = "ringout-refresh",
+                isNewUser = false,
+            ),
+        )
+        val storage = FakeTokenStorage()
+        val session = AuthSession()
+        val repository = DefaultAuthRepository(api, storage, session)
+
+        val outcome = repository.loginWithApple("apple-id-token")
+
+        assertIs<SocialLoginOutcome.Authenticated>(outcome)
+        assertEquals(AuthProvider.Apple, api.loginProvider)
+        assertEquals("apple-id-token", api.loginRequest?.socialAccessToken)
+        assertEquals(AuthTokens("ringout-access", "ringout-refresh"), storage.tokens)
+        assertEquals(AuthSessionState.Authenticated, session.state.value)
+    }
+
+    @Test
     fun loginCancellationDuringTokenSaveStillUpdatesTokensAndSessionTogether() = runTest {
         val saveStarted = CompletableDeferred<Unit>()
         val allowSaveCompletion = CompletableDeferred<Unit>()

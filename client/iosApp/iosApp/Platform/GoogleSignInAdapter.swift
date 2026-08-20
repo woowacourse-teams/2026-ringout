@@ -22,7 +22,7 @@ final class GoogleSignInAdapter: @preconcurrency IosGoogleSignInService {
         }
     }
 
-    func signIn(callback: IosGoogleSignInCallback) {
+    func signIn(callback_ callback: IosGoogleSignInCallback) {
         if let configurationError {
             callback.onFailure(message: configurationError)
             return

@@ -21,6 +21,13 @@ class DefaultAuthRepository(
         tokenStorage.restoreAuthSession(authSession)
     }
 
+    override suspend fun loginWithApple(idToken: String): SocialLoginOutcome {
+        return loginWithProvider(
+            provider = AuthProvider.Apple,
+            accessToken = idToken,
+        )
+    }
+
     override suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome {
         return loginWithProvider(
             provider = AuthProvider.Google,
