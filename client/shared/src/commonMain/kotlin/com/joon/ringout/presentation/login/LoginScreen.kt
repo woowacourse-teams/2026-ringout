@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.login
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
@@ -23,6 +25,7 @@ import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.login.component.LoginHeader
 import com.joon.ringout.presentation.login.component.LoginHero
+import com.joon.ringout.presentation.login.component.LoginLoadingOverlay
 import com.joon.ringout.presentation.login.component.LoginStatus
 import com.joon.ringout.presentation.login.component.SocialLoginButtons
 import com.joon.ringout.presentation.login.component.loginColors
@@ -49,6 +52,7 @@ fun LoginScreen(
     val launchKakaoSignIn = rememberKakaoAccessTokenLauncher(
         onResult = viewModel::handleKakaoAccessTokenResult,
     )
+    val shouldShowLoadingOverlay = uiState.shouldShowLoadingOverlay
     val completion = uiState.completion
     LaunchedEffect(completion) {
         when (completion) {
@@ -62,7 +66,11 @@ fun LoginScreen(
         viewModel.consumeCompletion(completion.eventId)
     }
 
-    PlatformBackHandler(onBack = onBackClick)
+    PlatformBackHandler(
+        onBack = {
+            if (!shouldShowLoadingOverlay) onBackClick()
+        },
+    )
     LoginScreenContent(
         onBackClick = onBackClick,
         onSocialLoginClick = { provider ->
@@ -92,27 +100,47 @@ internal fun LoginScreenContent(
 ) {
     val colors = loginColors()
     val dimensions = loginDimensions()
+    val shouldShowLoadingOverlay = uiState.shouldShowLoadingOverlay
+    val backgroundSemantics = if (shouldShowLoadingOverlay) {
+        Modifier.clearAndSetSemantics {}
+    } else {
+        Modifier
+    }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(colors.background)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .background(colors.background),
     ) {
-        LoginHeader(onBackClick = onBackClick)
-        Spacer(Modifier.height(dimensions.headerContainerToImageSpacing))
-        LoginHero()
-        Spacer(Modifier.height(dimensions.textToSocialSpacing))
-        SocialLoginButtons(
-            onSocialLoginClick = onSocialLoginClick,
-            enabled = !uiState.isLoading,
-        )
-        LoginStatus(
-            errorMessage = uiState.errorMessage,
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .then(backgroundSemantics),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            LoginHeader(
+                onBackClick = {
+                    if (!shouldShowLoadingOverlay) onBackClick()
+                },
+            )
+            Spacer(Modifier.height(dimensions.headerContainerToImageSpacing))
+            LoginHero()
+            Spacer(Modifier.height(dimensions.textToSocialSpacing))
+            SocialLoginButtons(
+                onSocialLoginClick = onSocialLoginClick,
+                enabled = !shouldShowLoadingOverlay,
+            )
+            LoginStatus(
+                errorMessage = uiState.errorMessage,
+            )
+        }
+
+        if (shouldShowLoadingOverlay) {
+            LoginLoadingOverlay(Modifier.matchParentSize())
+        }
     }
 }
 
@@ -141,3 +169,30 @@ private fun LoginScreenLightPreview() {
         )
     }
 }
+
+@Preview(name = "Login Loading Light", widthDp = 402, heightDp = 941)
+@Composable
+private fun LoginScreenLoadingLightPreview() {
+    RingoutTheme(ThemeMode.Light) {
+        LoginScreenContent(
+            onBackClick = {},
+            onSocialLoginClick = {},
+            uiState = LoginUiState(isLoading = true),
+        )
+    }
+}
+
+@Preview(name = "Login Loading Dark", widthDp = 402, heightDp = 941)
+@Composable
+private fun LoginScreenLoadingDarkPreview() {
+    RingoutTheme(ThemeMode.Dark) {
+        LoginScreenContent(
+            onBackClick = {},
+            onSocialLoginClick = {},
+            uiState = LoginUiState(isLoading = true),
+        )
+    }
+}
+
+private val LoginUiState.shouldShowLoadingOverlay: Boolean
+    get() = isLoading || completion != null

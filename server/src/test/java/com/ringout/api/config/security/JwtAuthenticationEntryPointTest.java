@@ -56,6 +56,8 @@ class JwtAuthenticationEntryPointTest {
     // then
     assertThat(response.getStatus()).isEqualTo(401);
     assertThat(response.getContentAsString()).contains("\"code\":\"COMMON401\"");
+    assertThat(response.getContentAsString()).contains("\"message\":\"인증되지 않은 사용자입니다.\"");
+    assertThat(response.getContentAsString()).contains("\"result\":null");
     verify(jwtProvider, never()).isExpiredToken(org.mockito.ArgumentMatchers.any());
   }
 

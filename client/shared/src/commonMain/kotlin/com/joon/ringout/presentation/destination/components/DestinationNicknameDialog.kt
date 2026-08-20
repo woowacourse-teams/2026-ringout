@@ -47,6 +47,7 @@ private val NicknameDialogPrimary = Color.Black
 private val NicknameDialogSecondary = Color(0xFF8C8C8C)
 private val NicknameDialogInput = Color(0xFFF5F5F5)
 private val NicknameDialogOrange = Color(0xFFFF6D2E)
+private val NicknameDialogDisabled = Color(0xFFA7A9B0)
 private val NicknameDialogShape = RoundedCornerShape(24.dp)
 
 @Composable
@@ -201,7 +202,9 @@ internal fun DestinationNicknameDialogContent(
                 .fillMaxWidth()
                 .height(56.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(NicknameDialogOrange)
+                .background(
+                    if (isSaveEnabled) NicknameDialogOrange else NicknameDialogDisabled,
+                )
                 .clickable(
                     enabled = isSaveEnabled,
                     role = Role.Button,
@@ -232,9 +235,9 @@ internal fun normalizeDestinationNickname(value: String): String? =
         it.isNotEmpty() && value.length <= DestinationNicknameMaxLength
     }
 
-@Preview(widthDp = 402, heightDp = 941)
+@Preview(name = "Disabled", widthDp = 402, heightDp = 941)
 @Composable
-private fun DestinationNicknameDialogPreview() {
+private fun DestinationNicknameDialogDisabledPreview() {
     RingoutTheme {
         Box(
             modifier = Modifier
@@ -250,9 +253,9 @@ private fun DestinationNicknameDialogPreview() {
     }
 }
 
-@Preview(widthDp = 402, heightDp = 941)
+@Preview(name = "Enabled", widthDp = 402, heightDp = 941)
 @Composable
-private fun DestinationNicknameEditDialogPreview() {
+private fun DestinationNicknameDialogEnabledPreview() {
     RingoutTheme {
         Box(
             modifier = Modifier

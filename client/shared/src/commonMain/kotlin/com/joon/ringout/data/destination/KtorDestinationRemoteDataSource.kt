@@ -1,5 +1,6 @@
 package com.joon.ringout.data.destination
 
+import com.joon.ringout.data.auth.AuthenticatedRequestExecutor
 import com.joon.ringout.data.network.ApiConfig
 import com.joon.ringout.data.network.ApiErrorResponse
 import com.joon.ringout.data.network.ApiException
@@ -25,13 +26,16 @@ class KtorDestinationRemoteDataSource(
     private val httpClient: HttpClient,
     private val tokenStorage: SecureTokenStorage,
 ) : DestinationRemoteDataSource {
+    private val authenticatedRequests = AuthenticatedRequestExecutor(httpClient, tokenStorage)
+
     override suspend fun hasAccessToken(): Boolean =
         tokenStorage.read()?.accessToken?.isNotBlank() == true
 
     override suspend fun fetchAll(): List<SavedDestination> {
-        val accessToken = requireAccessToken()
-        val response = httpClient.get(ApiConfig.url("/api/v1/destinations")) {
-            bearerAuth(accessToken)
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.get(ApiConfig.url("/api/v1/destinations")) {
+                bearerAuth(accessToken)
+            }
         }
         val body = response.decodeOrThrow<List<DestinationResponse>>()
         check(body.isSuccess) { body.message }
@@ -39,25 +43,26 @@ class KtorDestinationRemoteDataSource(
     }
 
     override suspend fun sync(destinations: List<SavedDestination>): List<SavedDestination> {
-        val accessToken = requireAccessToken()
         val destinationsByClientId = destinations.associateBy(SavedDestination::id)
-        val response = httpClient.post(ApiConfig.url("/api/v1/destinations/sync")) {
-            bearerAuth(accessToken)
-            setBody(
-                DestinationSyncRequest(
-                    destinations = destinations.map { destination ->
-                        require(destination.id > 0L) {
-                            "동기화할 목적지의 기기 ID가 올바르지 않아요."
-                        }
-                        DestinationSyncItemRequest(
-                            clientDestinationId = destination.id,
-                            alias = destination.name,
-                            latitude = destination.latitude,
-                            longitude = destination.longitude,
-                        )
-                    },
-                ),
-            )
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.post(ApiConfig.url("/api/v1/destinations/sync")) {
+                bearerAuth(accessToken)
+                setBody(
+                    DestinationSyncRequest(
+                        destinations = destinations.map { destination ->
+                            require(destination.id > 0L) {
+                                "동기화할 목적지의 기기 ID가 올바르지 않아요."
+                            }
+                            DestinationSyncItemRequest(
+                                clientDestinationId = destination.id,
+                                alias = destination.name,
+                                latitude = destination.latitude,
+                                longitude = destination.longitude,
+                            )
+                        },
+                    ),
+                )
+            }
         }
         val body = response.decodeOrThrow<DestinationSyncResponse>()
         check(body.isSuccess) { body.message }
@@ -74,16 +79,17 @@ class KtorDestinationRemoteDataSource(
     }
 
     override suspend fun create(destination: SavedDestination): SavedDestination {
-        val accessToken = requireAccessToken()
-        val response = httpClient.post(ApiConfig.url("/api/v1/destinations")) {
-            bearerAuth(accessToken)
-            setBody(
-                DestinationCreateRequest(
-                    alias = destination.name,
-                    latitude = destination.latitude,
-                    longitude = destination.longitude,
-                ),
-            )
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.post(ApiConfig.url("/api/v1/destinations")) {
+                bearerAuth(accessToken)
+                setBody(
+                    DestinationCreateRequest(
+                        alias = destination.name,
+                        latitude = destination.latitude,
+                        longitude = destination.longitude,
+                    ),
+                )
+            }
         }
         val body = response.decodeOrThrow<DestinationCreateResponse>()
         check(body.isSuccess) { body.message }
@@ -92,9 +98,10 @@ class KtorDestinationRemoteDataSource(
     }
 
     override suspend fun delete(id: Long): Boolean {
-        val accessToken = requireAccessToken()
-        val response = httpClient.delete(ApiConfig.url("/api/v1/destinations/$id")) {
-            bearerAuth(accessToken)
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.delete(ApiConfig.url("/api/v1/destinations/$id")) {
+                bearerAuth(accessToken)
+            }
         }
         val body = response.decodeOrThrow<JsonElement>()
         check(body.isSuccess) { body.message }
@@ -102,21 +109,17 @@ class KtorDestinationRemoteDataSource(
     }
 
     override suspend fun updateName(id: Long, name: String): Boolean {
-        val accessToken = requireAccessToken()
-        val response = httpClient.patch(ApiConfig.url("/api/v1/destinations/$id")) {
-            bearerAuth(accessToken)
-            setBody(DestinationUpdateRequest(alias = name))
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.patch(ApiConfig.url("/api/v1/destinations/$id")) {
+                bearerAuth(accessToken)
+                setBody(DestinationUpdateRequest(alias = name))
+            }
         }
         val body = response.decodeOrThrow<DestinationResponse>()
         check(body.isSuccess) { body.message }
         checkNotNull(body.result) { "목적지 수정 응답이 비어 있어요." }
         return true
     }
-
-    private suspend fun requireAccessToken(): String =
-        checkNotNull(tokenStorage.read()?.accessToken) {
-            "로그인이 필요한 기능이에요."
-        }
 }
 
 @Serializable

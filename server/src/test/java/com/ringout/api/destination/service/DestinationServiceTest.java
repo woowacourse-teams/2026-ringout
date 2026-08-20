@@ -24,7 +24,7 @@ import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
 import com.ringout.api.member.domain.Member;
-import com.ringout.api.member.domain.MemberRepository;
+import com.ringout.api.member.repository.MemberRepository;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;

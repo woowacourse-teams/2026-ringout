@@ -18,11 +18,7 @@ class DefaultAuthRepository(
     private val authSession: AuthSession,
 ) : AuthRepository {
     override suspend fun restoreSession() {
-        if (tokenStorage.read() == null) {
-            authSession.clear()
-        } else {
-            authSession.markAuthenticated()
-        }
+        tokenStorage.restoreAuthSession(authSession)
     }
 
     override suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome {
@@ -53,16 +49,15 @@ class DefaultAuthRepository(
         val login = checkNotNull(response.result) { "로그인 응답이 비어 있어요." }
 
         return if (login.isNewUser) {
-            tokenStorage.clear()
-            authSession.clear()
+            tokenStorage.removeAuthTokens(authSession)
             SocialLoginOutcome.SignupRequired(
                 signupToken = requireNotNull(login.signupToken?.takeIf(String::isNotBlank)) {
                     "가입 토큰이 비어 있어요."
                 },
             )
         } else {
-            tokenStorage.save(
-                AuthTokens(
+            tokenStorage.replaceAuthTokens(
+                tokens = AuthTokens(
                     accessToken = requireNotNull(login.accessToken?.takeIf(String::isNotBlank)) {
                         "액세스 토큰이 비어 있어요."
                     },
@@ -70,8 +65,8 @@ class DefaultAuthRepository(
                         "리프레시 토큰이 비어 있어요."
                     },
                 ),
+                authSession = authSession,
             )
-            authSession.markAuthenticated()
             SocialLoginOutcome.Authenticated
         }
     }
@@ -94,17 +89,16 @@ class DefaultAuthRepository(
         )
         check(response.isSuccess) { response.message }
         val signup = checkNotNull(response.result) { "회원가입 응답이 비어 있어요." }
-        tokenStorage.save(
-            AuthTokens(
+        tokenStorage.replaceAuthTokens(
+            tokens = AuthTokens(
                 accessToken = signup.accessToken,
                 refreshToken = signup.refreshToken,
             ),
+            authSession = authSession,
         )
-        authSession.markAuthenticated()
     }
 
     override suspend fun logout() {
-        tokenStorage.clear()
-        authSession.clear()
+        tokenStorage.removeAuthTokens(authSession)
     }
 }

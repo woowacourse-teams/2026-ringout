@@ -4,6 +4,8 @@ import com.joon.ringout.data.auth.remote.AuthApi
 import com.joon.ringout.data.auth.remote.AuthProvider
 import com.joon.ringout.data.auth.remote.model.LoginRequest
 import com.joon.ringout.data.auth.remote.model.LoginResponse
+import com.joon.ringout.data.auth.remote.model.ReissueRequest
+import com.joon.ringout.data.auth.remote.model.ReissueResponse
 import com.joon.ringout.data.auth.remote.model.SignupRequest
 import com.joon.ringout.data.auth.remote.model.SignupResponse
 import com.joon.ringout.data.network.ApiResponse
@@ -13,6 +15,8 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.AuthTokens
 import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.auth.SocialLoginOutcome
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -41,6 +45,29 @@ class DefaultAuthRepositoryTest {
         repository.restoreSession()
 
         assertEquals(AuthSessionState.Unauthenticated, session.state.value)
+    }
+
+    @Test
+    fun restoreSessionKeepsReauthenticationRequiredWhenExpiredTokensWereDeleted() = runTest {
+        val session = AuthSession().apply { requireReauthentication() }
+        val repository = DefaultAuthRepository(FakeAuthApi(), FakeTokenStorage(), session)
+
+        repository.restoreSession()
+
+        assertEquals(AuthSessionState.ReauthenticationRequired, session.state.value)
+    }
+
+    @Test
+    fun restoreSessionRestoresPersistedReauthenticationRequiredState() = runTest {
+        val persistedState = FakePersistedAuthState()
+        FakeTokenStorage(persistedState).expire()
+        val recreatedStorage = FakeTokenStorage(persistedState)
+        val restartedSession = AuthSession()
+        val repository = DefaultAuthRepository(FakeAuthApi(), recreatedStorage, restartedSession)
+
+        repository.restoreSession()
+
+        assertEquals(AuthSessionState.ReauthenticationRequired, restartedSession.state.value)
     }
 
     @Test
@@ -76,6 +103,37 @@ class DefaultAuthRepositoryTest {
         assertEquals(AuthProvider.Google, api.loginProvider)
         assertEquals("google-access-token", api.loginRequest?.socialAccessToken)
         assertEquals(AuthTokens("ringout-access", "ringout-refresh"), storage.tokens)
+        assertEquals(AuthSessionState.Authenticated, session.state.value)
+    }
+
+    @Test
+    fun loginCancellationDuringTokenSaveStillUpdatesTokensAndSessionTogether() = runTest {
+        val saveStarted = CompletableDeferred<Unit>()
+        val allowSaveCompletion = CompletableDeferred<Unit>()
+        val api = FakeAuthApi(
+            loginResponse = LoginResponse(
+                accessToken = "ringout-access",
+                refreshToken = "ringout-refresh",
+                isNewUser = false,
+            ),
+        )
+        val storage = FakeTokenStorage(
+            onSave = {
+                saveStarted.complete(Unit)
+                allowSaveCompletion.await()
+            },
+        )
+        val session = AuthSession()
+        val repository = DefaultAuthRepository(api, storage, session)
+
+        val login = async { repository.loginWithGoogle("google-access-token") }
+        saveStarted.await()
+        login.cancel()
+        allowSaveCompletion.complete(Unit)
+        login.join()
+
+        assertEquals(AuthTokens("ringout-access", "ringout-refresh"), storage.tokens)
+        assertEquals(false, storage.isReauthenticationRequired())
         assertEquals(AuthSessionState.Authenticated, session.state.value)
     }
 
@@ -187,18 +245,45 @@ private class FakeAuthApi(
             result = signupResponse,
         )
     }
+
+    override suspend fun reissue(
+        request: ReissueRequest,
+    ): ApiResponse<ReissueResponse> = error("재발급 API는 이 테스트에서 호출되지 않습니다.")
 }
 
-private class FakeTokenStorage : SecureTokenStorage {
-    var tokens: AuthTokens? = null
+private class FakeTokenStorage(
+    private val persistedState: FakePersistedAuthState = FakePersistedAuthState(),
+    private val onSave: suspend () -> Unit = {},
+) : SecureTokenStorage {
+    var tokens: AuthTokens?
+        get() = persistedState.tokens
+        set(value) {
+            persistedState.tokens = value
+        }
 
     override suspend fun save(tokens: AuthTokens) {
         this.tokens = tokens
+        onSave()
+        persistedState.reauthenticationRequired = false
     }
 
     override suspend fun read(): AuthTokens? = tokens
 
     override suspend fun clear() {
         tokens = null
+        persistedState.reauthenticationRequired = false
     }
+
+    override suspend fun expire() {
+        tokens = null
+        persistedState.reauthenticationRequired = true
+    }
+
+    override suspend fun isReauthenticationRequired(): Boolean =
+        persistedState.reauthenticationRequired
 }
+
+private data class FakePersistedAuthState(
+    var tokens: AuthTokens? = null,
+    var reauthenticationRequired: Boolean = false,
+)

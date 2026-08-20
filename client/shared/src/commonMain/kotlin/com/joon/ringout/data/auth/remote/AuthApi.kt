@@ -2,6 +2,8 @@ package com.joon.ringout.data.auth.remote
 
 import com.joon.ringout.data.auth.remote.model.LoginRequest
 import com.joon.ringout.data.auth.remote.model.LoginResponse
+import com.joon.ringout.data.auth.remote.model.ReissueRequest
+import com.joon.ringout.data.auth.remote.model.ReissueResponse
 import com.joon.ringout.data.auth.remote.model.SignupRequest
 import com.joon.ringout.data.auth.remote.model.SignupResponse
 import com.joon.ringout.data.network.ApiResponse
@@ -16,4 +18,8 @@ interface AuthApi {
         signupToken: String,
         request: SignupRequest,
     ): ApiResponse<SignupResponse>
+
+    suspend fun reissue(
+        request: ReissueRequest,
+    ): ApiResponse<ReissueResponse>
 }

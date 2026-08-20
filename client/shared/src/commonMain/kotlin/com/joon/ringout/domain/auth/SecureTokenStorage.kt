@@ -6,4 +6,10 @@ interface SecureTokenStorage {
     suspend fun read(): AuthTokens?
 
     suspend fun clear()
+
+    suspend fun expire() {
+        clear()
+    }
+
+    suspend fun isReauthenticationRequired(): Boolean = false
 }

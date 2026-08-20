@@ -1,7 +1,5 @@
 package com.ringout.api.common.response;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.ringout.api.common.response.code.BaseCode;
@@ -18,7 +16,6 @@ public class CustomResponse<T> {
     private final Boolean isSuccess;
     private final String code;
     private final String message;
-    @JsonInclude(Include.NON_NULL)
     private T result;
 
     public static <T> CustomResponse<T> onSuccess(BaseCode code, T result) {

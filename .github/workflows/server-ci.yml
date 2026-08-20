@@ -64,6 +64,7 @@ jobs:
             'DB_USERNAME=ringringring' \
             'DB_PASSWORD=ringringring' \
             'DDL_AUTO=update' \
+            'APPLE_CLIENT_ID=FAKE_APPLE_CLIENT_ID_FOR_SMOKE_TEST' \
             'JWT_SECRET=FAKE_SMOKE_TEST_ONLY_DO_NOT_USE_IN_PRODUCTION_0123456789' \
             'JWT_ACCESS_TOKEN_EXPIRATION_MILLIS=1000' \
             'JWT_REFRESH_TOKEN_EXPIRATION_MILLIS=2000' \
