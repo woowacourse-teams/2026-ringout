@@ -1,7 +1,9 @@
 package com.joon.ringout.presentation.destination
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -60,6 +63,7 @@ import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
 import com.joon.ringout.presentation.destination.components.DestinationNicknameDialog
 import com.joon.ringout.presentation.destination.components.DestinationShortcutRow
+import org.jetbrains.compose.resources.painterResource
 
 data class DestinationSelection(
     val name: String,
@@ -453,7 +457,7 @@ private fun DestinationMapLayout(
             FloatingMapHeader(
                 onBackClick = onBackClick,
                 onSearchClick = onSearchClick,
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier.padding(horizontal = 10.5.dp),
             )
             if (!isSearchOpen) {
                 DestinationShortcutRow(
@@ -568,52 +572,52 @@ private fun FloatingMapHeader(
     onSearchClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shape = RoundedCornerShape(15.dp)
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(12.dp, RoundedCornerShape(24.dp))
-            .background(Color(0xF2FFFFFF), RoundedCornerShape(24.dp))
+            .height(62.dp)
+            .background(Color.White, shape)
+            .border(1.dp, HeaderBorder, shape)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Box(
             modifier = Modifier
-                .size(50.dp)
-                .background(Pale, RoundedCornerShape(18.dp))
-                .clickable(onClick = onBackClick),
+                .size(44.dp)
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = "이전 화면으로 이동",
+                    onClick = onBackClick,
+                )
+                .semantics { contentDescription = "뒤로가기" },
             contentAlignment = Alignment.Center,
         ) {
-            BackIcon()
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = "목적지 설정",
-                color = PrimaryText,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                ),
-            )
-            Text(
-                text = "지도를 움직여 도착할 위치를 선택하세요",
-                color = SecondaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+            Image(
+                painter = painterResource(DestinationMapBackIconResource),
+                contentDescription = null,
+                modifier = Modifier.size(44.dp),
             )
         }
         Box(
             modifier = Modifier
-                .size(50.dp)
-                .background(Orange, RoundedCornerShape(18.dp))
-                .clickable(onClick = onSearchClick),
+                .size(44.dp)
+                .background(MaterialTheme.colorScheme.primary, shape)
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = "목적지 검색 열기",
+                    onClick = onSearchClick,
+                )
+                .semantics { contentDescription = "검색" },
             contentAlignment = Alignment.Center,
         ) {
-            SearchIcon()
+            Image(
+                painter = painterResource(DestinationMapSearchIconResource),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }
@@ -897,13 +901,11 @@ private fun CurrentLocationButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val iconColor = MaterialTheme.colorScheme.onSurface
-
     Box(
         modifier = modifier
-            .size(48.dp)
-            .shadow(8.dp, CircleShape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = .94f), CircleShape)
+            .size(54.dp)
+            .alpha(if (enabled || isLoading) 1f else DisabledControlAlpha)
+            .background(MaterialTheme.colorScheme.primary, CircleShape)
             .semantics {
                 contentDescription = "현재 위치로 이동"
                 if (isLoading) {
@@ -920,12 +922,16 @@ private fun CurrentLocationButton(
     ) {
         if (isLoading) {
             CircularProgressIndicator(
-                modifier = Modifier.size(22.dp),
-                color = Orange,
+                modifier = Modifier.size(24.dp),
+                color = CurrentLocationIconColor,
                 strokeWidth = 2.dp,
             )
         } else {
-            CurrentLocationIcon(color = iconColor)
+            Image(
+                painter = painterResource(DestinationMapCurrentLocationIconResource),
+                contentDescription = null,
+                modifier = Modifier.size(30.dp),
+            )
         }
     }
 }
@@ -978,36 +984,15 @@ private fun MiniPinIcon() = Canvas(Modifier.size(22.dp)) {
     drawLine(Orange, Offset(size.width / 2f, size.height * .62f), Offset(size.width / 2f, size.height * .88f), stroke, StrokeCap.Round)
 }
 
-@Composable
-private fun CurrentLocationIcon(color: Color) = Canvas(Modifier.size(22.dp)) {
-    val stroke = 1.8.dp.toPx()
-    val center = Offset(size.width / 2f, size.height / 2f)
-    val guideStart = size.minDimension * .04f
-    val guideEnd = size.minDimension * .22f
-
-    drawCircle(
-        color = color,
-        radius = size.minDimension * .28f,
-        center = center,
-        style = Stroke(stroke),
-    )
-    drawLine(color, Offset(center.x, guideStart), Offset(center.x, guideEnd), stroke, StrokeCap.Round)
-    drawLine(color, Offset(center.x, size.height - guideEnd), Offset(center.x, size.height - guideStart), stroke, StrokeCap.Round)
-    drawLine(color, Offset(guideStart, center.y), Offset(guideEnd, center.y), stroke, StrokeCap.Round)
-    drawLine(color, Offset(size.width - guideEnd, center.y), Offset(size.width - guideStart, center.y), stroke, StrokeCap.Round)
-    drawCircle(
-        color = Orange,
-        radius = size.minDimension * .1f,
-        center = center,
-    )
-}
-
 private val PrimaryText = Color(0xFF161A17)
 private val SecondaryText = Color(0xFF6E756F)
 private val Pale = Color(0xFFF5F6F2)
 private val MapFallback = Color(0xFFDCE8DF)
 private val Orange = Color(0xFFFF6B2C)
 private val DisabledButton = Color(0xFFB8BDB7)
+private val HeaderBorder = Color(0xFFD0D0D0)
+private val CurrentLocationIconColor = Color(0xFFF5F5F6)
+private const val DisabledControlAlpha = 0.45f
 private const val InitialCurrentLocationRequestId = 1
 
 private val DestinationPreviewSavedDestinations = listOf(
@@ -1065,6 +1050,43 @@ private fun DestinationMapScreenPreview() {
             onConfirmClick = {},
             mapContent = { mapModifier -> Box(mapModifier.background(MapFallback)) },
         )
+    }
+}
+
+@Preview(widthDp = 402, heightDp = 82)
+@Composable
+private fun FloatingMapHeaderPreview() {
+    RingoutTheme {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MapFallback)
+                .padding(horizontal = 10.5.dp, vertical = 10.dp),
+        ) {
+            FloatingMapHeader(
+                onBackClick = {},
+                onSearchClick = {},
+            )
+        }
+    }
+}
+
+@Preview(widthDp = 86, heightDp = 86)
+@Composable
+private fun CurrentLocationButtonPreview() {
+    RingoutTheme {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MapFallback),
+            contentAlignment = Alignment.Center,
+        ) {
+            CurrentLocationButton(
+                enabled = true,
+                isLoading = false,
+                onClick = {},
+            )
+        }
     }
 }
 
