@@ -8,9 +8,11 @@ import com.joon.ringout.data.network.ApiJson
 import com.joon.ringout.data.network.ApiResponse
 import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.member.MemberRepository
+import com.joon.ringout.domain.member.MemberProfile
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.patch
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -25,6 +27,21 @@ class DefaultMemberRepository(
     private val tokenStorage: SecureTokenStorage,
 ) : MemberRepository {
     private val authenticatedRequests = AuthenticatedRequestExecutor(httpClient, tokenStorage)
+
+    override suspend fun getProfile(): MemberProfile {
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.get(ApiConfig.url("/api/v1/users/me")) {
+                bearerAuth(accessToken)
+            }
+        }
+        val body = response.decodeOrThrow<GetMemberResponse>()
+        check(body.isSuccess) { body.message }
+        val member = checkNotNull(body.result) { "회원 조회 응답이 비어 있어요." }
+        return MemberProfile(
+            nickname = member.nickname,
+            email = member.email,
+        )
+    }
 
     override suspend fun updateNickname(nickname: String): String {
         val response = authenticatedRequests.execute { accessToken ->
@@ -48,6 +65,12 @@ class DefaultMemberRepository(
         check(body.isSuccess) { body.message }
     }
 }
+
+@Serializable
+private data class GetMemberResponse(
+    val nickname: String,
+    val email: String? = null,
+)
 
 @Serializable
 private data class UpdateNicknameRequest(
