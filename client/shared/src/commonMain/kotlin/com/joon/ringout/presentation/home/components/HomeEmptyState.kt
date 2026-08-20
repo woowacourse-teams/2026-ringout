@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
 import ringout.shared.generated.resources.home_empty_logo
@@ -118,14 +119,19 @@ private fun EmptyAlarmPrompt(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Image(
-            painter = painterResource(Res.drawable.home_empty_logo),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
                 .size(148.dp)
-                .clip(CircleShape),
-        )
+                .clip(CircleShape)
+                .background(MaterialTheme.ringoutColors.profileIconLoggedInBackground),
+        ) {
+            Image(
+                painter = painterResource(Res.drawable.home_empty_logo),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         Spacer(Modifier.height(10.dp))
 
