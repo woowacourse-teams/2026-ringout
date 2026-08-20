@@ -4,6 +4,7 @@ import com.joon.ringout.data.network.ApiException
 import com.joon.ringout.data.network.configureRingoutHttpClient
 import com.joon.ringout.domain.auth.AuthTokens
 import com.joon.ringout.domain.auth.SecureTokenStorage
+import com.joon.ringout.domain.member.MemberProfile
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -20,6 +21,44 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class DefaultMemberRepositoryTest {
+    @Test
+    fun `회원 조회 요청에 Ringout access token을 전송하고 회원 정보를 반환한다`() = runTest {
+        val client = HttpClient(MockEngine { request ->
+            assertEquals(HttpMethod.Get, request.method)
+            assertEquals("/api/v1/users/me", request.url.encodedPath)
+            assertEquals("Bearer ringout-access", request.headers[HttpHeaders.Authorization])
+            respond(
+                content = """
+                    {
+                      "isSuccess": true,
+                      "code": "USER200",
+                      "message": "회원 정보 조회에 성공했습니다.",
+                      "result": {
+                        "nickname": "서여",
+                        "email": "uio6699@naver.com"
+                      }
+                    }
+                """.trimIndent(),
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+            )
+        }) {
+            configureRingoutHttpClient()
+        }
+        val repository = DefaultMemberRepository(client, FakeTokenStorage())
+
+        val profile = repository.getProfile()
+
+        assertEquals(
+            MemberProfile(
+                nickname = "서여",
+                email = "uio6699@naver.com",
+            ),
+            profile,
+        )
+        client.close()
+    }
+
     @Test
     fun `회원 탈퇴 요청에 Ringout access token을 전송한다`() = runTest {
         val client = HttpClient(MockEngine { request ->
