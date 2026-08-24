@@ -6,12 +6,10 @@ import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
-import io.swagger.v3.oas.models.servers.Server;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.util.StringUtils;
 
 @Configuration
 public class SwaggerConfig {
@@ -19,17 +17,11 @@ public class SwaggerConfig {
     public static final String BEARER_AUTH = "JWT Authentication";
 
     @Bean
-    public OpenAPI ringoutOpenAPI(
-        @Value("${app.swagger.local-url}") String localUrl,
-        @Value("${app.swagger.production-url}") String productionUrl
-    ) {
-        OpenAPI openAPI = new OpenAPI()
+    public OpenAPI ringoutOpenAPI() {
+        return new OpenAPI()
             .addSecurityItem(
                     new SecurityRequirement().addList(BEARER_AUTH)
             )
-            .addServersItem(new Server()
-                .url(localUrl)
-                .description("Local server"))
             .info(new Info()
                 .title("Ringout API")
                 .description("Ringout 앱에서 사용하는 서버 API 명세입니다.")
@@ -42,14 +34,6 @@ public class SwaggerConfig {
                         .scheme("bearer")
                         .bearerFormat("JWT")
                 ));
-
-        if (StringUtils.hasText(productionUrl)) {
-            openAPI.addServersItem(new Server()
-                .url(productionUrl)
-                .description("Production server"));
-        }
-
-        return openAPI;
     }
 
 
