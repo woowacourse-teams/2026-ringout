@@ -1,6 +1,5 @@
 package com.ringout.api.terms.service;
 
-import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.member.domain.Member;
 import com.ringout.api.member.repository.MemberRepository;
@@ -12,6 +11,7 @@ import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
 import com.ringout.api.terms.repository.MemberAgreementRepository;
 import com.ringout.api.terms.repository.TermsRepository;
+import com.ringout.api.terms.status.TermsErrorStatus;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -69,7 +69,7 @@ public class TermsService {
 
     private static void validateHasNewAgreements(List<Terms> newlyAgreedTerms) {
         if (newlyAgreedTerms.isEmpty()) {
-            throw new GeneralException(ErrorStatus.TERMS_ALREADY_AGREED);
+            throw new GeneralException(TermsErrorStatus.TERMS_ALREADY_AGREED);
         }
     }
 
@@ -85,13 +85,13 @@ public class TermsService {
         try {
             return LocalDate.parse(agreedAt);
         } catch (DateTimeParseException e) {
-            throw new GeneralException(ErrorStatus.TERMS_AGREED_AT_INVALID);
+            throw new GeneralException(TermsErrorStatus.TERMS_AGREED_AT_INVALID);
         }
     }
 
     private void validateAllRequiredTermsIncluded(List<TermsType> requestedTypes) {
         if (!TermsType.includeAllRequired(requestedTypes)) {
-            throw new GeneralException(ErrorStatus.TERMS_NOT_AGREED);
+            throw new GeneralException(TermsErrorStatus.TERMS_NOT_AGREED);
         }
     }
 
@@ -99,6 +99,6 @@ public class TermsService {
         return termsRepository.findByType(type).stream()
             .filter(terms -> terms.isEffectiveOn(referenceDate))
             .reduce((a, b) -> a.isNewerThan(b) ? a : b)
-            .orElseThrow(() -> new GeneralException(ErrorStatus.TERMS_NOT_EFFECTIVE));
+            .orElseThrow(() -> new GeneralException(TermsErrorStatus.TERMS_NOT_EFFECTIVE));
     }
 }

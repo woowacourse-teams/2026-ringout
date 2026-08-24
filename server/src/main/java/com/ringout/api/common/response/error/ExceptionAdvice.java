@@ -75,15 +75,6 @@ public class ExceptionAdvice {
         return fail(ErrorStatus.INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<CustomResponse<String>> handleIllegalStateException(
-        IllegalStateException illegalStateException
-    ) {
-        return fail(
-            ErrorStatus.STAMP_ALREADY_CREATED,
-            illegalStateException.getMessage());
-    }
-
     @ExceptionHandler(GeneralException.class)
     public ResponseEntity<CustomResponse<Void>> onThrowException(GeneralException generalException) {
         ErrorReasonResponse errorReasonHttpStatus = generalException.getErrorReasonHttpStatus();

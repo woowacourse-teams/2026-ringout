@@ -1,13 +1,13 @@
 package com.ringout.api.terms.controller;
 
 import com.ringout.api.common.response.CustomResponse;
-import com.ringout.api.common.response.code.status.SuccessStatus;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.terms.controller.docs.TermsControllerApi;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
 import com.ringout.api.terms.service.TermsService;
+import com.ringout.api.terms.status.TermsSuccessStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -32,8 +32,8 @@ public class TermsController implements TermsControllerApi {
 
         TermsAgreeResponse response = termsService.termsAgree(customUserDetails.getUserId(), termsAgreeRequest);
 
-        return ResponseEntity.status(SuccessStatus.TERMS_AGREED.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus.TERMS_AGREED, response));
+        return ResponseEntity.status(TermsSuccessStatus.TERMS_AGREED.getHttpStatus())
+            .body(CustomResponse.onSuccess(TermsSuccessStatus.TERMS_AGREED, response));
     }
 
     @GetMapping("/agreements/me")
@@ -43,7 +43,11 @@ public class TermsController implements TermsControllerApi {
         CheckRequiredTermsAgreedResponse response =
             termsService.checkRequiredTermsAgreed(customUserDetails.getUserId());
 
-        return ResponseEntity.status(SuccessStatus.OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus.OK, response));
+        return ResponseEntity.status(
+                TermsSuccessStatus.REQUIRED_TERMS_AGREEMENT_CHECKED.getHttpStatus())
+            .body(CustomResponse.onSuccess(
+                TermsSuccessStatus.REQUIRED_TERMS_AGREEMENT_CHECKED,
+                response
+            ));
     }
 }

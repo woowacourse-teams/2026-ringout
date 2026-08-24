@@ -1,4 +1,4 @@
-package com.ringout.api.common.response.code.status;
+package com.ringout.api.terms.status;
 
 import com.ringout.api.common.response.code.BaseCode;
 import com.ringout.api.common.response.code.ReasonResponse;
@@ -8,10 +8,10 @@ import org.springframework.http.HttpStatus;
 
 @Getter
 @AllArgsConstructor
-public enum SuccessStatus implements BaseCode {
+public enum TermsSuccessStatus implements BaseCode {
 
-    OK(HttpStatus.OK, "COMMON200", "성공입니다."),
-    CREATED(HttpStatus.CREATED, "COMMON201", "생성에 성공했습니다.");
+    TERMS_AGREED(HttpStatus.CREATED, "TERMS201", "약관 동의가 저장되었습니다."),
+    REQUIRED_TERMS_AGREEMENT_CHECKED(HttpStatus.OK, "TERMS200", "필수 약관 동의 여부 조회에 성공했습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

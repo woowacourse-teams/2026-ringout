@@ -1,5 +1,6 @@
 package com.ringout.api.stamp.service;
 
+import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.member.domain.Member;
 import com.ringout.api.member.repository.MemberRepository;
 import com.ringout.api.stamp.domain.GoalResult;
@@ -8,6 +9,7 @@ import com.ringout.api.stamp.dto.response.CreateGiveUpResponse;
 import com.ringout.api.stamp.dto.response.CreateStampResponse;
 import com.ringout.api.stamp.dto.response.FindMonthlyStampsResponse;
 import com.ringout.api.stamp.repository.StampRepository;
+import com.ringout.api.stamp.status.StampErrorStatus;
 import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +28,7 @@ public class StampService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public CreateStampResponse createStamp(Long memberId, LocalDate completedAt) {
         if (stampRepository.existsByMemberIdAndRecordDate(memberId, completedAt)) {
-            throw new IllegalStateException("이미 저장된 스탬프입니다.");
+            throw new GeneralException(StampErrorStatus.STAMP_ALREADY_CREATED);
         }
 
         Member member = memberRepository.getReferenceById(memberId);
@@ -39,7 +41,7 @@ public class StampService {
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public CreateGiveUpResponse createGiveUp(Long memberId, LocalDate terminatedAt) {
         if (stampRepository.existsByMemberIdAndRecordDate(memberId, terminatedAt)) {
-            throw new IllegalStateException("이미 기록된 날짜입니다.");
+            throw new GeneralException(StampErrorStatus.STAMP_ALREADY_CREATED);
         }
 
         Member member = memberRepository.getReferenceById(memberId);

@@ -1,13 +1,13 @@
 package com.ringout.api.stamp.controller;
 
 import com.ringout.api.common.response.CustomResponse;
-import com.ringout.api.common.response.code.status.SuccessStatus;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.stamp.controller.docs.StampControllerApi;
 import com.ringout.api.stamp.dto.response.CreateGiveUpResponse;
 import com.ringout.api.stamp.dto.response.CreateStampResponse;
 import com.ringout.api.stamp.dto.response.FindMonthlyStampsResponse;
 import com.ringout.api.stamp.service.StampService;
+import com.ringout.api.stamp.status.StampSuccessStatus;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -32,8 +32,8 @@ public class StampController implements StampControllerApi {
     ) {
         CreateStampResponse response = stampService.createStamp(customUserDetails.getUserId(), completedAt);
 
-        return ResponseEntity.status(SuccessStatus.STAMP_CREATED.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus.STAMP_CREATED, response));
+        return ResponseEntity.status(StampSuccessStatus.STAMP_CREATED.getHttpStatus())
+            .body(CustomResponse.onSuccess(StampSuccessStatus.STAMP_CREATED, response));
     }
 
     @PostMapping("/give-ups")
@@ -43,8 +43,8 @@ public class StampController implements StampControllerApi {
     ) {
         CreateGiveUpResponse response = stampService.createGiveUp(customUserDetails.getUserId(), terminatedAt);
 
-        return ResponseEntity.status(SuccessStatus.STAMP_GIVE_UP.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus.STAMP_GIVE_UP, response));
+        return ResponseEntity.status(StampSuccessStatus.STAMP_GIVE_UP.getHttpStatus())
+            .body(CustomResponse.onSuccess(StampSuccessStatus.STAMP_GIVE_UP, response));
     }
 
     @GetMapping
@@ -56,7 +56,7 @@ public class StampController implements StampControllerApi {
         FindMonthlyStampsResponse response =
             stampService.findMonthlyStamps(customUserDetails.getUserId(), year, month);
 
-        return ResponseEntity.status(SuccessStatus.OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus.OK, response));
+        return ResponseEntity.status(StampSuccessStatus.MONTHLY_STAMPS_FOUND.getHttpStatus())
+            .body(CustomResponse.onSuccess(StampSuccessStatus.MONTHLY_STAMPS_FOUND, response));
     }
 }
