@@ -1,8 +1,8 @@
 package com.ringout.api.config.security;
 
 import tools.jackson.databind.ObjectMapper;
+import com.ringout.api.auth.status.AuthErrorStatus;
 import com.ringout.api.common.response.CustomResponse;
-import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.config.jwt.JwtProvider;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,8 +28,8 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
   public void commence(HttpServletRequest request, HttpServletResponse response,
       AuthenticationException authException) throws IOException, ServletException {
     String token = resolveToken(request);
-    ErrorStatus errorStatus = (token != null && jwtProvider.isExpiredToken(token))
-        ? ErrorStatus.ACCESS_TOKEN_EXPIRED : ErrorStatus._UNAUTHORIZED;
+    AuthErrorStatus errorStatus = (token != null && jwtProvider.isExpiredToken(token))
+        ? AuthErrorStatus.ACCESS_TOKEN_EXPIRED : AuthErrorStatus.UNAUTHORIZED;
 
     response.setStatus(errorStatus.getHttpStatus().value());
     response.setContentType(MediaType.APPLICATION_JSON_VALUE);

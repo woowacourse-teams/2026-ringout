@@ -1,7 +1,6 @@
 package com.ringout.api.member.controller;
 
 import com.ringout.api.common.response.CustomResponse;
-import com.ringout.api.common.response.code.status.SuccessStatus;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.member.controller.docs.MemberControllerApi;
 import com.ringout.api.member.dto.request.UpdateNicknameRequest;
@@ -49,8 +48,8 @@ public class MemberController implements MemberControllerApi {
             request
         );
 
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+        return ResponseEntity.status(UserSuccessStatus.USER_UPDATED.getHttpStatus())
+            .body(CustomResponse.onSuccess(UserSuccessStatus.USER_UPDATED, response));
     }
 
     @Override
@@ -60,7 +59,7 @@ public class MemberController implements MemberControllerApi {
     ) {
         memberService.withdraw(userDetails.getUserId());
 
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, null));
+        return ResponseEntity.status(UserSuccessStatus.USER_WITHDRAWN.getHttpStatus())
+            .body(CustomResponse.onSuccess(UserSuccessStatus.USER_WITHDRAWN, null));
     }
 }

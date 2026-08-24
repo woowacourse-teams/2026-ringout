@@ -18,8 +18,8 @@ public class TestController implements TestControllerApi {
     @GetMapping("/test")
     public ResponseEntity<CustomResponse<String>> test() {
         String response = "Hello from Spring Boot 👋";
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+        return ResponseEntity.status(SuccessStatus.OK.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus.OK, response));
     }
 
     @Override
@@ -28,7 +28,7 @@ public class TestController implements TestControllerApi {
         @AuthenticationPrincipal CustomUserDetails user
     ) {
         String response = "Hello from Spring Boot 👋";
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+        return ResponseEntity.status(SuccessStatus.OK.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus.OK, response));
     }
 }

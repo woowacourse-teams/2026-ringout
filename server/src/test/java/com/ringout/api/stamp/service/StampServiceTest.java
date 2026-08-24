@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.member.repository.MemberRepository;
 import com.ringout.api.stamp.domain.GoalResult;
 import com.ringout.api.stamp.domain.Stamp;
@@ -14,6 +15,7 @@ import com.ringout.api.stamp.dto.response.CreateGiveUpResponse;
 import com.ringout.api.stamp.dto.response.CreateStampResponse;
 import com.ringout.api.stamp.dto.response.FindMonthlyStampsResponse;
 import com.ringout.api.stamp.repository.StampRepository;
+import com.ringout.api.stamp.status.StampErrorStatus;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
@@ -64,8 +66,9 @@ class StampServiceTest {
 
         // when // then
         assertThatThrownBy(() -> stampService.createStamp(memberId, completedAt))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessage("이미 저장된 스탬프입니다.");
+            .isInstanceOf(GeneralException.class)
+            .extracting(e -> ((GeneralException) e).getCode())
+            .isEqualTo(StampErrorStatus.STAMP_ALREADY_CREATED);
         verify(stampRepository, never()).save(any(Stamp.class));
     }
 
@@ -92,8 +95,9 @@ class StampServiceTest {
 
         // when // then
         assertThatThrownBy(() -> stampService.createGiveUp(memberId, terminatedAt))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessage("이미 기록된 날짜입니다.");
+            .isInstanceOf(GeneralException.class)
+            .extracting(e -> ((GeneralException) e).getCode())
+            .isEqualTo(StampErrorStatus.STAMP_ALREADY_CREATED);
         verify(stampRepository, never()).save(any(Stamp.class));
     }
 

@@ -1,4 +1,4 @@
-package com.ringout.api.common.response.code.status;
+package com.ringout.api.auth.status;
 
 import com.ringout.api.common.response.code.BaseCode;
 import com.ringout.api.common.response.code.ReasonResponse;
@@ -8,10 +8,11 @@ import org.springframework.http.HttpStatus;
 
 @Getter
 @AllArgsConstructor
-public enum SuccessStatus implements BaseCode {
+public enum AuthSuccessStatus implements BaseCode {
 
-    OK(HttpStatus.OK, "COMMON200", "성공입니다."),
-    CREATED(HttpStatus.CREATED, "COMMON201", "생성에 성공했습니다.");
+    LOGIN_SUCCESS(HttpStatus.OK, "AUTH200", "로그인에 성공했습니다."),
+    SIGNUP_SUCCESS(HttpStatus.OK, "AUTH200", "회원가입에 성공했습니다."),
+    TOKEN_REISSUED(HttpStatus.OK, "AUTH200", "토큰 재발급에 성공했습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

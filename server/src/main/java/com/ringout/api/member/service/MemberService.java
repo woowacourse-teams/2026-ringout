@@ -1,13 +1,13 @@
 package com.ringout.api.member.service;
 
 import com.ringout.api.auth.social.SocialProvider;
-import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.member.domain.Member;
 import com.ringout.api.member.dto.request.UpdateNicknameRequest;
 import com.ringout.api.member.dto.response.UpdateNicknameResponse;
 import com.ringout.api.member.dto.response.UserResponse;
 import com.ringout.api.member.repository.MemberRepository;
+import com.ringout.api.member.status.UserErrorStatus;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,7 +22,7 @@ public class MemberService {
     @Transactional(readOnly = true)
     public UserResponse getUser(Long memberId) {
         Member member = memberRepository.findById(memberId)
-            .orElseThrow(() -> new GeneralException(ErrorStatus.MEMBER_NOT_FOUND));
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.MEMBER_NOT_FOUND));
 
         return new UserResponse(member.getNickname().getValue(), member.getEmail());
     }
@@ -36,7 +36,7 @@ public class MemberService {
     ) {
         if (memberRepository.findBySocialProviderAndSocialProviderId(socialProvider, providerId)
             .isPresent()) {
-            throw new GeneralException(ErrorStatus.MEMBER_ALREADY_EXISTS);
+            throw new GeneralException(UserErrorStatus.MEMBER_ALREADY_EXISTS);
         }
 
         return memberRepository.save(
@@ -50,7 +50,7 @@ public class MemberService {
         UpdateNicknameRequest request
     ) {
         Member member = memberRepository.findById(memberId)
-            .orElseThrow(() -> new GeneralException(ErrorStatus.MEMBER_NOT_FOUND));
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.MEMBER_NOT_FOUND));
 
         member.changeNickname(request.nickname());
 
@@ -60,7 +60,7 @@ public class MemberService {
     @Transactional
     public void withdraw(Long memberId) {
         Member member = memberRepository.findById(memberId)
-            .orElseThrow(() -> new GeneralException(ErrorStatus.MEMBER_NOT_FOUND));
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.MEMBER_NOT_FOUND));
 
         memberRepository.delete(member);
     }

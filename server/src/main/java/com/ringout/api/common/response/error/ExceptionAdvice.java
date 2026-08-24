@@ -46,7 +46,7 @@ public class ExceptionAdvice {
                     (existingErrorMessage, newErrorMessage) -> existingErrorMessage + ", " + newErrorMessage);
             });
 
-        return fail(ErrorStatus._BAD_REQUEST, errors);
+        return fail(ErrorStatus.BAD_REQUEST, errors);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
@@ -55,33 +55,24 @@ public class ExceptionAdvice {
     ) {
         String errorPoint = String.format("%s 파라미터가 누락되었습니다.", e.getParameterName());
 
-        return fail(ErrorStatus._BAD_REQUEST, errorPoint);
+        return fail(ErrorStatus.BAD_REQUEST, errorPoint);
     }
 
     @ExceptionHandler(TypeMismatchException.class)
     public ResponseEntity<CustomResponse<Void>> handleTypeMismatch(TypeMismatchException e) {
-        return fail(ErrorStatus._BAD_REQUEST);
+        return fail(ErrorStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<CustomResponse<Void>> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
-        return fail(ErrorStatus._BAD_REQUEST);
+        return fail(ErrorStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<CustomResponse<String>> exception(Exception e) {
         e.printStackTrace();
 
-        return fail(ErrorStatus._INTERNAL_SERVER_ERROR, e.getMessage());
-    }
-
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<CustomResponse<String>> handleIllegalStateException(
-        IllegalStateException illegalStateException
-    ) {
-        return fail(
-            ErrorStatus.STAMP_ALREADY_CREATED,
-            illegalStateException.getMessage());
+        return fail(ErrorStatus.INTERNAL_SERVER_ERROR, e.getMessage());
     }
 
     @ExceptionHandler(GeneralException.class)
@@ -95,7 +86,7 @@ public class ExceptionAdvice {
         DateTimeParseException dateTimeParseException
     ) {
         return fail(
-            ErrorStatus._BAD_REQUEST,
+            ErrorStatus.BAD_REQUEST,
             dateTimeParseException.getMessage()
         );
     }
