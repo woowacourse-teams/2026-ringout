@@ -66,7 +66,7 @@ class MemberServiceTest {
         assertThatThrownBy(() -> memberService.getUser(memberId))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(UserErrorStatus.MEMBER_NOT_FOUND);
+            .isEqualTo(UserErrorStatus.USER_NOT_FOUND);
     }
 
     @Test
@@ -100,7 +100,28 @@ class MemberServiceTest {
         ))
             .isInstanceOf(GeneralException.class)
             .extracting("code")
-            .isEqualTo(UserErrorStatus.MEMBER_NOT_FOUND);
+            .isEqualTo(UserErrorStatus.USER_NOT_FOUND);
+
+    }
+
+    @Test
+    void 허용되지_않은_형식의_닉네임은_수정할_수_없다() {
+        Long memberId = 1L;
+        Member member = Member.register(
+            SocialProvider.KAKAO,
+            "provider-id",
+            "member@example.com",
+            LocalDateTime.now()
+        );
+        when(memberRepository.findById(memberId)).thenReturn(Optional.of(member));
+
+        assertThatThrownBy(() -> memberService.updateNickname(
+            memberId,
+            new UpdateNicknameRequest("잘못된_닉네임")
+        ))
+            .isInstanceOf(GeneralException.class)
+            .extracting("code")
+            .isEqualTo(UserErrorStatus.USER_NICKNAME_INVALID_FORMAT);
     }
 
     @Test
@@ -127,6 +148,6 @@ class MemberServiceTest {
         assertThatThrownBy(() -> memberService.withdraw(memberId))
             .isInstanceOf(GeneralException.class)
             .extracting("code")
-            .isEqualTo(UserErrorStatus.MEMBER_NOT_FOUND);
+            .isEqualTo(UserErrorStatus.USER_NOT_FOUND);
     }
 }

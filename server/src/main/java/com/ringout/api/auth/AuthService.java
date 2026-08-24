@@ -89,7 +89,7 @@ public class AuthService {
 
         Long memberId = jwtProvider.getUserId(refreshToken);
         Member member = memberRepository.findById(memberId)
-            .orElseThrow(() -> new GeneralException(UserErrorStatus.MEMBER_NOT_FOUND));
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
 
         String reissuedAccessToken = jwtProvider.createAccessToken(
             member.getId(),
