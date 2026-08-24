@@ -43,7 +43,7 @@ public class TermsController implements TermsControllerApi {
         CheckRequiredTermsAgreedResponse response =
             termsService.checkRequiredTermsAgreed(customUserDetails.getUserId());
 
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+        return ResponseEntity.status(SuccessStatus.OK.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus.OK, response));
     }
 }

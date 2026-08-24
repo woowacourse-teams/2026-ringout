@@ -56,7 +56,7 @@ public class StampController implements StampControllerApi {
         FindMonthlyStampsResponse response =
             stampService.findMonthlyStamps(customUserDetails.getUserId(), year, month);
 
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+        return ResponseEntity.status(SuccessStatus.OK.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus.OK, response));
     }
 }

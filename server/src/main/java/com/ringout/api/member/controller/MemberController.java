@@ -49,8 +49,8 @@ public class MemberController implements MemberControllerApi {
             request
         );
 
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+        return ResponseEntity.status(SuccessStatus.OK.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus.OK, response));
     }
 
     @Override
@@ -60,7 +60,7 @@ public class MemberController implements MemberControllerApi {
     ) {
         memberService.withdraw(userDetails.getUserId());
 
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, null));
+        return ResponseEntity.status(SuccessStatus.OK.getHttpStatus())
+            .body(CustomResponse.onSuccess(SuccessStatus.OK, null));
     }
 }
