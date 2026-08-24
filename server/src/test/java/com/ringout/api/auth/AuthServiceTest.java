@@ -133,9 +133,9 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.reissue(refreshToken))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(UserErrorStatus.MEMBER_NOT_FOUND);
-        assertThat(UserErrorStatus.MEMBER_NOT_FOUND.getCode()).isEqualTo("USER404");
-        assertThat(UserErrorStatus.MEMBER_NOT_FOUND.getMessage())
+            .isEqualTo(UserErrorStatus.USER_NOT_FOUND);
+        assertThat(UserErrorStatus.USER_NOT_FOUND.getCode()).isEqualTo("USER404");
+        assertThat(UserErrorStatus.USER_NOT_FOUND.getMessage())
             .isEqualTo("존재하지 않는 사용자입니다.");
     }
 

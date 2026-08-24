@@ -22,7 +22,7 @@ public class MemberService {
     @Transactional(readOnly = true)
     public UserResponse getUser(Long memberId) {
         Member member = memberRepository.findById(memberId)
-            .orElseThrow(() -> new GeneralException(UserErrorStatus.MEMBER_NOT_FOUND));
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
 
         return new UserResponse(member.getNickname().getValue(), member.getEmail());
     }
@@ -36,7 +36,7 @@ public class MemberService {
     ) {
         if (memberRepository.findBySocialProviderAndSocialProviderId(socialProvider, providerId)
             .isPresent()) {
-            throw new GeneralException(UserErrorStatus.MEMBER_ALREADY_EXISTS);
+            throw new GeneralException(UserErrorStatus.USER_ALREADY_EXISTS);
         }
 
         return memberRepository.save(
@@ -50,7 +50,7 @@ public class MemberService {
         UpdateNicknameRequest request
     ) {
         Member member = memberRepository.findById(memberId)
-            .orElseThrow(() -> new GeneralException(UserErrorStatus.MEMBER_NOT_FOUND));
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
 
         member.changeNickname(request.nickname());
 
@@ -60,7 +60,7 @@ public class MemberService {
     @Transactional
     public void withdraw(Long memberId) {
         Member member = memberRepository.findById(memberId)
-            .orElseThrow(() -> new GeneralException(UserErrorStatus.MEMBER_NOT_FOUND));
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
 
         memberRepository.delete(member);
     }

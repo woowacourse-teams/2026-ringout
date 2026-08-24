@@ -102,7 +102,7 @@ public interface MemberControllerApi {
 
     @Operation(
         summary = "내 닉네임 수정",
-        description = "로그인한 회원의 닉네임을 최대 10자 이내로 변경합니다. 닉네임 중복은 허용됩니다.",
+        description = "로그인한 회원의 닉네임을 한글, 영문, 숫자로 구성된 1~10자로 변경합니다. 닉네임 중복은 허용됩니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
@@ -115,8 +115,8 @@ public interface MemberControllerApi {
                     value = """
                         {
                           "isSuccess": true,
-                          "code": "COMMON200",
-                          "message": "성공입니다.",
+                          "code": "USER200",
+                          "message": "회원 정보 수정에 성공했습니다.",
                           "result": {
                             "nickname": "용감한토끼"
                           }
@@ -127,18 +127,16 @@ public interface MemberControllerApi {
         ),
         @ApiResponse(
             responseCode = "400",
-            description = "닉네임이 비어 있거나 10자를 초과한 경우",
+            description = "닉네임이 비어 있거나, 10자를 초과하거나, 허용되지 않은 문자를 포함한 경우",
             content = @Content(
                 mediaType = MediaType.APPLICATION_JSON_VALUE,
                 examples = @ExampleObject(
                     value = """
                         {
                           "isSuccess": false,
-                          "code": "COMMON400",
-                          "message": "잘못된 요청입니다.",
-                          "result": {
-                            "nickname": "닉네임은 최대 10자입니다."
-                          }
+                          "code": "USER400",
+                          "message": "닉네임은 최대 10자입니다.",
+                          "result": null
                         }
                         """
                 )
