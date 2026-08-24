@@ -3,17 +3,27 @@ package com.ringout.api.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mock;
 
+import com.ringout.api.auth.dto.LoginResponse;
 import com.ringout.api.auth.dto.ReissueResponse;
-import com.ringout.api.common.response.code.status.ErrorStatus;
+import com.ringout.api.auth.social.SocialLoginClient;
+import com.ringout.api.auth.social.SocialProvider;
+import com.ringout.api.auth.social.SocialUserInfo;
+import com.ringout.api.auth.status.AuthErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.config.jwt.JwtProvider;
 import com.ringout.api.member.domain.Member;
 import com.ringout.api.member.domain.Role;
 import com.ringout.api.member.repository.MemberRepository;
 import com.ringout.api.member.service.MemberService;
+import com.ringout.api.member.status.UserErrorStatus;
 import com.ringout.api.terms.service.TermsService;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +34,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
+
+    private static final String SOCIAL_ACCESS_TOKEN = "social-access-token";
+    private static final String PROVIDER_ID = "provider-user-id";
+    private static final String EMAIL = "member@example.com";
+
+    @Mock
+    private SocialLoginClient loginClient;
 
     @Mock
     private MemberRepository memberRepository;
@@ -44,7 +61,14 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(List.of(), memberRepository, jwtProvider, memberService, termsService);
+        when(loginClient.supports()).thenReturn(SocialProvider.KAKAO);
+        authService = new AuthService(
+            List.of(loginClient),
+            memberRepository,
+            jwtProvider,
+            memberService,
+            termsService
+        );
     }
 
     @Test
@@ -81,7 +105,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.reissue(refreshToken))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus._UNAUTHORIZED);
+            .isEqualTo(AuthErrorStatus.UNAUTHORIZED);
     }
 
     @Test
@@ -94,7 +118,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.reissue(refreshToken))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus._UNAUTHORIZED);
+            .isEqualTo(AuthErrorStatus.UNAUTHORIZED);
     }
 
     @Test
@@ -109,8 +133,70 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.reissue(refreshToken))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.MEMBER_NOT_FOUND);
-        assertThat(ErrorStatus.MEMBER_NOT_FOUND.getCode()).isEqualTo("USER404");
-        assertThat(ErrorStatus.MEMBER_NOT_FOUND.getMessage()).isEqualTo("존재하지 않는 사용자입니다.");
+            .isEqualTo(UserErrorStatus.MEMBER_NOT_FOUND);
+        assertThat(UserErrorStatus.MEMBER_NOT_FOUND.getCode()).isEqualTo("USER404");
+        assertThat(UserErrorStatus.MEMBER_NOT_FOUND.getMessage())
+            .isEqualTo("존재하지 않는 사용자입니다.");
+    }
+
+    @Test
+    void 신규_소셜_사용자는_가입_토큰을_발급한다() {
+        SocialUserInfo socialUserInfo = new SocialUserInfo(
+            SocialProvider.KAKAO,
+            PROVIDER_ID,
+            EMAIL
+        );
+        when(loginClient.authenticate(SOCIAL_ACCESS_TOKEN)).thenReturn(socialUserInfo);
+        when(memberRepository.findBySocialProviderAndSocialProviderId(
+            SocialProvider.KAKAO,
+            PROVIDER_ID
+        )).thenReturn(Optional.empty());
+        when(jwtProvider.createSignupToken(SocialProvider.KAKAO, PROVIDER_ID, EMAIL))
+            .thenReturn("signup-token");
+
+        LoginResponse result = authService.login(
+            SocialProvider.KAKAO,
+            SOCIAL_ACCESS_TOKEN
+        );
+
+        verify(memberRepository, never()).save(any(Member.class));
+        assertThat(result.signupToken()).isEqualTo("signup-token");
+        assertThat(result.accessToken()).isNull();
+        assertThat(result.isNewUser()).isTrue();
+    }
+
+    @Test
+    void 기존_소셜_사용자는_새로_저장하지_않고_로그인_시각을_갱신한다() {
+        LocalDateTime previousLoginAt = LocalDateTime.now().minusDays(1);
+        Member member = Member.register(
+            SocialProvider.KAKAO,
+            PROVIDER_ID,
+            "old@example.com",
+            previousLoginAt
+        );
+        SocialUserInfo socialUserInfo = new SocialUserInfo(
+            SocialProvider.KAKAO,
+            PROVIDER_ID,
+            EMAIL
+        );
+        when(loginClient.authenticate(SOCIAL_ACCESS_TOKEN)).thenReturn(socialUserInfo);
+        when(memberRepository.findBySocialProviderAndSocialProviderId(
+            SocialProvider.KAKAO,
+            PROVIDER_ID
+        )).thenReturn(Optional.of(member));
+        when(jwtProvider.createAccessToken(any(), any(), any())).thenReturn("access-token");
+
+        LoginResponse result = authService.login(
+            SocialProvider.KAKAO,
+            SOCIAL_ACCESS_TOKEN
+        );
+
+        verify(memberRepository, never()).save(any(Member.class));
+        assertThat(result.accessToken()).isEqualTo("access-token");
+        assertThat(result.signupToken()).isNull();
+        assertThat(result.isNewUser()).isFalse();
+        assertThat(member.getLastLoginAt()).isAfter(previousLoginAt);
+        assertThat(member.getLastAccessedAt()).isEqualTo(member.getLastLoginAt());
+        assertThat(member.getEmail()).isEqualTo(EMAIL);
     }
 }

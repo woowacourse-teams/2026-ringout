@@ -8,7 +8,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.member.repository.MemberRepository;
 import com.ringout.api.terms.domain.Terms;
@@ -18,6 +17,7 @@ import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
 import com.ringout.api.terms.repository.MemberAgreementRepository;
 import com.ringout.api.terms.repository.TermsRepository;
+import com.ringout.api.terms.status.TermsErrorStatus;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -89,7 +89,7 @@ class TermsServiceTest {
         assertThatThrownBy(() -> termsService.termsAgree(memberId, request))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_AGREED_AT_INVALID);
+            .isEqualTo(TermsErrorStatus.TERMS_AGREED_AT_INVALID);
     }
 
     @Test
@@ -101,7 +101,7 @@ class TermsServiceTest {
         assertThatThrownBy(() -> termsService.termsAgree(memberId, request))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_NOT_AGREED);
+            .isEqualTo(TermsErrorStatus.TERMS_NOT_AGREED);
     }
 
     @Test
@@ -116,7 +116,7 @@ class TermsServiceTest {
         assertThatThrownBy(() -> termsService.termsAgree(memberId, request))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_NOT_EFFECTIVE);
+            .isEqualTo(TermsErrorStatus.TERMS_NOT_EFFECTIVE);
     }
 
     @Test
@@ -162,7 +162,7 @@ class TermsServiceTest {
         assertThatThrownBy(() -> termsService.termsAgree(memberId, request))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_ALREADY_AGREED);
+            .isEqualTo(TermsErrorStatus.TERMS_ALREADY_AGREED);
         verify(memberAgreementRepository, never()).saveAll(any());
     }
 
@@ -232,6 +232,6 @@ class TermsServiceTest {
         assertThatThrownBy(() -> termsService.checkRequiredTermsAgreed(memberId))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_NOT_EFFECTIVE);
+            .isEqualTo(TermsErrorStatus.TERMS_NOT_EFFECTIVE);
     }
 }
