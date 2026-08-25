@@ -1,11 +1,11 @@
-package com.ringout.api.member.domain;
+package com.ringout.api.user.domain;
 
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.BaseEntity;
 import com.ringout.api.destination.domain.Destination;
-import com.ringout.api.member.utils.NicknameGenerator;
+import com.ringout.api.user.utils.NicknameGenerator;
 import com.ringout.api.stamp.domain.Stamp;
-import com.ringout.api.terms.domain.MemberAgreement;
+import com.ringout.api.terms.domain.UserAgreement;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -27,15 +27,15 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(
-    name = "member",
+    name = "user",
     uniqueConstraints = @UniqueConstraint(
-        name = "uk_member_social_identity",
+        name = "uk_user_social_identity",
         columnNames = {"social_provider", "social_provider_id"}
     )
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Member extends BaseEntity {
+public class User extends BaseEntity {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -64,16 +64,16 @@ public class Member extends BaseEntity {
   @Column(nullable = false)
   private LocalDateTime lastAccessedAt;
 
-  @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true)
+  @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<Stamp> stamps = new ArrayList<>();
 
-  @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true)
+  @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<Destination> destinations = new ArrayList<>();
 
-  @OneToMany(mappedBy = "member", cascade = CascadeType.ALL, orphanRemoval = true)
-  private List<MemberAgreement> memberAgreements = new ArrayList<>();
+  @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+  private List<UserAgreement> userAgreements = new ArrayList<>();
 
-  private Member(
+  private User(
       SocialProvider socialProvider,
       String socialProviderId,
       String email,
@@ -98,13 +98,13 @@ public class Member extends BaseEntity {
     this.lastAccessedAt = joinedAt;
   }
 
-  public static Member register(
+  public static User register(
       SocialProvider socialProvider,
       String socialProviderId,
       String email,
       LocalDateTime joinedAt
   ) {
-    return new Member(socialProvider, socialProviderId, email, joinedAt);
+    return new User(socialProvider, socialProviderId, email, joinedAt);
   }
 
   public void login(LocalDateTime loginAt, String email) {

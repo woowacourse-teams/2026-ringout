@@ -1,7 +1,7 @@
-package com.ringout.api.member.domain;
+package com.ringout.api.user.domain;
 
 import com.ringout.api.common.response.error.GeneralException;
-import com.ringout.api.member.status.UserErrorStatus;
+import com.ringout.api.user.status.UserErrorStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import java.util.regex.Pattern;

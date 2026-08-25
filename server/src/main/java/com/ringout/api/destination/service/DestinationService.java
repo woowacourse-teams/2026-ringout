@@ -14,8 +14,8 @@ import com.ringout.api.destination.dto.response.DestinationSyncResponse.Destinat
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
-import com.ringout.api.member.domain.Member;
-import com.ringout.api.member.repository.MemberRepository;
+import com.ringout.api.user.domain.User;
+import com.ringout.api.user.repository.UserRepository;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -29,14 +29,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class DestinationService {
 
     private final DestinationRepository destinationRepository;
-    private final MemberRepository memberRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public DestinationCreateResponse createDestination(Long userId, String alias, Double latitude, Double longitude) {
         validateAuthenticatedUserExists(userId);
 
-        Member member = memberRepository.getReferenceById(userId);
-        Destination destination = Destination.create(member, DestinationAlias.from(alias),
+        User user = userRepository.getReferenceById(userId);
+        Destination destination = Destination.create(user, DestinationAlias.from(alias),
             Coordinate.of(latitude, longitude));
 
         return new DestinationCreateResponse(destinationRepository.save(destination).getId());
@@ -57,10 +57,10 @@ public class DestinationService {
         validateDestinationSyncRequestBodyExists(request);
         validateSyncRequestClientDestinationIdsAreUsable(request.destinations());
 
-        Member member = memberRepository.getReferenceById(userId);
+        User user = userRepository.getReferenceById(userId);
         List<DestinationSyncItemResponse> syncedDestinations = new ArrayList<>();
         for (DestinationSyncItemRequest item : request.destinations()) {
-            Destination destination = createDestinationForSync(member, item);
+            Destination destination = createDestinationForSync(user, item);
             Destination savedDestination = destinationRepository.save(destination);
             syncedDestinations.add(DestinationSyncItemResponse.of(item.clientDestinationId(), savedDestination));
         }
@@ -92,7 +92,7 @@ public class DestinationService {
     }
 
     private void validateAuthenticatedUserExists(Long userId) {
-        if (userId == null || !memberRepository.existsById(userId)) {
+        if (userId == null || !userRepository.existsById(userId)) {
             throw new GeneralException(DestinationErrorStatus.DESTINATION_UNAUTHORIZED);
         }
     }
@@ -142,9 +142,9 @@ public class DestinationService {
         }
     }
 
-    private Destination createDestinationForSync(Member member, DestinationSyncItemRequest request) {
+    private Destination createDestinationForSync(User user, DestinationSyncItemRequest request) {
         try {
-            return Destination.create(member, DestinationAlias.from(request.alias()),
+            return Destination.create(user, DestinationAlias.from(request.alias()),
                 Coordinate.of(request.latitude(), request.longitude()));
         } catch (GeneralException exception) {
             throw convertToDestinationSyncException(exception);

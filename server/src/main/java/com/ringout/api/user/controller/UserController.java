@@ -1,13 +1,13 @@
-package com.ringout.api.member.controller;
+package com.ringout.api.user.controller;
 
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
-import com.ringout.api.member.controller.docs.MemberControllerApi;
-import com.ringout.api.member.dto.request.UpdateNicknameRequest;
-import com.ringout.api.member.dto.response.UpdateNicknameResponse;
-import com.ringout.api.member.dto.response.UserResponse;
-import com.ringout.api.member.service.MemberService;
-import com.ringout.api.member.status.UserSuccessStatus;
+import com.ringout.api.user.controller.docs.UserControllerApi;
+import com.ringout.api.user.dto.request.UpdateNicknameRequest;
+import com.ringout.api.user.dto.response.UpdateNicknameResponse;
+import com.ringout.api.user.dto.response.UserResponse;
+import com.ringout.api.user.service.UserService;
+import com.ringout.api.user.status.UserSuccessStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,16 +22,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/users")
-public class MemberController implements MemberControllerApi {
+public class UserController implements UserControllerApi {
 
-    private final MemberService memberService;
+    private final UserService userService;
 
     @Override
     @GetMapping("/me")
     public ResponseEntity<CustomResponse<UserResponse>> getUser(
         @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        UserResponse response = memberService.getUser(userDetails.getUserId());
+        UserResponse response = userService.getUser(userDetails.getUserId());
 
         return ResponseEntity.status(UserSuccessStatus.USER_FOUND.getHttpStatus())
             .body(CustomResponse.onSuccess(UserSuccessStatus.USER_FOUND, response));
@@ -43,7 +43,7 @@ public class MemberController implements MemberControllerApi {
         @AuthenticationPrincipal CustomUserDetails userDetails,
         @Valid @RequestBody UpdateNicknameRequest request
     ) {
-        UpdateNicknameResponse response = memberService.updateNickname(
+        UpdateNicknameResponse response = userService.updateNickname(
             userDetails.getUserId(),
             request
         );
@@ -57,7 +57,7 @@ public class MemberController implements MemberControllerApi {
     public ResponseEntity<CustomResponse<Void>> withdraw(
         @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        memberService.withdraw(userDetails.getUserId());
+        userService.withdraw(userDetails.getUserId());
 
         return ResponseEntity.status(UserSuccessStatus.USER_WITHDRAWN.getHttpStatus())
             .body(CustomResponse.onSuccess(UserSuccessStatus.USER_WITHDRAWN, null));

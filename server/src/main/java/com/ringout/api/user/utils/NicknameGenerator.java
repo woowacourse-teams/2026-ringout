@@ -1,4 +1,4 @@
-package com.ringout.api.member.utils;
+package com.ringout.api.user.utils;
 
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;

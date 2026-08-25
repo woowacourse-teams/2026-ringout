@@ -1,4 +1,4 @@
-package com.ringout.api.member.dto.response;
+package com.ringout.api.user.dto.response;
 
 public record UserResponse(
     String nickname,

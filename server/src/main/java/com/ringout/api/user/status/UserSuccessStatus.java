@@ -1,4 +1,4 @@
-package com.ringout.api.member.status;
+package com.ringout.api.user.status;
 
 import com.ringout.api.common.response.code.BaseCode;
 import com.ringout.api.common.response.code.ReasonResponse;

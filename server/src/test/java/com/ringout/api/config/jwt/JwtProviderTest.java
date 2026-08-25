@@ -2,7 +2,7 @@ package com.ringout.api.config.jwt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.ringout.api.member.domain.Role;
+import com.ringout.api.user.domain.Role;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -54,5 +54,40 @@ class JwtProviderTest {
     // when // then
     assertThat(verifier.isExpiredToken(tokenSignedByIssuer)).isFalse();
     assertThat(verifier.isValid(tokenSignedByIssuer)).isFalse();
+  }
+
+  @Test
+  void 액세스_토큰을_발급하고_회원_ID를_추출한다() {
+    JwtProvider jwtProvider = createProvider(3_600_000L);
+
+    String token = jwtProvider.createAccessToken(USER_ID, PROVIDER_ID, Role.USER);
+
+    assertThat(jwtProvider.isValid(token)).isTrue();
+    assertThat(jwtProvider.getUserId(token)).isEqualTo(USER_ID);
+    assertThat(jwtProvider.getProviderId(token)).isEqualTo(PROVIDER_ID);
+    assertThat(jwtProvider.getRole(token)).isEqualTo(Role.USER);
+  }
+
+  @Test
+  void 서명이_변조된_토큰은_유효하지_않다() {
+    JwtProvider jwtProvider = createProvider(3_600_000L);
+    String token = jwtProvider.createAccessToken(USER_ID, PROVIDER_ID, Role.USER);
+    String tamperedToken = token.substring(0, token.length() - 1) + "x";
+
+    assertThat(jwtProvider.isValid(tamperedToken)).isFalse();
+  }
+
+  @Test
+  void 만료된_액세스_토큰은_유효하지_않다() {
+    JwtProvider jwtProvider = createProvider(-1L);
+
+    String token = jwtProvider.createAccessToken(USER_ID, PROVIDER_ID, Role.USER);
+
+    assertThat(jwtProvider.isValid(token)).isFalse();
+  }
+
+  private JwtProvider createProvider(long expirationMillis) {
+    Clock clock = Clock.systemUTC();
+    return new JwtProvider(SECRET, expirationMillis, 1_209_600_000L, 600_000L, clock);
   }
 }

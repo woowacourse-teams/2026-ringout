@@ -1,4 +1,4 @@
-package com.ringout.api.member.service;
+package com.ringout.api.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -8,12 +8,12 @@ import static org.mockito.Mockito.when;
 
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.error.GeneralException;
-import com.ringout.api.member.domain.Member;
-import com.ringout.api.member.dto.request.UpdateNicknameRequest;
-import com.ringout.api.member.dto.response.UpdateNicknameResponse;
-import com.ringout.api.member.dto.response.UserResponse;
-import com.ringout.api.member.repository.MemberRepository;
-import com.ringout.api.member.status.UserErrorStatus;
+import com.ringout.api.user.domain.User;
+import com.ringout.api.user.dto.request.UpdateNicknameRequest;
+import com.ringout.api.user.dto.response.UpdateNicknameResponse;
+import com.ringout.api.user.dto.response.UserResponse;
+import com.ringout.api.user.repository.UserRepository;
+import com.ringout.api.user.status.UserErrorStatus;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,33 +23,33 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class MemberServiceTest {
+class UserServiceTest {
 
     @Mock
-    private MemberRepository memberRepository;
+    private UserRepository userRepository;
 
-    private MemberService memberService;
+    private UserService userService;
 
     @BeforeEach
     void setUp() {
-        memberService = new MemberService(memberRepository);
+        userService = new UserService(userRepository);
     }
 
     @Test
     void 회원_정보를_조회한다() {
         // given
-        Long memberId = 1L;
-        Member member = Member.register(
+        Long userId = 1L;
+        User user = User.register(
             SocialProvider.KAKAO,
             "kakao-id",
             "uio6699@naver.com",
             LocalDateTime.of(2026, 8, 19, 10, 0)
         );
-        member.changeNickname("서여");
-        given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
+        user.changeNickname("서여");
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
         // when
-        UserResponse response = memberService.getUser(memberId);
+        UserResponse response = userService.getUser(userId);
 
         // then
         assertThat(response.nickname()).isEqualTo("서여");
@@ -59,11 +59,11 @@ class MemberServiceTest {
     @Test
     void 존재하지_않는_회원이면_USER404_예외가_발생한다() {
         // given
-        Long memberId = 1L;
-        given(memberRepository.findById(memberId)).willReturn(Optional.empty());
+        Long userId = 1L;
+        given(userRepository.findById(userId)).willReturn(Optional.empty());
 
         // when // then
-        assertThatThrownBy(() -> memberService.getUser(memberId))
+        assertThatThrownBy(() -> userService.getUser(userId))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
             .isEqualTo(UserErrorStatus.USER_NOT_FOUND);
@@ -71,31 +71,31 @@ class MemberServiceTest {
 
     @Test
     void 회원의_닉네임을_수정한다() {
-        Long memberId = 1L;
-        Member member = Member.register(
+        Long userId = 1L;
+        User user = User.register(
             SocialProvider.KAKAO,
             "provider-id",
-            "member@example.com",
+            "user@example.com",
             LocalDateTime.now()
         );
-        when(memberRepository.findById(memberId)).thenReturn(Optional.of(member));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        UpdateNicknameResponse response = memberService.updateNickname(
-            memberId,
+        UpdateNicknameResponse response = userService.updateNickname(
+            userId,
             new UpdateNicknameRequest("새로운닉네임")
         );
 
         assertThat(response.nickname()).isEqualTo("새로운닉네임");
-        assertThat(member.getNickname().getValue()).isEqualTo("새로운닉네임");
+        assertThat(user.getNickname().getValue()).isEqualTo("새로운닉네임");
     }
 
     @Test
     void 존재하지_않는_회원의_닉네임은_수정할_수_없다() {
-        Long memberId = 1L;
-        when(memberRepository.findById(memberId)).thenReturn(Optional.empty());
+        Long userId = 1L;
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> memberService.updateNickname(
-            memberId,
+        assertThatThrownBy(() -> userService.updateNickname(
+            userId,
             new UpdateNicknameRequest("새로운닉네임")
         ))
             .isInstanceOf(GeneralException.class)
@@ -106,17 +106,17 @@ class MemberServiceTest {
 
     @Test
     void 허용되지_않은_형식의_닉네임은_수정할_수_없다() {
-        Long memberId = 1L;
-        Member member = Member.register(
+        Long userId = 1L;
+        User user = User.register(
             SocialProvider.KAKAO,
             "provider-id",
-            "member@example.com",
+            "user@example.com",
             LocalDateTime.now()
         );
-        when(memberRepository.findById(memberId)).thenReturn(Optional.of(member));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        assertThatThrownBy(() -> memberService.updateNickname(
-            memberId,
+        assertThatThrownBy(() -> userService.updateNickname(
+            userId,
             new UpdateNicknameRequest("잘못된_닉네임")
         ))
             .isInstanceOf(GeneralException.class)
@@ -126,26 +126,26 @@ class MemberServiceTest {
 
     @Test
     void 회원을_탈퇴한다() {
-        Long memberId = 1L;
-        Member member = Member.register(
+        Long userId = 1L;
+        User user = User.register(
             SocialProvider.KAKAO,
             "provider-id",
-            "member@example.com",
+            "user@example.com",
             LocalDateTime.now()
         );
-        when(memberRepository.findById(memberId)).thenReturn(Optional.of(member));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        memberService.withdraw(memberId);
+        userService.withdraw(userId);
 
-        verify(memberRepository).delete(member);
+        verify(userRepository).delete(user);
     }
 
     @Test
     void 존재하지_않는_회원은_탈퇴할_수_없다() {
-        Long memberId = 1L;
-        when(memberRepository.findById(memberId)).thenReturn(Optional.empty());
+        Long userId = 1L;
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> memberService.withdraw(memberId))
+        assertThatThrownBy(() -> userService.withdraw(userId))
             .isInstanceOf(GeneralException.class)
             .extracting("code")
             .isEqualTo(UserErrorStatus.USER_NOT_FOUND);

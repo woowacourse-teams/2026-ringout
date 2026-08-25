@@ -1,6 +1,6 @@
-package com.ringout.api.member.dto.request;
+package com.ringout.api.user.dto.request;
 
-import com.ringout.api.member.domain.Nickname;
+import com.ringout.api.user.domain.Nickname;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
