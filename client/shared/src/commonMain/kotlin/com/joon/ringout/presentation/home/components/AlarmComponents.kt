@@ -43,7 +43,7 @@ import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
-import com.joon.ringout.presentation.home.HomeAlarm
+import com.joon.ringout.presentation.home.model.HomeAlarm
 import com.joon.ringout.presentation.toTwelveHourDisplay
 import com.joon.ringout.ringoutColors
 import kotlinx.coroutines.delay

@@ -26,7 +26,6 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
-import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.DefaultMissionLocationState
 import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.alarm.rememberAlarmController
@@ -36,14 +35,13 @@ import com.joon.ringout.presentation.activemission.components.MissionLocationPer
 import com.joon.ringout.presentation.alarmsound.AlarmSoundScreen
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupScreen
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
-import com.joon.ringout.presentation.alarmsetup.components.weekdaySummary
 import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationMapScreen
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.destination.belongsToDestinationRequest
 import com.joon.ringout.presentation.destination.toDestinationSelection
-import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
+import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginScreen
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
@@ -220,13 +218,14 @@ private fun RingoutAppContent(
     }
     val alarmSetupViewModel: AlarmSetupViewModel = viewModel { AlarmSetupViewModel() }
     val alarmSetupUiState = alarmSetupViewModel.uiState
+    val homeViewModel: HomeViewModel = viewModel { HomeViewModel() }
+    val homeUiState = homeViewModel.uiState
     var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
     var pendingSignup by remember { mutableStateOf<PendingSignup?>(null) }
     var handledActiveAlarmOccurrenceId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
     var destinationRequestId by rememberSaveable { mutableStateOf(0L) }
-    var alarms by remember { mutableStateOf<List<HomeAlarm>?>(null) }
 
     LaunchedEffect(authRepository) {
         authRepository.restoreSession()
@@ -236,11 +235,13 @@ private fun RingoutAppContent(
         alarmSetupUiState,
         alarmSetupViewModel.permissionDialog,
         destinationUiState.errorMessage,
+        homeUiState.errorMessage,
         withdrawalErrorMessage,
     ) {
         if (authSessionState == AuthSessionState.ReauthenticationRequired) {
             pendingSignup = null
             alarmSetupViewModel.resetSaveFlow()
+            homeViewModel.clearError()
             withdrawalErrorMessage = null
             if (destinationUiState.errorMessage != null) {
                 destinationViewModel.clearError()
@@ -274,7 +275,7 @@ private fun RingoutAppContent(
         onSaveError = { request, message ->
             alarmSetupViewModel.onSaveError(request, message)
         },
-        onError = alarmSetupViewModel::showError,
+        onError = homeViewModel::showError,
     )
     val performAlarmSetupCommand: (AlarmSetupViewModel.Command?) -> Unit = { command ->
         when (command) {
@@ -294,6 +295,15 @@ private fun RingoutAppContent(
                 onRequestTemporaryFullAccuracy()
 
             null -> Unit
+        }
+    }
+    val performHomeCommand: (HomeViewModel.Command) -> Unit = { command ->
+        when (command) {
+            is HomeViewModel.Command.SetAlarmEnabled ->
+                alarmController.setEnabled(command.alarmId, command.enabled)
+
+            is HomeViewModel.Command.DeleteAlarm ->
+                alarmController.deleteAlarm(command.alarmId)
         }
     }
 
@@ -328,7 +338,6 @@ private fun RingoutAppContent(
             onDismiss = alarmSetupViewModel::onPermissionDialogDismissed,
         )
     }
-    val visibleAlarms = alarms.orEmpty()
     val alarmSetupScreen = if (alarmSetupUiState.isEditing) {
         AppScreen.EditAlarm
     } else {
@@ -340,11 +349,7 @@ private fun RingoutAppContent(
     }
 
     LaunchedEffect(alarmController) {
-        alarmController.savedAlarms.collect { savedAlarms ->
-            alarms = savedAlarms.map { saved ->
-                saved.request.toHomeAlarm(enabled = saved.enabled)
-            }
-        }
+        homeViewModel.observeAlarms(alarmController.savedAlarms)
     }
 
     LaunchedEffect(destinationUiState.savedEvent?.eventId) {
@@ -379,6 +384,22 @@ private fun RingoutAppContent(
                 screenName = AppScreen.ActiveAlarmTracking.name
             }
         }
+    }
+
+    if (
+        screen == AppScreen.Home &&
+        homeUiState.errorMessage != null
+    ) {
+        AlertDialog(
+            onDismissRequest = homeViewModel::clearError,
+            title = { Text("알람을 처리할 수 없습니다") },
+            text = { Text(homeUiState.errorMessage.orEmpty()) },
+            confirmButton = {
+                TextButton(onClick = homeViewModel::clearError) {
+                    Text("확인")
+                }
+            },
+        )
     }
 
     if (
@@ -445,7 +466,7 @@ private fun RingoutAppContent(
         }
 
         AppScreen.Home -> HomeScreen(
-            alarms = visibleAlarms,
+            uiState = homeUiState,
             activeAlarmMission = activeAlarmMission,
             onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
             onAddAlarm = {
@@ -455,23 +476,23 @@ private fun RingoutAppContent(
                 screenName = AppScreen.AddAlarm.name
             },
             onAlarmClick = { alarmId ->
-                visibleAlarms.firstOrNull { it.id == alarmId }?.let { alarm ->
-                    val request = alarm.toAlarmScheduleRequestOrNull()
-                    if (request == null) {
-                        alarmSetupViewModel.showError(
-                            "알람의 목적지 정보를 불러오지 못했습니다.",
-                        )
-                    } else {
-                        alarmSetupViewModel.startEditing(request)
-                        screenName = AppScreen.EditAlarm.name
-                    }
+                val request = homeViewModel.alarmScheduleRequest(alarmId)
+                if (request == null) {
+                    homeViewModel.showError(
+                        "알람의 목적지 정보를 불러오지 못했습니다.",
+                    )
+                } else {
+                    alarmSetupViewModel.startEditing(request)
+                    screenName = AppScreen.EditAlarm.name
                 }
             },
             onAlarmEnabledChange = { alarmId, enabled ->
-                alarmController.setEnabled(alarmId, enabled)
+                performHomeCommand(
+                    homeViewModel.onAlarmEnabledChange(alarmId, enabled),
+                )
             },
             onAlarmDelete = { alarmId ->
-                alarmController.deleteAlarm(alarmId)
+                performHomeCommand(homeViewModel.onAlarmDelete(alarmId))
             },
             onActiveAlarmMissionClick = {
                 screenName = AppScreen.ActiveAlarmTracking.name
@@ -743,38 +764,3 @@ internal fun canShowAppDialog(
 ): Boolean =
     screen != AppScreen.AlarmRinging &&
         authSessionState != AuthSessionState.ReauthenticationRequired
-
-private fun AlarmScheduleRequest.toHomeAlarm(enabled: Boolean): HomeAlarm = HomeAlarm(
-    id = id,
-    time = time,
-    days = if (repeatEnabled) weekdaySummary(selectedDays) else "한 번",
-    destination = destinationName,
-    timeLimitMinutes = limitMinutes,
-    isEnabled = enabled,
-    targetAddress = destinationAddress,
-    targetLatitude = destinationLatitude,
-    targetLongitude = destinationLongitude,
-    alarmSoundName = alarmSoundName,
-    alarmSoundUri = alarmSoundUri,
-    selectedDays = selectedDays,
-    repeatEnabled = repeatEnabled,
-)
-
-private fun HomeAlarm.toAlarmScheduleRequestOrNull(): AlarmScheduleRequest? {
-    val destinationLatitude = targetLatitude ?: return null
-    val destinationLongitude = targetLongitude ?: return null
-
-    return AlarmScheduleRequest(
-        id = id,
-        time = time,
-        selectedDays = selectedDays,
-        repeatEnabled = repeatEnabled,
-        limitMinutes = timeLimitMinutes,
-        destinationName = destination,
-        destinationAddress = targetAddress,
-        destinationLatitude = destinationLatitude,
-        destinationLongitude = destinationLongitude,
-        alarmSoundName = alarmSoundName,
-        alarmSoundUri = alarmSoundUri,
-    )
-}

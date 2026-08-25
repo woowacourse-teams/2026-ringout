@@ -19,7 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.alarm.ActiveAlarmMission
-import com.joon.ringout.presentation.home.HomeAlarm
+import com.joon.ringout.presentation.home.model.HomeAlarm
 
 @Composable
 internal fun HomeAlarmListState(
