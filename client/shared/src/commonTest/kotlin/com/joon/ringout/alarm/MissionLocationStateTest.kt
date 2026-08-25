@@ -5,6 +5,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class MissionLocationStateTest {
+
+    @Test
+    fun `위치 사용이 제한된 경우 미션을 시작할 수 없다`() {
+        assertEquals(
+            MissionLocationPermissionDecision.RESTRICTED,
+            state(
+                authorization = MissionLocationAuthorizationState.RESTRICTED,
+            ).permissionDecision(didRequestFullAccuracy = false),
+        )
+    }
+
     @Test
     fun requestsPermissionsInWhenInUseThenAlwaysOrder() {
         assertEquals(
