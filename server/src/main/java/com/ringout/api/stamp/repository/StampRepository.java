@@ -15,7 +15,7 @@ public interface StampRepository extends JpaRepository<Stamp, Long> {
       value = """
             select s.record_date
             from stamp s
-            where s.member_id = :userId
+            where s.user_id = :userId
             and s.result = 'SUCCESS'
             and s.record_date >= :startDate
             and s.record_date < :endDate

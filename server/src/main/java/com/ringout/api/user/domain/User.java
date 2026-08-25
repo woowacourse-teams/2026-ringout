@@ -27,9 +27,9 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(
-    name = "member",
+    name = "user",
     uniqueConstraints = @UniqueConstraint(
-        name = "uk_member_social_identity",
+        name = "uk_user_social_identity",
         columnNames = {"social_provider", "social_provider_id"}
     )
 )

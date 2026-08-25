@@ -23,7 +23,7 @@ import lombok.NoArgsConstructor;
 @Getter
 @Entity
 @Table(
-    name = "member_agreement"
+    name = "user_agreement"
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserAgreement extends BaseEntity {
@@ -33,7 +33,7 @@ public class UserAgreement extends BaseEntity {
   private Long id;
 
   @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "member_id")
+  @JoinColumn(name = "user_id")
   private User user;
 
   @ManyToOne(fetch = FetchType.LAZY)
