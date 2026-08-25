@@ -42,13 +42,12 @@ fun AlarmSetupScreen(
     onAlarmSoundClick: () -> Unit,
     onSaveClick: () -> Unit,
     modifier: Modifier = Modifier,
-    isSaveInProgress: Boolean = false,
 ) {
     val alarmTime = uiState.time.toAlarmTimePickerValue()
     val colors = alarmSetupColors()
 
     PlatformBackHandler(
-        enabled = !isSaveInProgress,
+        enabled = !uiState.isSaveInProgress,
         onBack = onBackClick,
     )
 
@@ -72,7 +71,7 @@ fun AlarmSetupScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             SetupBackButton(
-                enabled = !isSaveInProgress,
+                enabled = !uiState.isSaveInProgress,
                 onClick = onBackClick,
             )
             TimePickerCard(
@@ -110,8 +109,8 @@ fun AlarmSetupScreen(
             contentAlignment = Alignment.Center,
         ) {
             SaveAlarmButton(
-                enabled = uiState.canSave && !isSaveInProgress,
-                isInProgress = isSaveInProgress,
+                enabled = uiState.canSave && !uiState.isSaveInProgress,
+                isInProgress = uiState.isSaveInProgress,
                 onClick = onSaveClick,
             )
         }

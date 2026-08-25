@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.alarmsetup
 
 import androidx.compose.runtime.Immutable
+import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.presentation.destination.DestinationSelection
 import com.joon.ringout.presentation.destination.isConfiguredDestination
 
@@ -15,6 +16,9 @@ data class AlarmSetupUiState(
         name = DefaultAlarmSoundName,
         uri = null,
     ),
+    val pendingSaveRequest: AlarmScheduleRequest? = null,
+    val isScheduling: Boolean = false,
+    val errorMessage: String? = null,
 ) {
     val isEditing: Boolean
         get() = alarmId != null
@@ -24,6 +28,9 @@ data class AlarmSetupUiState(
 
     val canSave: Boolean
         get() = destination?.isConfiguredDestination() == true
+
+    val isSaveInProgress: Boolean
+        get() = pendingSaveRequest != null || isScheduling
 }
 
 internal const val DefaultAlarmTime = "06:20"

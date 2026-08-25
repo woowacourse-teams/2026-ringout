@@ -28,9 +28,7 @@ import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.DefaultMissionLocationState
-import com.joon.ringout.alarm.MissionLocationPermissionDecision
 import com.joon.ringout.alarm.MissionLocationState
-import com.joon.ringout.alarm.permissionDecision
 import com.joon.ringout.alarm.rememberAlarmController
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.presentation.activemission.ActiveAlarmTrackingScreen
@@ -229,31 +227,20 @@ private fun RingoutAppContent(
     }
     var destinationRequestId by rememberSaveable { mutableStateOf(0L) }
     var alarms by remember { mutableStateOf<List<HomeAlarm>?>(null) }
-    var alarmScheduleError by rememberSaveable { mutableStateOf<String?>(null) }
-    var pendingAlarmRequest by remember { mutableStateOf<AlarmScheduleRequest?>(null) }
-    var isAlarmSaveInProgress by remember { mutableStateOf(false) }
-    var locationPermissionDialog by remember {
-        mutableStateOf<MissionLocationPermissionDecision?>(null)
-    }
-    var didRequestFullAccuracy by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(authRepository) {
         authRepository.restoreSession()
     }
     LaunchedEffect(
         authSessionState,
-        alarmScheduleError,
+        alarmSetupUiState,
+        alarmSetupViewModel.permissionDialog,
         destinationUiState.errorMessage,
-        locationPermissionDialog,
         withdrawalErrorMessage,
     ) {
         if (authSessionState == AuthSessionState.ReauthenticationRequired) {
             pendingSignup = null
-            alarmScheduleError = null
-            locationPermissionDialog = null
-            pendingAlarmRequest = null
-            isAlarmSaveInProgress = false
-            didRequestFullAccuracy = false
+            alarmSetupViewModel.resetSaveFlow()
             withdrawalErrorMessage = null
             if (destinationUiState.errorMessage != null) {
                 destinationViewModel.clearError()
@@ -280,107 +267,51 @@ private fun RingoutAppContent(
     )
     val alarmController = rememberAlarmController(
         onSaveCompleted = { request ->
-            if (pendingAlarmRequest?.id == request.id) {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
+            if (alarmSetupViewModel.onSaveCompleted(request)) {
                 screenName = AppScreen.Home.name
             }
         },
         onSaveError = { request, message ->
-            if (pendingAlarmRequest?.id == request.id) {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = message
-            }
+            alarmSetupViewModel.onSaveError(request, message)
         },
-        onError = {
-            alarmScheduleError = it
-        },
+        onError = alarmSetupViewModel::showError,
     )
+    val performAlarmSetupCommand: (AlarmSetupViewModel.Command?) -> Unit = { command ->
+        when (command) {
+            is AlarmSetupViewModel.Command.ScheduleAlarm ->
+                alarmController.schedule(command.request)
+
+            AlarmSetupViewModel.Command.RequestWhenInUseLocation ->
+                onRequestWhenInUseLocation()
+
+            AlarmSetupViewModel.Command.RequestAlwaysLocation ->
+                onRequestAlwaysLocation()
+
+            AlarmSetupViewModel.Command.ConfirmAlwaysLocationResult ->
+                onConfirmAlwaysLocationResult()
+
+            AlarmSetupViewModel.Command.RequestTemporaryFullAccuracy ->
+                onRequestTemporaryFullAccuracy()
+
+            null -> Unit
+        }
+    }
 
     LaunchedEffect(
-        pendingAlarmRequest,
+        alarmSetupUiState.pendingSaveRequest?.id,
+        alarmSetupUiState.isScheduling,
         missionLocationState.revision,
         screen,
     ) {
-        if (screen == AppScreen.AlarmRinging) return@LaunchedEffect
-        val request = pendingAlarmRequest ?: return@LaunchedEffect
-        if (isAlarmSaveInProgress) return@LaunchedEffect
-        when (
-            val decision = missionLocationState.permissionDecision(
-                didRequestFullAccuracy = didRequestFullAccuracy,
-            )
-        ) {
-            MissionLocationPermissionDecision.READY -> {
-                locationPermissionDialog = null
-                didRequestFullAccuracy = false
-                if (!isAlarmSaveInProgress) {
-                    isAlarmSaveInProgress = true
-                    alarmController.schedule(request)
-                }
-            }
-
-            MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->
-                if (useSystemLocationPermissionUiOnly) {
-                    locationPermissionDialog = null
-                    onRequestWhenInUseLocation()
-                } else {
-                    locationPermissionDialog = decision
-                }
-
-            MissionLocationPermissionDecision.EXPLAIN_ALWAYS ->
-                if (useSystemLocationPermissionUiOnly) {
-                    locationPermissionDialog = null
-                    onRequestAlwaysLocation()
-                } else {
-                    locationPermissionDialog = decision
-                }
-
-            MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT -> {
-                if (!useSystemLocationPermissionUiOnly) {
-                    locationPermissionDialog = decision
-                }
-            }
-
-            MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY ->
-                if (useSystemLocationPermissionUiOnly) {
-                    locationPermissionDialog = null
-                    didRequestFullAccuracy = true
-                    onRequestTemporaryFullAccuracy()
-                } else {
-                    locationPermissionDialog = decision
-                }
-
-            MissionLocationPermissionDecision.SERVICES_DISABLED -> {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = "위치 서비스가 꺼져 있어 목적지 알람을 시작할 수 없습니다."
-            }
-
-            MissionLocationPermissionDecision.DENIED -> {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = "위치 권한이 없어 목적지 알람을 시작할 수 없습니다."
-            }
-
-            MissionLocationPermissionDecision.ALWAYS_REQUEST_FAILED -> {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = "위치 권한 상태를 확인하지 못했습니다. 다시 시도해 주세요."
-                onConfirmAlwaysLocationResult()
-            }
-
-            MissionLocationPermissionDecision.RESTRICTED -> {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = "이 기기에서는 위치 사용이 제한되어 있습니다."
-            }
-        }
+        performAlarmSetupCommand(
+            alarmSetupViewModel.onLocationStateChanged(
+                locationState = missionLocationState,
+                useSystemPermissionUiOnly = useSystemLocationPermissionUiOnly,
+                canProcessSave =
+                    screen != AppScreen.AlarmRinging &&
+                        authSessionState != AuthSessionState.ReauthenticationRequired,
+            ),
+        )
     }
 
     if (
@@ -388,33 +319,13 @@ private fun RingoutAppContent(
         canShowAppDialog(screen, authSessionState)
     ) {
         MissionLocationPermissionDialog(
-            decision = locationPermissionDialog,
+            decision = alarmSetupViewModel.permissionDialog,
             onConfirm = {
-                when (locationPermissionDialog) {
-                    MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->
-                        onRequestWhenInUseLocation()
-
-                    MissionLocationPermissionDecision.EXPLAIN_ALWAYS ->
-                        onRequestAlwaysLocation()
-
-                    MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT ->
-                        onConfirmAlwaysLocationResult()
-
-                    MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY -> {
-                        didRequestFullAccuracy = true
-                        onRequestTemporaryFullAccuracy()
-                    }
-
-                    else -> Unit
-                }
-                locationPermissionDialog = null
+                performAlarmSetupCommand(
+                    alarmSetupViewModel.onPermissionDialogConfirmed(),
+                )
             },
-            onDismiss = {
-                locationPermissionDialog = null
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-            },
+            onDismiss = alarmSetupViewModel::onPermissionDialogDismissed,
         )
     }
     val visibleAlarms = alarms.orEmpty()
@@ -472,14 +383,14 @@ private fun RingoutAppContent(
 
     if (
         canShowAppDialog(screen, authSessionState) &&
-        alarmScheduleError != null
+        alarmSetupUiState.errorMessage != null
     ) {
         AlertDialog(
-            onDismissRequest = { alarmScheduleError = null },
+            onDismissRequest = alarmSetupViewModel::clearError,
             title = { Text("알람을 처리할 수 없습니다") },
-            text = { Text(alarmScheduleError.orEmpty()) },
+            text = { Text(alarmSetupUiState.errorMessage.orEmpty()) },
             confirmButton = {
-                TextButton(onClick = { alarmScheduleError = null }) {
+                TextButton(onClick = alarmSetupViewModel::clearError) {
                     Text("확인")
                 }
             },
@@ -488,7 +399,7 @@ private fun RingoutAppContent(
 
     if (
         canShowAppDialog(screen, authSessionState) &&
-        alarmScheduleError == null &&
+        alarmSetupUiState.errorMessage == null &&
         destinationUiState.errorMessage != null
     ) {
         AlertDialog(
@@ -547,7 +458,9 @@ private fun RingoutAppContent(
                 visibleAlarms.firstOrNull { it.id == alarmId }?.let { alarm ->
                     val request = alarm.toAlarmScheduleRequestOrNull()
                     if (request == null) {
-                        alarmScheduleError = "알람의 목적지 정보를 불러오지 못했습니다."
+                        alarmSetupViewModel.showError(
+                            "알람의 목적지 정보를 불러오지 못했습니다.",
+                        )
                     } else {
                         alarmSetupViewModel.startEditing(request)
                         screenName = AppScreen.EditAlarm.name
@@ -720,10 +633,8 @@ private fun RingoutAppContent(
                 onMinuteChange = alarmSetupViewModel::updateMinute,
                 onDayClick = alarmSetupViewModel::toggleDay,
                 onLimitMinutesChange = alarmSetupViewModel::updateLimitMinutes,
-                isSaveInProgress = pendingAlarmRequest != null || isAlarmSaveInProgress,
                 onBackClick = {
-                    if (pendingAlarmRequest == null && !isAlarmSaveInProgress) {
-                        didRequestFullAccuracy = false
+                    if (!alarmSetupUiState.isSaveInProgress) {
                         screenName = AppScreen.Home.name
                     }
                 },
@@ -732,13 +643,7 @@ private fun RingoutAppContent(
                     screenName = AppScreen.Destination.name
                 },
                 onAlarmSoundClick = { screenName = AppScreen.AlarmSound.name },
-                onSaveClick = saveAlarm@ {
-                    if (pendingAlarmRequest != null || isAlarmSaveInProgress) return@saveAlarm
-                    val request = alarmSetupViewModel.createScheduleRequest()
-                        ?: return@saveAlarm
-                    didRequestFullAccuracy = false
-                    pendingAlarmRequest = request
-                },
+                onSaveClick = { alarmSetupViewModel.requestSave() },
             )
 
             if (screen == AppScreen.Destination) {
