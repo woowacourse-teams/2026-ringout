@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.termsagreement
+package com.joon.ringout.presentation.signup
 
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateFormatter

@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.termsagreement
+package com.joon.ringout.presentation.signup
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -10,15 +10,12 @@ import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthTerm
 import com.joon.ringout.domain.destination.DestinationRepository
+import com.joon.ringout.domain.terms.TermId
+import com.joon.ringout.presentation.signup.model.SignupUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-
-data class SignupUiState(
-    val isSaving: Boolean = false,
-    val errorMessage: String? = null,
-    val completedEventId: Long? = null,
-)
 
 class SignupViewModel(
     private val authRepository: AuthRepository,
@@ -31,15 +28,31 @@ class SignupViewModel(
         private set
 
     private var nextEventId = 0L
+    private var signupSessionId = 0L
+    private var pendingSignup: PendingSignup? = null
     private var completedSignupToken: String? = null
+    private var signupJob: Job? = null
     private val scope = coroutineScope ?: viewModelScope
 
-    fun signup(
+    fun startSignup(
         signupToken: String,
-        agreedTermIds: Set<TermId>,
         provider: AnalyticsAuthProvider,
     ) {
+        signupSessionId++
+        signupJob?.cancel()
+        signupJob = null
+        pendingSignup = PendingSignup(
+            signupToken = signupToken,
+            provider = provider,
+        )
+        completedSignupToken = null
+        uiState = SignupUiState(hasPendingSignup = true)
+    }
+
+    fun signup(agreedTermIds: Set<TermId>) {
         if (uiState.isSaving) return
+        val pending = pendingSignup ?: return
+        val sessionId = signupSessionId
         val terms = agreedTermIds.mapNotNullTo(mutableSetOf()) { id ->
             when (id) {
                 TermId.Service -> AuthTerm.SERVICE
@@ -48,20 +61,23 @@ class SignupViewModel(
             }
         }
         uiState = uiState.copy(isSaving = true, errorMessage = null)
-        scope.launch {
+        signupJob = scope.launch {
             try {
-                if (completedSignupToken != signupToken) {
+                if (completedSignupToken != pending.signupToken) {
                     authRepository.signup(
-                        signupToken = signupToken,
+                        signupToken = pending.signupToken,
                         agreedTerms = terms,
                         agreedAt = currentDate(),
                     )
-                    completedSignupToken = signupToken
+                    if (sessionId != signupSessionId) return@launch
+                    completedSignupToken = pending.signupToken
                     runCatching {
-                        productAnalyticsRecorder.recordSignupCompleted(provider)
+                        productAnalyticsRecorder.recordSignupCompleted(pending.provider)
                     }
                 }
+                if (sessionId != signupSessionId) return@launch
                 destinationRepository.sync()
+                if (sessionId != signupSessionId) return@launch
                 uiState = uiState.copy(
                     isSaving = false,
                     completedEventId = ++nextEventId,
@@ -69,9 +85,10 @@ class SignupViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                if (sessionId != signupSessionId) return@launch
                 uiState = uiState.copy(
                     isSaving = false,
-                    errorMessage = if (completedSignupToken == signupToken) {
+                    errorMessage = if (completedSignupToken == pending.signupToken) {
                         error.message ?: "회원가입은 완료됐지만 목적지를 동기화하지 못했어요."
                     } else {
                         error.message ?: "회원가입을 완료하지 못했어요."
@@ -83,10 +100,23 @@ class SignupViewModel(
 
     fun consumeCompletedEvent(eventId: Long) {
         if (uiState.completedEventId == eventId) {
-            uiState = uiState.copy(completedEventId = null)
-            completedSignupToken = null
+            resetSignup()
         }
     }
+
+    fun resetSignup() {
+        signupSessionId++
+        signupJob?.cancel()
+        signupJob = null
+        pendingSignup = null
+        completedSignupToken = null
+        uiState = SignupUiState()
+    }
 }
+
+private data class PendingSignup(
+    val signupToken: String,
+    val provider: AnalyticsAuthProvider,
+)
 
 internal expect fun currentAgreementDate(): String

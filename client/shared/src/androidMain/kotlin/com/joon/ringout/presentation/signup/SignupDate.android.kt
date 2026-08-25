@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.termsagreement
+package com.joon.ringout.presentation.signup
 
 import java.time.LocalDate
 

@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.termsagreement
+package com.joon.ringout.presentation.signup
 
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
@@ -10,6 +10,7 @@ import com.joon.ringout.domain.auth.AuthTerm
 import com.joon.ringout.domain.auth.SocialLoginOutcome
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
+import com.joon.ringout.domain.terms.TermId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,12 +27,14 @@ import kotlin.test.assertTrue
 
 class SignupViewModelTest {
     @Test
-    fun successfulSignupRecordsItsProviderAfterSignupAndBeforeDestinationSync() =
+    fun `회원가입 성공 후 제공자를 기록하고 목적지를 동기화한다`() =
         withViewModel { viewModel, authRepository, destinationRepository, analytics ->
-            viewModel.signup(
+            viewModel.startSignup(
                 signupToken = "signup-token",
-                agreedTermIds = setOf(TermId.Service, TermId.Privacy),
                 provider = AnalyticsAuthProvider.Kakao,
+            )
+            viewModel.signup(
+                agreedTermIds = setOf(TermId.Service, TermId.Privacy),
             )
 
             assertEquals(
@@ -53,17 +56,20 @@ class SignupViewModelTest {
             assertFalse(viewModel.uiState.isSaving)
             assertNull(viewModel.uiState.errorMessage)
             assertNotNull(viewModel.uiState.completedEventId)
+            assertTrue(viewModel.uiState.hasPendingSignup)
         }
 
     @Test
-    fun destinationSyncFailureDoesNotLoseOrDuplicateTheCompletedSignupEvent() =
+    fun `목적지 동기화 실패 후 재시도해도 회원가입과 분석을 중복하지 않는다`() =
         withViewModel { viewModel, authRepository, destinationRepository, analytics ->
             destinationRepository.syncFailuresRemaining = 1
+            viewModel.startSignup(
+                signupToken = "signup-token",
+                provider = AnalyticsAuthProvider.Google,
+            )
 
             viewModel.signup(
-                signupToken = "signup-token",
                 agreedTermIds = setOf(TermId.Service),
-                provider = AnalyticsAuthProvider.Google,
             )
 
             assertEquals(listOf(AnalyticsAuthProvider.Google), analytics.signupProviders)
@@ -73,9 +79,7 @@ class SignupViewModelTest {
             assertNull(viewModel.uiState.completedEventId)
 
             viewModel.signup(
-                signupToken = "signup-token",
                 agreedTermIds = setOf(TermId.Service),
-                provider = AnalyticsAuthProvider.Google,
             )
 
             assertEquals(1, authRepository.signupRequests.size)
@@ -86,14 +90,16 @@ class SignupViewModelTest {
         }
 
     @Test
-    fun signupApiFailureDoesNotRecordAnalyticsOrSyncDestinations() =
+    fun `회원가입 API가 실패하면 분석과 목적지 동기화를 실행하지 않는다`() =
         withViewModel { viewModel, authRepository, destinationRepository, analytics ->
             authRepository.signupFailure = IllegalStateException("signup failed")
+            viewModel.startSignup(
+                signupToken = "signup-token",
+                provider = AnalyticsAuthProvider.Apple,
+            )
 
             viewModel.signup(
-                signupToken = "signup-token",
                 agreedTermIds = setOf(TermId.Service),
-                provider = AnalyticsAuthProvider.Apple,
             )
 
             assertTrue(analytics.signupProviders.isEmpty())
@@ -104,14 +110,16 @@ class SignupViewModelTest {
         }
 
     @Test
-    fun analyticsFailureDoesNotInterruptDestinationSyncOrCompletion() =
+    fun `분석 기록이 실패해도 목적지 동기화와 완료 처리를 계속한다`() =
         withViewModel { viewModel, _, destinationRepository, analytics ->
             analytics.signupFailure = IllegalStateException("analytics failed")
+            viewModel.startSignup(
+                signupToken = "signup-token",
+                provider = AnalyticsAuthProvider.Apple,
+            )
 
             viewModel.signup(
-                signupToken = "signup-token",
                 agreedTermIds = setOf(TermId.Service),
-                provider = AnalyticsAuthProvider.Apple,
             )
 
             assertEquals(
@@ -124,20 +132,20 @@ class SignupViewModelTest {
         }
 
     @Test
-    fun repeatedSignupWhileTheFirstRequestIsRunningIsIgnored() =
+    fun `회원가입 요청이 진행 중이면 중복 요청을 무시한다`() =
         withViewModel { viewModel, authRepository, destinationRepository, analytics ->
             val signupGate = CompletableDeferred<Unit>()
             authRepository.signupGate = signupGate
-
-            viewModel.signup(
+            viewModel.startSignup(
                 signupToken = "first-token",
-                agreedTermIds = setOf(TermId.Service),
                 provider = AnalyticsAuthProvider.Google,
             )
+
             viewModel.signup(
-                signupToken = "second-token",
+                agreedTermIds = setOf(TermId.Service),
+            )
+            viewModel.signup(
                 agreedTermIds = setOf(TermId.Privacy),
-                provider = AnalyticsAuthProvider.Apple,
             )
 
             assertTrue(viewModel.uiState.isSaving)
@@ -149,6 +157,55 @@ class SignupViewModelTest {
             assertEquals(1, destinationRepository.syncCount)
             assertFalse(viewModel.uiState.isSaving)
             assertNotNull(viewModel.uiState.completedEventId)
+        }
+
+    @Test
+    fun `회원가입 시작 정보가 없으면 회원가입 요청을 실행하지 않는다`() =
+        withViewModel { viewModel, authRepository, destinationRepository, analytics ->
+            viewModel.signup(agreedTermIds = setOf(TermId.Service))
+
+            assertTrue(authRepository.signupRequests.isEmpty())
+            assertTrue(analytics.signupProviders.isEmpty())
+            assertEquals(0, destinationRepository.syncCount)
+            assertFalse(viewModel.uiState.isSaving)
+            assertFalse(viewModel.uiState.hasPendingSignup)
+        }
+
+    @Test
+    fun `회원가입 상태를 초기화하면 진행 중인 요청 결과를 반영하지 않는다`() =
+        withViewModel { viewModel, authRepository, destinationRepository, analytics ->
+            val signupGate = CompletableDeferred<Unit>()
+            authRepository.signupGate = signupGate
+            viewModel.startSignup(
+                signupToken = "signup-token",
+                provider = AnalyticsAuthProvider.Kakao,
+            )
+            viewModel.signup(agreedTermIds = setOf(TermId.Service))
+
+            viewModel.resetSignup()
+            signupGate.complete(Unit)
+
+            assertFalse(viewModel.uiState.hasPendingSignup)
+            assertFalse(viewModel.uiState.isSaving)
+            assertNull(viewModel.uiState.completedEventId)
+            assertTrue(analytics.signupProviders.isEmpty())
+            assertEquals(0, destinationRepository.syncCount)
+        }
+
+    @Test
+    fun `완료 이벤트를 소비하면 회원가입 시작 정보를 제거한다`() =
+        withViewModel { viewModel, _, _, _ ->
+            viewModel.startSignup(
+                signupToken = "signup-token",
+                provider = AnalyticsAuthProvider.Google,
+            )
+            viewModel.signup(agreedTermIds = setOf(TermId.Service))
+            val completedEventId = requireNotNull(viewModel.uiState.completedEventId)
+
+            viewModel.consumeCompletedEvent(completedEventId)
+
+            assertFalse(viewModel.uiState.hasPendingSignup)
+            assertNull(viewModel.uiState.completedEventId)
         }
 }
 

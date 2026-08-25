@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.completeAccountWithdrawal
 import com.joon.ringout.domain.auth.AuthSessionState
@@ -48,7 +47,7 @@ import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
-import com.joon.ringout.presentation.termsagreement.SignupViewModel
+import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.termsagreement.TermId
 import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
@@ -216,12 +215,12 @@ private fun RingoutAppContent(
             productAnalyticsRecorder = productAnalyticsRecorder,
         )
     }
+    val signupUiState = signupViewModel.uiState
     val alarmSetupViewModel: AlarmSetupViewModel = viewModel { AlarmSetupViewModel() }
     val alarmSetupUiState = alarmSetupViewModel.uiState
     val homeViewModel: HomeViewModel = viewModel { HomeViewModel() }
     val homeUiState = homeViewModel.uiState
     var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
-    var pendingSignup by remember { mutableStateOf<PendingSignup?>(null) }
     var handledActiveAlarmOccurrenceId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -239,7 +238,7 @@ private fun RingoutAppContent(
         withdrawalErrorMessage,
     ) {
         if (authSessionState == AuthSessionState.ReauthenticationRequired) {
-            pendingSignup = null
+            signupViewModel.resetSignup()
             alarmSetupViewModel.resetSaveFlow()
             homeViewModel.clearError()
             withdrawalErrorMessage = null
@@ -533,7 +532,7 @@ private fun RingoutAppContent(
             onLogoutConfirm = {
                 coroutineScope.launch {
                     authRepository.logout()
-                    pendingSignup = null
+                    signupViewModel.resetSignup()
                     screenName = AppScreen.Login.name
                 }
             },
@@ -547,7 +546,7 @@ private fun RingoutAppContent(
                             logout = authRepository::logout,
                             productAnalyticsRecorder = productAnalyticsRecorder,
                         )
-                        pendingSignup = null
+                        signupViewModel.resetSignup()
                         withdrawalErrorMessage = null
                         screenName = AppScreen.MyPage.name
                     } catch (error: CancellationException) {
@@ -591,11 +590,11 @@ private fun RingoutAppContent(
         AppScreen.Login -> LoginScreen(
             onBackClick = { screenName = AppScreen.MyPage.name },
             onAuthenticated = {
-                pendingSignup = null
+                signupViewModel.resetSignup()
                 screenName = AppScreen.Home.name
             },
             onSignupRequired = { signupToken, provider ->
-                pendingSignup = PendingSignup(
+                signupViewModel.startSignup(
                     signupToken = signupToken,
                     provider = provider,
                 )
@@ -605,28 +604,19 @@ private fun RingoutAppContent(
         )
 
         AppScreen.TermsAgreement -> {
-            val pending = pendingSignup
-            if (pending == null) {
+            if (!signupUiState.hasPendingSignup) {
                 LaunchedEffect(Unit) {
                     screenName = AppScreen.Login.name
                 }
             } else {
-                val signupUiState = signupViewModel.uiState
                 val completedEventId = signupUiState.completedEventId
                 LaunchedEffect(completedEventId) {
                     completedEventId ?: return@LaunchedEffect
-                    pendingSignup = null
-                    signupViewModel.consumeCompletedEvent(completedEventId)
                     screenName = AppScreen.Home.name
+                    signupViewModel.consumeCompletedEvent(completedEventId)
                 }
                 TermsAgreementScreen(
-                    onStart = { agreedTerms ->
-                        signupViewModel.signup(
-                            signupToken = pending.signupToken,
-                            agreedTermIds = agreedTerms,
-                            provider = pending.provider,
-                        )
-                    },
+                    onStart = signupViewModel::signup,
                     onTermDetailClick = { termId ->
                         val policyId = when (termId) {
                             TermId.Service -> PolicyId("terms")
@@ -733,11 +723,6 @@ internal enum class AppScreen {
     Settings,
     ActiveAlarmTracking,
 }
-
-private data class PendingSignup(
-    val signupToken: String,
-    val provider: AnalyticsAuthProvider,
-)
 
 internal fun AuthSessionState.toAnalyticsLoginStateOrNull(): AnalyticsLoginState? = when (this) {
     AuthSessionState.Restoring -> null
