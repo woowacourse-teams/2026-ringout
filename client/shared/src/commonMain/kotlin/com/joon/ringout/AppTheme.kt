@@ -31,18 +31,24 @@ data class RingoutExtendedColors(
     val primaryActionContent: Color,
     val onboardingDescriptionContent: Color,
     val elevatedSurface: Color,
+    val profileIconLoggedInBackground: Color,
+    val profileIconLoggedOutBackground: Color,
 )
 
 private val RingoutLightExtendedColors = RingoutExtendedColors(
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.Black,
     elevatedSurface = Color(0xFFF5F5F6),
+    profileIconLoggedInBackground = Color(0xFFF95E25),
+    profileIconLoggedOutBackground = Color(0xFF888787),
 )
 
 private val RingoutDarkExtendedColors = RingoutExtendedColors(
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.White,
     elevatedSurface = Color(0xFF22242A),
+    profileIconLoggedInBackground = Color(0xFFF95E25),
+    profileIconLoggedOutBackground = Color(0xFF888787),
 )
 
 private val LocalRingoutExtendedColors = staticCompositionLocalOf {

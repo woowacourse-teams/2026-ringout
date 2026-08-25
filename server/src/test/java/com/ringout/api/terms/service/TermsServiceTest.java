@@ -8,16 +8,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
-import com.ringout.api.member.repository.MemberRepository;
+import com.ringout.api.user.repository.UserRepository;
 import com.ringout.api.terms.domain.Terms;
 import com.ringout.api.terms.domain.TermsType;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
-import com.ringout.api.terms.repository.MemberAgreementRepository;
+import com.ringout.api.terms.repository.UserAgreementRepository;
 import com.ringout.api.terms.repository.TermsRepository;
+import com.ringout.api.terms.status.TermsErrorStatus;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -32,17 +32,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class TermsServiceTest {
 
     @Mock
-    private MemberAgreementRepository memberAgreementRepository;
+    private UserAgreementRepository userAgreementRepository;
 
     @Mock
     private TermsRepository termsRepository;
 
     @Mock
-    private MemberRepository memberRepository;
+    private UserRepository userRepository;
 
     private TermsService termsService;
 
-    private final Long memberId = 1L;
+    private final Long userId = 1L;
     private final LocalDate today = LocalDate.of(2026, 8, 13);
 
     private Terms serviceTerms;
@@ -51,7 +51,7 @@ class TermsServiceTest {
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(today.atStartOfDay(ZoneOffset.UTC).toInstant(), ZoneOffset.UTC);
-        termsService = new TermsService(memberAgreementRepository, termsRepository, memberRepository, clock);
+        termsService = new TermsService(userAgreementRepository, termsRepository, userRepository, clock);
 
         serviceTerms = mock(Terms.class);
         privacyTerms = mock(Terms.class);
@@ -66,18 +66,18 @@ class TermsServiceTest {
         given(privacyTerms.isEffectiveOn(today)).willReturn(true);
         given(serviceTerms.getId()).willReturn(10L);
         given(privacyTerms.getId()).willReturn(20L);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 10L)).willReturn(false);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 20L)).willReturn(false);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 10L)).willReturn(false);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 20L)).willReturn(false);
 
         TermsAgreeRequest request = new TermsAgreeRequest(List.of(TermsType.SERVICE, TermsType.PRIVACY), "2026-08-10");
 
         // when
-        TermsAgreeResponse response = termsService.termsAgree(memberId, request);
+        TermsAgreeResponse response = termsService.termsAgree(userId, request);
 
         // then
         assertThat(response.agreedTerms()).containsExactlyInAnyOrder("SERVICE", "PRIVACY");
         assertThat(response.agreedAt()).isEqualTo(LocalDate.of(2026, 8, 10));
-        verify(memberAgreementRepository).saveAll(any());
+        verify(userAgreementRepository).saveAll(any());
     }
 
     @Test
@@ -86,10 +86,10 @@ class TermsServiceTest {
         TermsAgreeRequest request = new TermsAgreeRequest(List.of(TermsType.SERVICE, TermsType.PRIVACY), "2026/08/10");
 
         // when // then
-        assertThatThrownBy(() -> termsService.termsAgree(memberId, request))
+        assertThatThrownBy(() -> termsService.termsAgree(userId, request))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_AGREED_AT_INVALID);
+            .isEqualTo(TermsErrorStatus.TERMS_AGREED_AT_INVALID);
     }
 
     @Test
@@ -98,10 +98,10 @@ class TermsServiceTest {
         TermsAgreeRequest request = new TermsAgreeRequest(List.of(TermsType.SERVICE), "2026-08-10");
 
         // when // then
-        assertThatThrownBy(() -> termsService.termsAgree(memberId, request))
+        assertThatThrownBy(() -> termsService.termsAgree(userId, request))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_NOT_AGREED);
+            .isEqualTo(TermsErrorStatus.TERMS_NOT_AGREED);
     }
 
     @Test
@@ -113,10 +113,10 @@ class TermsServiceTest {
         TermsAgreeRequest request = new TermsAgreeRequest(List.of(TermsType.SERVICE, TermsType.PRIVACY), "2026-08-10");
 
         // when // then
-        assertThatThrownBy(() -> termsService.termsAgree(memberId, request))
+        assertThatThrownBy(() -> termsService.termsAgree(userId, request))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_NOT_EFFECTIVE);
+            .isEqualTo(TermsErrorStatus.TERMS_NOT_EFFECTIVE);
     }
 
     @Test
@@ -132,16 +132,16 @@ class TermsServiceTest {
         given(newer.getId()).willReturn(99L);
         given(privacyTerms.isEffectiveOn(today)).willReturn(true);
         given(privacyTerms.getId()).willReturn(20L);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 99L)).willReturn(false);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 20L)).willReturn(false);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 99L)).willReturn(false);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 20L)).willReturn(false);
 
         TermsAgreeRequest request = new TermsAgreeRequest(List.of(TermsType.SERVICE, TermsType.PRIVACY), "2026-08-10");
 
         // when
-        termsService.termsAgree(memberId, request);
+        termsService.termsAgree(userId, request);
 
         // then
-        verify(memberAgreementRepository).existsByMemberIdAndTermsId(memberId, 99L);
+        verify(userAgreementRepository).existsByUserIdAndTermsId(userId, 99L);
     }
 
     @Test
@@ -153,17 +153,17 @@ class TermsServiceTest {
         given(privacyTerms.isEffectiveOn(today)).willReturn(true);
         given(serviceTerms.getId()).willReturn(10L);
         given(privacyTerms.getId()).willReturn(20L);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 10L)).willReturn(true);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 20L)).willReturn(true);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 10L)).willReturn(true);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 20L)).willReturn(true);
 
         TermsAgreeRequest request = new TermsAgreeRequest(List.of(TermsType.SERVICE, TermsType.PRIVACY), "2026-08-10");
 
         // when // then
-        assertThatThrownBy(() -> termsService.termsAgree(memberId, request))
+        assertThatThrownBy(() -> termsService.termsAgree(userId, request))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_ALREADY_AGREED);
-        verify(memberAgreementRepository, never()).saveAll(any());
+            .isEqualTo(TermsErrorStatus.TERMS_ALREADY_AGREED);
+        verify(userAgreementRepository, never()).saveAll(any());
     }
 
     @Test
@@ -175,17 +175,17 @@ class TermsServiceTest {
         given(privacyTerms.isEffectiveOn(today)).willReturn(true);
         given(serviceTerms.getId()).willReturn(10L);
         given(privacyTerms.getId()).willReturn(20L);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 10L)).willReturn(true);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 20L)).willReturn(false);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 10L)).willReturn(true);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 20L)).willReturn(false);
 
         TermsAgreeRequest request = new TermsAgreeRequest(List.of(TermsType.SERVICE, TermsType.PRIVACY), "2026-08-10");
 
         // when
-        TermsAgreeResponse response = termsService.termsAgree(memberId, request);
+        TermsAgreeResponse response = termsService.termsAgree(userId, request);
 
         // then
         assertThat(response.agreedTerms()).containsExactlyInAnyOrder("SERVICE", "PRIVACY");
-        verify(memberAgreementRepository).saveAll(any());
+        verify(userAgreementRepository).saveAll(any());
     }
 
     @Test
@@ -197,11 +197,11 @@ class TermsServiceTest {
         given(privacyTerms.isEffectiveOn(today)).willReturn(true);
         given(serviceTerms.getId()).willReturn(10L);
         given(privacyTerms.getId()).willReturn(20L);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 10L)).willReturn(true);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 20L)).willReturn(true);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 10L)).willReturn(true);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 20L)).willReturn(true);
 
         // when
-        CheckRequiredTermsAgreedResponse response = termsService.checkRequiredTermsAgreed(memberId);
+        CheckRequiredTermsAgreedResponse response = termsService.checkRequiredTermsAgreed(userId);
 
         // then
         assertThat(response.agreements()).isTrue();
@@ -213,10 +213,10 @@ class TermsServiceTest {
         given(termsRepository.findByType(TermsType.SERVICE)).willReturn(List.of(serviceTerms));
         given(serviceTerms.isEffectiveOn(today)).willReturn(true);
         given(serviceTerms.getId()).willReturn(10L);
-        given(memberAgreementRepository.existsByMemberIdAndTermsId(memberId, 10L)).willReturn(false);
+        given(userAgreementRepository.existsByUserIdAndTermsId(userId, 10L)).willReturn(false);
 
         // when
-        CheckRequiredTermsAgreedResponse response = termsService.checkRequiredTermsAgreed(memberId);
+        CheckRequiredTermsAgreedResponse response = termsService.checkRequiredTermsAgreed(userId);
 
         // then
         assertThat(response.agreements()).isFalse();
@@ -229,9 +229,9 @@ class TermsServiceTest {
         given(serviceTerms.isEffectiveOn(today)).willReturn(false);
 
         // when // then
-        assertThatThrownBy(() -> termsService.checkRequiredTermsAgreed(memberId))
+        assertThatThrownBy(() -> termsService.checkRequiredTermsAgreed(userId))
             .isInstanceOf(GeneralException.class)
             .extracting(e -> ((GeneralException) e).getCode())
-            .isEqualTo(ErrorStatus.TERMS_NOT_EFFECTIVE);
+            .isEqualTo(TermsErrorStatus.TERMS_NOT_EFFECTIVE);
     }
 }

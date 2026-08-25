@@ -1,6 +1,6 @@
 package com.ringout.api.config.security;
 
-import com.ringout.api.member.domain.Role;
+import com.ringout.api.user.domain.Role;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.security.core.GrantedAuthority;

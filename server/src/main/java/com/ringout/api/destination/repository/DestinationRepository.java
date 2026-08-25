@@ -11,7 +11,7 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
     @Query("""
         select destination
         from Destination destination
-        where destination.member.id = :userId
+        where destination.user.id = :userId
         order by destination.id asc
         """)
     List<Destination> findOwnedDestinations(@Param("userId") Long userId);

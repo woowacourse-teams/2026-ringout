@@ -6,8 +6,8 @@ import com.ringout.api.auth.dto.ReissueRequest;
 import com.ringout.api.auth.dto.ReissueResponse;
 import com.ringout.api.auth.dto.SignupResponse;
 import com.ringout.api.auth.social.SocialProvider;
+import com.ringout.api.auth.status.AuthSuccessStatus;
 import com.ringout.api.common.response.CustomResponse;
-import com.ringout.api.common.response.code.status.SuccessStatus;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import jakarta.validation.Valid;
 import java.util.Locale;
@@ -40,8 +40,8 @@ public class AuthController implements AuthControllerApi {
             request.socialAccessToken()
         );
 
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+        return ResponseEntity.status(AuthSuccessStatus.LOGIN_SUCCESS.getHttpStatus())
+            .body(CustomResponse.onSuccess(AuthSuccessStatus.LOGIN_SUCCESS, response));
     }
 
     @Override
@@ -53,8 +53,8 @@ public class AuthController implements AuthControllerApi {
         String signupToken = resolveBearerToken(authorization);
         SignupResponse response = authService.signup(signupToken, request);
 
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+        return ResponseEntity.status(AuthSuccessStatus.SIGNUP_SUCCESS.getHttpStatus())
+            .body(CustomResponse.onSuccess(AuthSuccessStatus.SIGNUP_SUCCESS, response));
     }
 
     @Override
@@ -64,8 +64,8 @@ public class AuthController implements AuthControllerApi {
     ) {
         ReissueResponse response = authService.reissue(request.refreshToken());
 
-        return ResponseEntity.status(SuccessStatus._OK.getHttpStatus())
-            .body(CustomResponse.onSuccess(SuccessStatus._OK, response));
+        return ResponseEntity.status(AuthSuccessStatus.TOKEN_REISSUED.getHttpStatus())
+            .body(CustomResponse.onSuccess(AuthSuccessStatus.TOKEN_REISSUED, response));
     }
 
     private String resolveBearerToken(String authorization) {

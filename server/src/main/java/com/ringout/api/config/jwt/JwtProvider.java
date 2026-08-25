@@ -4,7 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import com.ringout.api.member.domain.Role;
+import com.ringout.api.user.domain.Role;
 import com.ringout.api.auth.social.SocialProvider;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;

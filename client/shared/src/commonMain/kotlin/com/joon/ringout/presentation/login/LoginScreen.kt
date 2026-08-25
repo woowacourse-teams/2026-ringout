@@ -46,6 +46,9 @@ fun LoginScreen(
     modifier: Modifier = Modifier,
 ) {
     val uiState = viewModel.uiState
+    val launchAppleSignIn = rememberAppleIdTokenLauncher(
+        onResult = viewModel::handleAppleIdTokenResult,
+    )
     val launchGoogleSignIn = rememberGoogleAccessTokenLauncher(
         onResult = viewModel::handleGoogleAccessTokenResult,
     )
@@ -75,7 +78,9 @@ fun LoginScreen(
         onBackClick = onBackClick,
         onSocialLoginClick = { provider ->
             when (provider) {
-                SocialLoginProvider.Apple -> viewModel.beginAppleSignIn()
+                SocialLoginProvider.Apple -> {
+                    if (viewModel.beginAppleSignIn()) launchAppleSignIn()
+                }
 
                 SocialLoginProvider.Google -> {
                     if (viewModel.beginGoogleSignIn()) launchGoogleSignIn()

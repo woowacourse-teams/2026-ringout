@@ -4,7 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import com.ringout.api.member.domain.Role;
+import com.ringout.api.user.domain.Role;
 import com.ringout.api.config.security.CustomUserDetails;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;

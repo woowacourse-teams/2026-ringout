@@ -49,17 +49,32 @@ class DestinationViewModel(
     private val scope = coroutineScope ?: viewModelScope
     private var nextSavedEventId = 0L
     private var fetchJob: Job? = null
+    private var fetchRequestId = 0L
 
     init {
         observeDestinations()
     }
 
     fun onScreenEntered() {
+        refreshDestinations()
+    }
+
+    fun onLoggedOut() {
+        refreshDestinations(clearDestinations = true)
+    }
+
+    private fun refreshDestinations(clearDestinations: Boolean = false) {
         fetchJob?.cancel()
-        uiState = uiState.copy(isLoading = true, errorMessage = null)
+        val currentRequestId = ++fetchRequestId
+        uiState = uiState.copy(
+            destinations = if (clearDestinations) emptyList() else uiState.destinations,
+            isLoading = true,
+            errorMessage = null,
+        )
         fetchJob = scope.launch {
             try {
                 val destinations = repository.fetchAll()
+                if (currentRequestId != fetchRequestId) return@launch
                 uiState = uiState.copy(
                     destinations = destinations,
                     isLoading = false,
@@ -67,10 +82,12 @@ class DestinationViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                uiState = uiState.copy(
-                    isLoading = false,
-                    errorMessage = error.message ?: "목적지를 불러오지 못했어요.",
-                )
+                if (currentRequestId == fetchRequestId) {
+                    uiState = uiState.copy(
+                        isLoading = false,
+                        errorMessage = error.message ?: "목적지를 불러오지 못했어요.",
+                    )
+                }
             }
         }
     }

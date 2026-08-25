@@ -7,13 +7,15 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
-import com.ringout.api.member.repository.MemberRepository;
+import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.user.repository.UserRepository;
 import com.ringout.api.stamp.domain.GoalResult;
 import com.ringout.api.stamp.domain.Stamp;
 import com.ringout.api.stamp.dto.response.CreateGiveUpResponse;
 import com.ringout.api.stamp.dto.response.CreateStampResponse;
 import com.ringout.api.stamp.dto.response.FindMonthlyStampsResponse;
 import com.ringout.api.stamp.repository.StampRepository;
+import com.ringout.api.stamp.status.StampErrorStatus;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
@@ -30,25 +32,25 @@ class StampServiceTest {
     private StampRepository stampRepository;
 
     @Mock
-    private MemberRepository memberRepository;
+    private UserRepository userRepository;
 
     private StampService stampService;
 
-    private final Long memberId = 1L;
+    private final Long userId = 1L;
 
     @BeforeEach
     void setUp() {
-        stampService = new StampService(stampRepository, memberRepository);
+        stampService = new StampService(stampRepository, userRepository);
     }
 
     @Test
     void 스탬프_생성에_성공한다() {
         // given
         LocalDate completedAt = LocalDate.of(2026, 8, 13);
-        given(stampRepository.existsByMemberIdAndRecordDate(memberId, completedAt)).willReturn(false);
+        given(stampRepository.existsByUserIdAndRecordDate(userId, completedAt)).willReturn(false);
 
         // when
-        CreateStampResponse response = stampService.createStamp(memberId, completedAt);
+        CreateStampResponse response = stampService.createStamp(userId, completedAt);
 
         // then
         assertThat(response.completedAt()).isEqualTo(completedAt);
@@ -60,12 +62,13 @@ class StampServiceTest {
     void 이미_저장된_날짜에_스탬프를_생성하면_예외가_발생한다() {
         // given
         LocalDate completedAt = LocalDate.of(2026, 8, 13);
-        given(stampRepository.existsByMemberIdAndRecordDate(memberId, completedAt)).willReturn(true);
+        given(stampRepository.existsByUserIdAndRecordDate(userId, completedAt)).willReturn(true);
 
         // when // then
-        assertThatThrownBy(() -> stampService.createStamp(memberId, completedAt))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessage("이미 저장된 스탬프입니다.");
+        assertThatThrownBy(() -> stampService.createStamp(userId, completedAt))
+            .isInstanceOf(GeneralException.class)
+            .extracting(e -> ((GeneralException) e).getCode())
+            .isEqualTo(StampErrorStatus.STAMP_ALREADY_CREATED);
         verify(stampRepository, never()).save(any(Stamp.class));
     }
 
@@ -73,10 +76,10 @@ class StampServiceTest {
     void 목표_실패_기록에_성공한다() {
         // given
         LocalDate terminatedAt = LocalDate.of(2026, 8, 13);
-        given(stampRepository.existsByMemberIdAndRecordDate(memberId, terminatedAt)).willReturn(false);
+        given(stampRepository.existsByUserIdAndRecordDate(userId, terminatedAt)).willReturn(false);
 
         // when
-        CreateGiveUpResponse response = stampService.createGiveUp(memberId, terminatedAt);
+        CreateGiveUpResponse response = stampService.createGiveUp(userId, terminatedAt);
 
         // then
         assertThat(response.terminatedAt()).isEqualTo(terminatedAt);
@@ -88,12 +91,13 @@ class StampServiceTest {
     void 이미_기록된_날짜에_실패를_기록하면_예외가_발생한다() {
         // given
         LocalDate terminatedAt = LocalDate.of(2026, 8, 13);
-        given(stampRepository.existsByMemberIdAndRecordDate(memberId, terminatedAt)).willReturn(true);
+        given(stampRepository.existsByUserIdAndRecordDate(userId, terminatedAt)).willReturn(true);
 
         // when // then
-        assertThatThrownBy(() -> stampService.createGiveUp(memberId, terminatedAt))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessage("이미 기록된 날짜입니다.");
+        assertThatThrownBy(() -> stampService.createGiveUp(userId, terminatedAt))
+            .isInstanceOf(GeneralException.class)
+            .extracting(e -> ((GeneralException) e).getCode())
+            .isEqualTo(StampErrorStatus.STAMP_ALREADY_CREATED);
         verify(stampRepository, never()).save(any(Stamp.class));
     }
 
@@ -105,11 +109,11 @@ class StampServiceTest {
         LocalDate startDate = LocalDate.of(2026, 8, 1);
         LocalDate endDate = LocalDate.of(2026, 9, 1);
         List<LocalDate> successDates = List.of(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 13));
-        given(stampRepository.findSuccessDatesByMemberIdAndPeriod(memberId, startDate, endDate))
+        given(stampRepository.findSuccessDatesByUserIdAndPeriod(userId, startDate, endDate))
             .willReturn(successDates);
 
         // when
-        FindMonthlyStampsResponse response = stampService.findMonthlyStamps(memberId, year, month);
+        FindMonthlyStampsResponse response = stampService.findMonthlyStamps(userId, year, month);
 
         // then
         assertThat(response.year()).isEqualTo(year);
@@ -124,11 +128,11 @@ class StampServiceTest {
         Integer month = 8;
         LocalDate startDate = LocalDate.of(2026, 8, 1);
         LocalDate endDate = LocalDate.of(2026, 9, 1);
-        given(stampRepository.findSuccessDatesByMemberIdAndPeriod(memberId, startDate, endDate))
+        given(stampRepository.findSuccessDatesByUserIdAndPeriod(userId, startDate, endDate))
             .willReturn(Collections.emptyList());
 
         // when
-        FindMonthlyStampsResponse response = stampService.findMonthlyStamps(memberId, year, month);
+        FindMonthlyStampsResponse response = stampService.findMonthlyStamps(userId, year, month);
 
         // then
         assertThat(response.successDates()).isEmpty();
@@ -141,13 +145,13 @@ class StampServiceTest {
         Integer month = 12;
         LocalDate startDate = LocalDate.of(2026, 12, 1);
         LocalDate endDate = LocalDate.of(2027, 1, 1);
-        given(stampRepository.findSuccessDatesByMemberIdAndPeriod(memberId, startDate, endDate))
+        given(stampRepository.findSuccessDatesByUserIdAndPeriod(userId, startDate, endDate))
             .willReturn(Collections.emptyList());
 
         // when
-        stampService.findMonthlyStamps(memberId, year, month);
+        stampService.findMonthlyStamps(userId, year, month);
 
         // then
-        verify(stampRepository).findSuccessDatesByMemberIdAndPeriod(memberId, startDate, endDate);
+        verify(stampRepository).findSuccessDatesByUserIdAndPeriod(userId, startDate, endDate);
     }
 }

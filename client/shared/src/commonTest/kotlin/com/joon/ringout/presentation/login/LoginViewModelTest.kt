@@ -149,15 +149,76 @@ class LoginViewModelTest {
         }
 
     @Test
-    fun appleDoesNotRecordEventsBeforeItsSdkFlowExists() =
+    fun appleExistingMemberRecordsTheProviderLifecycle() =
         withViewModel { viewModel, repository, analytics ->
-            assertFalse(viewModel.beginAppleSignIn())
+            assertTrue(viewModel.beginAppleSignIn())
+            viewModel.handleAppleIdTokenResult(
+                AppleIdTokenResult.Success("apple-id-token"),
+            )
 
-            assertTrue(analytics.startedProviders.isEmpty())
-            assertTrue(analytics.completedRecords.isEmpty())
-            assertTrue(repository.googleAccessTokens.isEmpty())
-            assertTrue(repository.kakaoAccessTokens.isEmpty())
+            assertEquals(listOf(AnalyticsAuthProvider.Apple), analytics.startedProviders)
+            assertEquals(
+                listOf(LoginCompletedRecord(AnalyticsAuthProvider.Apple, isNewUser = false)),
+                analytics.completedRecords,
+            )
+            assertEquals(listOf("apple-id-token"), repository.appleIdTokens)
+            assertIs<LoginCompletion.Authenticated>(viewModel.uiState.completion)
             assertFalse(viewModel.uiState.isLoading)
+            assertNull(viewModel.uiState.errorMessage)
+        }
+
+    @Test
+    fun appleNewMemberPreservesTheProviderForSignup() =
+        withViewModel { viewModel, repository, _ ->
+            repository.appleOutcome = SocialLoginOutcome.SignupRequired("signup-token")
+
+            assertTrue(viewModel.beginAppleSignIn())
+            viewModel.handleAppleIdTokenResult(
+                AppleIdTokenResult.Success("apple-id-token"),
+            )
+
+            val completion = assertIs<LoginCompletion.SignupRequired>(viewModel.uiState.completion)
+            assertEquals("signup-token", completion.signupToken)
+            assertEquals(AnalyticsAuthProvider.Apple, completion.provider)
+        }
+
+    @Test
+    fun appleCancellationAndFailureDoNotCallTheRepository() =
+        withViewModel { viewModel, repository, analytics ->
+            assertTrue(viewModel.beginAppleSignIn())
+            viewModel.handleAppleIdTokenResult(AppleIdTokenResult.Cancelled)
+
+            assertFalse(viewModel.uiState.isLoading)
+            assertNull(viewModel.uiState.errorMessage)
+            assertTrue(repository.appleIdTokens.isEmpty())
+
+            assertTrue(viewModel.beginAppleSignIn())
+            viewModel.handleAppleIdTokenResult(AppleIdTokenResult.Failure("Apple SDK failed"))
+
+            assertEquals("Apple SDK failed", viewModel.uiState.errorMessage)
+            assertTrue(repository.appleIdTokens.isEmpty())
+            assertEquals(
+                listOf(AnalyticsAuthProvider.Apple, AnalyticsAuthProvider.Apple),
+                analytics.startedProviders,
+            )
+            assertTrue(analytics.completedRecords.isEmpty())
+        }
+
+    @Test
+    fun appleRepeatedStartAndMismatchedResultAreIgnored() =
+        withViewModel { viewModel, repository, _ ->
+            assertTrue(viewModel.beginAppleSignIn())
+            assertFalse(viewModel.beginAppleSignIn())
+            assertFalse(viewModel.beginGoogleSignIn())
+
+            viewModel.handleGoogleAccessTokenResult(
+                GoogleAccessTokenResult.Success("wrong-provider-token"),
+            )
+            viewModel.handleAppleIdTokenResult(AppleIdTokenResult.Success("apple-id-token"))
+            viewModel.handleAppleIdTokenResult(AppleIdTokenResult.Success("late-token"))
+
+            assertEquals(listOf("apple-id-token"), repository.appleIdTokens)
+            assertTrue(repository.googleAccessTokens.isEmpty())
         }
 }
 
@@ -184,14 +245,23 @@ private inline fun withViewModel(
 }
 
 private class FakeAuthRepository : AuthRepository {
+    val appleIdTokens = mutableListOf<String>()
     val googleAccessTokens = mutableListOf<String>()
     val kakaoAccessTokens = mutableListOf<String>()
+    var appleOutcome: SocialLoginOutcome = SocialLoginOutcome.Authenticated
     var googleOutcome: SocialLoginOutcome = SocialLoginOutcome.Authenticated
     var kakaoOutcome: SocialLoginOutcome = SocialLoginOutcome.Authenticated
+    var appleFailure: Throwable? = null
     var googleFailure: Throwable? = null
     var kakaoFailure: Throwable? = null
 
     override suspend fun restoreSession() = Unit
+
+    override suspend fun loginWithApple(idToken: String): SocialLoginOutcome {
+        appleIdTokens += idToken
+        appleFailure?.let { throw it }
+        return appleOutcome
+    }
 
     override suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome {
         googleAccessTokens += accessToken

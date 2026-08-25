@@ -1,12 +1,14 @@
 package com.joon.ringout.presentation.mypage.component
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -29,9 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.home_empty_logo
+import ringout.shared.generated.resources.mypage_logged_in_profile
 
 @Composable
 fun MyPageLoggedInAccountStatus(
@@ -48,14 +51,19 @@ fun MyPageLoggedInAccountStatus(
             .height(LoggedInAccountStatusHeight),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Image(
-            painter = painterResource(Res.drawable.home_empty_logo),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
                 .size(LoggedInProfileImageSize)
-                .clip(CircleShape),
-        )
+                .clip(CircleShape)
+                .background(MaterialTheme.ringoutColors.profileIconLoggedInBackground),
+        ) {
+            Image(
+                painter = painterResource(Res.drawable.mypage_logged_in_profile),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Spacer(Modifier.width(LoggedInProfileTextSpacing))
         Column(
             modifier = Modifier

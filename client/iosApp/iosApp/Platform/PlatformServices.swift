@@ -8,6 +8,7 @@ final class PlatformServices: @preconcurrency IosNativeServices {
     private let alarmKitAdapter: AlarmKitAdapter
     private let missionLocationAdapter: MissionLocationAdapter
     private let firebaseAnalyticsAdapter: FirebaseAnalyticsAdapter
+    private let appleSignInAdapter: AppleSignInAdapter
     private let googleSignInAdapter: GoogleSignInAdapter
     private let kakaoSignInAdapter: KakaoSignInAdapter
 
@@ -18,6 +19,7 @@ final class PlatformServices: @preconcurrency IosNativeServices {
         alarmKitAdapter = AlarmKitAdapter()
         missionLocationAdapter = MissionLocationAdapter()
         firebaseAnalyticsAdapter = FirebaseAnalyticsAdapter()
+        appleSignInAdapter = AppleSignInAdapter()
         googleSignInAdapter = GoogleSignInAdapter()
         kakaoSignInAdapter = KakaoSignInAdapter()
     }
@@ -82,6 +84,10 @@ final class PlatformServices: @preconcurrency IosNativeServices {
 
     func analyticsTracker() -> IosAnalyticsTracker {
         firebaseAnalyticsAdapter
+    }
+
+    func appleSignInService() -> IosAppleSignInService {
+        appleSignInAdapter
     }
 
     func googleSignInService() -> IosGoogleSignInService {
