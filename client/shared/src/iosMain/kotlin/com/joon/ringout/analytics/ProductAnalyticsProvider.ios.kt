@@ -7,14 +7,19 @@ import com.joon.ringout.platform.IosAnalyticsParameterDto
 import com.joon.ringout.platform.IosAnalyticsTracker
 import com.joon.ringout.platform.LocalIosNativeServices
 
+internal fun createProductAnalyticsRecorder(
+    nativeTracker: IosAnalyticsTracker,
+): ProductAnalyticsRecorder =
+    DefaultProductAnalyticsRecorder(
+        tracker = IosProductAnalyticsTracker(nativeTracker),
+        usageStore = IosAnalyticsUsageStore(),
+    )
+
 @Composable
 internal actual fun rememberProductAnalyticsRecorder(): ProductAnalyticsRecorder {
     val nativeTracker = LocalIosNativeServices.current.analyticsTracker()
     return remember(nativeTracker) {
-        DefaultProductAnalyticsRecorder(
-            tracker = IosProductAnalyticsTracker(nativeTracker),
-            usageStore = IosAnalyticsUsageStore(),
-        )
+        createProductAnalyticsRecorder(nativeTracker)
     }
 }
 

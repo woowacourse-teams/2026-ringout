@@ -9,11 +9,16 @@ import androidx.datastore.core.FileStorage
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferencesFileSerializer
 
+
+internal fun getAppPreferencesDataStore(
+    context: Context,
+): DataStore<Preferences> = AndroidAppPreferencesDataStore.get(context.applicationContext)
+
 @Composable
 internal actual fun rememberAppPreferencesDataStore(): DataStore<Preferences> {
     val applicationContext = LocalContext.current.applicationContext
     return remember(applicationContext) {
-        AndroidAppPreferencesDataStore.get(applicationContext)
+        getAppPreferencesDataStore(applicationContext   )
     }
 }
 

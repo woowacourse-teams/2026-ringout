@@ -13,9 +13,12 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 import kotlinx.cinterop.ExperimentalForeignApi
 
+internal fun getAppPreferencesDataStore(): DataStore<Preferences> =
+    IosAppPreferencesDataStore.instance
+
 @Composable
 internal actual fun rememberAppPreferencesDataStore(): DataStore<Preferences> =
-    IosAppPreferencesDataStore.instance
+    getAppPreferencesDataStore()
 
 private object IosAppPreferencesDataStore {
     @OptIn(ExperimentalForeignApi::class)

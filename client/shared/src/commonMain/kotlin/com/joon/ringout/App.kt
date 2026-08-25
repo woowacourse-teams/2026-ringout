@@ -22,13 +22,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.completeAccountWithdrawal
-import com.joon.ringout.analytics.rememberProductAnalyticsRecorder
-import com.joon.ringout.data.auth.rememberAuthRepository
-import com.joon.ringout.data.member.rememberMemberRepository
-import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
-import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
 import com.joon.ringout.domain.auth.AuthSessionState
-import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
@@ -39,6 +33,7 @@ import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.alarm.newAlarmId
 import com.joon.ringout.alarm.permissionDecision
 import com.joon.ringout.alarm.rememberAlarmController
+import com.joon.ringout.di.AppContainer
 import com.joon.ringout.presentation.activemission.ActiveAlarmTrackingScreen
 import com.joon.ringout.presentation.activemission.components.MissionLocationPermissionDialog
 import com.joon.ringout.presentation.alarmsound.AlarmSoundScreen
@@ -52,7 +47,6 @@ import com.joon.ringout.presentation.destination.DestinationSelection
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.destination.belongsToDestinationRequest
 import com.joon.ringout.presentation.destination.isConfiguredDestination
-import com.joon.ringout.presentation.destination.rememberDestinationRepository
 import com.joon.ringout.presentation.home.HomeAlarm
 import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.login.LoginScreen
@@ -61,7 +55,6 @@ import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
-import com.joon.ringout.presentation.settings.SettingsScreen
 import com.joon.ringout.presentation.termsagreement.SignupViewModel
 import com.joon.ringout.presentation.termsagreement.TermId
 import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
@@ -75,11 +68,11 @@ import com.joon.ringout.presentation.nickname.NicknameChangeScreen
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @Composable
 fun App(
+    appContainer: AppContainer,
     appVersion: String = "",
     useSystemLocationPermissionUiOnly: Boolean = false,
     ringingAlarm: AlarmRingingUiState? = null,
@@ -99,12 +92,10 @@ fun App(
     onActiveAlarmMissionForceEndHoldCompleted:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
 ) {
-    val preferencesDataStore = rememberAppPreferencesDataStore()
-    val appPreferencesRepository = remember(preferencesDataStore) {
-        DataStoreAppPreferencesRepository(preferencesDataStore)
-    }
     val appBootstrapViewModel = viewModel {
-        AppBootstrapViewModel(appPreferencesRepository)
+        AppBootstrapViewModel(
+            repository = appContainer.appPreferencesRepository
+        )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState
 
@@ -124,6 +115,7 @@ fun App(
 
             AppEntryDestination.Home ->
                 RingoutAppContent(
+                    appContainer = appContainer,
                     themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
@@ -161,6 +153,7 @@ private fun AppBootstrapSurface() = Box(
 
 @Composable
 private fun RingoutAppContent(
+    appContainer: AppContainer,
     themeMode: ThemeMode,
     appVersion: String,
     useSystemLocationPermissionUiOnly: Boolean,
@@ -183,8 +176,8 @@ private fun RingoutAppContent(
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
-    val productAnalyticsRecorder = rememberProductAnalyticsRecorder()
-    val destinationRepository = rememberDestinationRepository()
+    val productAnalyticsRecorder = appContainer.productAnalyticsRecorder
+    val destinationRepository = appContainer.destinationRepository
     val destinationViewModel: DestinationViewModel = viewModel {
         DestinationViewModel(
             repository = destinationRepository,
@@ -192,9 +185,9 @@ private fun RingoutAppContent(
         )
     }
     val destinationUiState = destinationViewModel.uiState
-    val authSession = remember { getAuthSession() }
-    val authRepository = rememberAuthRepository(authSession)
-    val memberRepository = rememberMemberRepository()
+    val authSession = appContainer.authSession
+    val authRepository = appContainer.authRepository
+    val memberRepository = appContainer.memberRepository
     val authSessionState by authSession.state.collectAsState()
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
     val coroutineScope = rememberCoroutineScope()

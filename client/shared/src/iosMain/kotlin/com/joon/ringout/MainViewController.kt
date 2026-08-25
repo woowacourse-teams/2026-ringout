@@ -13,76 +13,85 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.joon.ringout.alarm.createIosAlarmRuntime
 import com.joon.ringout.alarm.iosAlarmDateText
+import com.joon.ringout.di.IosAppContainer
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.platform.IosNativeServices
 import com.joon.ringout.platform.LocalIosNativeServices
 import platform.Foundation.NSBundle
 import kotlinx.coroutines.launch
+import platform.UIKit.UIViewController
 
-fun MainViewController(nativeServices: IosNativeServices) = ComposeUIViewController {
-    val alarmRuntime = remember(nativeServices) {
-        createIosAlarmRuntime(nativeServices)
-    }
-    val ringingAlarm by alarmRuntime.ringingAlarmFlow.collectAsState()
-    val activeAlarmMission by alarmRuntime.activeMissionFlow.collectAsState()
-    val activeAlarmMissionLocation by alarmRuntime.currentLocationFlow.collectAsState()
-    val missionLocationState by alarmRuntime.locationStateFlow.collectAsState()
-    val coroutineScope = rememberCoroutineScope()
-    val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(alarmRuntime) {
-        alarmRuntime.start()
-    }
-    DisposableEffect(lifecycleOwner, alarmRuntime) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                coroutineScope.launch { alarmRuntime.start() }
-            }
+fun MainViewController(
+    nativeServices: IosNativeServices,
+    ): UIViewController {
+    val appContainer = IosAppContainer(nativeServices)
+
+    return ComposeUIViewController {
+        val alarmRuntime = remember(nativeServices) {
+            createIosAlarmRuntime(nativeServices)
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    val appVersion = NSBundle.mainBundle
-        .objectForInfoDictionaryKey("CFBundleShortVersionString") as? String
-        ?: ""
-    val ringingAlarmUiState = ringingAlarm?.let { alarm ->
-        AlarmRingingUiState(
-            id = alarm.systemAlarmId,
-            alarmTime = alarm.alarmTime,
-            dateText = iosAlarmDateText(alarm.startedAtEpochMillis),
-            limitMinutes = alarm.limitMinutes,
-            destinationName = alarm.destinationName,
-        )
-    }
-    CompositionLocalProvider(LocalIosNativeServices provides nativeServices) {
-        App(
-            appVersion = appVersion,
-            useSystemLocationPermissionUiOnly = true,
-            ringingAlarm = ringingAlarmUiState,
-            activeAlarmMission = activeAlarmMission,
-            activeAlarmMissionLocation = activeAlarmMissionLocation,
-            missionLocationState = missionLocationState,
-            onRequestWhenInUseLocation = alarmRuntime::requestWhenInUseAuthorization,
-            onRequestAlwaysLocation = alarmRuntime::requestAlwaysAuthorization,
-            onConfirmAlwaysLocationResult = alarmRuntime::confirmAlwaysAuthorizationResult,
-            onRequestTemporaryFullAccuracy =
-                alarmRuntime::requestTemporaryFullAccuracyAuthorization,
-            onRingingAlarmDismiss = { systemAlarmId ->
-                coroutineScope.launch {
-                    alarmRuntime.dismissRingingAlarm(systemAlarmId)
+        val ringingAlarm by alarmRuntime.ringingAlarmFlow.collectAsState()
+        val activeAlarmMission by alarmRuntime.activeMissionFlow.collectAsState()
+        val activeAlarmMissionLocation by alarmRuntime.currentLocationFlow.collectAsState()
+        val missionLocationState by alarmRuntime.locationStateFlow.collectAsState()
+        val coroutineScope = rememberCoroutineScope()
+        val lifecycleOwner = LocalLifecycleOwner.current
+        LaunchedEffect(alarmRuntime) {
+            alarmRuntime.start()
+        }
+        DisposableEffect(lifecycleOwner, alarmRuntime) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    coroutineScope.launch { alarmRuntime.start() }
                 }
-            },
-            onActiveAlarmMissionExpired = {
-                coroutineScope.launch { alarmRuntime.handleDeadline() }
-            },
-            onActiveAlarmMissionForceEnd = { occurrenceId ->
-                coroutineScope.launch { alarmRuntime.forceEndActiveMission(occurrenceId) }
-            },
-            onActiveAlarmMissionForceEndHoldStarted =
-                alarmRuntime::recordForceEndHoldStarted,
-            onActiveAlarmMissionForceEndHoldCancelled =
-                alarmRuntime::recordForceEndHoldCancelled,
-            onActiveAlarmMissionForceEndHoldCompleted =
-                alarmRuntime::recordForceEndHoldCompleted,
-        )
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+        val appVersion = NSBundle.mainBundle
+            .objectForInfoDictionaryKey("CFBundleShortVersionString") as? String
+            ?: ""
+        val ringingAlarmUiState = ringingAlarm?.let { alarm ->
+            AlarmRingingUiState(
+                id = alarm.systemAlarmId,
+                alarmTime = alarm.alarmTime,
+                dateText = iosAlarmDateText(alarm.startedAtEpochMillis),
+                limitMinutes = alarm.limitMinutes,
+                destinationName = alarm.destinationName,
+            )
+        }
+        CompositionLocalProvider(LocalIosNativeServices provides nativeServices) {
+            App(
+                appContainer = appContainer,
+                appVersion = appVersion,
+                useSystemLocationPermissionUiOnly = true,
+                ringingAlarm = ringingAlarmUiState,
+                activeAlarmMission = activeAlarmMission,
+                activeAlarmMissionLocation = activeAlarmMissionLocation,
+                missionLocationState = missionLocationState,
+                onRequestWhenInUseLocation = alarmRuntime::requestWhenInUseAuthorization,
+                onRequestAlwaysLocation = alarmRuntime::requestAlwaysAuthorization,
+                onConfirmAlwaysLocationResult = alarmRuntime::confirmAlwaysAuthorizationResult,
+                onRequestTemporaryFullAccuracy =
+                    alarmRuntime::requestTemporaryFullAccuracyAuthorization,
+                onRingingAlarmDismiss = { systemAlarmId ->
+                    coroutineScope.launch {
+                        alarmRuntime.dismissRingingAlarm(systemAlarmId)
+                    }
+                },
+                onActiveAlarmMissionExpired = {
+                    coroutineScope.launch { alarmRuntime.handleDeadline() }
+                },
+                onActiveAlarmMissionForceEnd = { occurrenceId ->
+                    coroutineScope.launch { alarmRuntime.forceEndActiveMission(occurrenceId) }
+                },
+                onActiveAlarmMissionForceEndHoldStarted =
+                    alarmRuntime::recordForceEndHoldStarted,
+                onActiveAlarmMissionForceEndHoldCancelled =
+                    alarmRuntime::recordForceEndHoldCancelled,
+                onActiveAlarmMissionForceEndHoldCompleted =
+                    alarmRuntime::recordForceEndHoldCompleted,
+            )
+        }
     }
 }
