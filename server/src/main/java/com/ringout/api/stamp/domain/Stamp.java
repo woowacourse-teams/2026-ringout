@@ -1,7 +1,7 @@
 package com.ringout.api.stamp.domain;
 
 import com.ringout.api.common.BaseEntity;
-import com.ringout.api.member.domain.Member;
+import com.ringout.api.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -44,20 +44,20 @@ public class Stamp extends BaseEntity {
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "member_id")
-  private Member member;
+  private User user;
 
   @Builder(access = AccessLevel.PRIVATE)
-  public Stamp(LocalDate recordDate, GoalResult result, Member member) {
+  public Stamp(LocalDate recordDate, GoalResult result, User user) {
     this.recordDate = recordDate;
     this.result = result;
-    this.member = member;
+    this.user = user;
   }
 
-  public static Stamp of(LocalDate recordDate, GoalResult result, Member member) {
+  public static Stamp of(LocalDate recordDate, GoalResult result, User user) {
     return Stamp.builder()
         .recordDate(recordDate)
         .result(result)
-        .member(member)
+        .user(user)
         .build();
   }
 }

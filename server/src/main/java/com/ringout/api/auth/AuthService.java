@@ -9,10 +9,10 @@ import com.ringout.api.auth.social.SocialUserInfo;
 import com.ringout.api.auth.status.AuthErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.config.jwt.JwtProvider;
-import com.ringout.api.member.domain.Member;
-import com.ringout.api.member.repository.MemberRepository;
-import com.ringout.api.member.service.MemberService;
-import com.ringout.api.member.status.UserErrorStatus;
+import com.ringout.api.user.domain.User;
+import com.ringout.api.user.repository.UserRepository;
+import com.ringout.api.user.service.UserService;
+import com.ringout.api.user.status.UserErrorStatus;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import com.ringout.api.terms.service.TermsService;
 import java.time.LocalDateTime;
@@ -26,25 +26,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private final Map<SocialProvider, SocialLoginClient> loginClients;
-    private final MemberRepository memberRepository;
+    private final UserRepository userRepository;
     private final JwtProvider jwtProvider;
-    private final MemberService memberService;
+    private final UserService userService;
     private final TermsService termsService;
 
     public AuthService(
         List<SocialLoginClient> loginClients,
-        MemberRepository memberRepository,
+        UserRepository userRepository,
         JwtProvider jwtProvider,
-        MemberService memberService,
+        UserService userService,
         TermsService termsService
     ) {
         this.loginClients = new EnumMap<>(SocialProvider.class);
         loginClients.forEach(client ->
             this.loginClients.put(client.supports(), client)
         );
-        this.memberRepository = memberRepository;
+        this.userRepository = userRepository;
         this.jwtProvider = jwtProvider;
-        this.memberService = memberService;
+        this.userService = userService;
         this.termsService = termsService;
     }
 
@@ -56,23 +56,23 @@ public class AuthService {
         String providerId = jwtProvider.getProviderId(signupToken);
         String email = jwtProvider.getEmail(signupToken);
 
-        Member member = memberService.register(
+        User user = userService.register(
             socialProvider,
             providerId,
             email,
             LocalDateTime.now()
         );
-        termsService.termsAgree(member.getId(), request);
+        termsService.termsAgree(user.getId(), request);
 
         String accessToken = jwtProvider.createAccessToken(
-            member.getId(),
-            member.getSocialProviderId(),
-            member.getRole()
+            user.getId(),
+            user.getSocialProviderId(),
+            user.getRole()
         );
         String refreshToken = jwtProvider.createRefreshToken(
-            member.getId(),
-            member.getSocialProviderId(),
-            member.getRole()
+            user.getId(),
+            user.getSocialProviderId(),
+            user.getRole()
         );
         return new SignupResponse(accessToken, refreshToken);
     }
@@ -87,20 +87,20 @@ public class AuthService {
     public ReissueResponse reissue(String refreshToken) {
         validateRefreshToken(refreshToken);
 
-        Long memberId = jwtProvider.getUserId(refreshToken);
-        Member member = memberRepository.findById(memberId)
+        Long userId = jwtProvider.getUserId(refreshToken);
+        User user = userRepository.findById(userId)
             .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
 
         String reissuedAccessToken = jwtProvider.createAccessToken(
-            member.getId(),
-            member.getSocialProviderId(),
-            member.getRole()
+            user.getId(),
+            user.getSocialProviderId(),
+            user.getRole()
         );
 
         String reissuedRefreshToken = jwtProvider.createRefreshToken(
-            member.getId(),
-            member.getSocialProviderId(),
-            member.getRole()
+            user.getId(),
+            user.getSocialProviderId(),
+            user.getRole()
         );
 
         return ReissueResponse.of(reissuedAccessToken, reissuedRefreshToken);
@@ -127,12 +127,12 @@ public class AuthService {
         SocialUserInfo socialUserInfo = loginClient.authenticate(socialAccessToken);
         LocalDateTime loginAt = LocalDateTime.now();
 
-        return memberRepository
+        return userRepository
             .findBySocialProviderAndSocialProviderId(
                 socialUserInfo.provider(),
                 socialUserInfo.providerId()
             )
-            .map(member -> loginExistingMember(member, socialUserInfo, loginAt))
+            .map(user -> loginExistingUser(user, socialUserInfo, loginAt))
             .orElseGet(() -> LoginResponse.signupRequired(
                 jwtProvider.createSignupToken(
                     socialUserInfo.provider(),
@@ -142,21 +142,21 @@ public class AuthService {
             ));
     }
 
-    private LoginResponse loginExistingMember(
-        Member member,
+    private LoginResponse loginExistingUser(
+        User user,
         SocialUserInfo socialUserInfo,
         LocalDateTime loginAt
     ) {
-        member.login(loginAt, socialUserInfo.email());
+        user.login(loginAt, socialUserInfo.email());
         String accessToken = jwtProvider.createAccessToken(
-            member.getId(),
-            member.getSocialProviderId(),
-            member.getRole()
+            user.getId(),
+            user.getSocialProviderId(),
+            user.getRole()
         );
         String refreshToken = jwtProvider.createRefreshToken(
-            member.getId(),
-            member.getSocialProviderId(),
-            member.getRole()
+            user.getId(),
+            user.getSocialProviderId(),
+            user.getRole()
         );
         return LoginResponse.loggedIn(accessToken, refreshToken);
     }

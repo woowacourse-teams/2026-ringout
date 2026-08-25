@@ -17,11 +17,11 @@ import com.ringout.api.auth.social.SocialUserInfo;
 import com.ringout.api.auth.status.AuthErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.config.jwt.JwtProvider;
-import com.ringout.api.member.domain.Member;
-import com.ringout.api.member.domain.Role;
-import com.ringout.api.member.repository.MemberRepository;
-import com.ringout.api.member.service.MemberService;
-import com.ringout.api.member.status.UserErrorStatus;
+import com.ringout.api.user.domain.User;
+import com.ringout.api.user.domain.Role;
+import com.ringout.api.user.repository.UserRepository;
+import com.ringout.api.user.service.UserService;
+import com.ringout.api.user.status.UserErrorStatus;
 import com.ringout.api.terms.service.TermsService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -37,19 +37,19 @@ class AuthServiceTest {
 
     private static final String SOCIAL_ACCESS_TOKEN = "social-access-token";
     private static final String PROVIDER_ID = "provider-user-id";
-    private static final String EMAIL = "member@example.com";
+    private static final String EMAIL = "user@example.com";
 
     @Mock
     private SocialLoginClient loginClient;
 
     @Mock
-    private MemberRepository memberRepository;
+    private UserRepository userRepository;
 
     @Mock
     private JwtProvider jwtProvider;
 
     @Mock
-    private MemberService memberService;
+    private UserService userService;
 
     @Mock
     private TermsService termsService;
@@ -57,16 +57,16 @@ class AuthServiceTest {
     private AuthService authService;
 
     private final String refreshToken = "refresh-token";
-    private final Long memberId = 1L;
+    private final Long userId = 1L;
 
     @BeforeEach
     void setUp() {
         when(loginClient.supports()).thenReturn(SocialProvider.KAKAO);
         authService = new AuthService(
             List.of(loginClient),
-            memberRepository,
+            userRepository,
             jwtProvider,
-            memberService,
+            userService,
             termsService
         );
     }
@@ -74,18 +74,18 @@ class AuthServiceTest {
     @Test
     void 유효한_refreshToken이면_새_토큰_쌍을_발급한다() {
         // given
-        Member member = mock(Member.class);
-        given(member.getId()).willReturn(memberId);
-        given(member.getSocialProviderId()).willReturn("social-provider-id");
-        given(member.getRole()).willReturn(Role.USER);
+        User user = mock(User.class);
+        given(user.getId()).willReturn(userId);
+        given(user.getSocialProviderId()).willReturn("social-provider-id");
+        given(user.getRole()).willReturn(Role.USER);
 
         given(jwtProvider.isValid(refreshToken)).willReturn(true);
         given(jwtProvider.isRefreshToken(refreshToken)).willReturn(true);
-        given(jwtProvider.getUserId(refreshToken)).willReturn(memberId);
-        given(memberRepository.findById(memberId)).willReturn(Optional.of(member));
-        given(jwtProvider.createAccessToken(memberId, "social-provider-id", Role.USER))
+        given(jwtProvider.getUserId(refreshToken)).willReturn(userId);
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(jwtProvider.createAccessToken(userId, "social-provider-id", Role.USER))
             .willReturn("new-access-token");
-        given(jwtProvider.createRefreshToken(memberId, "social-provider-id", Role.USER))
+        given(jwtProvider.createRefreshToken(userId, "social-provider-id", Role.USER))
             .willReturn("new-refresh-token");
 
         // when
@@ -126,8 +126,8 @@ class AuthServiceTest {
         // given
         given(jwtProvider.isValid(refreshToken)).willReturn(true);
         given(jwtProvider.isRefreshToken(refreshToken)).willReturn(true);
-        given(jwtProvider.getUserId(refreshToken)).willReturn(memberId);
-        given(memberRepository.findById(memberId)).willReturn(Optional.empty());
+        given(jwtProvider.getUserId(refreshToken)).willReturn(userId);
+        given(userRepository.findById(userId)).willReturn(Optional.empty());
 
         // when // then
         assertThatThrownBy(() -> authService.reissue(refreshToken))
@@ -147,7 +147,7 @@ class AuthServiceTest {
             EMAIL
         );
         when(loginClient.authenticate(SOCIAL_ACCESS_TOKEN)).thenReturn(socialUserInfo);
-        when(memberRepository.findBySocialProviderAndSocialProviderId(
+        when(userRepository.findBySocialProviderAndSocialProviderId(
             SocialProvider.KAKAO,
             PROVIDER_ID
         )).thenReturn(Optional.empty());
@@ -159,7 +159,7 @@ class AuthServiceTest {
             SOCIAL_ACCESS_TOKEN
         );
 
-        verify(memberRepository, never()).save(any(Member.class));
+        verify(userRepository, never()).save(any(User.class));
         assertThat(result.signupToken()).isEqualTo("signup-token");
         assertThat(result.accessToken()).isNull();
         assertThat(result.isNewUser()).isTrue();
@@ -168,7 +168,7 @@ class AuthServiceTest {
     @Test
     void 기존_소셜_사용자는_새로_저장하지_않고_로그인_시각을_갱신한다() {
         LocalDateTime previousLoginAt = LocalDateTime.now().minusDays(1);
-        Member member = Member.register(
+        User user = User.register(
             SocialProvider.KAKAO,
             PROVIDER_ID,
             "old@example.com",
@@ -180,10 +180,10 @@ class AuthServiceTest {
             EMAIL
         );
         when(loginClient.authenticate(SOCIAL_ACCESS_TOKEN)).thenReturn(socialUserInfo);
-        when(memberRepository.findBySocialProviderAndSocialProviderId(
+        when(userRepository.findBySocialProviderAndSocialProviderId(
             SocialProvider.KAKAO,
             PROVIDER_ID
-        )).thenReturn(Optional.of(member));
+        )).thenReturn(Optional.of(user));
         when(jwtProvider.createAccessToken(any(), any(), any())).thenReturn("access-token");
 
         LoginResponse result = authService.login(
@@ -191,12 +191,12 @@ class AuthServiceTest {
             SOCIAL_ACCESS_TOKEN
         );
 
-        verify(memberRepository, never()).save(any(Member.class));
+        verify(userRepository, never()).save(any(User.class));
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(result.signupToken()).isNull();
         assertThat(result.isNewUser()).isFalse();
-        assertThat(member.getLastLoginAt()).isAfter(previousLoginAt);
-        assertThat(member.getLastAccessedAt()).isEqualTo(member.getLastLoginAt());
-        assertThat(member.getEmail()).isEqualTo(EMAIL);
+        assertThat(user.getLastLoginAt()).isAfter(previousLoginAt);
+        assertThat(user.getLastAccessedAt()).isEqualTo(user.getLastLoginAt());
+        assertThat(user.getEmail()).isEqualTo(EMAIL);
     }
 }

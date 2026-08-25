@@ -1,11 +1,11 @@
-package com.ringout.api.member.controller.docs;
+package com.ringout.api.user.controller.docs;
 
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.SwaggerConfig;
 import com.ringout.api.config.security.CustomUserDetails;
-import com.ringout.api.member.dto.request.UpdateNicknameRequest;
-import com.ringout.api.member.dto.response.UpdateNicknameResponse;
-import com.ringout.api.member.dto.response.UserResponse;
+import com.ringout.api.user.dto.request.UpdateNicknameRequest;
+import com.ringout.api.user.dto.response.UpdateNicknameResponse;
+import com.ringout.api.user.dto.response.UserResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -18,8 +18,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
-@Tag(name = "회원 (Member)", description = "회원 정보 관리 API")
-public interface MemberControllerApi {
+@Tag(name = "회원 (User)", description = "회원 정보 관리 API")
+public interface UserControllerApi {
 
     @Operation(
         summary = "내 회원 정보 조회",

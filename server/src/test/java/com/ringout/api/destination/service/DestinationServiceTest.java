@@ -23,8 +23,8 @@ import com.ringout.api.destination.dto.response.DestinationSyncResponse;
 import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
-import com.ringout.api.member.domain.Member;
-import com.ringout.api.member.repository.MemberRepository;
+import com.ringout.api.user.domain.User;
+import com.ringout.api.user.repository.UserRepository;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -44,20 +44,20 @@ class DestinationServiceTest {
     private DestinationRepository destinationRepository;
 
     @Mock
-    private MemberRepository memberRepository;
+    private UserRepository userRepository;
 
     private DestinationService destinationService;
 
     @BeforeEach
     void setUp() {
-        destinationService = new DestinationService(destinationRepository, memberRepository);
-        lenient().when(memberRepository.existsById(any())).thenReturn(true);
+        destinationService = new DestinationService(destinationRepository, userRepository);
+        lenient().when(userRepository.existsById(any())).thenReturn(true);
     }
 
-    private Member memberWithId(Long id) {
-        Member member = mock(Member.class);
-        lenient().when(member.getId()).thenReturn(id);
-        return member;
+    private User userWithId(Long id) {
+        User user = mock(User.class);
+        lenient().when(user.getId()).thenReturn(id);
+        return user;
     }
 
     @Nested
@@ -68,12 +68,12 @@ class DestinationServiceTest {
             // given
             Long userId = 1L;
             Destination firstDestination = Destination.create(
-                memberWithId(userId),
+                userWithId(userId),
                 DestinationAlias.from("런닝 장소"),
                 Coordinate.of(37.5665, 126.9780)
             );
             Destination secondDestination = Destination.create(
-                memberWithId(userId),
+                userWithId(userId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -125,7 +125,7 @@ class DestinationServiceTest {
         void 사용자가_존재하지_않으면_목적지_목록을_조회할_수_없다() {
             // given
             Long userId = 1L;
-            given(memberRepository.existsById(userId)).willReturn(false);
+            given(userRepository.existsById(userId)).willReturn(false);
 
             // when // then
             assertThatThrownBy(() -> destinationService.getDestinations(userId))
@@ -355,7 +355,7 @@ class DestinationServiceTest {
             Long userId = 1L;
             Long destinationId = 10L;
             Destination destination = Destination.create(
-                memberWithId(userId),
+                userWithId(userId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -382,7 +382,7 @@ class DestinationServiceTest {
             Long userId = 1L;
             Long destinationId = 10L;
             Destination destination = Destination.create(
-                memberWithId(userId),
+                userWithId(userId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -455,7 +455,7 @@ class DestinationServiceTest {
             Long userId = 1L;
             Long destinationId = 10L;
             Destination destination = Destination.create(
-                memberWithId(userId),
+                userWithId(userId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -492,7 +492,7 @@ class DestinationServiceTest {
             Long otherUserId = 2L;
             Long destinationId = 10L;
             Destination destination = Destination.create(
-                memberWithId(otherUserId),
+                userWithId(otherUserId),
                 DestinationAlias.from("헬스장"),
                 Coordinate.of(37.4979, 127.0276)
             );
@@ -515,7 +515,7 @@ class DestinationServiceTest {
             // given
             Long userId = 1L;
             Long destinationId = 10L;
-            Destination destination = Destination.create(memberWithId(userId), null, null);
+            Destination destination = Destination.create(userWithId(userId), null, null);
             given(destinationRepository.findById(destinationId)).willReturn(Optional.of(destination));
 
             // when
@@ -573,7 +573,7 @@ class DestinationServiceTest {
             Long userId = 1L;
             Long otherUserId = 2L;
             Long destinationId = 10L;
-            Destination destination = Destination.create(memberWithId(otherUserId), null, null);
+            Destination destination = Destination.create(userWithId(otherUserId), null, null);
             given(destinationRepository.findById(destinationId)).willReturn(Optional.of(destination));
 
             // when // then

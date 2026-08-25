@@ -1,7 +1,7 @@
 package com.ringout.api.terms.domain;
 
 import com.ringout.api.common.BaseEntity;
-import com.ringout.api.member.domain.Member;
+import com.ringout.api.user.domain.User;
 import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
@@ -26,7 +26,7 @@ import lombok.NoArgsConstructor;
     name = "member_agreement"
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class MemberAgreement extends BaseEntity {
+public class UserAgreement extends BaseEntity {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,7 +34,7 @@ public class MemberAgreement extends BaseEntity {
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "member_id")
-  private Member member;
+  private User user;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "terms_id")
@@ -49,16 +49,16 @@ public class MemberAgreement extends BaseEntity {
   private TermsVersion version;
 
   @Builder(access = AccessLevel.PRIVATE)
-  public MemberAgreement(Member member, Terms terms, TermsType type, TermsVersion version) {
-    this.member = member;
+  public UserAgreement(User user, Terms terms, TermsType type, TermsVersion version) {
+    this.user = user;
     this.terms = terms;
     this.type = type;
     this.version = version;
   }
 
-  public static MemberAgreement of(Member member, Terms terms, TermsType type, TermsVersion version) {
-    return MemberAgreement.builder()
-        .member(member)
+  public static UserAgreement of(User user, Terms terms, TermsType type, TermsVersion version) {
+    return UserAgreement.builder()
+        .user(user)
         .terms(terms)
         .type(type)
         .version(version)

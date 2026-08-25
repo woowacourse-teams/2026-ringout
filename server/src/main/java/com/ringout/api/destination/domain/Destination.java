@@ -3,7 +3,7 @@ package com.ringout.api.destination.domain;
 import com.ringout.api.common.BaseEntity;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.destination.status.DestinationErrorStatus;
-import com.ringout.api.member.domain.Member;
+import com.ringout.api.user.domain.User;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -37,16 +37,16 @@ public class Destination extends BaseEntity {
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "user_id", nullable = false)
-  private Member member;
+  private User user;
 
-  private Destination(Member member, DestinationAlias alias, Coordinate coordinate) {
-    this.member = member;
+  private Destination(User user, DestinationAlias alias, Coordinate coordinate) {
+    this.user = user;
     this.alias = alias;
     this.coordinate = coordinate;
   }
 
-  public static Destination create(Member member, DestinationAlias alias, Coordinate coordinate) {
-    return new Destination(member, alias, coordinate);
+  public static Destination create(User user, DestinationAlias alias, Coordinate coordinate) {
+    return new Destination(user, alias, coordinate);
   }
 
   public void update(String alias, Double latitude, Double longitude) {
@@ -55,7 +55,7 @@ public class Destination extends BaseEntity {
   }
 
   public boolean isOwnedBy(Long userId) {
-    return this.member.getId().equals(userId);
+    return this.user.getId().equals(userId);
   }
 
   private void updateAlias(String alias) {

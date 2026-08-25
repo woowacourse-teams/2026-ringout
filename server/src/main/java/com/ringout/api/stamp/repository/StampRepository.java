@@ -9,22 +9,22 @@ import org.springframework.data.repository.query.Param;
 
 public interface StampRepository extends JpaRepository<Stamp, Long> {
 
-  boolean existsByMemberIdAndRecordDate(Long memberId, LocalDate recordDate);
+  boolean existsByUserIdAndRecordDate(Long userId, LocalDate recordDate);
 
   @Query(
       value = """
             select s.record_date
             from stamp s
-            where s.member_id = :memberId 
-            and s.result = 'SUCCESS' 
+            where s.member_id = :userId
+            and s.result = 'SUCCESS'
             and s.record_date >= :startDate
             and s.record_date < :endDate
             order by s.record_date
           """,
       nativeQuery = true
   )
-  List<LocalDate> findSuccessDatesByMemberIdAndPeriod(
-      @Param("memberId") Long memberId,
+  List<LocalDate> findSuccessDatesByUserIdAndPeriod(
+      @Param("userId") Long userId,
       @Param("startDate") LocalDate startDate,
       @Param("endDate") LocalDate endDate);
 }

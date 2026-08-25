@@ -1,15 +1,15 @@
 package com.ringout.api.terms.service;
 
 import com.ringout.api.common.response.error.GeneralException;
-import com.ringout.api.member.domain.Member;
-import com.ringout.api.member.repository.MemberRepository;
-import com.ringout.api.terms.domain.MemberAgreement;
+import com.ringout.api.user.domain.User;
+import com.ringout.api.user.repository.UserRepository;
+import com.ringout.api.terms.domain.UserAgreement;
 import com.ringout.api.terms.domain.Terms;
 import com.ringout.api.terms.domain.TermsType;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
-import com.ringout.api.terms.repository.MemberAgreementRepository;
+import com.ringout.api.terms.repository.UserAgreementRepository;
 import com.ringout.api.terms.repository.TermsRepository;
 import com.ringout.api.terms.status.TermsErrorStatus;
 import java.time.Clock;
@@ -26,13 +26,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
 public class TermsService {
 
-    private final MemberAgreementRepository memberAgreementRepository;
+    private final UserAgreementRepository userAgreementRepository;
     private final TermsRepository termsRepository;
-    private final MemberRepository memberRepository;
+    private final UserRepository userRepository;
     private final Clock clock;
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    public TermsAgreeResponse termsAgree(Long memberId, TermsAgreeRequest request) {
+    public TermsAgreeResponse termsAgree(Long userId, TermsAgreeRequest request) {
         LocalDate agreedAt = parseAgreedAt(request.agreedAt());
         List<TermsType> requestedTypes = request.termsTypes();
 
@@ -44,12 +44,12 @@ public class TermsService {
 
         List<Terms> newlyAgreedTerms = effectiveTerms.stream()
             .filter(
-                terms -> !memberAgreementRepository.existsByMemberIdAndTermsId(memberId, terms.getId()))
+                terms -> !userAgreementRepository.existsByUserIdAndTermsId(userId, terms.getId()))
             .toList();
 
         validateHasNewAgreements(newlyAgreedTerms);
 
-        saveAgreements(memberId, newlyAgreedTerms);
+        saveAgreements(userId, newlyAgreedTerms);
 
         List<String> agreedTermTypeNames = requestedTypes.stream()
             .map(Enum::name)
@@ -58,11 +58,11 @@ public class TermsService {
         return TermsAgreeResponse.of(agreedTermTypeNames, agreedAt);
     }
 
-    public CheckRequiredTermsAgreedResponse checkRequiredTermsAgreed(Long memberId) {
+    public CheckRequiredTermsAgreedResponse checkRequiredTermsAgreed(Long userId) {
         boolean agreement = TermsType.required().stream()
             .map(type -> findEffectiveTerms(type, LocalDate.now(clock)))
             .allMatch(
-                terms -> memberAgreementRepository.existsByMemberIdAndTermsId(memberId, terms.getId()));
+                terms -> userAgreementRepository.existsByUserIdAndTermsId(userId, terms.getId()));
 
         return CheckRequiredTermsAgreedResponse.of(agreement);
     }
@@ -73,12 +73,12 @@ public class TermsService {
         }
     }
 
-    private void saveAgreements(Long memberId, List<Terms> newlyAgreedTerms) {
-        Member member = memberRepository.getReferenceById(memberId);
-        List<MemberAgreement> agreements = newlyAgreedTerms.stream()
-            .map(terms -> MemberAgreement.of(member, terms, terms.getType(), terms.getVersion()))
+    private void saveAgreements(Long userId, List<Terms> newlyAgreedTerms) {
+        User user = userRepository.getReferenceById(userId);
+        List<UserAgreement> agreements = newlyAgreedTerms.stream()
+            .map(terms -> UserAgreement.of(user, terms, terms.getType(), terms.getVersion()))
             .toList();
-        memberAgreementRepository.saveAll(agreements);
+        userAgreementRepository.saveAll(agreements);
     }
 
     private LocalDate parseAgreedAt(String agreedAt) {
