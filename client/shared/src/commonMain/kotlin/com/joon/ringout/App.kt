@@ -12,7 +12,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -20,9 +19,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.analytics.AnalyticsLoginState
-import com.joon.ringout.analytics.completeAccountWithdrawal
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
+import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.DefaultMissionLocationState
@@ -51,16 +50,18 @@ import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.termsagreement.TermId
 import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
 import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
-import com.joon.ringout.presentation.mypage.MyPageAccountUiState
-import com.joon.ringout.presentation.mypage.MyPageAccountViewModel
 import com.joon.ringout.presentation.mypage.MyPageScreen
+import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.mypage.PolicyId
+import com.joon.ringout.presentation.mypage.currentMissionYearMonth
 import com.joon.ringout.presentation.mypage.findPolicyUrl
+import com.joon.ringout.presentation.mypage.rememberMissionHistoryRepository
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
+import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
+import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
 import com.joon.ringout.presentation.nickname.NicknameChangeScreen
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 
 @Composable
 fun App(
@@ -182,24 +183,28 @@ private fun RingoutAppContent(
     val memberRepository = appContainer.memberRepository
     val authSessionState by authSession.state.collectAsState()
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
-    val coroutineScope = rememberCoroutineScope()
-    val myPageAccountViewModel: MyPageAccountViewModel = viewModel {
-        MyPageAccountViewModel(memberRepository)
+    val missionHistoryRepository = rememberMissionHistoryRepository()
+    val myPageViewModel: MyPageViewModel = viewModel {
+        MyPageViewModel(
+            getMissionSuccessDates = GetMissionSuccessDates(missionHistoryRepository),
+            memberRepository = memberRepository,
+            authRepository = authRepository,
+            productAnalyticsRecorder = productAnalyticsRecorder,
+            initialMonth = currentMissionYearMonth(),
+        )
     }
-    val myPageAccountUiState = myPageAccountViewModel.uiState
-    var withdrawalErrorMessage by rememberSaveable { mutableStateOf<String?>(null) }
-    var isWithdrawalInProgress by remember { mutableStateOf(false) }
+    val myPageUiState = myPageViewModel.uiState
     LaunchedEffect(authSessionState) {
         when (authSessionState) {
-            AuthSessionState.Restoring -> myPageAccountViewModel.onSessionRestoring()
+            AuthSessionState.Restoring -> myPageViewModel.onSessionRestoring()
             AuthSessionState.Unauthenticated,
             AuthSessionState.ReauthenticationRequired,
             -> {
-                myPageAccountViewModel.onLoggedOut()
+                myPageViewModel.onLoggedOut()
                 destinationViewModel.onLoggedOut()
             }
 
-            AuthSessionState.Authenticated -> myPageAccountViewModel.onAuthenticated()
+            AuthSessionState.Authenticated -> myPageViewModel.onAuthenticated()
         }
     }
     val loginViewModel: LoginViewModel = viewModel {
@@ -235,18 +240,28 @@ private fun RingoutAppContent(
         alarmSetupViewModel.permissionDialog,
         destinationUiState.errorMessage,
         homeUiState.errorMessage,
-        withdrawalErrorMessage,
     ) {
         if (authSessionState == AuthSessionState.ReauthenticationRequired) {
             signupViewModel.resetSignup()
             alarmSetupViewModel.resetSaveFlow()
             homeViewModel.clearError()
-            withdrawalErrorMessage = null
+            myPageViewModel.resetAccountActionFlow()
             if (destinationUiState.errorMessage != null) {
                 destinationViewModel.clearError()
             }
             screenName = AppScreen.Login.name
         }
+    }
+    val completedAccountAction =
+        myPageUiState.accountAction as? MyPageAccountActionState.Completed
+    LaunchedEffect(completedAccountAction?.eventId) {
+        val completed = completedAccountAction ?: return@LaunchedEffect
+        signupViewModel.resetSignup()
+        screenName = when (completed.action) {
+            MyPageAccountAction.Logout -> AppScreen.Login.name
+            MyPageAccountAction.Withdraw -> AppScreen.MyPage.name
+        }
+        myPageViewModel.consumeAccountActionCompletedEvent(completed.eventId)
     }
     val requestedScreen = AppScreen.valueOf(screenName)
     val screen = resolveAppScreen(
@@ -434,22 +449,6 @@ private fun RingoutAppContent(
         )
     }
 
-    if (
-        (screen == AppScreen.MyPage || screen == AppScreen.Settings) &&
-        withdrawalErrorMessage != null
-    ) {
-        AlertDialog(
-            onDismissRequest = { withdrawalErrorMessage = null },
-            title = { Text("회원 탈퇴를 완료하지 못했습니다") },
-            text = { Text(withdrawalErrorMessage.orEmpty()) },
-            confirmButton = {
-                TextButton(onClick = { withdrawalErrorMessage = null }) {
-                    Text("확인")
-                }
-            },
-        )
-    }
-
     when (screen) {
         AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
             AlarmRingingScreen(
@@ -516,58 +515,35 @@ private fun RingoutAppContent(
         AppScreen.MyPage,
         AppScreen.Settings,
         -> MyPageScreen(
+            uiState = myPageUiState,
             themeMode = themeMode,
             appVersion = appVersion,
             policies = DefaultMyPagePolicies,
-            accountUiState = myPageAccountUiState,
+            onScreenEntered = myPageViewModel::onScreenEntered,
             onThemeModeChange = onThemeModeChange,
+            onPreviousMonthClick = myPageViewModel::onPreviousMonthClick,
+            onNextMonthClick = myPageViewModel::onNextMonthClick,
+            onCalendarRetry = myPageViewModel::retryCalendar,
             onBackClick = { screenName = AppScreen.Home.name },
             onAccountStatusClick = { screenName = AppScreen.Login.name },
-            onAccountRetry = myPageAccountViewModel::retry,
+            onAccountRetry = myPageViewModel::retryAccount,
             onEditProfileClick = {
-                if (myPageAccountUiState is MyPageAccountUiState.LoggedIn) {
+                if (myPageUiState.accountStatus is MyPageAccountStatus.LoggedIn) {
                     screenName = AppScreen.NicknameChange.name
                 }
             },
-            onLogoutConfirm = {
-                coroutineScope.launch {
-                    authRepository.logout()
-                    signupViewModel.resetSignup()
-                    screenName = AppScreen.Login.name
-                }
-            },
-            onWithdrawConfirm = withdraw@ {
-                if (isWithdrawalInProgress) return@withdraw
-                isWithdrawalInProgress = true
-                coroutineScope.launch {
-                    try {
-                        completeAccountWithdrawal(
-                            withdraw = memberRepository::withdraw,
-                            logout = authRepository::logout,
-                            productAnalyticsRecorder = productAnalyticsRecorder,
-                        )
-                        signupViewModel.resetSignup()
-                        withdrawalErrorMessage = null
-                        screenName = AppScreen.MyPage.name
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Throwable) {
-                        withdrawalErrorMessage = error.message ?: "회원 탈퇴를 다시 시도해 주세요."
-                    } finally {
-                        isWithdrawalInProgress = false
-                    }
-                }
-            },
+            onLogoutConfirm = myPageViewModel::logout,
+            onWithdrawConfirm = myPageViewModel::withdraw,
+            onAccountActionErrorDismiss = myPageViewModel::clearAccountActionError,
             onPolicyClick = { policyId ->
                 findPolicyUrl(policyId)?.let { url ->
                     runCatching { uriHandler.openUri(url) }
                 }
             },
-            productAnalyticsRecorder = productAnalyticsRecorder,
         )
 
         AppScreen.NicknameChange -> {
-            val account = myPageAccountUiState as? MyPageAccountUiState.LoggedIn
+            val account = myPageUiState.accountStatus as? MyPageAccountStatus.LoggedIn
             if (account == null) {
                 LaunchedEffect(authSessionState) {
                     if (authSessionState != AuthSessionState.Restoring) {
@@ -580,7 +556,7 @@ private fun RingoutAppContent(
                     memberRepository = memberRepository,
                     onBackClick = { screenName = AppScreen.MyPage.name },
                     onConfirmClick = { updatedNickname ->
-                        myPageAccountViewModel.onNicknameUpdated(updatedNickname)
+                        myPageViewModel.onNicknameUpdated(updatedNickname)
                         screenName = AppScreen.MyPage.name
                     },
                 )

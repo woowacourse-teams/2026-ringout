@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -32,6 +33,7 @@ import org.jetbrains.compose.resources.painterResource
 fun MyPageAccountManagementSection(
     onLogoutClick: () -> Unit,
     onWithdrawClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val colors = myPageColors()
@@ -51,11 +53,13 @@ fun MyPageAccountManagementSection(
         MyPageAccountManagementRow(
             title = "로그아웃",
             iconResource = MyPageLogoutIconResource,
+            enabled = enabled,
             onClick = onLogoutClick,
         )
         MyPageAccountManagementRow(
             title = "회원탈퇴",
             iconResource = MyPageDeleteAccountIconResource,
+            enabled = enabled,
             onClick = onWithdrawClick,
         )
     }
@@ -65,6 +69,7 @@ fun MyPageAccountManagementSection(
 private fun MyPageAccountManagementRow(
     title: String,
     iconResource: DrawableResource,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val colors = myPageColors()
@@ -73,7 +78,9 @@ private fun MyPageAccountManagementRow(
         modifier = Modifier
             .fillMaxWidth()
             .height(AccountManagementRowHeight)
+            .alpha(if (enabled) EnabledAlpha else DisabledAlpha)
             .clickable(
+                enabled = enabled,
                 role = Role.Button,
                 onClickLabel = title,
                 onClick = onClick,
@@ -117,6 +124,8 @@ private val AccountManagementRowEndPadding = 18.dp
 private val AccountManagementIconSize = 24.dp
 private val AccountManagementIconSpacing = 11.dp
 private val AccountManagementChevronWidth = 9.dp
+private const val EnabledAlpha = 1f
+private const val DisabledAlpha = 0.5f
 
 @Preview(name = "Account management - Dark", widthDp = 402)
 @Composable
