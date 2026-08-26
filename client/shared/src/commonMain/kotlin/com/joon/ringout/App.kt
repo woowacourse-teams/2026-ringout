@@ -3,9 +3,6 @@ package com.joon.ringout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -43,6 +40,9 @@ import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginScreen
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
+import com.joon.ringout.presentation.common.AppMessageSource
+import com.joon.ringout.presentation.common.resolveAppMessage
+import com.joon.ringout.presentation.common.component.AppMessageHost
 import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
@@ -400,54 +400,24 @@ private fun RingoutAppContent(
         }
     }
 
-    if (
-        screen == AppScreen.Home &&
-        homeUiState.errorMessage != null
-    ) {
-        AlertDialog(
-            onDismissRequest = homeViewModel::clearError,
-            title = { Text("알람을 처리할 수 없습니다") },
-            text = { Text(homeUiState.errorMessage.orEmpty()) },
-            confirmButton = {
-                TextButton(onClick = homeViewModel::clearError) {
-                    Text("확인")
-                }
-            },
-        )
-    }
-
-    if (
-        canShowAppDialog(screen, authSessionState) &&
-        alarmSetupUiState.errorMessage != null
-    ) {
-        AlertDialog(
-            onDismissRequest = alarmSetupViewModel::clearError,
-            title = { Text("알람을 처리할 수 없습니다") },
-            text = { Text(alarmSetupUiState.errorMessage.orEmpty()) },
-            confirmButton = {
-                TextButton(onClick = alarmSetupViewModel::clearError) {
-                    Text("확인")
-                }
-            },
-        )
-    }
-
-    if (
-        canShowAppDialog(screen, authSessionState) &&
-        alarmSetupUiState.errorMessage == null &&
-        destinationUiState.errorMessage != null
-    ) {
-        AlertDialog(
-            onDismissRequest = destinationViewModel::clearError,
-            title = { Text("목적지를 처리할 수 없습니다") },
-            text = { Text(destinationUiState.errorMessage.orEmpty()) },
-            confirmButton = {
-                TextButton(onClick = destinationViewModel::clearError) {
-                    Text("확인")
-                }
-            },
-        )
-    }
+    val pendingAppMessage = resolveAppMessage(
+        screen = screen,
+        authSessionState = authSessionState,
+        homeErrorMessage = homeUiState.errorMessage,
+        alarmSetupErrorMessage = alarmSetupUiState.errorMessage,
+        destinationErrorMessage = destinationUiState.errorMessage,
+    )
+    AppMessageHost(
+        state = pendingAppMessage?.state,
+        onDismiss = {
+            when (pendingAppMessage?.source) {
+                AppMessageSource.Home -> homeViewModel.clearError()
+                AppMessageSource.AlarmSetup -> alarmSetupViewModel.clearError()
+                AppMessageSource.Destination -> destinationViewModel.clearError()
+                null -> Unit
+            }
+        },
+    )
 
     when (screen) {
         AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
