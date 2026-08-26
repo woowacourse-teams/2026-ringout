@@ -167,21 +167,29 @@ jobs:
           DEPLOYMENT_REASON: ${{ needs.inspect.outputs.reason }}
           DOCKERHUB_USERNAME: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.SERVER_DOCKERHUB_TOKEN }}
-          SERVER_ENV_FILE: ${{ secrets.SERVER_ENV_FILE }}
-          APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
           APP_PORT: ${{ vars.SERVER_PORT || '8080' }}
         run: |
           set -eu
           
           APP_DIRECTORY="$HOME/ringout"
           APP_ENV_FILE="$APP_DIRECTORY/.env"
-          mkdir -p "$APP_DIRECTORY"
-          chmod 700 "$APP_DIRECTORY"
-          printf '%s\n' "$SERVER_ENV_FILE" > "$APP_ENV_FILE.tmp"
-          printf 'APPLE_CLIENT_ID=%s\n' "$APPLE_CLIENT_ID" >> "$APP_ENV_FILE.tmp"
-          printf 'SPRING_PROFILES_ACTIVE=prod\n' >> "$APP_ENV_FILE.tmp"
-          chmod 600 "$APP_ENV_FILE.tmp"
-          mv "$APP_ENV_FILE.tmp" "$APP_ENV_FILE"
+
+          if [ ! -f "$APP_ENV_FILE" ]; then
+            echo "Environment file not found: $APP_ENV_FILE"
+            echo "Create the file on the server before deploying."
+            exit 1
+          fi
+          
+          MISSING_KEYS=""
+          for key in DB_URL DB_USERNAME DB_PASSWORD APPLE_CLIENT_ID JWT_SECRET; do
+            if ! grep -Eq "^[[:space:]]*$key=" "$APP_ENV_FILE"; then
+              MISSING_KEYS="$MISSING_KEYS $key"
+            fi
+          done
+          if [ -n "$MISSING_KEYS" ]; then
+            echo "Missing required keys in $APP_ENV_FILE:$MISSING_KEYS"
+            exit 1
+          fi
           
           wait_for_health() {
             attempt=1

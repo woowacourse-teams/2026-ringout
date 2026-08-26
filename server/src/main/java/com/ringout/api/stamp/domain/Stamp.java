@@ -31,33 +31,33 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Stamp extends BaseEntity {
 
-  @Id
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
-  private Long id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-  @Column(name = "record_date", nullable = false, updatable = false)
-  private LocalDate recordDate;
+    @Column(name = "record_date", nullable = false, updatable = false)
+    private LocalDate recordDate;
 
-  @Enumerated(EnumType.STRING)
-  @Column(nullable = false, length = 10)
-  private GoalResult result;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private GoalResult result;
 
-  @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "user_id")
-  private User user;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
 
-  @Builder(access = AccessLevel.PRIVATE)
-  public Stamp(LocalDate recordDate, GoalResult result, User user) {
-    this.recordDate = recordDate;
-    this.result = result;
-    this.user = user;
-  }
+    @Builder(access = AccessLevel.PRIVATE)
+    public Stamp(LocalDate recordDate, GoalResult result, User user) {
+        this.recordDate = recordDate;
+        this.result = result;
+        this.user = user;
+    }
 
-  public static Stamp of(LocalDate recordDate, GoalResult result, User user) {
-    return Stamp.builder()
-        .recordDate(recordDate)
-        .result(result)
-        .user(user)
-        .build();
-  }
+    public static Stamp of(LocalDate recordDate, GoalResult result, User user) {
+        return Stamp.builder()
+            .recordDate(recordDate)
+            .result(result)
+            .user(user)
+            .build();
+    }
 }
