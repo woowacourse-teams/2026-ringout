@@ -10,6 +10,9 @@ import com.joon.ringout.data.destination.DefaultDestinationRepository
 import com.joon.ringout.data.destination.KtorDestinationRemoteDataSource
 import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.member.DefaultMemberRepository
+import com.joon.ringout.data.missionhistory.DefaultMissionHistoryRepository
+import com.joon.ringout.data.missionhistory.KtorMissionHistoryRemoteDataSource
+import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
 import com.joon.ringout.data.network.getRingoutHttpClient
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.getAppPreferencesDataStore
@@ -49,6 +52,16 @@ class AndroidAppContainer(
                 httpClient = httpClient,
                 tokenStorage = tokenStorage,
             )
+        )
+
+    override val missionHistoryRepository =
+        DefaultMissionHistoryRepository(
+            dataSource = RoomMissionHistoryDataSource(database.missionHistoryDao()),
+            remoteDataSource =
+                KtorMissionHistoryRemoteDataSource(
+                    httpClient = httpClient,
+                    tokenStorage = tokenStorage,
+                ),
         )
 
     override val productAnalyticsRecorder =

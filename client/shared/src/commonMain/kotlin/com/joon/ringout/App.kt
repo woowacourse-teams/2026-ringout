@@ -55,7 +55,6 @@ import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.mypage.PolicyId
 import com.joon.ringout.presentation.mypage.currentMissionYearMonth
 import com.joon.ringout.presentation.mypage.findPolicyUrl
-import com.joon.ringout.presentation.mypage.rememberMissionHistoryRepository
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
@@ -183,10 +182,11 @@ private fun RingoutAppContent(
     val memberRepository = appContainer.memberRepository
     val authSessionState by authSession.state.collectAsState()
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
-    val missionHistoryRepository = rememberMissionHistoryRepository()
     val myPageViewModel: MyPageViewModel = viewModel {
         MyPageViewModel(
-            getMissionSuccessDates = GetMissionSuccessDates(missionHistoryRepository),
+            getMissionSuccessDates = GetMissionSuccessDates(
+                appContainer.missionHistoryRepository,
+            ),
             memberRepository = memberRepository,
             authRepository = authRepository,
             productAnalyticsRecorder = productAnalyticsRecorder,
