@@ -3,6 +3,7 @@ package com.ringout.api.config;
 import io.micrometer.cloudwatch2.CloudWatchConfig;
 import io.micrometer.cloudwatch2.CloudWatchMeterRegistry;
 import io.micrometer.core.instrument.Clock;
+import io.micrometer.core.instrument.config.MeterFilter;
 import java.time.Duration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,6 +14,9 @@ import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient;
 @Configuration
 @Profile("prod")
 public class CloudWatchMetricConfig {
+
+    private static final String HTTP_SERVER_REQUESTS_METRIC = "http.server.requests";
+    private static final String ACTUATOR_HEALTH_URI = "/actuator/health";
 
     @Bean
     public CloudWatchConfig cloudWatchConfig() {
@@ -46,10 +50,19 @@ public class CloudWatchMetricConfig {
         CloudWatchConfig cloudWatchConfig,
         CloudWatchAsyncClient cloudWatchAsyncClient
     ) {
-        return new CloudWatchMeterRegistry(
+        CloudWatchMeterRegistry registry = new CloudWatchMeterRegistry(
             cloudWatchConfig,
             Clock.SYSTEM,
             cloudWatchAsyncClient
         );
+        registry.config()
+            .meterFilter(MeterFilter.deny(
+                id -> HTTP_SERVER_REQUESTS_METRIC.equals(id.getName())
+                    && ACTUATOR_HEALTH_URI.equals(id.getTag("uri"))
+            ))
+            .meterFilter(MeterFilter.denyUnless(
+                id -> HTTP_SERVER_REQUESTS_METRIC.equals(id.getName())
+            ));
+        return registry;
     }
 }
