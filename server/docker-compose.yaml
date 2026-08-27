@@ -19,7 +19,7 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping --host=127.0.0.1 --user=root --password=\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      test: [ "CMD-SHELL", "mysqladmin ping --host=127.0.0.1 --user=root --password=\"$${MYSQL_ROOT_PASSWORD}\" --silent" ]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -49,6 +49,8 @@ services:
       JWT_SIGNUP_TOKEN_EXPIRATION_MILLIS: ${JWT_SIGNUP_TOKEN_EXPIRATION_MILLIS:?JWT_SIGNUP_TOKEN_EXPIRATION_MILLIS is required}
       TZ: Asia/Seoul
       JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      APP_ENV: ${APP_ENV:-prod}
     ports:
       - "${SERVER_BIND_ADDRESS:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
     security_opt:

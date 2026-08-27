@@ -27,7 +27,10 @@ management:
     web:
       exposure:
         include: health
-
+  metrics:
+    tags:
+      environment: ${APP_ENV:${spring.profiles.active:local}}
+      service: ringout
 springdoc:
   api-docs:
     path: /v3/api-docs
