@@ -56,6 +56,11 @@ public class CloudWatchMetricConfig {
             cloudWatchAsyncClient
         );
         registry.config()
+            .meterFilter(MeterFilter.ignoreTags(
+                "error",
+                "exception",
+                "outcome"
+            ))
             .meterFilter(MeterFilter.deny(
                 id -> HTTP_SERVER_REQUESTS_METRIC.equals(id.getName())
                     && ACTUATOR_HEALTH_URI.equals(id.getTag("uri"))
