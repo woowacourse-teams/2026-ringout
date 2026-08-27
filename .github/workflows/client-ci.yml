@@ -1,0 +1,106 @@
+name: Client CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: client
+
+jobs:
+  changes:
+    name: Check client changes and PR route
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      client_changed: ${{ steps.changes.outputs.client_changed }}
+    steps:
+      - name: Checkout PR merge commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check changed paths and PR route
+        id: changes
+        run: python3 ci/pipeline.py changes
+
+  quality:
+    name: Android tests, lint, and release verification
+    needs: changes
+    if: needs.changes.outputs.client_changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout PR merge commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Corretto JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: corretto
+          java-version: '21'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        with:
+          cache-read-only: true
+      - name: Install Android SDK packages
+        # The runner image installs sdkmanager without adding it to PATH.
+        run: |
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            'platforms;android-36' 'build-tools;36.0.0'
+      - name: Test CI routing and artifact checks
+        run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
+      - name: Test shared code and run Android Lint
+        run: |
+          ./gradlew :shared:testAndroidHostTest :androidApp:lintRelease \
+            -PciVerification=true --no-daemon --no-configuration-cache --stacktrace
+      - name: Build unsigned release AAB
+        run: |
+          ./gradlew :androidApp:bundleRelease \
+            -PciVerification=true --no-daemon --no-configuration-cache --stacktrace
+      - name: Verify R8 outputs and absence of signing
+        run: |
+          python3 ci/pipeline.py verify-r8
+          python3 ci/pipeline.py verify-unsigned
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: client-ci-reports-pr-${{ github.event.pull_request.number }}-attempt${{ github.run_attempt }}
+          path: |
+            client/shared/build/test-results/testAndroidHostTest/
+            client/shared/build/reports/tests/testAndroidHostTest/
+            client/androidApp/build/reports/lint-results-release.*
+            client/androidApp/build/outputs/mapping/release/
+          if-no-files-found: warn
+          retention-days: 14
+
+  result:
+    # Register only this stable, unconditional job as a required status check.
+    name: Client CI
+    if: always()
+    needs: [changes, quality]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require all applicable checks to pass
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CLIENT_CHANGED: ${{ needs.changes.outputs.client_changed }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+        run: python3 ci/pipeline.py gate
