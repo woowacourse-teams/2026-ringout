@@ -4,6 +4,11 @@ on:
   pull_request:
     branches: [develop, main]
     types: [opened, synchronize, reopened, edited]
+    paths:
+      - 'client/**'
+      - '.github/workflows/client-ci.yml'
+      - '.github/workflows/build-release-aab.yml'
+      - '.github/actions/**'
 
 permissions:
   contents: read
@@ -87,7 +92,7 @@ jobs:
           retention-days: 14
 
   result:
-    # Register only this stable, unconditional job as a required status check.
+    # Summarize triggered runs; path-filtered workflows must not be required for every PR.
     name: Client CI
     if: always()
     needs: [changes, quality]
