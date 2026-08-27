@@ -2,5 +2,7 @@
 build
 .idea
 .env
+.env.*
 *.iml
 HELP.md
+docs

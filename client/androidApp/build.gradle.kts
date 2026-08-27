@@ -1,4 +1,5 @@
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import com.google.gms.googleservices.GoogleServicesTask
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.tasks.Input
@@ -6,15 +7,16 @@ import org.gradle.api.tasks.TaskAction
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
-abstract class ValidateMapsApiKeyTask : DefaultTask() {
+abstract class ValidateReleaseConfigurationTask : DefaultTask() {
     @get:Input
-    var isConfigured = false
+    var missingSettings: List<String> = emptyList()
 
     @TaskAction
     fun validate() {
-        if (!isConfigured) {
+        if (missingSettings.isNotEmpty()) {
             throw GradleException(
-                "MAPS_API_KEY must be set in local.properties or the environment for release builds.",
+                "Release configuration is missing: ${missingSettings.joinToString()}. " +
+                    "Use -PciVerification=true only for an unsigned, non-distributable CI build.",
             )
         }
     }
@@ -28,24 +30,36 @@ plugins {
     alias(libs.plugins.firebaseCrashlytics)
 }
 
+// Verification is explicit: missing release secrets never enable this mode implicitly.
+val ciVerification = providers.gradleProperty("ciVerification")
+    .map { it.toBooleanStrict() }
+    .getOrElse(false)
+
 val localProperties = Properties().apply {
     val localPropertiesFile = rootProject.file("local.properties")
-    if (localPropertiesFile.exists()) {
+    if (!ciVerification && localPropertiesFile.exists()) {
         localPropertiesFile.inputStream().use(::load)
     }
 }
 
-val mapsApiKey = localProperties.getProperty("MAPS_API_KEY")
-    ?.takeIf(String::isNotBlank)
-    ?: providers.environmentVariable("MAPS_API_KEY").orNull.orEmpty()
+val mapsApiKey = if (ciVerification) {
+    "CI_VERIFICATION_ONLY"
+} else {
+    localProperties.getProperty("MAPS_API_KEY")?.takeIf(String::isNotBlank)
+        ?: providers.environmentVariable("MAPS_API_KEY").orNull.orEmpty()
+}
 
 val escapedMapsApiKey = mapsApiKey
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
-val kakaoNativeAppKey = localProperties.getProperty("KAKAO_NATIVE_APP_KEY")
-    ?.takeIf(String::isNotBlank)
-    ?: providers.environmentVariable("KAKAO_NATIVE_APP_KEY").orNull.orEmpty()
+val ciKakaoNativeAppKey = "00000000000000000000000000000000"
+val kakaoNativeAppKey = if (ciVerification) {
+    ciKakaoNativeAppKey
+} else {
+    localProperties.getProperty("KAKAO_NATIVE_APP_KEY")?.takeIf(String::isNotBlank)
+        ?: providers.environmentVariable("KAKAO_NATIVE_APP_KEY").orNull.orEmpty()
+}
 
 val escapedKakaoNativeAppKey = kakaoNativeAppKey
     .replace("\\", "\\\\")
@@ -63,6 +77,27 @@ val releaseKeyAlias =
 val releaseKeyPassword =
     providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
 
+val appVersionCode = providers.environmentVariable("APP_VERSION_CODE").orNull?.let { value ->
+    value.toIntOrNull()?.takeIf { it in 1..2_100_000_000 }
+        ?: throw GradleException("APP_VERSION_CODE must be an integer between 1 and 2100000000.")
+} ?: 261010004
+
+val googleServicesJsonPath = providers.environmentVariable("GOOGLE_SERVICES_JSON_PATH").orNull
+if (ciVerification || !googleServicesJsonPath.isNullOrBlank()) {
+    // Configure after Google's onVariants callback has registered the task and its defaults.
+    androidComponents.onVariants { variant ->
+        val variantName = variant.name.replaceFirstChar(Char::uppercaseChar)
+        tasks.named<GoogleServicesTask>("process${variantName}GoogleServices").configure {
+            googleServicesJsonFiles.set(
+                listOf(
+                    if (ciVerification) rootProject.file("ci/google-services.ci.json")
+                    else file(requireNotNull(googleServicesJsonPath)),
+                ),
+            )
+            googleServicesJsonFiles.disallowChanges()
+        }
+    }
+}
 
 kotlin {
     compilerOptions {
@@ -96,7 +131,7 @@ android {
         applicationId = "com.joon.ringout"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 261010004
+        versionCode = appVersionCode
         versionName = "1.1.0"
         buildConfigField("String", "MAPS_API_KEY", "\"$escapedMapsApiKey\"")
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$escapedKakaoNativeAppKey\"")
@@ -123,7 +158,7 @@ android {
 
     buildTypes {
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (ciVerification) null else signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -131,7 +166,7 @@ android {
                 "proguard-rules.pro",
             )
             configure<CrashlyticsExtension> {
-                mappingFileUploadEnabled = true
+                mappingFileUploadEnabled = !ciVerification
             }
         }
     }
@@ -142,12 +177,19 @@ android {
     }
 }
 
-val validateReleaseMapsApiKey by tasks.registering(ValidateMapsApiKeyTask::class) {
+val validateReleaseConfiguration by tasks.registering(ValidateReleaseConfigurationTask::class) {
     group = "verification"
-    description = "Fails release builds when MAPS_API_KEY is not configured."
-    isConfigured = mapsApiKey.isNotBlank()
+    description = "Requires real app configuration and signing credentials outside CI verification."
+    missingSettings = if (ciVerification) emptyList() else buildList {
+        if (mapsApiKey.isBlank() || mapsApiKey == "CI_VERIFICATION_ONLY") add("MAPS_API_KEY")
+        if (kakaoNativeAppKey.isBlank() || kakaoNativeAppKey == ciKakaoNativeAppKey) add("KAKAO_NATIVE_APP_KEY")
+        if (releaseKeystorePath.isNullOrBlank()) add("ANDROID_KEYSTORE_PATH")
+        if (releaseKeystorePassword.isNullOrBlank()) add("ANDROID_KEYSTORE_PASSWORD")
+        if (releaseKeyAlias.isNullOrBlank()) add("ANDROID_KEY_ALIAS")
+        if (releaseKeyPassword.isNullOrBlank()) add("ANDROID_KEY_PASSWORD")
+    }
 }
 
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
-    dependsOn(validateReleaseMapsApiKey)
+    dependsOn(validateReleaseConfiguration)
 }

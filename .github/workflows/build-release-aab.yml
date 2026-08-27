@@ -1,265 +1,117 @@
 name: Build Signed Release AAB
 
 on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'client/**'
+      - '.github/workflows/client-ci.yml'
+      - '.github/workflows/build-release-aab.yml'
+      - '.github/actions/**'
+  # Recovery only. Normal builds start automatically after a protected-branch merge.
   workflow_dispatch:
-
-defaults:
-  run:
-    working-directory: client
 
 permissions:
   contents: read
 
-env:
-  # 현재 승인된 업로드 인증서. 업로드 키를 교체할 때 검토 후 함께 갱신한다.
-  EXPECTED_UPLOAD_CERT_SHA256: "13:60:D7:D4:E6:0E:37:F3:0A:6E:16:E4:14:34:81:AF:4D:D1:CA:05:60:3C:C0:66:99:25:CD:60:16:38:F5:51"
+defaults:
+  run:
+    shell: bash
+    working-directory: client
 
 concurrency:
-  group: ringout-release-aab
+  group: ringout-aab-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build-release-aab:
-    name: Build signed release AAB
-
-    if: github.ref == 'refs/heads/main'
-
-    runs-on: ubuntu-latest
-
-    environment: production
-
+    name: Build signed ${{ github.ref_name == 'main' && 'release' || 'internal' }} AAB
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: ${{ github.ref_name == 'main' && 'production' || 'internal' }}
     steps:
-      - name: Checkout source code
+      - name: Checkout the triggering commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Set up JDK
+      - name: Select channel and allocate versionCode
+        env:
+          APP_VERSION_CODE_BASE: ${{ vars.APP_VERSION_CODE_BASE }}
+        run: python3 ci/pipeline.py version
+      - name: Set up Corretto JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Set up Gradle
+          distribution: corretto
+          java-version: '21'
+      - name: Set up Gradle without persisting signing build caches
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
-
-      - name: Grant execute permission to Gradle
-        run: chmod +x ./gradlew
-
-      - name: Validate release secrets
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+        with:
+          cache-disabled: true
+      - name: Install Android SDK packages
+        # The runner image installs sdkmanager without adding it to PATH.
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64가 등록되지 않았습니다."
-            exit 1
-          fi
-
-          if [ -z "$KEYSTORE_PASSWORD" ]; then
-            echo "::error::ANDROID_KEYSTORE_PASSWORD가 등록되지 않았습니다."
-            exit 1
-          fi
-
-          if [ -z "$KEY_ALIAS" ]; then
-            echo "::error::ANDROID_KEY_ALIAS가 등록되지 않았습니다."
-            exit 1
-          fi
-
-          if [ -z "$KEY_PASSWORD" ]; then
-            echo "::error::ANDROID_KEY_PASSWORD가 등록되지 않았습니다."
-            exit 1
-          fi
-
-          if [ -z "$MAPS_API_KEY" ]; then
-            echo "::error::MAPS_API_KEY가 등록되지 않았습니다."
-            exit 1
-          fi
-
-      - name: Restore upload keystore
-        shell: bash
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            'platforms;android-36' 'build-tools;36.0.0'
+      - name: Test CI routing and artifact checks
+        run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
+      - name: Restore and validate app configuration and upload key
         env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          KEYSTORE_PATH="$RUNNER_TEMP/ringout-upload-key.jks"
-
-          printf '%s' "$KEYSTORE_BASE64" \
-            | base64 --decode \
-            > "$KEYSTORE_PATH"
-
-          chmod 600 "$KEYSTORE_PATH"
-
-          if [ ! -s "$KEYSTORE_PATH" ]; then
-            echo "::error::JKS 파일 복원에 실패했습니다."
-            exit 1
-          fi
-
-          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
-
-      - name: Verify upload keystore
-        shell: bash
-        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-        run: |
-          keytool -list \
-            -keystore "$ANDROID_KEYSTORE_PATH" \
-            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
-            -alias "$ANDROID_KEY_ALIAS" \
-            > /dev/null
-
-          ACTUAL_UPLOAD_CERT_SHA256="$(
-            keytool -exportcert \
-              -keystore "$ANDROID_KEYSTORE_PATH" \
-              -storepass "$ANDROID_KEYSTORE_PASSWORD" \
-              -alias "$ANDROID_KEY_ALIAS" \
-              | openssl x509 -inform DER -noout -fingerprint -sha256 \
-              | cut -d= -f2
-          )"
-
-          if [ "$ACTUAL_UPLOAD_CERT_SHA256" != "$EXPECTED_UPLOAD_CERT_SHA256" ]; then
-            echo "::error::승인되지 않은 Android 업로드 인증서입니다."
-            exit 1
-          fi
-
-          echo "Upload keystore verification succeeded."
-
-      - name: Run release quality gates
-        env:
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
-        run: |
-          ./gradlew \
-            :shared:testAndroidHostTest \
-            :androidApp:lintRelease \
-            --no-daemon \
-            --stacktrace
-
-      - name: Build signed release APK and AAB and upload Crashlytics mapping
+          KAKAO_NATIVE_APP_KEY: ${{ secrets.KAKAO_NATIVE_APP_KEY }}
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: python3 ci/pipeline.py prepare-signing
+      - name: Test the merged commit and run Android Lint
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          KAKAO_NATIVE_APP_KEY: ${{ secrets.KAKAO_NATIVE_APP_KEY }}
         run: |
-          ./gradlew \
-            :androidApp:assembleRelease \
-            :androidApp:bundleRelease \
-            --no-daemon \
-            --stacktrace
-
-      - name: Verify R8 outputs
-        shell: bash
+          ./gradlew :shared:testAndroidHostTest :androidApp:lintRelease \
+            -PciVerification=false --no-daemon --no-configuration-cache --no-build-cache --stacktrace
+      - name: Build signed release AAB and upload Crashlytics mapping
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          KAKAO_NATIVE_APP_KEY: ${{ secrets.KAKAO_NATIVE_APP_KEY }}
         run: |
-          R8_DIR="androidApp/build/outputs/mapping/release"
-
-          for file in mapping.txt configuration.txt seeds.txt usage.txt resources.txt; do
-            if [ ! -s "$R8_DIR/$file" ]; then
-              echo "::error::R8 산출물이 없거나 비어 있습니다: $R8_DIR/$file"
-              exit 1
-            fi
-          done
-
-          if ! grep -Fxq '# compiler_version: 9.1.31' "$R8_DIR/mapping.txt"; then
-            echo "::error::Kotlin 2.4 호환 R8 9.1.31이 적용되지 않았습니다."
-            exit 1
-          fi
-
-          if [ -s "$R8_DIR/missing_rules.txt" ]; then
-            echo "::error::해결되지 않은 R8 규칙이 있습니다: $R8_DIR/missing_rules.txt"
-            exit 1
-          fi
-
-          echo "R8 output verification succeeded."
-
-      - name: Find generated release artifacts
-        id: find-artifacts
-        shell: bash
-        run: |
-          AAB_PATH="$(find androidApp/build/outputs/bundle/release \
-            -type f \
-            -name '*.aab' \
-            | head -n 1)"
-
-          if [ -z "$AAB_PATH" ]; then
-            echo "::error::생성된 Release AAB를 찾을 수 없습니다."
-            exit 1
-          fi
-
-          APK_PATH="$(find androidApp/build/outputs/apk/release \
-            -type f \
-            -name '*.apk' \
-            | head -n 1)"
-
-          if [ -z "$APK_PATH" ]; then
-            echo "::error::생성된 Release APK를 찾을 수 없습니다."
-            exit 1
-          fi
-
-          echo "path=$AAB_PATH" >> "$GITHUB_OUTPUT"
-          echo "AAB_PATH=$AAB_PATH" >> "$GITHUB_ENV"
-          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
-
-          echo "Generated AAB: $AAB_PATH"
-          ls -lh "$AAB_PATH"
-          echo "Generated APK: $APK_PATH"
-          ls -lh "$APK_PATH"
-
-      - name: Verify APK signature
-        shell: bash
-        run: |
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" \
-            -type f \
-            -name apksigner \
-            | sort -V \
-            | tail -n 1)"
-
-          if [ -z "$APKSIGNER" ]; then
-            echo "::error::apksigner를 찾을 수 없습니다."
-            exit 1
-          fi
-
-          "$APKSIGNER" verify --verbose --print-certs "$APK_PATH"
-
-      - name: Verify AAB signature
-        shell: bash
-        run: |
-          jarsigner \
-            -verify \
-            -verbose \
-            -certs \
-            "$AAB_PATH"
-
-          ACTUAL_AAB_CERT_SHA256="$(
-            keytool -printcert -jarfile "$AAB_PATH" -rfc \
-              | openssl x509 -noout -fingerprint -sha256 \
-              | cut -d= -f2
-          )"
-
-          if [ "$ACTUAL_AAB_CERT_SHA256" != "$EXPECTED_UPLOAD_CERT_SHA256" ]; then
-            echo "::error::AAB 서명 인증서가 승인된 업로드 인증서와 다릅니다."
-            exit 1
-          fi
-
-      - name: Print AAB certificate
-        shell: bash
-        run: |
-          keytool \
-            -printcert \
-            -jarfile "$AAB_PATH"
-
-      - name: Generate SHA-256 checksum
-        shell: bash
-        run: |
-          sha256sum "$AAB_PATH" "$APK_PATH" | tee release-sha256.txt
-
-      - name: Upload release AAB
+          ./gradlew :androidApp:bundleRelease \
+            -PciVerification=false --no-daemon --no-configuration-cache --no-build-cache --stacktrace
+      - name: Verify and package the signed AAB
+        id: package
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: python3 ci/pipeline.py package
+      - name: Upload signed AAB, checksum, metadata, and R8 reports
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ringout-release-aab
-          path: client/androidApp/build/outputs/bundle/release/*.aab
+          name: ${{ steps.package.outputs.artifact_name }}
+          path: client/build/ci/artifacts/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: ${{ github.ref_name == 'main' && 90 || 14 }}
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: client-aab-reports-${{ github.ref_name }}-attempt${{ github.run_attempt }}
+          path: |
+            client/shared/build/test-results/testAndroidHostTest/
+            client/shared/build/reports/tests/testAndroidHostTest/
+            client/androidApp/build/reports/lint-results-release.*
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Remove temporary signing and Firebase files
+        if: always()
+        run: |
+          if [[ -f ci/pipeline.py ]]; then
+            python3 ci/pipeline.py cleanup
+          fi
