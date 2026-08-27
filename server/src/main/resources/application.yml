@@ -22,6 +22,9 @@ spring:
         format_sql: ${HIBERNATE_FORMAT_SQL:false}
     open-in-view: false
 
+server:
+  forward-headers-strategy: framework
+
 management:
   endpoints:
     web:
@@ -31,6 +34,7 @@ management:
     tags:
       environment: ${APP_ENV:${spring.profiles.active:local}}
       service: ringout
+
 springdoc:
   api-docs:
     path: /v3/api-docs
