@@ -137,7 +137,7 @@ jobs:
 
           printf 'Changed files in deployment candidate:\n%s\n' "$changed_files"
 
-          if printf '%s\n' "$changed_files" | grep -q '^server/'; then
+          if printf '%s\n' "$changed_files" | grep -E '^server/' | grep -qvE '^server/docs/'; then
             write_decision true "$HEAD_SHA" "$HEAD_SHA" server_changes
             exit 0
           fi
