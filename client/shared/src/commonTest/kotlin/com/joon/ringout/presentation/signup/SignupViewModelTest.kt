@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.signup
 
+import androidx.lifecycle.ViewModelStore
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.DestinationSelectionSource
@@ -11,13 +12,17 @@ import com.joon.ringout.domain.auth.SocialLoginOutcome
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.domain.terms.TermId
+import com.joon.ringout.presentation.signup.model.SignupUiState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -26,6 +31,110 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SignupViewModelTest {
+    @Test
+    fun clearingTheStoreDropsSignupInformationAndRejectsAnotherSignup() =
+        withViewModel { viewModel, repository, destinations, analytics ->
+            viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
+            viewModel.signup(setOf(TermId.Service))
+            assertNotNull(viewModel.uiState.completedEventId)
+
+            clearViewModel(viewModel)
+            viewModel.startSignup("another-token", AnalyticsAuthProvider.Apple)
+            viewModel.signup(setOf(TermId.Service))
+
+            assertEquals(SignupUiState(), viewModel.uiState)
+            assertEquals(1, repository.signupRequests.size)
+            assertEquals(listOf(AnalyticsAuthProvider.Google), analytics.signupProviders)
+            assertEquals(1, destinations.syncCount)
+        }
+
+    @Test
+    fun clearingTheStoreCancelsOnlyTheSignupJob() {
+        val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        withViewModel(scope = parentScope) { viewModel, repository, destinations, analytics ->
+            val gate = CompletableDeferred<Unit>()
+            var signupFinished = false
+            repository.signupAction = {
+                try {
+                    gate.await()
+                } finally {
+                    signupFinished = true
+                }
+            }
+            viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
+            viewModel.signup(setOf(TermId.Service))
+            assertTrue(viewModel.uiState.isSaving)
+
+            clearViewModel(viewModel)
+
+            assertTrue(signupFinished)
+            assertFalse(gate.isCompleted)
+            assertTrue(parentScope.isActive)
+            assertEquals(SignupUiState(), viewModel.uiState)
+            assertTrue(analytics.signupProviders.isEmpty())
+            assertEquals(0, destinations.syncCount)
+        }
+    }
+
+    @Test
+    fun clearingTheStoreIgnoresLateSignupResultsThatDoNotCooperateWithCancellation() {
+        val outcomes = listOf(
+            Result.success(Unit),
+            Result.failure<Unit>(IllegalStateException("late signup failure")),
+        )
+        outcomes.forEach { outcome ->
+            withViewModel { viewModel, repository, destinations, analytics ->
+                val gate = CompletableDeferred<Unit>()
+                var backendReturned = false
+                repository.signupAction = {
+                    withContext(NonCancellable) { gate.await() }
+                    backendReturned = true
+                    outcome.getOrThrow()
+                }
+                viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
+                viewModel.signup(setOf(TermId.Service))
+
+                clearViewModel(viewModel)
+                gate.complete(Unit)
+
+                assertTrue(backendReturned)
+                assertEquals(SignupUiState(), viewModel.uiState)
+                assertTrue(analytics.signupProviders.isEmpty())
+                assertEquals(0, destinations.syncCount)
+            }
+        }
+    }
+
+    @Test
+    fun clearingTheStoreIgnoresLateSyncResultsThatDoNotCooperateWithCancellation() {
+        val outcomes = listOf(
+            Result.success(Unit),
+            Result.failure<Unit>(IllegalStateException("late sync failure")),
+        )
+        outcomes.forEach { outcome ->
+            withViewModel { viewModel, repository, destinations, analytics ->
+                val gate = CompletableDeferred<Unit>()
+                var syncReturned = false
+                destinations.syncAction = {
+                    withContext(NonCancellable) { gate.await() }
+                    syncReturned = true
+                    outcome.getOrThrow()
+                }
+                viewModel.startSignup("signup-token", AnalyticsAuthProvider.Kakao)
+                viewModel.signup(setOf(TermId.Service))
+
+                clearViewModel(viewModel)
+                gate.complete(Unit)
+
+                assertTrue(syncReturned)
+                assertEquals(SignupUiState(), viewModel.uiState)
+                assertEquals(1, repository.signupRequests.size)
+                assertEquals(listOf(AnalyticsAuthProvider.Kakao), analytics.signupProviders)
+                assertEquals(1, destinations.syncCount)
+            }
+        }
+    }
+
     @Test
     fun `회원가입 성공 후 제공자를 기록하고 목적지를 동기화한다`() =
         withViewModel { viewModel, authRepository, destinationRepository, analytics ->
@@ -210,6 +319,7 @@ class SignupViewModelTest {
 }
 
 private inline fun withViewModel(
+    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     block: (
         SignupViewModel,
         FakeAuthRepository,
@@ -217,7 +327,6 @@ private inline fun withViewModel(
         RecordingProductAnalyticsRecorder,
     ) -> Unit,
 ) {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     val order = mutableListOf<String>()
     val authRepository = FakeAuthRepository(order)
     val destinationRepository = FakeDestinationRepository(order)
@@ -236,6 +345,12 @@ private inline fun withViewModel(
     }
 }
 
+private fun clearViewModel(viewModel: SignupViewModel) {
+    val store = ViewModelStore()
+    store.put("signup", viewModel)
+    store.clear()
+}
+
 private data class SignupRequest(
     val signupToken: String,
     val agreedTerms: Set<AuthTerm>,
@@ -248,6 +363,7 @@ private class FakeAuthRepository(
     val signupRequests = mutableListOf<SignupRequest>()
     var signupGate: CompletableDeferred<Unit>? = null
     var signupFailure: Throwable? = null
+    var signupAction: (suspend () -> Unit)? = null
 
     override suspend fun restoreSession() = Unit
 
@@ -266,6 +382,7 @@ private class FakeAuthRepository(
         agreedAt: String,
     ) {
         signupRequests += SignupRequest(signupToken, agreedTerms, agreedAt)
+        signupAction?.invoke()
         signupGate?.await()
         signupFailure?.let { throw it }
         order += "auth_signup"
@@ -281,6 +398,7 @@ private class FakeDestinationRepository(
 
     var syncCount = 0
     var syncFailuresRemaining = 0
+    var syncAction: (suspend () -> Unit)? = null
 
     override fun observeAll(): Flow<List<SavedDestination>> = destinations
 
@@ -289,6 +407,7 @@ private class FakeDestinationRepository(
     override suspend fun sync(): List<SavedDestination> {
         syncCount++
         order += "destination_sync"
+        syncAction?.invoke()
         if (syncFailuresRemaining > 0) {
             syncFailuresRemaining--
             error("sync failed")

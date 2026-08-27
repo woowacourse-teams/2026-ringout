@@ -35,22 +35,22 @@ internal fun rememberAlarmEditorNavigation(
     }
 }
 
-/** Remains composed when a priority screen covers the editor, as the old result handler did. */
+/** 기존 결과 처리 방식과 같이 우선 화면이 편집 화면을 가려도 컴포지션에 유지된다. */
 @Composable
 internal fun AlarmEditorNavigationEffects(
     navigation: AlarmEditorNavigation,
     screen: AppScreen,
 ) {
     val savedEvent = navigation.destinationViewModel.uiState.savedEvent
-    LaunchedEffect(savedEvent?.eventId) {
+    LaunchedEffect(navigation, savedEvent?.eventId) {
         savedEvent?.let(navigation::onDestinationSaved)
     }
-    LaunchedEffect(screen, navigation.hasValidDraft()) {
+    LaunchedEffect(navigation, screen, navigation.hasValidDraft()) {
         navigation.onMissingDraft(screen)
     }
 }
 
-/** Shares one draft across the editor and its pickers; route keys contain identifiers only. */
+/** 편집 화면과 선택 화면은 하나의 초안을 공유하며, 경로 키에는 식별자만 담는다. */
 internal class AlarmEditorNavigation(
     private val navigationState: AppNavigationState,
     val alarmSetupViewModel: AlarmSetupViewModel,
@@ -140,7 +140,7 @@ internal class AlarmEditorNavigation(
             alarmSetupViewModel.updateDestination(event.destination.toDestinationSelection())
             navigationState.popBackStack(route)
         }
-        // A cancelled visit must not leave a result for the next visit to consume.
+        // 취소된 화면의 결과가 다음 진입 시 처리되지 않도록 소비한다.
         destinationViewModel.consumeSavedEvent(event.eventId)
     }
 
@@ -149,7 +149,7 @@ internal class AlarmEditorNavigation(
             screen in AlarmEditorScreens &&
             navigationState.requestedScreen == screen && !hasValidDraft()
         ) {
-            // Drafts are deliberately not serialized into the back stack.
+            // 초안은 의도적으로 백스택에 직렬화하지 않는다.
             navigationState.navigate(AppRoute.Home)
         }
     }

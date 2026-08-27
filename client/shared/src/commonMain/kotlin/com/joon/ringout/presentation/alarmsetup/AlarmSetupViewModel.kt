@@ -38,14 +38,17 @@ class AlarmSetupViewModel(
         private set
 
     private var didRequestFullAccuracy = false
+    private var isCleared = false
 
     fun startCreating(initialTime: String) {
+        if (isCleared) return
         resetPermissionFlow()
         uiState = AlarmSetupUiState(time = initialTime)
         hasDraft = true
     }
 
     fun startEditing(request: AlarmScheduleRequest) {
+        if (isCleared) return
         resetPermissionFlow()
         uiState = AlarmSetupUiState(
             alarmId = request.id,
@@ -82,7 +85,7 @@ class AlarmSetupViewModel(
     }
 
     fun toggleDay(day: String) {
-        if (day !in AlarmSetupWeekdays) return
+        if (isCleared || day !in AlarmSetupWeekdays) return
 
         val selectedDays = uiState.selectedDays.toSet().let { currentDays ->
             if (day in currentDays) currentDays - day else currentDays + day
@@ -93,6 +96,7 @@ class AlarmSetupViewModel(
     }
 
     fun updateLimitMinutes(minutes: Int) {
+        if (isCleared) return
         uiState = uiState.copy(
             limitMinutes = minutes.coerceIn(
                 minimumValue = MinAlarmLimitMinutes,
@@ -102,15 +106,17 @@ class AlarmSetupViewModel(
     }
 
     fun updateDestination(destination: DestinationSelection) {
+        if (isCleared) return
         uiState = uiState.copy(destination = destination)
     }
 
     fun updateAlarmSound(alarmSound: AlarmSoundSelection) {
+        if (isCleared) return
         uiState = uiState.copy(alarmSound = alarmSound)
     }
 
     fun requestSave(): Boolean {
-        if (uiState.isSaveInProgress) return false
+        if (isCleared || uiState.isSaveInProgress) return false
         val request = createScheduleRequest() ?: return false
 
         resetPermissionFlow()
@@ -226,19 +232,22 @@ class AlarmSetupViewModel(
     }
 
     fun onSaveCompleted(request: AlarmScheduleRequest): Boolean {
-        if (uiState.pendingSaveRequest?.id != request.id) return false
+        // 두 플랫폼의 컨트롤러는 전달받은 요청 인스턴스를 그대로 반환한다.
+        // 식별자가 같아도 새 편집 흐름의 요청일 수 있으므로 인스턴스를 비교한다.
+        if (uiState.pendingSaveRequest !== request) return false
 
         clearSaveFlow(errorMessage = null)
         return true
     }
 
     fun onSaveError(request: AlarmScheduleRequest, message: String) {
-        if (uiState.pendingSaveRequest?.id != request.id) return
+        if (uiState.pendingSaveRequest !== request) return
 
         clearSaveFlow(errorMessage = message)
     }
 
     fun showError(message: String) {
+        if (isCleared) return
         uiState = uiState.copy(errorMessage = message)
     }
 
@@ -251,6 +260,7 @@ class AlarmSetupViewModel(
     }
 
     fun createScheduleRequest(): AlarmScheduleRequest? {
+        if (isCleared) return null
         val draft = uiState
         val destination = draft.destination?.takeIf { draft.canSave } ?: return null
 
@@ -269,9 +279,18 @@ class AlarmSetupViewModel(
         )
     }
 
+    override fun onCleared() {
+        isCleared = true
+        resetPermissionFlow()
+        hasDraft = false
+        uiState = AlarmSetupUiState()
+        super.onCleared()
+    }
+
     private inline fun updateTime(
         transform: AlarmTimePickerValue.() -> AlarmTimePickerValue,
     ) {
+        if (isCleared) return
         uiState = uiState.copy(
             time = uiState.time
                 .toAlarmTimePickerValue()

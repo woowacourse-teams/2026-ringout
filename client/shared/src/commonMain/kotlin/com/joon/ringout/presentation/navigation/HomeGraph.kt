@@ -13,11 +13,11 @@ import com.joon.ringout.presentation.mypage.MyPageRoute
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.nickname.NicknameChangeRoute
 
-// Home/MyPage still share their ViewModels with legacy app effects until the scope migration.
+// 홈과 마이페이지는 각 백스택 항목의 저장소를 사용하고, 닉네임 변경은 마이페이지의 프로필 상태를 공유한다.
 internal fun EntryProviderScope<AppRoute>.homeGraph(
     navigationState: AppNavigationState,
     homeViewModel: HomeViewModel,
-    myPageViewModel: MyPageViewModel,
+    myPageViewModel: MyPageViewModel?,
     memberRepository: MemberRepository,
     authSessionState: AuthSessionState,
     themeMode: ThemeMode,
@@ -31,7 +31,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     onActiveAlarmMissionClick: () -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
 ) {
-    entry<AppRoute.Home> {
+    entry<AppRoute.Home>(clazzContentKey = AppRoute::viewModelStoreKey) {
         HomeRoute(
             viewModel = homeViewModel,
             alarmController = alarmController,
@@ -44,9 +44,9 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
         )
     }
 
-    entry<AppRoute.MyPage> {
+    entry<AppRoute.MyPage>(clazzContentKey = AppRoute::viewModelStoreKey) {
         MyPageRoute(
-            viewModel = myPageViewModel,
+            viewModel = checkNotNull(myPageViewModel),
             themeMode = themeMode,
             appVersion = appVersion,
             onThemeModeChange = onThemeModeChange,
@@ -56,7 +56,8 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
         )
     }
 
-    entry<AppRoute.NicknameChange> {
+    entry<AppRoute.NicknameChange>(clazzContentKey = AppRoute::viewModelStoreKey) {
+        val myPageViewModel = checkNotNull(myPageViewModel)
         NicknameChangeRoute(
             accountStatus = myPageViewModel.uiState.accountStatus,
             authSessionState = authSessionState,

@@ -18,7 +18,7 @@ internal fun rememberAuthNavigation(
     AuthNavigation(navigationState, loginViewModel, signupViewModel)
 }
 
-/** Connects auth results to navigation without saving credentials in route keys. */
+/** 경로 키에 인증 정보를 저장하지 않고 인증 결과를 화면 이동에 연결한다. */
 internal class AuthNavigation(
     private val navigationState: AppNavigationState,
     val loginViewModel: LoginViewModel,

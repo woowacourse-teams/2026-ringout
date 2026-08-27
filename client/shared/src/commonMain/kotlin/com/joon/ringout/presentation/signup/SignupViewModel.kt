@@ -15,6 +15,7 @@ import com.joon.ringout.presentation.signup.model.SignupUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class SignupViewModel(
@@ -32,12 +33,14 @@ class SignupViewModel(
     private var pendingSignup: PendingSignup? = null
     private var completedSignupToken: String? = null
     private var signupJob: Job? = null
+    private var isCleared = false
     private val scope = coroutineScope ?: viewModelScope
 
     fun startSignup(
         signupToken: String,
         provider: AnalyticsAuthProvider,
     ) {
+        if (isCleared) return
         signupSessionId++
         signupJob?.cancel()
         signupJob = null
@@ -50,7 +53,7 @@ class SignupViewModel(
     }
 
     fun signup(agreedTermIds: Set<TermId>) {
-        if (uiState.isSaving) return
+        if (isCleared || uiState.isSaving) return
         val pending = pendingSignup ?: return
         val sessionId = signupSessionId
         val terms = agreedTermIds.mapNotNullTo(mutableSetOf()) { id ->
@@ -62,6 +65,7 @@ class SignupViewModel(
         }
         uiState = uiState.copy(isSaving = true, errorMessage = null)
         signupJob = scope.launch {
+            if (isCleared || !isActive || sessionId != signupSessionId) return@launch
             try {
                 if (completedSignupToken != pending.signupToken) {
                     authRepository.signup(
@@ -69,15 +73,15 @@ class SignupViewModel(
                         agreedTerms = terms,
                         agreedAt = currentDate(),
                     )
-                    if (sessionId != signupSessionId) return@launch
+                    if (isCleared || !isActive || sessionId != signupSessionId) return@launch
                     completedSignupToken = pending.signupToken
                     runCatching {
                         productAnalyticsRecorder.recordSignupCompleted(pending.provider)
                     }
                 }
-                if (sessionId != signupSessionId) return@launch
+                if (isCleared || !isActive || sessionId != signupSessionId) return@launch
                 destinationRepository.sync()
-                if (sessionId != signupSessionId) return@launch
+                if (isCleared || !isActive || sessionId != signupSessionId) return@launch
                 uiState = uiState.copy(
                     isSaving = false,
                     completedEventId = ++nextEventId,
@@ -85,7 +89,7 @@ class SignupViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                if (sessionId != signupSessionId) return@launch
+                if (isCleared || !isActive || sessionId != signupSessionId) return@launch
                 uiState = uiState.copy(
                     isSaving = false,
                     errorMessage = if (completedSignupToken == pending.signupToken) {
@@ -102,6 +106,12 @@ class SignupViewModel(
         if (uiState.completedEventId == eventId) {
             resetSignup()
         }
+    }
+
+    override fun onCleared() {
+        isCleared = true
+        resetSignup()
+        super.onCleared()
     }
 
     fun resetSignup() {

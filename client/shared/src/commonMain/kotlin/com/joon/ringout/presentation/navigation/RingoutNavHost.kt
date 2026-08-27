@@ -4,8 +4,10 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.lifecycle.viewmodel.ViewModelStoreProvider
+import androidx.lifecycle.viewmodel.navigation3.ViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.EntryProviderScope
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberDecoratedNavEntries
@@ -16,11 +18,12 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.AppScreen
 
-/** Keeps migrated entry state alive while a legacy or priority screen is visible. */
+/** 기존 화면이나 우선 화면이 표시되는 동안에도 이전이 완료된 백스택 항목의 상태를 유지한다. */
 @Composable
 internal fun RingoutNavHost(
     navigationState: AppNavigationState,
     screen: AppScreen,
+    viewModelStoreProvider: ViewModelStoreProvider,
     graph: EntryProviderScope<AppRoute>.() -> Unit,
     modifier: Modifier = Modifier,
     isBackBlocked: Boolean = false,
@@ -29,13 +32,15 @@ internal fun RingoutNavHost(
 ) {
     val provider = entryProvider(builder = graph)
     val visibleRoutes = navigationState.routesForScreen(screen)
-    // Also retain a priority route displayed before its redirect effect updates the real stack.
-    val retainedRoutes = (navigationState.backStack + visibleRoutes.orEmpty()).distinct()
+    // 화면 전환 부수 효과가 실제 백스택을 갱신하기 전에 표시된 우선 경로도 유지한다.
+    val retainedRoutes = navigationState.retainedRoutes(screen)
     val entries = rememberDecoratedNavEntries(
         entries = retainedRoutes.map(provider),
         entryDecorators = listOf(
             rememberSaveableStateHolderNavEntryDecorator(),
-            rememberViewModelStoreNavEntryDecorator(),
+            remember(viewModelStoreProvider) {
+                ViewModelStoreNavEntryDecorator<AppRoute>(viewModelStoreProvider)
+            },
         ),
     )
     if (visibleRoutes != null) {
@@ -49,7 +54,7 @@ internal fun RingoutNavHost(
             predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
             sizeTransform = null,
         )
-        // Consume blocked back gestures on both platforms before NavDisplay can preview/pop.
+        // 두 플랫폼 모두 NavDisplay의 뒤로 가기 미리보기나 백스택 제거 전에 차단된 뒤로 가기 제스처를 소비한다.
         NavigationBackHandler(
             state = rememberNavigationEventState(NavigationEventInfo.None),
             isBackEnabled = isBackBlocked,

@@ -16,7 +16,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
-import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.DefaultMissionLocationState
@@ -33,12 +32,11 @@ import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.common.AppMessageSource
 import com.joon.ringout.presentation.common.resolveAppMessage
 import com.joon.ringout.presentation.common.component.AppMessageHost
-import com.joon.ringout.presentation.onboarding.OnboardingScreen
+import com.joon.ringout.presentation.onboarding.OnboardingRoute
 import com.joon.ringout.presentation.ringing.AlarmRingingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
-import com.joon.ringout.presentation.mypage.currentMissionYearMonth
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import com.joon.ringout.presentation.navigation.AppRoute
@@ -50,6 +48,7 @@ import com.joon.ringout.presentation.navigation.rememberAlarmEditorNavigation
 import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.navigation.homeGraph
 import com.joon.ringout.presentation.navigation.rememberAppNavigationState
+import com.joon.ringout.presentation.navigation.rememberNavigationViewModelScopes
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
 
@@ -90,7 +89,7 @@ fun App(
     RingoutTheme(themeMode = appBootstrapUiState.themeMode) {
         when (appBootstrapUiState.destination) {
             AppEntryDestination.Onboarding ->
-                OnboardingScreen(
+                OnboardingRoute(
                     onComplete = appBootstrapViewModel::completeOnboarding,
                     completionEnabled = !appBootstrapUiState.isSaving,
                     completionRetryToken = appBootstrapUiState.onboardingRetryToken,
@@ -159,67 +158,65 @@ private fun RingoutAppContent(
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     val productAnalyticsRecorder = appContainer.productAnalyticsRecorder
-    val destinationRepository = appContainer.destinationRepository
-    val destinationViewModel: DestinationViewModel = viewModel {
-        DestinationViewModel(
-            repository = destinationRepository,
-            productAnalyticsRecorder = productAnalyticsRecorder,
-        )
-    }
-    val destinationUiState = destinationViewModel.uiState
     val authSession = appContainer.authSession
     val authRepository = appContainer.authRepository
     val memberRepository = appContainer.memberRepository
     val authSessionState by authSession.state.collectAsState()
-    val myPageViewModel: MyPageViewModel = viewModel {
-        MyPageViewModel(
-            getMissionSuccessDates = GetMissionSuccessDates(
-                appContainer.missionHistoryRepository,
-            ),
-            memberRepository = memberRepository,
-            authRepository = authRepository,
-            productAnalyticsRecorder = productAnalyticsRecorder,
-            initialMonth = currentMissionYearMonth(),
-        )
+    val navigationState = rememberAppNavigationState()
+    val screen = resolveAppScreen(
+        requestedScreen = navigationState.requestedScreen,
+        hasRingingAlarm = ringingAlarm != null,
+        hasActiveAlarmMission = activeAlarmMission != null,
+        authSessionState = authSessionState,
+    )
+    val retainedRoutes = navigationState.retainedRoutes(screen)
+    val viewModelScopes = rememberNavigationViewModelScopes(appContainer, retainedRoutes)
+    val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
+    val homeUiState = homeViewModel.uiState
+    val myPageViewModel = if (AppRoute.MyPage in retainedRoutes) {
+        viewModelScopes.get(AppRoute.MyPage, MyPageViewModel::class)
+    } else {
+        null
     }
-    val myPageUiState = myPageViewModel.uiState
-    LaunchedEffect(authSessionState) {
+    val myPageUiState = myPageViewModel?.uiState
+    val authNavigation = if (AppRoute.Login in retainedRoutes) {
+        rememberAuthNavigation(
+            navigationState,
+            viewModelScopes.get(AppRoute.Login, LoginViewModel::class),
+            viewModelScopes.get(AppRoute.Login, SignupViewModel::class),
+        )
+    } else {
+        null
+    }
+    val signupViewModel = authNavigation?.signupViewModel
+    val editorRoute = navigationState.editorRoute
+    val alarmEditorNavigation = if (editorRoute != null) {
+        rememberAlarmEditorNavigation(
+            navigationState,
+            viewModelScopes.get(editorRoute, AlarmSetupViewModel::class),
+            viewModelScopes.get(editorRoute, DestinationViewModel::class),
+        )
+    } else {
+        null
+    }
+    val alarmSetupViewModel = alarmEditorNavigation?.alarmSetupViewModel
+    val alarmSetupUiState = alarmSetupViewModel?.uiState
+    val destinationViewModel = alarmEditorNavigation?.destinationViewModel
+    val destinationUiState = destinationViewModel?.uiState
+
+    LaunchedEffect(authSessionState, myPageViewModel, destinationViewModel) {
         when (authSessionState) {
-            AuthSessionState.Restoring -> myPageViewModel.onSessionRestoring()
+            AuthSessionState.Restoring -> myPageViewModel?.onSessionRestoring()
             AuthSessionState.Unauthenticated,
             AuthSessionState.ReauthenticationRequired,
             -> {
-                myPageViewModel.onLoggedOut()
-                destinationViewModel.onLoggedOut()
+                myPageViewModel?.onLoggedOut()
+                destinationViewModel?.onLoggedOut()
             }
 
-            AuthSessionState.Authenticated -> myPageViewModel.onAuthenticated()
+            AuthSessionState.Authenticated -> myPageViewModel?.onAuthenticated()
         }
     }
-    val loginViewModel: LoginViewModel = viewModel {
-        LoginViewModel(
-            authRepository = authRepository,
-            productAnalyticsRecorder = productAnalyticsRecorder,
-        )
-    }
-    val signupViewModel: SignupViewModel = viewModel {
-        SignupViewModel(
-            authRepository = authRepository,
-            destinationRepository = destinationRepository,
-            productAnalyticsRecorder = productAnalyticsRecorder,
-        )
-    }
-    val alarmSetupViewModel: AlarmSetupViewModel = viewModel { AlarmSetupViewModel() }
-    val alarmSetupUiState = alarmSetupViewModel.uiState
-    val homeViewModel: HomeViewModel = viewModel { HomeViewModel() }
-    val homeUiState = homeViewModel.uiState
-    val navigationState = rememberAppNavigationState()
-    val authNavigation = rememberAuthNavigation(navigationState, loginViewModel, signupViewModel)
-    val alarmEditorNavigation = rememberAlarmEditorNavigation(
-        navigationState,
-        alarmSetupViewModel,
-        destinationViewModel,
-    )
     var handledActiveAlarmOccurrenceId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -229,27 +226,30 @@ private fun RingoutAppContent(
     }
     LaunchedEffect(
         authSessionState,
+        signupViewModel,
+        alarmSetupViewModel,
+        myPageViewModel,
         alarmSetupUiState,
-        alarmSetupViewModel.permissionDialog,
-        destinationUiState.errorMessage,
+        alarmSetupViewModel?.permissionDialog,
+        destinationUiState?.errorMessage,
         homeUiState.errorMessage,
     ) {
         if (authSessionState == AuthSessionState.ReauthenticationRequired) {
-            signupViewModel.resetSignup()
-            alarmSetupViewModel.resetSaveFlow()
+            signupViewModel?.resetSignup()
+            alarmSetupViewModel?.resetSaveFlow()
             homeViewModel.clearError()
-            myPageViewModel.resetAccountActionFlow()
-            if (destinationUiState.errorMessage != null) {
+            myPageViewModel?.resetAccountActionFlow()
+            if (destinationUiState?.errorMessage != null) {
                 destinationViewModel.clearError()
             }
             navigationState.navigate(AppScreen.Login)
         }
     }
     val completedAccountAction =
-        myPageUiState.accountAction as? MyPageAccountActionState.Completed
-    LaunchedEffect(completedAccountAction?.eventId) {
+        myPageUiState?.accountAction as? MyPageAccountActionState.Completed
+    LaunchedEffect(myPageViewModel, completedAccountAction?.eventId) {
         val completed = completedAccountAction ?: return@LaunchedEffect
-        signupViewModel.resetSignup()
+        signupViewModel?.resetSignup()
         navigationState.navigate(
             when (completed.action) {
                 MyPageAccountAction.Logout -> AppScreen.Login
@@ -258,14 +258,9 @@ private fun RingoutAppContent(
         )
         myPageViewModel.consumeAccountActionCompletedEvent(completed.eventId)
     }
-    val requestedScreen = navigationState.requestedScreen
-    val screen = resolveAppScreen(
-        requestedScreen = requestedScreen,
-        hasRingingAlarm = ringingAlarm != null,
-        hasActiveAlarmMission = activeAlarmMission != null,
-        authSessionState = authSessionState,
-    )
-    AlarmEditorNavigationEffects(navigation = alarmEditorNavigation, screen = screen)
+    if (alarmEditorNavigation != null) {
+        AlarmEditorNavigationEffects(navigation = alarmEditorNavigation, screen = screen)
+    }
     SystemBarAppearanceEffect(
         themeMode = if (
             screen == AppScreen.ActiveAlarmTracking ||
@@ -278,12 +273,17 @@ private fun RingoutAppContent(
     )
     val alarmController = rememberAlarmController(
         onSaveCompleted = { request ->
-            if (alarmSetupViewModel.onSaveCompleted(request)) {
+            if (
+                editorRoute != null && navigationState.editorRoute == editorRoute &&
+                alarmSetupViewModel?.onSaveCompleted(request) == true
+            ) {
                 navigationState.navigate(AppRoute.Home)
             }
         },
         onSaveError = { request, message ->
-            alarmSetupViewModel.onSaveError(request, message)
+            if (navigationState.editorRoute == editorRoute) {
+                alarmSetupViewModel?.onSaveError(request, message)
+            }
         },
         onError = homeViewModel::showError,
     )
@@ -308,13 +308,14 @@ private fun RingoutAppContent(
         }
     }
     LaunchedEffect(
-        alarmSetupUiState.pendingSaveRequest?.id,
-        alarmSetupUiState.isScheduling,
+        alarmSetupViewModel,
+        alarmSetupUiState?.pendingSaveRequest?.id,
+        alarmSetupUiState?.isScheduling,
         missionLocationState.revision,
         screen,
     ) {
         performAlarmSetupCommand(
-            alarmSetupViewModel.onLocationStateChanged(
+            alarmSetupViewModel?.onLocationStateChanged(
                 locationState = missionLocationState,
                 useSystemPermissionUiOnly = useSystemLocationPermissionUiOnly,
                 canProcessSave =
@@ -329,20 +330,20 @@ private fun RingoutAppContent(
         canShowAppDialog(screen, authSessionState)
     ) {
         MissionLocationPermissionDialog(
-            decision = alarmSetupViewModel.permissionDialog,
+            decision = alarmSetupViewModel?.permissionDialog,
             onConfirm = {
                 performAlarmSetupCommand(
-                    alarmSetupViewModel.onPermissionDialogConfirmed(),
+                    alarmSetupViewModel?.onPermissionDialogConfirmed(),
                 )
             },
-            onDismiss = alarmSetupViewModel::onPermissionDialogDismissed,
+            onDismiss = { alarmSetupViewModel?.onPermissionDialogDismissed() },
         )
     }
     LaunchedEffect(alarmController) {
         alarmController.ensureFullScreenAccess()
     }
 
-    LaunchedEffect(alarmController) {
+    LaunchedEffect(alarmController, homeViewModel) {
         homeViewModel.observeAlarms(alarmController.savedAlarms)
     }
 
@@ -367,16 +368,16 @@ private fun RingoutAppContent(
         screen = screen,
         authSessionState = authSessionState,
         homeErrorMessage = homeUiState.errorMessage,
-        alarmSetupErrorMessage = alarmSetupUiState.errorMessage,
-        destinationErrorMessage = destinationUiState.errorMessage,
+        alarmSetupErrorMessage = alarmSetupUiState?.errorMessage,
+        destinationErrorMessage = destinationUiState?.errorMessage,
     )
     AppMessageHost(
         state = pendingAppMessage?.state,
         onDismiss = {
             when (pendingAppMessage?.source) {
                 AppMessageSource.Home -> homeViewModel.clearError()
-                AppMessageSource.AlarmSetup -> alarmSetupViewModel.clearError()
-                AppMessageSource.Destination -> destinationViewModel.clearError()
+                AppMessageSource.AlarmSetup -> alarmSetupViewModel?.clearError()
+                AppMessageSource.Destination -> destinationViewModel?.clearError()
                 null -> Unit
             }
         },
@@ -385,17 +386,20 @@ private fun RingoutAppContent(
     RingoutNavHost(
         navigationState = navigationState,
         screen = screen,
+        viewModelStoreProvider = viewModelScopes.storeProvider,
         modifier = Modifier.fillMaxSize(),
-        isBackBlocked = authNavigation.isBackBlocked(screen, authSessionState) ||
-            alarmEditorNavigation.isBackBlocked(screen),
+        isBackBlocked = authNavigation?.isBackBlocked(screen, authSessionState) == true ||
+            alarmEditorNavigation?.isBackBlocked(screen) == true,
         onBack = { route ->
             when (route) {
                 AppRoute.AddAlarm,
                 is AppRoute.EditAlarm,
                 is AppRoute.Destination,
                 AppRoute.AlarmSound,
-                -> alarmEditorNavigation.onBack(route, screen)
-                else -> authNavigation.onBack(route, screen, authSessionState)
+                -> alarmEditorNavigation?.onBack(route, screen)
+                AppRoute.Login, AppRoute.TermsAgreement ->
+                    authNavigation?.onBack(route, screen, authSessionState)
+                else -> navigationState.popBackStack(route)
             }
         },
         graph = {
@@ -411,31 +415,41 @@ private fun RingoutAppContent(
                 activeAlarmMission = activeAlarmMission,
                 onThemeModeChange = onThemeModeChange,
                 onAddAlarm = {
-                    alarmEditorNavigation.startCreating(
-                        initialTime = currentLocalClockSnapshot().to24HourTimeString(),
-                    )
+                    viewModelScopes.createAlarmEditorNavigation(navigationState, AppRoute.AddAlarm)
+                        .startCreating(
+                            initialTime = currentLocalClockSnapshot().to24HourTimeString(),
+                        )
                 },
-                onEditAlarm = alarmEditorNavigation::startEditing,
+                onEditAlarm = { request ->
+                    viewModelScopes.createAlarmEditorNavigation(
+                        navigationState,
+                        AppRoute.EditAlarm(request.id),
+                    ).startEditing(request)
+                },
                 onLogin = { navigationState.navigate(AppRoute.Login) },
                 onActiveAlarmMissionClick = {
                     navigationState.navigate(AppScreen.ActiveAlarmTracking)
                 },
                 onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
             )
-            authGraph(
-                authNavigation = authNavigation,
-                screen = screen,
-                authSessionState = authSessionState,
-            )
-            alarmEditorGraph(
-                navigation = alarmEditorNavigation,
-                screen = screen,
-                authSessionState = authSessionState,
-                productAnalyticsRecorder = productAnalyticsRecorder,
-            )
+            if (authNavigation != null) {
+                authGraph(
+                    authNavigation = authNavigation,
+                    screen = screen,
+                    authSessionState = authSessionState,
+                )
+            }
+            if (alarmEditorNavigation != null) {
+                alarmEditorGraph(
+                    navigation = alarmEditorNavigation,
+                    screen = screen,
+                    authSessionState = authSessionState,
+                    productAnalyticsRecorder = productAnalyticsRecorder,
+                )
+            }
         },
     ) {
-        // Ringing and active-mission priority screens keep their existing routing for now.
+        // 우선 표시되는 알람 울림과 진행 중인 미션 화면은 당분간 기존 화면 이동 방식을 유지한다.
         when (screen) {
             AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
                 AlarmRingingScreen(
@@ -474,7 +488,7 @@ private fun RingoutAppContent(
             AppScreen.EditAlarm,
             AppScreen.Destination,
             AppScreen.AlarmSound,
-            -> Unit // Rendered by HomeGraph, AuthGraph, or AlarmEditorGraph.
+            -> Unit // HomeGraph, AuthGraph 또는 AlarmEditorGraph에서 표시한다.
         }
     }
 }

@@ -19,7 +19,7 @@ internal fun TermsAgreementRoute(
 ) {
     val signupUiState = signupViewModel.uiState
     val completedEventId = signupUiState.completedEventId
-    LaunchedEffect(signupUiState.hasPendingSignup, completedEventId, isActive) {
+    LaunchedEffect(signupViewModel, signupUiState.hasPendingSignup, completedEventId, isActive) {
         if (!isActive) return@LaunchedEffect
         if (completedEventId != null) {
             if (onSignupCompleted()) {

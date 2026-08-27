@@ -9,15 +9,14 @@ import com.joon.ringout.presentation.alarmsetup.AlarmSetupRoute
 import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationRoute
 
-// The root still uses these shared ViewModels for permission, save, and session effects.
-// Their owner can move to the editor scope in the dedicated ViewModel-scope migration.
+// 편집 흐름이 백스택에서 제거될 때까지 AlarmSetup과 Destination은 Add/Edit 부모 저장소를 공유한다.
 internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
     navigation: AlarmEditorNavigation,
     screen: AppScreen,
     authSessionState: AuthSessionState,
     productAnalyticsRecorder: ProductAnalyticsRecorder,
 ) {
-    entry<AppRoute.AddAlarm> { route ->
+    entry<AppRoute.AddAlarm>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         if (navigation.hasValidDraft()) {
             AlarmSetupRoute(
                 viewModel = navigation.alarmSetupViewModel,
@@ -29,7 +28,7 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
         }
     }
 
-    entry<AppRoute.EditAlarm> { route ->
+    entry<AppRoute.EditAlarm>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         if (navigation.hasValidDraft()) {
             AlarmSetupRoute(
                 viewModel = navigation.alarmSetupViewModel,
@@ -41,7 +40,7 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
         }
     }
 
-    entry<AppRoute.Destination> { route ->
+    entry<AppRoute.Destination>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         if (navigation.hasValidDraft()) {
             DestinationRoute(
                 viewModel = navigation.destinationViewModel,
@@ -59,7 +58,7 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
         }
     }
 
-    entry<AppRoute.AlarmSound> { route ->
+    entry<AppRoute.AlarmSound>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         if (navigation.hasValidDraft()) {
             AlarmSoundRoute(
                 selectedSound = navigation.alarmSetupViewModel.uiState.alarmSound,

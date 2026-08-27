@@ -25,7 +25,7 @@ internal fun LoginRoute(
         onResult = viewModel::handleKakaoAccessTokenResult,
     )
     val completion = uiState.completion
-    LaunchedEffect(completion, isActive) {
+    LaunchedEffect(viewModel, completion, isActive) {
         if (!isActive) return@LaunchedEffect
         val handled = when (completion) {
             is LoginCompletion.Authenticated -> onAuthenticated()

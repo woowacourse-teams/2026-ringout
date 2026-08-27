@@ -11,7 +11,7 @@ internal fun EntryProviderScope<AppRoute>.authGraph(
     screen: AppScreen,
     authSessionState: AuthSessionState,
 ) {
-    entry<AppRoute.Login> {
+    entry<AppRoute.Login>(clazzContentKey = AppRoute::viewModelStoreKey) {
         LoginRoute(
             viewModel = authNavigation.loginViewModel,
             isActive = authNavigation.isActive(AppRoute.Login, screen),
@@ -23,7 +23,7 @@ internal fun EntryProviderScope<AppRoute>.authGraph(
         )
     }
 
-    entry<AppRoute.TermsAgreement> {
+    entry<AppRoute.TermsAgreement>(clazzContentKey = AppRoute::viewModelStoreKey) {
         TermsAgreementRoute(
             signupViewModel = authNavigation.signupViewModel,
             isActive = authNavigation.isActive(AppRoute.TermsAgreement, screen),

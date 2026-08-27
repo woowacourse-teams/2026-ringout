@@ -5,11 +5,11 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * Navigation keys shared by Android and iOS.
+ * Android와 iOS에서 공통으로 사용하는 내비게이션 키다.
  *
- * Routes carry identifiers only. Editing state, signup tokens, and screen data
- * remain in their state holders. Serial names keep saved keys independent of
- * Kotlin class and package names.
+ * 경로에는 식별자만 담는다. 편집 상태, 회원가입 토큰, 화면 데이터는
+ * 각 상태 관리 객체에 유지한다. 직렬화 이름을 명시해 저장된 키가
+ * Kotlin 클래스명과 패키지명에 의존하지 않도록 한다.
  */
 @Serializable
 internal sealed interface AppRoute : NavKey {
@@ -29,7 +29,7 @@ internal sealed interface AppRoute : NavKey {
     @SerialName("edit_alarm")
     data class EditAlarm(val alarmId: String) : AppRoute
 
-    // Matches asynchronous save results to this visit to the destination picker.
+    // 비동기 저장 결과가 목적지 선택 화면의 어느 진입에 해당하는지 구분한다.
     @Serializable
     @SerialName("destination")
     data class Destination(val requestId: Long) : AppRoute
@@ -38,7 +38,7 @@ internal sealed interface AppRoute : NavKey {
     @SerialName("alarm_sound")
     data object AlarmSound : AppRoute
 
-    // The legacy Settings destination also displays MyPageScreen.
+    // 기존 Settings 경로도 MyPageScreen을 표시한다.
     @Serializable
     @SerialName("my_page")
     data object MyPage : AppRoute
@@ -55,12 +55,12 @@ internal sealed interface AppRoute : NavKey {
     @SerialName("terms_agreement")
     data object TermsAgreement : AppRoute
 
-    // Matches AlarmRingingUiState.id, which is a system alarm ID on iOS.
+    // AlarmRingingUiState.id와 일치하며, iOS에서는 시스템 알람 식별자에 해당한다.
     @Serializable
     @SerialName("alarm_ringing")
     data class AlarmRinging(val alarmId: String) : AppRoute
 
-    // Distinguishes individual mission occurrences of the same repeating alarm.
+    // 같은 반복 알람에서 발생한 미션을 회차별로 구분한다.
     @Serializable
     @SerialName("active_alarm_tracking")
     data class ActiveAlarmTracking(val occurrenceId: String) : AppRoute

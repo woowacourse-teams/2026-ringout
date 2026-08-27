@@ -34,7 +34,7 @@ internal fun NicknameChangeRoute(
         NicknameChangeViewModel(account.nickname, memberRepository)
     }
     val uiState = viewModel.uiState
-    LaunchedEffect(uiState.completedNickname) {
+    LaunchedEffect(viewModel, uiState.completedNickname) {
         val updatedNickname = uiState.completedNickname ?: return@LaunchedEffect
         onNicknameChanged(updatedNickname)
         viewModel.consumeCompletedNickname()

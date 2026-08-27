@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.alarmsetup
 
+import androidx.lifecycle.ViewModelStore
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.DefaultMissionLocationState
 import com.joon.ringout.alarm.MissionLocationAccuracyState
@@ -11,10 +12,72 @@ import com.joon.ringout.presentation.destination.DestinationSelection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class AlarmSetupViewModelTest {
+    @Test
+    fun clearingTheStoreDropsTheDraftAndRejectsFurtherEditorActions() {
+        val viewModel = viewModelWithPendingSave()
+        val pendingRequest = requireNotNull(viewModel.uiState.pendingSaveRequest)
+        viewModel.onLocationStateChanged(
+            locationState = locationState(
+                authorization = MissionLocationAuthorizationState.NOT_DETERMINED,
+            ),
+            useSystemPermissionUiOnly = false,
+            canProcessSave = true,
+        )
+        viewModel.showError("pending error")
+        assertTrue(viewModel.hasDraft)
+        assertNotNull(viewModel.permissionDialog)
+
+        clearViewModel(viewModel)
+
+        assertFalse(viewModel.hasDraft)
+        assertNull(viewModel.permissionDialog)
+        assertEquals(AlarmSetupUiState(), viewModel.uiState)
+
+        viewModel.startCreating("12:00")
+        viewModel.startEditing(request)
+        viewModel.updateDestination(destination)
+        viewModel.updateAlarmSound(alarmSound)
+        viewModel.updateHour(9)
+        viewModel.toggleDay("월")
+        viewModel.updateLimitMinutes(20)
+        viewModel.showError("late error")
+        viewModel.onSaveError(pendingRequest, "late save error")
+
+        assertFalse(viewModel.hasDraft)
+        assertFalse(viewModel.requestSave())
+        assertNull(viewModel.createScheduleRequest())
+        assertNull(viewModel.onPermissionDialogConfirmed())
+        assertFalse(viewModel.onSaveCompleted(pendingRequest))
+        assertEquals(AlarmSetupUiState(), viewModel.uiState)
+    }
+
+    @Test
+    fun aReopenedEditorIgnoresEqualRequestsFromThePreviousScope() {
+        val previousViewModel = viewModelWithPendingSave()
+        val previousRequest = requireNotNull(previousViewModel.uiState.pendingSaveRequest)
+        clearViewModel(previousViewModel)
+        val viewModel = viewModelWithPendingSave()
+        val currentRequest = requireNotNull(viewModel.uiState.pendingSaveRequest)
+        assertEquals(previousRequest, currentRequest)
+        assertNotSame(previousRequest, currentRequest)
+
+        assertFalse(viewModel.onSaveCompleted(previousRequest))
+        viewModel.onSaveError(previousRequest, "previous editor failed")
+
+        assertSame(currentRequest, viewModel.uiState.pendingSaveRequest)
+        assertTrue(viewModel.uiState.isSaveInProgress)
+        assertNull(viewModel.uiState.errorMessage)
+        assertTrue(viewModel.onSaveCompleted(currentRequest))
+        assertFalse(viewModel.uiState.isSaveInProgress)
+    }
+
     @Test
     fun `새 알람을 시작하면 현재 시각으로 초안을 초기화한다`() {
         val viewModel = AlarmSetupViewModel(createAlarmId = { "new-alarm" })
@@ -305,7 +368,7 @@ class AlarmSetupViewModelTest {
         assertFalse(viewModel.onSaveCompleted(request.copy(id = "other-alarm")))
         assertTrue(viewModel.uiState.isSaveInProgress)
 
-        assertTrue(viewModel.onSaveCompleted(request))
+        assertTrue(viewModel.onSaveCompleted(requireNotNull(viewModel.uiState.pendingSaveRequest)))
         assertFalse(viewModel.uiState.isSaveInProgress)
     }
 
@@ -313,10 +376,19 @@ class AlarmSetupViewModelTest {
     fun `현재 요청의 저장 실패를 받으면 진행 상태를 해제하고 오류를 제공한다`() {
         val viewModel = viewModelWithPendingSave()
 
-        viewModel.onSaveError(request, "알람 저장 실패")
+        viewModel.onSaveError(
+            requireNotNull(viewModel.uiState.pendingSaveRequest),
+            "알람 저장 실패",
+        )
 
         assertFalse(viewModel.uiState.isSaveInProgress)
         assertEquals("알람 저장 실패", viewModel.uiState.errorMessage)
+    }
+
+    private fun clearViewModel(viewModel: AlarmSetupViewModel) {
+        val store = ViewModelStore()
+        store.put("alarm-editor", viewModel)
+        store.clear()
     }
 
     private fun viewModelWithPendingSave() = configuredViewModel().apply {

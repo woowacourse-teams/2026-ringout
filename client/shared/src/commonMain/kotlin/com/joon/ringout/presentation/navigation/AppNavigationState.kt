@@ -26,8 +26,8 @@ internal fun rememberAppNavigationState(): AppNavigationState {
 }
 
 /**
- * Ordinary navigation is owned by Navigation 3. Ringing and active-mission screens
- * temporarily keep their existing routing, without replacing the migrated back stack.
+ * 일반 화면 이동은 Navigation 3가 관리한다. 알람 울림과 진행 중인 미션 화면은
+ * 이전이 완료된 백스택을 교체하지 않고, 당분간 기존 화면 이동 방식을 유지한다.
  */
 internal class AppNavigationState(
     private val routes: NavBackStack<AppRoute> = NavBackStack(AppRoute.Home),
@@ -36,11 +36,11 @@ internal class AppNavigationState(
     private var legacyScreenName by legacyScreenName
 
     init {
-        // Saved state from the previous migration can still contain legacy auth destinations.
+        // 앞선 이전 단계에서 저장된 상태에는 기존 인증 화면 경로가 남아 있을 수 있다.
         when (this.legacyScreenName) {
             AppScreen.Login.name -> navigate(AppRoute.Login)
             AppScreen.TermsAgreement.name -> navigate(AppRoute.TermsAgreement)
-            // Old editor destinations have no parent identifier or restorable draft.
+            // 기존 편집 화면 경로에는 부모 식별자나 복원할 수 있는 초안이 없다.
             AppScreen.AddAlarm.name,
             AppScreen.EditAlarm.name,
             AppScreen.Destination.name,
@@ -75,7 +75,7 @@ internal class AppNavigationState(
             AppRoute.MyPage -> listOf(AppRoute.Home, AppRoute.MyPage)
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)
-            // Login has always returned to MyPage, including after logout or reauthentication.
+            // 로그아웃이나 재인증 후에도 로그인 화면에서 뒤로 가면 마이페이지로 돌아간다.
             AppRoute.Login -> listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
             AppRoute.TermsAgreement ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
@@ -89,14 +89,14 @@ internal class AppNavigationState(
             }
             else -> error("Route has not been migrated: $route")
         }
-        // Keep shared entries and their state; repeated taps do not add duplicates.
+        // 공통 백스택 항목과 상태를 유지하고, 반복해서 눌러도 중복 항목을 추가하지 않는다.
         val sharedSize = routes.zip(destinationStack).takeWhile { (a, b) -> a == b }.size
         routes.subList(sharedSize, routes.size).clear()
         routes.addAll(destinationStack.drop(sharedSize))
         legacyScreenName = null
     }
 
-    /** Adapter for callbacks belonging to screens that have not been migrated yet. */
+    /** 아직 이전하지 않은 화면의 콜백을 연결하는 어댑터다. */
     fun navigate(screen: AppScreen) {
         when (screen) {
             AppScreen.Home -> navigate(AppRoute.Home)
@@ -113,7 +113,7 @@ internal class AppNavigationState(
     }
 
     fun popBackStack(from: AppRoute = routes.last()) {
-        // Ignore callbacks from an outgoing entry and never remove the root.
+        // 이미 벗어난 백스택 항목의 콜백은 무시하고, 루트 항목은 제거하지 않는다.
         if (routes.size > 1 && isCurrentRoute(from)) {
             routes.removeLastOrNull()
         }
@@ -122,7 +122,10 @@ internal class AppNavigationState(
     fun isCurrentRoute(route: AppRoute): Boolean =
         legacyScreenName == null && routes.last() == route
 
-    /** Projects the existing display policy without mutating the requested back stack. */
+    fun retainedRoutes(screen: AppScreen): List<AppRoute> =
+        (backStack + routesForScreen(screen).orEmpty()).distinct()
+
+    /** 요청된 백스택을 변경하지 않고 기존 화면 표시 정책에 맞는 경로를 반환한다. */
     fun routesForScreen(screen: AppScreen): List<AppRoute>? {
         val route = when (screen) {
             AppScreen.Home -> AppRoute.Home
@@ -137,7 +140,7 @@ internal class AppNavigationState(
             else -> return null
         }
         val index = routes.indexOf(route)
-        // A priority Login can be displayed before the existing redirect effect has run.
+        // 기존 화면 전환 부수 효과가 실행되기 전에 로그인 화면이 우선 표시될 수 있다.
         return if (index >= 0) routes.take(index + 1) else listOf(route)
     }
 }

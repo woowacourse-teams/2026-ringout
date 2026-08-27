@@ -19,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.onboarding.component.OnboardingPage
@@ -27,32 +26,7 @@ import com.joon.ringout.presentation.onboarding.component.OnboardingPageIndicato
 import com.joon.ringout.presentation.onboarding.component.OnboardingPrimaryButton
 
 @Composable
-fun OnboardingScreen(
-    onComplete: () -> Unit,
-    modifier: Modifier = Modifier,
-    completionEnabled: Boolean = true,
-    completionRetryToken: Int = 0,
-    pages: List<OnboardingPageContent> = defaultOnboardingPages,
-    viewModel: OnboardingViewModel = viewModel { OnboardingViewModel() },
-) {
-    OnboardingScreenContent(
-        pages = pages,
-        currentPageIndex = viewModel.uiState.currentPageIndex,
-        onNext = {
-            when (viewModel.requestNext(pages.size, completionRetryToken)) {
-                OnboardingAdvance.Complete -> onComplete()
-                OnboardingAdvance.IgnoredAlreadyComplete,
-                is OnboardingAdvance.MoveTo,
-                -> Unit
-            }
-        },
-        completionEnabled = completionEnabled,
-        modifier = modifier,
-    )
-}
-
-@Composable
-internal fun OnboardingScreenContent(
+internal fun OnboardingScreen(
     pages: List<OnboardingPageContent>,
     currentPageIndex: Int,
     onNext: () -> Unit,
@@ -220,7 +194,7 @@ private fun OnboardingScreenPreview(
     pageIndex: Int,
 ) {
     RingoutTheme(themeMode = themeMode) {
-        OnboardingScreenContent(
+        OnboardingScreen(
             pages = defaultOnboardingPages,
             currentPageIndex = pageIndex,
             onNext = {},
