@@ -1,5 +1,8 @@
 package com.joon.ringout.presentation.navigation
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
@@ -41,6 +44,10 @@ internal fun RingoutNavHost(
             entries = visibleRoutes.map(entriesByRoute::getValue),
             modifier = modifier,
             onBack = { if (!isBackBlocked) onBack(visibleRoutes.last()) },
+            transitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+            popTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+            predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+            sizeTransform = null,
         )
         // Consume busy-auth back gestures on both platforms before NavDisplay can preview/pop.
         NavigationBackHandler(
