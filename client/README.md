@@ -132,9 +132,9 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 
 | 시점 | 워크플로우 | 실행 내용 | 산출물 |
 | --- | --- | --- | --- |
-| 작업 브랜치 → `develop` PR 생성·수정·재오픈 | `Client CI` | 테스트, Android Lint, 서명 없는 release AAB 빌드, R8 검사 | 검증 보고서 |
+| 작업 브랜치 → `develop` 클라이언트 변경 PR 생성·수정·재오픈 | `Client CI` | 테스트, Android Lint, 서명 없는 release AAB 빌드, R8 검사 | 검증 보고서 |
 | `develop`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 내부 테스트용 AAB |
-| `develop` → `main` PR 생성·수정·재오픈 | `Client CI` | 같은 품질 검사와 출발 브랜치 검사 | 검증 보고서 |
+| `develop` → `main` 클라이언트 변경 PR 생성·수정·재오픈 | `Client CI` | 같은 품질 검사와 출발 브랜치 검사 | 검증 보고서 |
 | `main`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 릴리스용 AAB |
 
 워크플로우는 저장소 루트의 [client-ci.yml](../.github/workflows/client-ci.yml)과 [build-release-aab.yml](../.github/workflows/build-release-aab.yml)에 있습니다.
@@ -142,9 +142,10 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 ### PR 검증과 병합 조건
 
 - `develop` 대상 PR은 `feature`, `fix`, `chore` 등 작업 브랜치 이름으로 제한하지 않습니다.
-- `main` 대상 PR은 **같은 저장소의 `develop`**에서만 허용합니다. fork의 동명 브랜치도 실패합니다.
-- 워크플로우 전체에 경로 필터를 걸지 않습니다. 내부에서 `client/**`, 두 클라이언트 워크플로우, `.github/actions/**`의 변경을 확인합니다. 삭제나 `client` 밖으로의 이동도 검사합니다.
-- 서버만 변경한 PR은 Android 검사를 건너뛰고 최종 `Client CI`를 통과합니다. 단, `main` PR의 출발 브랜치 규칙은 동일하게 적용합니다.
+- `main` 대상 클라이언트 변경 PR은 **같은 저장소의 `develop`**에서만 허용합니다. fork의 동명 브랜치도 실패합니다.
+- PR 전체 변경 경로에 `client/**`, `.github/workflows/client-ci.yml`, `.github/workflows/build-release-aab.yml`, `.github/actions/**` 중 하나가 포함될 때만 워크플로우를 실행합니다. 실행 후 내부 변경 검사에서도 삭제나 `client` 밖으로의 이동을 확인합니다.
+- 서버나 루트 문서만 변경한 PR은 `Client CI` 워크플로우 자체를 실행하지 않습니다. `main` PR의 출발 브랜치 검사도 클라이언트 관련 변경이 있는 PR에만 적용합니다.
+- 경로 필터는 마지막 커밋이 아닌 PR 전체 변경을 기준으로 합니다. 이미 클라이언트 변경이 포함된 PR에 서버 커밋을 추가하면 CI가 다시 실행됩니다.
 - 필요한 검사의 실패·취소·예상치 못한 건너뛰기는 최종 `Client CI` 실패로 이어집니다.
 - 추가 커밋이 올라오면 이전 PR 실행을 취소하고 최신 PR 병합 커밋을 검사합니다.
 - 업로드 키를 PR에 제공하지 않습니다. `pull_request_target`이나 PR 아티팩트 전달을 통한 서명도 사용하지 않습니다.
@@ -227,12 +228,12 @@ versionCode = APP_VERSION_CODE_BASE + GITHUB_RUN_NUMBER
 ### 브랜치 보호와 최초 적용
 
 1. 기존 리뷰·보호 규칙을 유지한 채 CI 변경 PR을 실행합니다.
-2. 실제 PR에서 최종 **`Client CI`** 체크가 성공한 것을 확인합니다.
-3. `develop`과 `main`의 Ruleset 또는 Branch protection에 `Client CI`를 필수 상태 검사로 등록합니다. 조건부 Android job 대신 최종 체크를 선택합니다.
+2. 클라이언트 변경 PR에서 최종 **`Client CI`** 체크가 성공하고, 서버만 변경한 PR에서는 워크플로우가 실행되지 않는지 확인합니다.
+3. `Client CI`는 모든 PR의 필수 상태 검사로 등록하지 않습니다. 이미 `develop` 또는 `main`의 Ruleset이나 Branch protection에 등록했다면 이 변경을 적용하기 전에 해제해야 합니다. 경로 필터로 워크플로우를 건너뛰면 필수 체크가 `Pending`으로 남아 서버 PR의 병합을 막을 수 있습니다.
 4. PR을 통한 변경과 최신 기준 브랜치 반영을 요구하고, 직접 push·강제 push·삭제 및 우회 권한을 검토합니다. YAML 자체는 직접 push를 막지 못합니다.
 5. `develop` 병합 후 내부 AAB, `main` 병합 후 릴리스 AAB 생성과 인증서·체크섬을 확인합니다.
 
-체크가 최초 실행되기 전에 필수로 지정하면 진행 중인 PR이 대기할 수 있으므로 최초 성공 이후 연결합니다. 현재 merge queue는 지원하지 않습니다. 향후 도입 시 `merge_group` 이벤트와 변경 경로 판정을 함께 추가해야 합니다.
+모든 PR에 `Client CI` 필수 검사를 유지해야 한다면 워크플로우 경로 필터를 제거하고 내부 변경 검사와 최종 체크를 항상 실행하는 방식으로 돌아가야 합니다. 현재 merge queue는 지원하지 않습니다. 향후 도입 시 `merge_group` 이벤트와 변경 경로 판정을 함께 추가해야 합니다.
 
 수동 실행은 복구용입니다. `develop`·`main` 이외 브랜치를 선택하면 서명 job은 실행하지 않습니다. 브랜치별 실행 중인 AAB 빌드는 취소하지 않으며, GitHub concurrency 정책상 여러 대기 실행은 최신 실행으로 대체될 수 있습니다.
 
