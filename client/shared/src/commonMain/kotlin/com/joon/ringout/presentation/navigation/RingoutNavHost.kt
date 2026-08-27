@@ -49,7 +49,7 @@ internal fun RingoutNavHost(
             predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
             sizeTransform = null,
         )
-        // Consume busy-auth back gestures on both platforms before NavDisplay can preview/pop.
+        // Consume blocked back gestures on both platforms before NavDisplay can preview/pop.
         NavigationBackHandler(
             state = rememberNavigationEventState(NavigationEventInfo.None),
             isBackEnabled = isBackBlocked,

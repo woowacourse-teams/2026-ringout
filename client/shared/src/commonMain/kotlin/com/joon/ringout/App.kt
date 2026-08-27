@@ -25,14 +25,8 @@ import com.joon.ringout.alarm.rememberAlarmController
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.presentation.activemission.ActiveAlarmTrackingScreen
 import com.joon.ringout.presentation.activemission.components.MissionLocationPermissionDialog
-import com.joon.ringout.presentation.alarmsound.AlarmSoundScreen
-import com.joon.ringout.presentation.alarmsetup.AlarmSetupScreen
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
-import com.joon.ringout.presentation.destination.DefaultDestinationSelection
-import com.joon.ringout.presentation.destination.DestinationMapScreen
 import com.joon.ringout.presentation.destination.DestinationViewModel
-import com.joon.ringout.presentation.destination.belongsToDestinationRequest
-import com.joon.ringout.presentation.destination.toDestinationSelection
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
@@ -48,8 +42,11 @@ import com.joon.ringout.presentation.mypage.currentMissionYearMonth
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import com.joon.ringout.presentation.navigation.AppRoute
+import com.joon.ringout.presentation.navigation.AlarmEditorNavigationEffects
 import com.joon.ringout.presentation.navigation.RingoutNavHost
+import com.joon.ringout.presentation.navigation.alarmEditorGraph
 import com.joon.ringout.presentation.navigation.authGraph
+import com.joon.ringout.presentation.navigation.rememberAlarmEditorNavigation
 import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.navigation.homeGraph
 import com.joon.ringout.presentation.navigation.rememberAppNavigationState
@@ -174,7 +171,6 @@ private fun RingoutAppContent(
     val authRepository = appContainer.authRepository
     val memberRepository = appContainer.memberRepository
     val authSessionState by authSession.state.collectAsState()
-    val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
     val myPageViewModel: MyPageViewModel = viewModel {
         MyPageViewModel(
             getMissionSuccessDates = GetMissionSuccessDates(
@@ -219,10 +215,14 @@ private fun RingoutAppContent(
     val homeUiState = homeViewModel.uiState
     val navigationState = rememberAppNavigationState()
     val authNavigation = rememberAuthNavigation(navigationState, loginViewModel, signupViewModel)
+    val alarmEditorNavigation = rememberAlarmEditorNavigation(
+        navigationState,
+        alarmSetupViewModel,
+        destinationViewModel,
+    )
     var handledActiveAlarmOccurrenceId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
-    var destinationRequestId by rememberSaveable { mutableStateOf(0L) }
 
     LaunchedEffect(authRepository) {
         authRepository.restoreSession()
@@ -265,6 +265,7 @@ private fun RingoutAppContent(
         hasActiveAlarmMission = activeAlarmMission != null,
         authSessionState = authSessionState,
     )
+    AlarmEditorNavigationEffects(navigation = alarmEditorNavigation, screen = screen)
     SystemBarAppearanceEffect(
         themeMode = if (
             screen == AppScreen.ActiveAlarmTracking ||
@@ -278,7 +279,7 @@ private fun RingoutAppContent(
     val alarmController = rememberAlarmController(
         onSaveCompleted = { request ->
             if (alarmSetupViewModel.onSaveCompleted(request)) {
-                navigationState.navigate(AppScreen.Home)
+                navigationState.navigate(AppRoute.Home)
             }
         },
         onSaveError = { request, message ->
@@ -337,35 +338,12 @@ private fun RingoutAppContent(
             onDismiss = alarmSetupViewModel::onPermissionDialogDismissed,
         )
     }
-    val alarmSetupScreen = if (alarmSetupUiState.isEditing) {
-        AppScreen.EditAlarm
-    } else {
-        AppScreen.AddAlarm
-    }
-
     LaunchedEffect(alarmController) {
         alarmController.ensureFullScreenAccess()
     }
 
     LaunchedEffect(alarmController) {
         homeViewModel.observeAlarms(alarmController.savedAlarms)
-    }
-
-    LaunchedEffect(destinationUiState.savedEvent?.eventId) {
-        destinationUiState.savedEvent?.let { event ->
-            if (
-                event.belongsToDestinationRequest(
-                    currentRequestId = destinationRequestId,
-                    isDestinationScreenVisible = navigationState.requestedScreen == AppScreen.Destination,
-                )
-            ) {
-                alarmSetupViewModel.updateDestination(
-                    event.destination.toDestinationSelection(),
-                )
-                navigationState.navigate(alarmSetupScreen)
-            }
-            destinationViewModel.consumeSavedEvent(event.eventId)
-        }
     }
 
     LaunchedEffect(activeAlarmMission?.occurrenceId) {
@@ -408,8 +386,18 @@ private fun RingoutAppContent(
         navigationState = navigationState,
         screen = screen,
         modifier = Modifier.fillMaxSize(),
-        isBackBlocked = authNavigation.isBackBlocked(screen, authSessionState),
-        onBack = { route -> authNavigation.onBack(route, screen, authSessionState) },
+        isBackBlocked = authNavigation.isBackBlocked(screen, authSessionState) ||
+            alarmEditorNavigation.isBackBlocked(screen),
+        onBack = { route ->
+            when (route) {
+                AppRoute.AddAlarm,
+                is AppRoute.EditAlarm,
+                is AppRoute.Destination,
+                AppRoute.AlarmSound,
+                -> alarmEditorNavigation.onBack(route, screen)
+                else -> authNavigation.onBack(route, screen, authSessionState)
+            }
+        },
         graph = {
             homeGraph(
                 navigationState = navigationState,
@@ -423,15 +411,11 @@ private fun RingoutAppContent(
                 activeAlarmMission = activeAlarmMission,
                 onThemeModeChange = onThemeModeChange,
                 onAddAlarm = {
-                    alarmSetupViewModel.startCreating(
+                    alarmEditorNavigation.startCreating(
                         initialTime = currentLocalClockSnapshot().to24HourTimeString(),
                     )
-                    navigationState.navigate(AppScreen.AddAlarm)
                 },
-                onEditAlarm = { request ->
-                    alarmSetupViewModel.startEditing(request)
-                    navigationState.navigate(AppScreen.EditAlarm)
-                },
+                onEditAlarm = alarmEditorNavigation::startEditing,
                 onLogin = { navigationState.navigate(AppRoute.Login) },
                 onActiveAlarmMissionClick = {
                     navigationState.navigate(AppScreen.ActiveAlarmTracking)
@@ -443,9 +427,15 @@ private fun RingoutAppContent(
                 screen = screen,
                 authSessionState = authSessionState,
             )
+            alarmEditorGraph(
+                navigation = alarmEditorNavigation,
+                screen = screen,
+                authSessionState = authSessionState,
+                productAnalyticsRecorder = productAnalyticsRecorder,
+            )
         },
     ) {
-        // Alarm flows keep their existing routing until their migration steps.
+        // Ringing and active-mission priority screens keep their existing routing for now.
         when (screen) {
             AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
                 AlarmRingingScreen(
@@ -474,88 +464,17 @@ private fun RingoutAppContent(
                 )
             }
 
-            AppScreen.AddAlarm,
-            AppScreen.EditAlarm,
-            AppScreen.Destination,
-            AppScreen.AlarmSound,
-            -> Box(Modifier.fillMaxSize()) {
-                AlarmSetupScreen(
-                    uiState = alarmSetupUiState,
-                    onAmPmChange = alarmSetupViewModel::updateAmPm,
-                    onHourChange = alarmSetupViewModel::updateHour,
-                    onMinuteChange = alarmSetupViewModel::updateMinute,
-                    onDayClick = alarmSetupViewModel::toggleDay,
-                    onLimitMinutesChange = alarmSetupViewModel::updateLimitMinutes,
-                    onBackClick = {
-                        if (!alarmSetupUiState.isSaveInProgress) {
-                            navigationState.navigate(AppScreen.Home)
-                        }
-                    },
-                    onDestinationClick = {
-                        destinationRequestId += 1L
-                        navigationState.navigate(AppScreen.Destination)
-                    },
-                    onAlarmSoundClick = { navigationState.navigate(AppScreen.AlarmSound) },
-                    onSaveClick = { alarmSetupViewModel.requestSave() },
-                )
-
-                if (screen == AppScreen.Destination) {
-                    DestinationMapScreen(
-                        initialSelection = alarmSetupUiState.destination
-                            ?: DefaultDestinationSelection,
-                        requestCurrentLocationOnStart = false,
-                        isAuthenticated = authSessionState == AuthSessionState.Authenticated,
-                        onEntered = destinationViewModel::onScreenEntered,
-                        onBackClick = { navigationState.navigate(alarmSetupScreen) },
-                        onConfirmClick = saveDestination@ { destination ->
-                            val loginState = analyticsLoginState ?: return@saveDestination
-                            destinationViewModel.save(
-                                destination = destination,
-                                requestId = destinationRequestId,
-                                loginState = loginState,
-                            )
-                        },
-                        onSavedDestinationConfirmClick = { savedDestination ->
-                            alarmSetupViewModel.updateDestination(
-                                savedDestination.toDestinationSelection(),
-                            )
-                            navigationState.navigate(alarmSetupScreen)
-                        },
-                        savedDestinations = destinationUiState.destinations,
-                        onSavedDestinationRename = destinationViewModel::rename,
-                        onSavedDestinationDeleteClick = destinationViewModel::delete,
-                        onSavedDestinationSelected = { source ->
-                            analyticsLoginState?.let { loginState ->
-                                productAnalyticsRecorder.recordDestinationSelected(
-                                    source = source,
-                                    loginState = loginState,
-                                )
-                            }
-                        },
-                        isSaveInProgress = destinationUiState.isSaving,
-                        isDestinationActionEnabled = analyticsLoginState != null,
-                    )
-                }
-
-                if (screen == AppScreen.AlarmSound) {
-                    AlarmSoundScreen(
-                        selectedSound = alarmSetupUiState.alarmSound,
-                        onBackClick = { navigationState.navigate(alarmSetupScreen) },
-                        onSaveClick = { selectedSound ->
-                            alarmSetupViewModel.updateAlarmSound(selectedSound)
-                            navigationState.navigate(alarmSetupScreen)
-                        },
-                    )
-                }
-            }
-
             AppScreen.Home,
             AppScreen.MyPage,
             AppScreen.Settings,
             AppScreen.NicknameChange,
             AppScreen.Login,
             AppScreen.TermsAgreement,
-            -> Unit // Rendered by HomeGraph or AuthGraph.
+            AppScreen.AddAlarm,
+            AppScreen.EditAlarm,
+            AppScreen.Destination,
+            AppScreen.AlarmSound,
+            -> Unit // Rendered by HomeGraph, AuthGraph, or AlarmEditorGraph.
         }
     }
 }

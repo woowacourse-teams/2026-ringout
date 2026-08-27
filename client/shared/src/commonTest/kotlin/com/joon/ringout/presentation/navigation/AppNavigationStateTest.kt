@@ -9,6 +9,7 @@ import com.joon.ringout.resolveAppScreen
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -103,7 +104,7 @@ class AppNavigationStateTest {
     fun `기존 화면에서 홈으로 이동하면 이전 편집 경로를 제거한다`() {
         val state = AppNavigationState()
         state.navigate(AppRoute.NicknameChange)
-        state.navigate(AppScreen.AddAlarm)
+        state.navigate(AppScreen.ActiveAlarmTracking)
 
         state.navigate(AppScreen.Home)
 
@@ -296,5 +297,119 @@ class AppNavigationStateTest {
         assertEquals(listOf(AppRoute.Login), state.routesForScreen(screen)?.toList())
         assertFalse(state.isCurrentRoute(AppRoute.Login))
         assertEquals(expectedStack, state.backStack.toList())
+    }
+
+    @Test
+    fun `목적지와 알람음에서 뒤로 가면 같은 생성 또는 수정 화면으로 돌아온다`() {
+        for (parent in listOf(AppRoute.AddAlarm, AppRoute.EditAlarm("alarm-1"))) {
+            val state = AppNavigationState()
+            state.navigate(parent)
+
+            for (picker in listOf(AppRoute.Destination(7L), AppRoute.AlarmSound)) {
+                state.navigate(picker)
+
+                assertEquals(listOf(AppRoute.Home, parent, picker), state.backStack.toList())
+                assertEquals(parent, state.editorRoute)
+                state.popBackStack(picker)
+                assertEquals(listOf(AppRoute.Home, parent), state.backStack.toList())
+            }
+
+            state.popBackStack(parent)
+            assertEquals(listOf(AppRoute.Home), state.backStack.toList())
+            assertNull(state.editorRoute)
+        }
+    }
+
+    @Test
+    fun `선택 화면을 반복하거나 바꿔도 편집 부모 아래에는 현재 자식만 남긴다`() {
+        val state = AppNavigationState()
+        val parent = AppRoute.EditAlarm("alarm-1")
+        state.navigate(parent)
+
+        repeat(2) { state.navigate(AppRoute.Destination(1L)) }
+        repeat(2) { state.navigate(AppRoute.AlarmSound) }
+        state.navigate(AppRoute.Destination(2L))
+
+        assertEquals(
+            listOf(AppRoute.Home, parent, AppRoute.Destination(2L)),
+            state.backStack.toList(),
+        )
+        state.navigate(AppRoute.EditAlarm("alarm-2"))
+        assertEquals(listOf(AppRoute.Home, AppRoute.EditAlarm("alarm-2")), state.backStack.toList())
+        state.navigate(AppRoute.AddAlarm)
+        assertEquals(listOf(AppRoute.Home, AppRoute.AddAlarm), state.backStack.toList())
+    }
+
+    @Test
+    fun `편집 부모가 없는 목적지와 알람음 이동은 기존 스택을 바꾸지 않고 거절한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.MyPage)
+        val expectedStack = state.backStack.toList()
+
+        for (picker in listOf(AppRoute.Destination(1L), AppRoute.AlarmSound)) {
+            assertFailsWith<IllegalArgumentException> { state.navigate(picker) }
+        }
+
+        assertEquals(expectedStack, state.backStack.toList())
+    }
+
+    @Test
+    fun `기존 화면 adapter는 식별자 없는 수정과 목적지 요청을 거절한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppScreen.AddAlarm)
+        state.navigate(AppScreen.AlarmSound)
+        val expectedStack = listOf(AppRoute.Home, AppRoute.AddAlarm, AppRoute.AlarmSound)
+
+        for (screen in listOf(AppScreen.EditAlarm, AppScreen.Destination)) {
+            assertFailsWith<IllegalArgumentException> { state.navigate(screen) }
+        }
+
+        assertEquals(expectedStack, state.backStack.toList())
+        assertEquals(AppScreen.AlarmSound, state.requestedScreen)
+    }
+
+    @Test
+    fun `편집 화면을 투영할 때 부모 식별자를 보존하고 실제 자식은 제거하지 않는다`() {
+        val state = AppNavigationState()
+        val parent = AppRoute.EditAlarm("alarm-1")
+        state.navigate(parent)
+        state.navigate(AppRoute.Destination(9L))
+        val expectedStack = state.backStack.toList()
+
+        assertEquals(
+            listOf(AppRoute.Home, parent),
+            state.routesForScreen(AppScreen.EditAlarm)?.toList(),
+        )
+        assertEquals(expectedStack, state.routesForScreen(AppScreen.Destination)?.toList())
+        assertNull(state.routesForScreen(AppScreen.AlarmRinging))
+        assertEquals(expectedStack, state.backStack.toList())
+
+        state.navigate(AppRoute.AlarmSound)
+        assertEquals(
+            listOf(AppRoute.Home, parent, AppRoute.AlarmSound),
+            state.routesForScreen(AppScreen.AlarmSound)?.toList(),
+        )
+    }
+
+    @Test
+    fun `이전 문자열 편집 경로는 초안을 복원할 수 없어 홈으로 돌아간다`() {
+        for (
+            screen in listOf(
+                AppScreen.AddAlarm,
+                AppScreen.EditAlarm,
+                AppScreen.Destination,
+                AppScreen.AlarmSound,
+            )
+        ) {
+            val state = AppNavigationState(
+                NavBackStack(AppRoute.Home, AppRoute.MyPage),
+                mutableStateOf(screen.name),
+            )
+
+            assertEquals(listOf(AppRoute.Home), state.backStack.toList())
+            assertEquals(AppScreen.Home, state.requestedScreen)
+            assertTrue(state.isCurrentRoute(AppRoute.Home))
+            assertNull(state.editorRoute)
+        }
     }
 }

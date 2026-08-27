@@ -31,6 +31,9 @@ class AlarmSetupViewModel(
     var uiState by mutableStateOf(AlarmSetupUiState())
         private set
 
+    internal var hasDraft by mutableStateOf(false)
+        private set
+
     internal var permissionDialog by mutableStateOf<MissionLocationPermissionDecision?>(null)
         private set
 
@@ -39,6 +42,7 @@ class AlarmSetupViewModel(
     fun startCreating(initialTime: String) {
         resetPermissionFlow()
         uiState = AlarmSetupUiState(time = initialTime)
+        hasDraft = true
     }
 
     fun startEditing(request: AlarmScheduleRequest) {
@@ -62,6 +66,7 @@ class AlarmSetupViewModel(
                 uri = request.alarmSoundUri,
             ),
         )
+        hasDraft = true
     }
 
     fun updateAmPm(isAm: Boolean) {

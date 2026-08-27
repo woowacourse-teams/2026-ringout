@@ -15,11 +15,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -31,58 +26,9 @@ import com.joon.ringout.presentation.alarmsound.components.AlarmSoundListItem
 import com.joon.ringout.presentation.alarmsound.components.AlarmSoundSaveButton
 import com.joon.ringout.presentation.alarmsound.components.alarmSoundColors
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
-import com.joon.ringout.presentation.alarmsetup.rememberDeviceAlarmSoundController
-import com.joon.ringout.presentation.destination.PlatformBackHandler
 
 @Composable
-fun AlarmSoundScreen(
-    selectedSound: AlarmSoundSelection,
-    onBackClick: () -> Unit,
-    onSaveClick: (AlarmSoundSelection) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val soundController = rememberDeviceAlarmSoundController()
-    val availableSounds = soundController.sounds.ifEmpty { listOf(selectedSound) }
-    val initialSelection = remember(availableSounds, selectedSound) {
-        resolveInitialAlarmSoundSelection(availableSounds, selectedSound)
-    }
-    var selectedName by rememberSaveable(selectedSound.name, selectedSound.uri) {
-        mutableStateOf(initialSelection.name)
-    }
-    var selectedUri by rememberSaveable(selectedSound.name, selectedSound.uri) {
-        mutableStateOf(initialSelection.uri)
-    }
-    val draftSelection = AlarmSoundSelection(
-        name = selectedName,
-        uri = selectedUri,
-    )
-
-    fun leaveWithoutSaving() {
-        soundController.stopPreview()
-        onBackClick()
-    }
-
-    PlatformBackHandler(onBack = ::leaveWithoutSaving)
-
-    AlarmSoundScreenContent(
-        sounds = availableSounds,
-        selectedSound = draftSelection,
-        onBackClick = ::leaveWithoutSaving,
-        onSoundClick = { sound ->
-            selectedName = sound.name
-            selectedUri = sound.uri
-            soundController.preview(sound)
-        },
-        onSaveClick = {
-            soundController.stopPreview()
-            onSaveClick(draftSelection)
-        },
-        modifier = modifier,
-    )
-}
-
-@Composable
-internal fun AlarmSoundScreenContent(
+internal fun AlarmSoundScreen(
     sounds: List<AlarmSoundSelection>,
     selectedSound: AlarmSoundSelection,
     onBackClick: () -> Unit,
@@ -164,7 +110,7 @@ private val PreviewAlarmSounds = listOf(
 @Composable
 private fun AlarmSoundScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
-        AlarmSoundScreenContent(
+        AlarmSoundScreen(
             sounds = PreviewAlarmSounds,
             selectedSound = PreviewAlarmSounds.first(),
             onBackClick = {},
@@ -178,7 +124,7 @@ private fun AlarmSoundScreenDarkPreview() {
 @Composable
 private fun AlarmSoundScreenLightPreview() {
     RingoutTheme(themeMode = ThemeMode.Light) {
-        AlarmSoundScreenContent(
+        AlarmSoundScreen(
             sounds = PreviewAlarmSounds,
             selectedSound = PreviewAlarmSounds.first(),
             onBackClick = {},

@@ -27,7 +27,6 @@ import com.joon.ringout.presentation.alarmsetup.components.TimePickerCard
 import com.joon.ringout.presentation.alarmsetup.components.WeekdaySelector
 import com.joon.ringout.presentation.alarmsetup.components.alarmSetupColors
 import com.joon.ringout.presentation.destination.DestinationSelection
-import com.joon.ringout.presentation.destination.PlatformBackHandler
 
 @Composable
 fun AlarmSetupScreen(
@@ -45,11 +44,6 @@ fun AlarmSetupScreen(
 ) {
     val alarmTime = uiState.time.toAlarmTimePickerValue()
     val colors = alarmSetupColors()
-
-    PlatformBackHandler(
-        enabled = !uiState.isSaveInProgress,
-        onBack = onBackClick,
-    )
 
     Box(
         modifier = modifier

@@ -26,8 +26,8 @@ internal fun rememberAppNavigationState(): AppNavigationState {
 }
 
 /**
- * Main and authentication flows are owned by Navigation 3. Alarm screens temporarily
- * keep their existing routing, without replacing the migrated back stack.
+ * Ordinary navigation is owned by Navigation 3. Ringing and active-mission screens
+ * temporarily keep their existing routing, without replacing the migrated back stack.
  */
 internal class AppNavigationState(
     private val routes: NavBackStack<AppRoute> = NavBackStack(AppRoute.Home),
@@ -40,11 +40,20 @@ internal class AppNavigationState(
         when (this.legacyScreenName) {
             AppScreen.Login.name -> navigate(AppRoute.Login)
             AppScreen.TermsAgreement.name -> navigate(AppRoute.TermsAgreement)
+            // Old editor destinations have no parent identifier or restorable draft.
+            AppScreen.AddAlarm.name,
+            AppScreen.EditAlarm.name,
+            AppScreen.Destination.name,
+            AppScreen.AlarmSound.name,
+            -> navigate(AppRoute.Home)
         }
     }
 
     val backStack: List<AppRoute>
         get() = routes
+
+    val editorRoute: AppRoute?
+        get() = routes.lastOrNull { it == AppRoute.AddAlarm || it is AppRoute.EditAlarm }
 
     val requestedScreen: AppScreen
         get() = legacyScreenName?.let(AppScreen::valueOf) ?: when (routes.last()) {
@@ -53,6 +62,10 @@ internal class AppNavigationState(
             AppRoute.NicknameChange -> AppScreen.NicknameChange
             AppRoute.Login -> AppScreen.Login
             AppRoute.TermsAgreement -> AppScreen.TermsAgreement
+            AppRoute.AddAlarm -> AppScreen.AddAlarm
+            is AppRoute.EditAlarm -> AppScreen.EditAlarm
+            is AppRoute.Destination -> AppScreen.Destination
+            AppRoute.AlarmSound -> AppScreen.AlarmSound
             else -> error("Only migrated routes belong in this back stack")
         }
 
@@ -66,6 +79,14 @@ internal class AppNavigationState(
             AppRoute.Login -> listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
             AppRoute.TermsAgreement ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
+            AppRoute.AddAlarm -> listOf(AppRoute.Home, AppRoute.AddAlarm)
+            is AppRoute.EditAlarm -> listOf(AppRoute.Home, route)
+            is AppRoute.Destination,
+            AppRoute.AlarmSound,
+            -> {
+                val parent = requireNotNull(editorRoute) { "An alarm picker requires an editor parent" }
+                routes.take(routes.indexOf(parent) + 1) + route
+            }
             else -> error("Route has not been migrated: $route")
         }
         // Keep shared entries and their state; repeated taps do not add duplicates.
@@ -83,6 +104,10 @@ internal class AppNavigationState(
             AppScreen.NicknameChange -> navigate(AppRoute.NicknameChange)
             AppScreen.Login -> navigate(AppRoute.Login)
             AppScreen.TermsAgreement -> navigate(AppRoute.TermsAgreement)
+            AppScreen.AddAlarm -> navigate(AppRoute.AddAlarm)
+            AppScreen.AlarmSound -> navigate(AppRoute.AlarmSound)
+            AppScreen.EditAlarm, AppScreen.Destination ->
+                throw IllegalArgumentException("Use an AppRoute with the required identifier for $screen")
             else -> legacyScreenName = screen.name
         }
     }
@@ -105,6 +130,10 @@ internal class AppNavigationState(
             AppScreen.NicknameChange -> AppRoute.NicknameChange
             AppScreen.Login -> AppRoute.Login
             AppScreen.TermsAgreement -> AppRoute.TermsAgreement
+            AppScreen.AddAlarm -> AppRoute.AddAlarm
+            AppScreen.EditAlarm -> routes.lastOrNull { it is AppRoute.EditAlarm } ?: return null
+            AppScreen.Destination -> routes.lastOrNull { it is AppRoute.Destination } ?: return null
+            AppScreen.AlarmSound -> routes.lastOrNull { it == AppRoute.AlarmSound } ?: return null
             else -> return null
         }
         val index = routes.indexOf(route)
