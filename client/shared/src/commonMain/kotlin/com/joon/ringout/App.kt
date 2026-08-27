@@ -8,7 +8,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -35,7 +34,6 @@ import com.joon.ringout.presentation.destination.DestinationMapScreen
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.destination.belongsToDestinationRequest
 import com.joon.ringout.presentation.destination.toDestinationSelection
-import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginScreen
 import com.joon.ringout.presentation.login.LoginViewModel
@@ -49,16 +47,15 @@ import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.termsagreement.TermId
 import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
-import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
-import com.joon.ringout.presentation.mypage.MyPageScreen
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.mypage.PolicyId
 import com.joon.ringout.presentation.mypage.currentMissionYearMonth
 import com.joon.ringout.presentation.mypage.findPolicyUrl
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
-import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
-import com.joon.ringout.presentation.nickname.NicknameChangeScreen
+import com.joon.ringout.presentation.navigation.RingoutNavHost
+import com.joon.ringout.presentation.navigation.mainGraph
+import com.joon.ringout.presentation.navigation.rememberAppNavigationState
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
 
@@ -225,7 +222,7 @@ private fun RingoutAppContent(
     val alarmSetupUiState = alarmSetupViewModel.uiState
     val homeViewModel: HomeViewModel = viewModel { HomeViewModel() }
     val homeUiState = homeViewModel.uiState
-    var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
+    val navigationState = rememberAppNavigationState()
     var handledActiveAlarmOccurrenceId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -249,7 +246,7 @@ private fun RingoutAppContent(
             if (destinationUiState.errorMessage != null) {
                 destinationViewModel.clearError()
             }
-            screenName = AppScreen.Login.name
+            navigationState.navigate(AppScreen.Login)
         }
     }
     val completedAccountAction =
@@ -257,13 +254,15 @@ private fun RingoutAppContent(
     LaunchedEffect(completedAccountAction?.eventId) {
         val completed = completedAccountAction ?: return@LaunchedEffect
         signupViewModel.resetSignup()
-        screenName = when (completed.action) {
-            MyPageAccountAction.Logout -> AppScreen.Login.name
-            MyPageAccountAction.Withdraw -> AppScreen.MyPage.name
-        }
+        navigationState.navigate(
+            when (completed.action) {
+                MyPageAccountAction.Logout -> AppScreen.Login
+                MyPageAccountAction.Withdraw -> AppScreen.MyPage
+            },
+        )
         myPageViewModel.consumeAccountActionCompletedEvent(completed.eventId)
     }
-    val requestedScreen = AppScreen.valueOf(screenName)
+    val requestedScreen = navigationState.requestedScreen
     val screen = resolveAppScreen(
         requestedScreen = requestedScreen,
         hasRingingAlarm = ringingAlarm != null,
@@ -283,7 +282,7 @@ private fun RingoutAppContent(
     val alarmController = rememberAlarmController(
         onSaveCompleted = { request ->
             if (alarmSetupViewModel.onSaveCompleted(request)) {
-                screenName = AppScreen.Home.name
+                navigationState.navigate(AppScreen.Home)
             }
         },
         onSaveError = { request, message ->
@@ -311,16 +310,6 @@ private fun RingoutAppContent(
             null -> Unit
         }
     }
-    val performHomeCommand: (HomeViewModel.Command) -> Unit = { command ->
-        when (command) {
-            is HomeViewModel.Command.SetAlarmEnabled ->
-                alarmController.setEnabled(command.alarmId, command.enabled)
-
-            is HomeViewModel.Command.DeleteAlarm ->
-                alarmController.deleteAlarm(command.alarmId)
-        }
-    }
-
     LaunchedEffect(
         alarmSetupUiState.pendingSaveRequest?.id,
         alarmSetupUiState.isScheduling,
@@ -371,13 +360,13 @@ private fun RingoutAppContent(
             if (
                 event.belongsToDestinationRequest(
                     currentRequestId = destinationRequestId,
-                    isDestinationScreenVisible = screenName == AppScreen.Destination.name,
+                    isDestinationScreenVisible = navigationState.requestedScreen == AppScreen.Destination,
                 )
             ) {
                 alarmSetupViewModel.updateDestination(
                     event.destination.toDestinationSelection(),
                 )
-                screenName = alarmSetupScreen.name
+                navigationState.navigate(alarmSetupScreen)
             }
             destinationViewModel.consumeSavedEvent(event.eventId)
         }
@@ -388,14 +377,14 @@ private fun RingoutAppContent(
         when {
             occurrenceId == null -> {
                 handledActiveAlarmOccurrenceId = null
-                if (screenName == AppScreen.ActiveAlarmTracking.name) {
-                    screenName = AppScreen.Home.name
+                if (navigationState.requestedScreen == AppScreen.ActiveAlarmTracking) {
+                    navigationState.navigate(AppScreen.Home)
                 }
             }
 
             handledActiveAlarmOccurrenceId != occurrenceId -> {
                 handledActiveAlarmOccurrenceId = occurrenceId
-                screenName = AppScreen.ActiveAlarmTracking.name
+                navigationState.navigate(AppScreen.ActiveAlarmTracking)
             }
         }
     }
@@ -419,238 +408,194 @@ private fun RingoutAppContent(
         },
     )
 
-    when (screen) {
-        AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
-            AlarmRingingScreen(
-                alarmTime = alarm.alarmTime,
-                dateText = alarm.dateText,
-                limitMinutes = alarm.limitMinutes,
-                destinationName = alarm.destinationName,
-                onDismissAndNavigateClick = {
-                    screenName = AppScreen.ActiveAlarmTracking.name
-                    onRingingAlarmDismiss(alarm.id)
-                },
-            )
-        }
-
-        AppScreen.Home -> HomeScreen(
-            uiState = homeUiState,
-            activeAlarmMission = activeAlarmMission,
-            onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
-            onAddAlarm = {
-                alarmSetupViewModel.startCreating(
-                    initialTime = currentLocalClockSnapshot().to24HourTimeString(),
-                )
-                screenName = AppScreen.AddAlarm.name
-            },
-            onAlarmClick = { alarmId ->
-                val request = homeViewModel.alarmScheduleRequest(alarmId)
-                if (request == null) {
-                    homeViewModel.showError(
-                        "알람의 목적지 정보를 불러오지 못했습니다.",
+    RingoutNavHost(
+        navigationState = navigationState,
+        screen = screen,
+        modifier = Modifier.fillMaxSize(),
+        graph = {
+            mainGraph(
+                navigationState = navigationState,
+                homeViewModel = homeViewModel,
+                myPageViewModel = myPageViewModel,
+                memberRepository = memberRepository,
+                authSessionState = authSessionState,
+                themeMode = themeMode,
+                appVersion = appVersion,
+                alarmController = alarmController,
+                activeAlarmMission = activeAlarmMission,
+                onThemeModeChange = onThemeModeChange,
+                onAddAlarm = {
+                    alarmSetupViewModel.startCreating(
+                        initialTime = currentLocalClockSnapshot().to24HourTimeString(),
                     )
-                } else {
+                    navigationState.navigate(AppScreen.AddAlarm)
+                },
+                onEditAlarm = { request ->
                     alarmSetupViewModel.startEditing(request)
-                    screenName = AppScreen.EditAlarm.name
-                }
-            },
-            onAlarmEnabledChange = { alarmId, enabled ->
-                performHomeCommand(
-                    homeViewModel.onAlarmEnabledChange(alarmId, enabled),
-                )
-            },
-            onAlarmDelete = { alarmId ->
-                performHomeCommand(homeViewModel.onAlarmDelete(alarmId))
-            },
-            onActiveAlarmMissionClick = {
-                screenName = AppScreen.ActiveAlarmTracking.name
-            },
-            onSettingsClick = { screenName = AppScreen.MyPage.name },
-        )
-
-        AppScreen.ActiveAlarmTracking -> activeAlarmMission?.let { mission ->
-            ActiveAlarmTrackingScreen(
-                mission = mission,
-                currentLocation = activeAlarmMissionLocation,
-                locationState = missionLocationState,
-                onBackClick = { screenName = AppScreen.Home.name },
-                onForceEndClick = onActiveAlarmMissionForceEnd,
-                onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
-                onForceEndHoldCancelled = onActiveAlarmMissionForceEndHoldCancelled,
-                onForceEndHoldCompleted = onActiveAlarmMissionForceEndHoldCompleted,
-                onExpired = onActiveAlarmMissionExpired,
+                    navigationState.navigate(AppScreen.EditAlarm)
+                },
+                onLogin = { navigationState.navigate(AppScreen.Login) },
+                onActiveAlarmMissionClick = {
+                    navigationState.navigate(AppScreen.ActiveAlarmTracking)
+                },
+                onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
             )
-        }
-
-        AppScreen.MyPage,
-        AppScreen.Settings,
-        -> MyPageScreen(
-            uiState = myPageUiState,
-            themeMode = themeMode,
-            appVersion = appVersion,
-            policies = DefaultMyPagePolicies,
-            onScreenEntered = myPageViewModel::onScreenEntered,
-            onThemeModeChange = onThemeModeChange,
-            onPreviousMonthClick = myPageViewModel::onPreviousMonthClick,
-            onNextMonthClick = myPageViewModel::onNextMonthClick,
-            onCalendarRetry = myPageViewModel::retryCalendar,
-            onBackClick = { screenName = AppScreen.Home.name },
-            onAccountStatusClick = { screenName = AppScreen.Login.name },
-            onAccountRetry = myPageViewModel::retryAccount,
-            onEditProfileClick = {
-                if (myPageUiState.accountStatus is MyPageAccountStatus.LoggedIn) {
-                    screenName = AppScreen.NicknameChange.name
-                }
-            },
-            onLogoutConfirm = myPageViewModel::logout,
-            onWithdrawConfirm = myPageViewModel::withdraw,
-            onAccountActionErrorDismiss = myPageViewModel::clearAccountActionError,
-            onPolicyClick = { policyId ->
-                findPolicyUrl(policyId)?.let { url ->
-                    runCatching { uriHandler.openUri(url) }
-                }
-            },
-        )
-
-        AppScreen.NicknameChange -> {
-            val account = myPageUiState.accountStatus as? MyPageAccountStatus.LoggedIn
-            if (account == null) {
-                LaunchedEffect(authSessionState) {
-                    if (authSessionState != AuthSessionState.Restoring) {
-                        screenName = AppScreen.MyPage.name
-                    }
-                }
-            } else {
-                NicknameChangeScreen(
-                    initialNickname = account.nickname,
-                    memberRepository = memberRepository,
-                    onBackClick = { screenName = AppScreen.MyPage.name },
-                    onConfirmClick = { updatedNickname ->
-                        myPageViewModel.onNicknameUpdated(updatedNickname)
-                        screenName = AppScreen.MyPage.name
+        },
+    ) {
+        // Auth and alarm flows keep their existing routing until their migration steps.
+        when (screen) {
+            AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
+                AlarmRingingScreen(
+                    alarmTime = alarm.alarmTime,
+                    dateText = alarm.dateText,
+                    limitMinutes = alarm.limitMinutes,
+                    destinationName = alarm.destinationName,
+                    onDismissAndNavigateClick = {
+                        navigationState.navigate(AppScreen.ActiveAlarmTracking)
+                        onRingingAlarmDismiss(alarm.id)
                     },
                 )
             }
-        }
 
-        AppScreen.Login -> LoginScreen(
-            onBackClick = { screenName = AppScreen.MyPage.name },
-            onAuthenticated = {
-                signupViewModel.resetSignup()
-                screenName = AppScreen.Home.name
-            },
-            onSignupRequired = { signupToken, provider ->
-                signupViewModel.startSignup(
-                    signupToken = signupToken,
-                    provider = provider,
+            AppScreen.ActiveAlarmTracking -> activeAlarmMission?.let { mission ->
+                ActiveAlarmTrackingScreen(
+                    mission = mission,
+                    currentLocation = activeAlarmMissionLocation,
+                    locationState = missionLocationState,
+                    onBackClick = { navigationState.navigate(AppScreen.Home) },
+                    onForceEndClick = onActiveAlarmMissionForceEnd,
+                    onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
+                    onForceEndHoldCancelled = onActiveAlarmMissionForceEndHoldCancelled,
+                    onForceEndHoldCompleted = onActiveAlarmMissionForceEndHoldCompleted,
+                    onExpired = onActiveAlarmMissionExpired,
                 )
-                screenName = AppScreen.TermsAgreement.name
-            },
-            viewModel = loginViewModel,
-        )
+            }
 
-        AppScreen.TermsAgreement -> {
-            if (!signupUiState.hasPendingSignup) {
-                LaunchedEffect(Unit) {
-                    screenName = AppScreen.Login.name
+            AppScreen.Login -> LoginScreen(
+                onBackClick = { navigationState.navigate(AppScreen.MyPage) },
+                onAuthenticated = {
+                    signupViewModel.resetSignup()
+                    navigationState.navigate(AppScreen.Home)
+                },
+                onSignupRequired = { signupToken, provider ->
+                    signupViewModel.startSignup(
+                        signupToken = signupToken,
+                        provider = provider,
+                    )
+                    navigationState.navigate(AppScreen.TermsAgreement)
+                },
+                viewModel = loginViewModel,
+            )
+
+            AppScreen.TermsAgreement -> {
+                if (!signupUiState.hasPendingSignup) {
+                    LaunchedEffect(Unit) {
+                        navigationState.navigate(AppScreen.Login)
+                    }
+                } else {
+                    val completedEventId = signupUiState.completedEventId
+                    LaunchedEffect(completedEventId) {
+                        completedEventId ?: return@LaunchedEffect
+                        navigationState.navigate(AppScreen.Home)
+                        signupViewModel.consumeCompletedEvent(completedEventId)
+                    }
+                    TermsAgreementScreen(
+                        onStart = signupViewModel::signup,
+                        onTermDetailClick = { termId ->
+                            val policyId = when (termId) {
+                                TermId.Service -> PolicyId("terms")
+                                TermId.Privacy -> PolicyId("privacy")
+                                else -> null
+                            }
+                            val policyUrl = policyId?.let(::findPolicyUrl)
+                            policyUrl?.let { url -> runCatching { uriHandler.openUri(url) } }
+                        },
+                        isSaving = signupUiState.isSaving,
+                        errorMessage = signupUiState.errorMessage,
+                    )
                 }
-            } else {
-                val completedEventId = signupUiState.completedEventId
-                LaunchedEffect(completedEventId) {
-                    completedEventId ?: return@LaunchedEffect
-                    screenName = AppScreen.Home.name
-                    signupViewModel.consumeCompletedEvent(completedEventId)
-                }
-                TermsAgreementScreen(
-                    onStart = signupViewModel::signup,
-                    onTermDetailClick = { termId ->
-                        val policyId = when (termId) {
-                            TermId.Service -> PolicyId("terms")
-                            TermId.Privacy -> PolicyId("privacy")
-                            else -> null
+            }
+
+            AppScreen.AddAlarm,
+            AppScreen.EditAlarm,
+            AppScreen.Destination,
+            AppScreen.AlarmSound,
+            -> Box(Modifier.fillMaxSize()) {
+                AlarmSetupScreen(
+                    uiState = alarmSetupUiState,
+                    onAmPmChange = alarmSetupViewModel::updateAmPm,
+                    onHourChange = alarmSetupViewModel::updateHour,
+                    onMinuteChange = alarmSetupViewModel::updateMinute,
+                    onDayClick = alarmSetupViewModel::toggleDay,
+                    onLimitMinutesChange = alarmSetupViewModel::updateLimitMinutes,
+                    onBackClick = {
+                        if (!alarmSetupUiState.isSaveInProgress) {
+                            navigationState.navigate(AppScreen.Home)
                         }
-                        val policyUrl = policyId?.let(::findPolicyUrl)
-                        policyUrl?.let { url -> runCatching { uriHandler.openUri(url) } }
                     },
-                    isSaving = signupUiState.isSaving,
-                    errorMessage = signupUiState.errorMessage,
+                    onDestinationClick = {
+                        destinationRequestId += 1L
+                        navigationState.navigate(AppScreen.Destination)
+                    },
+                    onAlarmSoundClick = { navigationState.navigate(AppScreen.AlarmSound) },
+                    onSaveClick = { alarmSetupViewModel.requestSave() },
                 )
-            }
-        }
 
-        AppScreen.AddAlarm,
-        AppScreen.EditAlarm,
-        AppScreen.Destination,
-        AppScreen.AlarmSound,
-        -> Box(Modifier.fillMaxSize()) {
-            AlarmSetupScreen(
-                uiState = alarmSetupUiState,
-                onAmPmChange = alarmSetupViewModel::updateAmPm,
-                onHourChange = alarmSetupViewModel::updateHour,
-                onMinuteChange = alarmSetupViewModel::updateMinute,
-                onDayClick = alarmSetupViewModel::toggleDay,
-                onLimitMinutesChange = alarmSetupViewModel::updateLimitMinutes,
-                onBackClick = {
-                    if (!alarmSetupUiState.isSaveInProgress) {
-                        screenName = AppScreen.Home.name
-                    }
-                },
-                onDestinationClick = {
-                    destinationRequestId += 1L
-                    screenName = AppScreen.Destination.name
-                },
-                onAlarmSoundClick = { screenName = AppScreen.AlarmSound.name },
-                onSaveClick = { alarmSetupViewModel.requestSave() },
-            )
-
-            if (screen == AppScreen.Destination) {
-                DestinationMapScreen(
-                    initialSelection = alarmSetupUiState.destination
-                        ?: DefaultDestinationSelection,
-                    requestCurrentLocationOnStart = false,
-                    isAuthenticated = authSessionState == AuthSessionState.Authenticated,
-                    onEntered = destinationViewModel::onScreenEntered,
-                    onBackClick = { screenName = alarmSetupScreen.name },
-                    onConfirmClick = saveDestination@ { destination ->
-                        val loginState = analyticsLoginState ?: return@saveDestination
-                        destinationViewModel.save(
-                            destination = destination,
-                            requestId = destinationRequestId,
-                            loginState = loginState,
-                        )
-                    },
-                    onSavedDestinationConfirmClick = { savedDestination ->
-                        alarmSetupViewModel.updateDestination(
-                            savedDestination.toDestinationSelection(),
-                        )
-                        screenName = alarmSetupScreen.name
-                    },
-                    savedDestinations = destinationUiState.destinations,
-                    onSavedDestinationRename = destinationViewModel::rename,
-                    onSavedDestinationDeleteClick = destinationViewModel::delete,
-                    onSavedDestinationSelected = { source ->
-                        analyticsLoginState?.let { loginState ->
-                            productAnalyticsRecorder.recordDestinationSelected(
-                                source = source,
+                if (screen == AppScreen.Destination) {
+                    DestinationMapScreen(
+                        initialSelection = alarmSetupUiState.destination
+                            ?: DefaultDestinationSelection,
+                        requestCurrentLocationOnStart = false,
+                        isAuthenticated = authSessionState == AuthSessionState.Authenticated,
+                        onEntered = destinationViewModel::onScreenEntered,
+                        onBackClick = { navigationState.navigate(alarmSetupScreen) },
+                        onConfirmClick = saveDestination@ { destination ->
+                            val loginState = analyticsLoginState ?: return@saveDestination
+                            destinationViewModel.save(
+                                destination = destination,
+                                requestId = destinationRequestId,
                                 loginState = loginState,
                             )
-                        }
-                    },
-                    isSaveInProgress = destinationUiState.isSaving,
-                    isDestinationActionEnabled = analyticsLoginState != null,
-                )
+                        },
+                        onSavedDestinationConfirmClick = { savedDestination ->
+                            alarmSetupViewModel.updateDestination(
+                                savedDestination.toDestinationSelection(),
+                            )
+                            navigationState.navigate(alarmSetupScreen)
+                        },
+                        savedDestinations = destinationUiState.destinations,
+                        onSavedDestinationRename = destinationViewModel::rename,
+                        onSavedDestinationDeleteClick = destinationViewModel::delete,
+                        onSavedDestinationSelected = { source ->
+                            analyticsLoginState?.let { loginState ->
+                                productAnalyticsRecorder.recordDestinationSelected(
+                                    source = source,
+                                    loginState = loginState,
+                                )
+                            }
+                        },
+                        isSaveInProgress = destinationUiState.isSaving,
+                        isDestinationActionEnabled = analyticsLoginState != null,
+                    )
+                }
+
+                if (screen == AppScreen.AlarmSound) {
+                    AlarmSoundScreen(
+                        selectedSound = alarmSetupUiState.alarmSound,
+                        onBackClick = { navigationState.navigate(alarmSetupScreen) },
+                        onSaveClick = { selectedSound ->
+                            alarmSetupViewModel.updateAlarmSound(selectedSound)
+                            navigationState.navigate(alarmSetupScreen)
+                        },
+                    )
+                }
             }
 
-            if (screen == AppScreen.AlarmSound) {
-                AlarmSoundScreen(
-                    selectedSound = alarmSetupUiState.alarmSound,
-                    onBackClick = { screenName = alarmSetupScreen.name },
-                    onSaveClick = { selectedSound ->
-                        alarmSetupViewModel.updateAlarmSound(selectedSound)
-                        screenName = alarmSetupScreen.name
-                    },
-                )
-            }
+            AppScreen.Home,
+            AppScreen.MyPage,
+            AppScreen.Settings,
+            AppScreen.NicknameChange,
+            -> Unit // Rendered by MainGraph.
         }
     }
 }

@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,11 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.domain.member.MemberRepository
-import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.nickname.component.NicknameChangeHeader
 import com.joon.ringout.presentation.nickname.component.NicknameConfirmButton
 import com.joon.ringout.presentation.nickname.component.NicknameInputField
@@ -38,34 +34,7 @@ import com.joon.ringout.presentation.nickname.component.NicknameValidationList
 import com.joon.ringout.presentation.nickname.component.nicknameChangeColors
 
 @Composable
-fun NicknameChangeScreen(
-    initialNickname: String,
-    memberRepository: MemberRepository,
-    onBackClick: () -> Unit,
-    onConfirmClick: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val viewModel: NicknameChangeViewModel = viewModel(key = initialNickname) {
-        NicknameChangeViewModel(initialNickname, memberRepository)
-    }
-    val uiState = viewModel.uiState
-    LaunchedEffect(uiState.completedNickname) {
-        val updatedNickname = uiState.completedNickname ?: return@LaunchedEffect
-        onConfirmClick(updatedNickname)
-        viewModel.consumeCompletedNickname()
-    }
-    PlatformBackHandler(onBack = onBackClick)
-    NicknameChangeScreenContent(
-        uiState = uiState,
-        onNicknameChange = viewModel::onNicknameChange,
-        onBackClick = onBackClick,
-        onConfirmClick = viewModel::confirm,
-        modifier = modifier,
-    )
-}
-
-@Composable
-internal fun NicknameChangeScreenContent(
+internal fun NicknameChangeScreen(
     uiState: NicknameChangeUiState,
     onNicknameChange: (String) -> Unit,
     onBackClick: () -> Unit,
@@ -190,7 +159,7 @@ private fun NicknameChangeInteractivePreview(
     var nickname by remember(initialNickname) { mutableStateOf(initialNickname) }
 
     RingoutTheme(themeMode) {
-        NicknameChangeScreenContent(
+        NicknameChangeScreen(
             uiState = NicknameChangeUiState(
                 nickname = nickname,
                 validation = validateNickname(nickname),

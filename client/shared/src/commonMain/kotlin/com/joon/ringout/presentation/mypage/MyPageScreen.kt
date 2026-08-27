@@ -33,7 +33,6 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
-import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.mypage.component.MissionCalendarCard
 import com.joon.ringout.presentation.mypage.component.MyPageAccountActionDialog
 import com.joon.ringout.presentation.mypage.component.MyPageAccountActionErrorDialog
@@ -84,7 +83,6 @@ internal fun MyPageScreen(
             onScreenEntered(entryToken, analyticsLoginState)
         }
     }
-    PlatformBackHandler(onBack = onBackClick)
     MyPageScreenContent(
         uiState = uiState,
         themeMode = themeMode,
