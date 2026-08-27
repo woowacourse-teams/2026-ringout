@@ -14,7 +14,7 @@ import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.nickname.NicknameChangeRoute
 
 // Home/MyPage still share their ViewModels with legacy app effects until the scope migration.
-internal fun EntryProviderScope<AppRoute>.mainGraph(
+internal fun EntryProviderScope<AppRoute>.homeGraph(
     navigationState: AppNavigationState,
     homeViewModel: HomeViewModel,
     myPageViewModel: MyPageViewModel,

@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.termsagreement.component.AllTermsAgreementRow
@@ -33,36 +32,7 @@ import com.joon.ringout.presentation.termsagreement.component.TermAgreementRow
 import com.joon.ringout.presentation.termsagreement.component.TermsStartButton
 
 @Composable
-fun TermsAgreementScreen(
-    onStart: (Set<TermId>) -> Unit,
-    onTermDetailClick: (TermId) -> Unit,
-    modifier: Modifier = Modifier,
-    isSaving: Boolean = false,
-    errorMessage: String? = null,
-    viewModel: TermsAgreementViewModel = viewModel { TermsAgreementViewModel() },
-) {
-    TermsAgreementScreenContent(
-        uiState = viewModel.uiState,
-        onAllAgreementChange = viewModel::setAllAgreed,
-        onTermAgreementChange = viewModel::setTermAgreed,
-        onTermDetailClick = onTermDetailClick,
-        onStartClick = {
-            if (viewModel.requestStart() == TermsAgreementAdvance.Complete) {
-                onStart(
-                    viewModel.uiState.terms
-                        .filter(TermAgreementItem::isAgreed)
-                        .mapTo(mutableSetOf(), TermAgreementItem::id),
-                )
-            }
-        },
-        startEnabled = !isSaving,
-        errorMessage = errorMessage,
-        modifier = modifier,
-    )
-}
-
-@Composable
-internal fun TermsAgreementScreenContent(
+internal fun TermsAgreementScreen(
     uiState: TermsAgreementUiState,
     onAllAgreementChange: (Boolean) -> Unit,
     onTermAgreementChange: (TermId, Boolean) -> Unit,
@@ -251,7 +221,7 @@ private fun TermsAgreementScreenPreview(
     uiState: TermsAgreementUiState,
 ) {
     RingoutTheme(themeMode = themeMode) {
-        TermsAgreementScreenContent(
+        TermsAgreementScreen(
             uiState = uiState,
             onAllAgreementChange = {},
             onTermAgreementChange = { _, _ -> },

@@ -12,7 +12,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.domain.auth.AuthSessionState
@@ -35,7 +34,6 @@ import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.destination.belongsToDestinationRequest
 import com.joon.ringout.presentation.destination.toDestinationSelection
 import com.joon.ringout.presentation.home.HomeViewModel
-import com.joon.ringout.presentation.login.LoginScreen
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.common.AppMessageSource
@@ -45,16 +43,15 @@ import com.joon.ringout.presentation.onboarding.OnboardingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.signup.SignupViewModel
-import com.joon.ringout.presentation.termsagreement.TermId
-import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
 import com.joon.ringout.presentation.mypage.MyPageViewModel
-import com.joon.ringout.presentation.mypage.PolicyId
 import com.joon.ringout.presentation.mypage.currentMissionYearMonth
-import com.joon.ringout.presentation.mypage.findPolicyUrl
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
+import com.joon.ringout.presentation.navigation.AppRoute
 import com.joon.ringout.presentation.navigation.RingoutNavHost
-import com.joon.ringout.presentation.navigation.mainGraph
+import com.joon.ringout.presentation.navigation.authGraph
+import com.joon.ringout.presentation.navigation.rememberAuthNavigation
+import com.joon.ringout.presentation.navigation.homeGraph
 import com.joon.ringout.presentation.navigation.rememberAppNavigationState
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
@@ -164,7 +161,6 @@ private fun RingoutAppContent(
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
-    val uriHandler = LocalUriHandler.current
     val productAnalyticsRecorder = appContainer.productAnalyticsRecorder
     val destinationRepository = appContainer.destinationRepository
     val destinationViewModel: DestinationViewModel = viewModel {
@@ -217,12 +213,12 @@ private fun RingoutAppContent(
             productAnalyticsRecorder = productAnalyticsRecorder,
         )
     }
-    val signupUiState = signupViewModel.uiState
     val alarmSetupViewModel: AlarmSetupViewModel = viewModel { AlarmSetupViewModel() }
     val alarmSetupUiState = alarmSetupViewModel.uiState
     val homeViewModel: HomeViewModel = viewModel { HomeViewModel() }
     val homeUiState = homeViewModel.uiState
     val navigationState = rememberAppNavigationState()
+    val authNavigation = rememberAuthNavigation(navigationState, loginViewModel, signupViewModel)
     var handledActiveAlarmOccurrenceId by rememberSaveable {
         mutableStateOf<String?>(null)
     }
@@ -412,8 +408,10 @@ private fun RingoutAppContent(
         navigationState = navigationState,
         screen = screen,
         modifier = Modifier.fillMaxSize(),
+        isBackBlocked = authNavigation.isBackBlocked(screen, authSessionState),
+        onBack = { route -> authNavigation.onBack(route, screen, authSessionState) },
         graph = {
-            mainGraph(
+            homeGraph(
                 navigationState = navigationState,
                 homeViewModel = homeViewModel,
                 myPageViewModel = myPageViewModel,
@@ -434,15 +432,20 @@ private fun RingoutAppContent(
                     alarmSetupViewModel.startEditing(request)
                     navigationState.navigate(AppScreen.EditAlarm)
                 },
-                onLogin = { navigationState.navigate(AppScreen.Login) },
+                onLogin = { navigationState.navigate(AppRoute.Login) },
                 onActiveAlarmMissionClick = {
                     navigationState.navigate(AppScreen.ActiveAlarmTracking)
                 },
                 onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
             )
+            authGraph(
+                authNavigation = authNavigation,
+                screen = screen,
+                authSessionState = authSessionState,
+            )
         },
     ) {
-        // Auth and alarm flows keep their existing routing until their migration steps.
+        // Alarm flows keep their existing routing until their migration steps.
         when (screen) {
             AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
                 AlarmRingingScreen(
@@ -469,51 +472,6 @@ private fun RingoutAppContent(
                     onForceEndHoldCompleted = onActiveAlarmMissionForceEndHoldCompleted,
                     onExpired = onActiveAlarmMissionExpired,
                 )
-            }
-
-            AppScreen.Login -> LoginScreen(
-                onBackClick = { navigationState.navigate(AppScreen.MyPage) },
-                onAuthenticated = {
-                    signupViewModel.resetSignup()
-                    navigationState.navigate(AppScreen.Home)
-                },
-                onSignupRequired = { signupToken, provider ->
-                    signupViewModel.startSignup(
-                        signupToken = signupToken,
-                        provider = provider,
-                    )
-                    navigationState.navigate(AppScreen.TermsAgreement)
-                },
-                viewModel = loginViewModel,
-            )
-
-            AppScreen.TermsAgreement -> {
-                if (!signupUiState.hasPendingSignup) {
-                    LaunchedEffect(Unit) {
-                        navigationState.navigate(AppScreen.Login)
-                    }
-                } else {
-                    val completedEventId = signupUiState.completedEventId
-                    LaunchedEffect(completedEventId) {
-                        completedEventId ?: return@LaunchedEffect
-                        navigationState.navigate(AppScreen.Home)
-                        signupViewModel.consumeCompletedEvent(completedEventId)
-                    }
-                    TermsAgreementScreen(
-                        onStart = signupViewModel::signup,
-                        onTermDetailClick = { termId ->
-                            val policyId = when (termId) {
-                                TermId.Service -> PolicyId("terms")
-                                TermId.Privacy -> PolicyId("privacy")
-                                else -> null
-                            }
-                            val policyUrl = policyId?.let(::findPolicyUrl)
-                            policyUrl?.let { url -> runCatching { uriHandler.openUri(url) } }
-                        },
-                        isSaving = signupUiState.isSaving,
-                        errorMessage = signupUiState.errorMessage,
-                    )
-                }
             }
 
             AppScreen.AddAlarm,
@@ -595,7 +553,9 @@ private fun RingoutAppContent(
             AppScreen.MyPage,
             AppScreen.Settings,
             AppScreen.NicknameChange,
-            -> Unit // Rendered by MainGraph.
+            AppScreen.Login,
+            AppScreen.TermsAgreement,
+            -> Unit // Rendered by HomeGraph or AuthGraph.
         }
     }
 }

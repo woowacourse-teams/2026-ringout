@@ -26,7 +26,7 @@ internal fun rememberAppNavigationState(): AppNavigationState {
 }
 
 /**
- * Home → MyPage → Nickname is owned by Navigation 3. Other screens temporarily
+ * Main and authentication flows are owned by Navigation 3. Alarm screens temporarily
  * keep their existing routing, without replacing the migrated back stack.
  */
 internal class AppNavigationState(
@@ -34,6 +34,14 @@ internal class AppNavigationState(
     legacyScreenName: MutableState<String?> = mutableStateOf(null),
 ) {
     private var legacyScreenName by legacyScreenName
+
+    init {
+        // Saved state from the previous migration can still contain legacy auth destinations.
+        when (this.legacyScreenName) {
+            AppScreen.Login.name -> navigate(AppRoute.Login)
+            AppScreen.TermsAgreement.name -> navigate(AppRoute.TermsAgreement)
+        }
+    }
 
     val backStack: List<AppRoute>
         get() = routes
@@ -43,6 +51,8 @@ internal class AppNavigationState(
             AppRoute.Home -> AppScreen.Home
             AppRoute.MyPage -> AppScreen.MyPage
             AppRoute.NicknameChange -> AppScreen.NicknameChange
+            AppRoute.Login -> AppScreen.Login
+            AppRoute.TermsAgreement -> AppScreen.TermsAgreement
             else -> error("Only migrated routes belong in this back stack")
         }
 
@@ -52,6 +62,10 @@ internal class AppNavigationState(
             AppRoute.MyPage -> listOf(AppRoute.Home, AppRoute.MyPage)
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)
+            // Login has always returned to MyPage, including after logout or reauthentication.
+            AppRoute.Login -> listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
+            AppRoute.TermsAgreement ->
+                listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
             else -> error("Route has not been migrated: $route")
         }
         // Keep shared entries and their state; repeated taps do not add duplicates.
@@ -67,14 +81,34 @@ internal class AppNavigationState(
             AppScreen.Home -> navigate(AppRoute.Home)
             AppScreen.MyPage, AppScreen.Settings -> navigate(AppRoute.MyPage)
             AppScreen.NicknameChange -> navigate(AppRoute.NicknameChange)
+            AppScreen.Login -> navigate(AppRoute.Login)
+            AppScreen.TermsAgreement -> navigate(AppRoute.TermsAgreement)
             else -> legacyScreenName = screen.name
         }
     }
 
     fun popBackStack(from: AppRoute = routes.last()) {
         // Ignore callbacks from an outgoing entry and never remove the root.
-        if (legacyScreenName == null && routes.size > 1 && routes.last() == from) {
+        if (routes.size > 1 && isCurrentRoute(from)) {
             routes.removeLastOrNull()
         }
+    }
+
+    fun isCurrentRoute(route: AppRoute): Boolean =
+        legacyScreenName == null && routes.last() == route
+
+    /** Projects the existing display policy without mutating the requested back stack. */
+    fun routesForScreen(screen: AppScreen): List<AppRoute>? {
+        val route = when (screen) {
+            AppScreen.Home -> AppRoute.Home
+            AppScreen.MyPage, AppScreen.Settings -> AppRoute.MyPage
+            AppScreen.NicknameChange -> AppRoute.NicknameChange
+            AppScreen.Login -> AppRoute.Login
+            AppScreen.TermsAgreement -> AppRoute.TermsAgreement
+            else -> return null
+        }
+        val index = routes.indexOf(route)
+        // A priority Login can be displayed before the existing redirect effect has run.
+        return if (index >= 0) routes.take(index + 1) else listOf(route)
     }
 }
