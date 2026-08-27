@@ -5,6 +5,7 @@ import io.micrometer.cloudwatch2.CloudWatchMeterRegistry;
 import io.micrometer.core.instrument.Clock;
 import io.micrometer.core.instrument.config.MeterFilter;
 import java.time.Duration;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -16,7 +17,15 @@ import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient;
 public class CloudWatchMetricConfig {
 
     private static final String HTTP_SERVER_REQUESTS_METRIC = "http.server.requests";
-    private static final String ACTUATOR_HEALTH_URI = "/actuator/health";
+    private static final List<String> EXCLUDED_URI_PREFIXES = List.of(
+        "/actuator",
+        "/api/v1/health",
+        "/swagger-ui",
+        "/swagger-ui.html",
+        "/v3/api-docs",
+        "/swagger-resources",
+        "/favicon.ico"
+    );
 
     @Bean
     public CloudWatchConfig cloudWatchConfig() {
@@ -63,11 +72,16 @@ public class CloudWatchMetricConfig {
             ))
             .meterFilter(MeterFilter.deny(
                 id -> HTTP_SERVER_REQUESTS_METRIC.equals(id.getName())
-                    && ACTUATOR_HEALTH_URI.equals(id.getTag("uri"))
+                    && isExcludedUri(id.getTag("uri"))
             ))
             .meterFilter(MeterFilter.denyUnless(
                 id -> HTTP_SERVER_REQUESTS_METRIC.equals(id.getName())
             ));
         return registry;
+    }
+
+    private static boolean isExcludedUri(String uri) {
+        return uri != null && EXCLUDED_URI_PREFIXES.stream()
+            .anyMatch(uri::startsWith);
     }
 }
