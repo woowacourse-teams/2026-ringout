@@ -23,7 +23,7 @@ spring:
     open-in-view: false
 
 server:
-  forward-headers-strategy: framework
+  forward-headers-strategy: native
 
 management:
   endpoints:
