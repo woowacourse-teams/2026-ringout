@@ -121,8 +121,7 @@ public interface AuthControllerApi {
           ### 요청 방법                                                                                                                                                           
           - Request Body: refreshToken에 로그인/회원가입 시 발급받은 refresh token을 넣어주세요.                                                                                  
                                                                                                                                                                                   
-          재발급 성공 시 새로운 accessToken과 refreshToken이 함께 반환됩니다. (rotation)                                                                                          
-          기존 refreshToken은 더 이상 사용하지 말고, 이번에 받은 새 refreshToken으로 교체해서 저장해주세요.                                                                       
+          재발급 성공 시 새로운 accessToken이 반환됩니다. (rotation)                                                                                                                                                                
           """
     )
     @ApiResponses({
