@@ -1,11 +1,10 @@
 package com.ringout.api.auth.dto;
 
 public record ReissueResponse(
-    String accessToken,
-    String refreshToken
+    String accessToken
 ) {
 
-  public static ReissueResponse of(String reissuedAccessToken, String reissuedRefreshToken) {
-    return new ReissueResponse(reissuedAccessToken, reissuedRefreshToken);
+  public static ReissueResponse of(String reissuedAccessToken) {
+    return new ReissueResponse(reissuedAccessToken);
   }
 }

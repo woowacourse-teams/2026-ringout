@@ -97,13 +97,7 @@ public class AuthService {
             user.getRole()
         );
 
-        String reissuedRefreshToken = jwtProvider.createRefreshToken(
-            user.getId(),
-            user.getSocialProviderId(),
-            user.getRole()
-        );
-
-        return ReissueResponse.of(reissuedAccessToken, reissuedRefreshToken);
+        return ReissueResponse.of(reissuedAccessToken);
     }
 
     private void validateRefreshToken(String refreshToken) {
