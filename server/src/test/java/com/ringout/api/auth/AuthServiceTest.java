@@ -72,7 +72,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void 유효한_refreshToken이면_새_토큰_쌍을_발급한다() {
+    void 유효한_refreshToken이면_새_액세스_토큰을_발급한다() {
         // given
         User user = mock(User.class);
         given(user.getId()).willReturn(userId);
@@ -85,15 +85,12 @@ class AuthServiceTest {
         given(userRepository.findById(userId)).willReturn(Optional.of(user));
         given(jwtProvider.createAccessToken(userId, "social-provider-id", Role.USER))
             .willReturn("new-access-token");
-        given(jwtProvider.createRefreshToken(userId, "social-provider-id", Role.USER))
-            .willReturn("new-refresh-token");
 
         // when
         ReissueResponse response = authService.reissue(refreshToken);
 
         // then
         assertThat(response.accessToken()).isEqualTo("new-access-token");
-        assertThat(response.refreshToken()).isEqualTo("new-refresh-token");
     }
 
     @Test
