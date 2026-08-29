@@ -1,6 +1,5 @@
 package com.joon.ringout.presentation.common
 
-import com.joon.ringout.canShowAppDialog
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.common.component.AppMessageHostState
 import com.joon.ringout.presentation.navigation.AppRoute

@@ -3,9 +3,9 @@ package com.joon.ringout.presentation.destination
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
+import com.joon.ringout.analytics.toAnalyticsLoginStateOrNull
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.destination.SavedDestination
-import com.joon.ringout.toAnalyticsLoginStateOrNull
 
 @Composable
 internal fun DestinationRoute(

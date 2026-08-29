@@ -1,12 +1,11 @@
-package com.joon.ringout
+package com.joon.ringout.analytics
 
-import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.domain.auth.AuthSessionState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-class AnalyticsLoginStateMappingTest {
+class AnalyticsLoginStateMapperTest {
     @Test
     fun `authenticated session maps to logged in`() {
         assertEquals(

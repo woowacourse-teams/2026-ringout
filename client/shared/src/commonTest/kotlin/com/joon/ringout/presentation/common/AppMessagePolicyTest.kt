@@ -1,14 +1,11 @@
-package com.joon.ringout
+package com.joon.ringout.presentation.common
 
 import com.joon.ringout.domain.auth.AuthSessionState
-import com.joon.ringout.presentation.common.AppMessageSource
-import com.joon.ringout.presentation.common.resolveAppMessage
 import com.joon.ringout.presentation.navigation.AppRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class AppRoutingPolicyTest {
-
+class AppMessagePolicyTest {
     @Test
     fun `알람이 울리는 동안 전역 다이얼로그를 표시하지 않는다`() {
         AuthSessionState.entries.forEach { authSessionState ->

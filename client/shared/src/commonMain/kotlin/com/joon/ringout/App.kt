@@ -10,7 +10,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
@@ -26,13 +25,13 @@ import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.common.AppMessageSource
+import com.joon.ringout.presentation.common.canShowAppDialog
 import com.joon.ringout.presentation.common.resolveAppMessage
 import com.joon.ringout.presentation.common.component.AppMessageHost
 import com.joon.ringout.presentation.onboarding.OnboardingRoute
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
-import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import com.joon.ringout.presentation.navigation.AppRoute
 import com.joon.ringout.presentation.navigation.ActiveMissionNavigationEffect
@@ -42,6 +41,7 @@ import com.joon.ringout.presentation.navigation.RingoutNavHost
 import com.joon.ringout.presentation.navigation.alarmRuntimeGraph
 import com.joon.ringout.presentation.navigation.alarmEditorGraph
 import com.joon.ringout.presentation.navigation.authGraph
+import com.joon.ringout.presentation.navigation.completionDestination
 import com.joon.ringout.presentation.navigation.rememberAlarmEditorNavigation
 import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.navigation.homeGraph
@@ -230,12 +230,7 @@ private fun RingoutAppContent(
     LaunchedEffect(myPageViewModel, completedAccountAction?.eventId) {
         val completed = completedAccountAction ?: return@LaunchedEffect
         signupViewModel?.resetSignup()
-        navigationState.navigate(
-            when (completed.action) {
-                MyPageAccountAction.Logout -> AppRoute.Login
-                MyPageAccountAction.Withdraw -> AppRoute.MyPage
-            },
-        )
+        navigationState.navigate(completed.action.completionDestination())
         myPageViewModel.consumeAccountActionCompletedEvent(completed.eventId)
     }
     if (alarmEditorNavigation != null) {
@@ -442,17 +437,3 @@ private fun RingoutAppContent(
         },
     )
 }
-
-internal fun AuthSessionState.toAnalyticsLoginStateOrNull(): AnalyticsLoginState? = when (this) {
-    AuthSessionState.Restoring -> null
-    AuthSessionState.Unauthenticated -> AnalyticsLoginState.LoggedOut
-    AuthSessionState.ReauthenticationRequired -> AnalyticsLoginState.LoggedOut
-    AuthSessionState.Authenticated -> AnalyticsLoginState.LoggedIn
-}
-
-internal fun canShowAppDialog(
-    displayedRoute: AppRoute,
-    authSessionState: AuthSessionState,
-): Boolean =
-    displayedRoute !is AppRoute.AlarmRinging &&
-        authSessionState != AuthSessionState.ReauthenticationRequired
