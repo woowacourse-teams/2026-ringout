@@ -19,7 +19,6 @@ import com.joon.ringout.alarm.DefaultMissionLocationState
 import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.alarm.rememberAlarmController
 import com.joon.ringout.di.AppContainer
-import com.joon.ringout.presentation.activemission.ActiveAlarmTrackingScreen
 import com.joon.ringout.presentation.activemission.components.MissionLocationPermissionDialog
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
@@ -30,7 +29,6 @@ import com.joon.ringout.presentation.common.AppMessageSource
 import com.joon.ringout.presentation.common.resolveAppMessage
 import com.joon.ringout.presentation.common.component.AppMessageHost
 import com.joon.ringout.presentation.onboarding.OnboardingRoute
-import com.joon.ringout.presentation.ringing.AlarmRingingScreen
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
@@ -41,6 +39,7 @@ import com.joon.ringout.presentation.navigation.ActiveMissionNavigationEffect
 import com.joon.ringout.presentation.navigation.ReauthenticationNavigationEffect
 import com.joon.ringout.presentation.navigation.AlarmEditorNavigationEffects
 import com.joon.ringout.presentation.navigation.RingoutNavHost
+import com.joon.ringout.presentation.navigation.alarmRuntimeGraph
 import com.joon.ringout.presentation.navigation.alarmEditorGraph
 import com.joon.ringout.presentation.navigation.authGraph
 import com.joon.ringout.presentation.navigation.rememberAlarmEditorNavigation
@@ -162,11 +161,11 @@ private fun RingoutAppContent(
     val memberRepository = appContainer.memberRepository
     val authSessionState by authSession.state.collectAsState()
     val navigationState = rememberAppNavigationState()
-    // iOS 알람 울림 경로 이전이 끝날 때까지 울림 화면만 현재 백스택보다 우선 표시한다.
+    // iOS 알람 울림 이동 정책 이전이 끝날 때까지 플랫폼 울림 상태를 현재 백스택보다 우선 표시한다.
     val displayedRoute = ringingAlarm
         ?.let { alarm -> AppRoute.AlarmRinging(alarm.id) }
         ?: navigationState.requestedRoute
-    val retainedRoutes = navigationState.retainedRoutes()
+    val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
     val viewModelScopes = rememberNavigationViewModelScopes(appContainer, retainedRoutes)
     val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
     val homeUiState = homeViewModel.uiState
@@ -360,7 +359,8 @@ private fun RingoutAppContent(
         viewModelStoreProvider = viewModelScopes.storeProvider,
         modifier = Modifier.fillMaxSize(),
         isBackBlocked =
-            authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true ||
+            displayedRoute is AppRoute.AlarmRinging ||
+                authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true ||
                 alarmEditorNavigation?.isBackBlocked(displayedRoute) == true,
         onBack = { route ->
             when (route) {
@@ -371,6 +371,8 @@ private fun RingoutAppContent(
                 -> alarmEditorNavigation?.onBack(route, displayedRoute)
                 AppRoute.Login, AppRoute.TermsAgreement ->
                     authNavigation?.onBack(route, displayedRoute, authSessionState)
+                is AppRoute.ActiveAlarmTracking -> navigationState.navigate(AppRoute.Home)
+                is AppRoute.AlarmRinging -> Unit
                 else -> navigationState.popBackStack(route)
             }
         },
@@ -406,6 +408,22 @@ private fun RingoutAppContent(
                 },
                 onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
             )
+            alarmRuntimeGraph(
+                navigationState = navigationState,
+                ringingAlarm = ringingAlarm,
+                activeAlarmMission = activeAlarmMission,
+                activeAlarmMissionLocation = activeAlarmMissionLocation,
+                missionLocationState = missionLocationState,
+                onRingingAlarmDismiss = onRingingAlarmDismiss,
+                onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+                onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
+                onActiveAlarmMissionForceEndHoldStarted =
+                    onActiveAlarmMissionForceEndHoldStarted,
+                onActiveAlarmMissionForceEndHoldCancelled =
+                    onActiveAlarmMissionForceEndHoldCancelled,
+                onActiveAlarmMissionForceEndHoldCompleted =
+                    onActiveAlarmMissionForceEndHoldCompleted,
+            )
             if (authNavigation != null) {
                 authGraph(
                     authNavigation = authNavigation,
@@ -422,52 +440,7 @@ private fun RingoutAppContent(
                 )
             }
         },
-    ) {
-        // 우선 표시되는 알람 울림과 진행 중인 미션 화면은 당분간 기존 화면 이동 방식을 유지한다.
-        when (displayedRoute) {
-            is AppRoute.AlarmRinging -> ringingAlarm?.let { alarm ->
-                AlarmRingingScreen(
-                    alarmTime = alarm.alarmTime,
-                    dateText = alarm.dateText,
-                    limitMinutes = alarm.limitMinutes,
-                    destinationName = alarm.destinationName,
-                    onDismissAndNavigateClick = {
-                        val destination = activeAlarmMission?.occurrenceId
-                            ?.let { occurrenceId -> AppRoute.ActiveAlarmTracking(occurrenceId) }
-                            ?: AppRoute.Home
-                        navigationState.navigate(destination)
-                        onRingingAlarmDismiss(alarm.id)
-                    },
-                )
-            }
-
-            is AppRoute.ActiveAlarmTracking -> activeAlarmMission?.let { mission ->
-                ActiveAlarmTrackingScreen(
-                    mission = mission,
-                    currentLocation = activeAlarmMissionLocation,
-                    locationState = missionLocationState,
-                    onBackClick = { navigationState.navigate(AppRoute.Home) },
-                    onForceEndClick = onActiveAlarmMissionForceEnd,
-                    onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
-                    onForceEndHoldCancelled = onActiveAlarmMissionForceEndHoldCancelled,
-                    onForceEndHoldCompleted = onActiveAlarmMissionForceEndHoldCompleted,
-                    onExpired = onActiveAlarmMissionExpired,
-                )
-            }
-
-            AppRoute.Onboarding,
-            AppRoute.Home,
-            AppRoute.AddAlarm,
-            is AppRoute.EditAlarm,
-            is AppRoute.Destination,
-            AppRoute.AlarmSound,
-            AppRoute.MyPage,
-            AppRoute.NicknameChange,
-            AppRoute.Login,
-            AppRoute.TermsAgreement,
-            -> Unit // HomeGraph, AuthGraph 또는 AlarmEditorGraph에서 표시한다.
-        }
-    }
+    )
 }
 
 internal fun AuthSessionState.toAnalyticsLoginStateOrNull(): AnalyticsLoginState? = when (this) {

@@ -94,7 +94,8 @@ class AppNavigationStateTest {
 
         assertSame(firstMission, state.backStack.last())
         assertEquals(underlyingStack + firstMission, state.backStack.toList())
-        assertEquals(underlyingStack, state.retainedRoutes())
+        assertEquals(underlyingStack + firstMission, state.retainedRoutes(firstMission))
+        assertEquals(listOf(firstMission), state.routesForDisplayedRoute(firstMission))
         assertTrue(state.isCurrentRoute(firstMission))
 
         val nextMission = AppRoute.ActiveAlarmTracking("occurrence-2")
@@ -260,7 +261,7 @@ class AppNavigationStateTest {
         assertEquals(activeMission, state.requestedRoute)
         assertEquals(expectedStack + activeMission, state.backStack.toList())
         assertFalse(state.isCurrentRoute(AppRoute.TermsAgreement))
-        assertNull(state.routesForDisplayedRoute(activeMission))
+        assertEquals(listOf(activeMission), state.routesForDisplayedRoute(activeMission))
 
         state.navigate(AppRoute.TermsAgreement)
 
@@ -277,10 +278,22 @@ class AppNavigationStateTest {
         assertNull(state.routesForDisplayedRoute(AppRoute.Login))
         assertNull(state.routesForDisplayedRoute(AppRoute.MyPage))
         assertEquals(expectedStack, state.routesForDisplayedRoute(AppRoute.TermsAgreement)?.toList())
-        assertNull(state.routesForDisplayedRoute(AppRoute.AlarmRinging("alarm-1")))
         assertEquals(expectedStack, state.backStack.toList())
         assertTrue(state.isCurrentRoute(AppRoute.TermsAgreement))
         assertFalse(state.isCurrentRoute(AppRoute.Login))
+    }
+
+    @Test
+    fun `알람 울림은 실제 백스택을 바꾸지 않고 단일 표시 경로로 유지한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.NicknameChange)
+        val underlyingStack = state.backStack.toList()
+        val ringingRoute = AppRoute.AlarmRinging("alarm-1")
+
+        assertEquals(listOf(ringingRoute), state.routesForDisplayedRoute(ringingRoute))
+        assertEquals(underlyingStack + ringingRoute, state.retainedRoutes(ringingRoute))
+        assertEquals(underlyingStack, state.backStack.toList())
+        assertEquals(AppRoute.NicknameChange, state.requestedRoute)
     }
 
     @Test
@@ -368,7 +381,8 @@ class AppNavigationStateTest {
             expectedStack,
             state.routesForDisplayedRoute(AppRoute.Destination(9L))?.toList(),
         )
-        assertNull(state.routesForDisplayedRoute(AppRoute.AlarmRinging("alarm-1")))
+        val ringingRoute = AppRoute.AlarmRinging("alarm-1")
+        assertEquals(listOf(ringingRoute), state.routesForDisplayedRoute(ringingRoute))
         assertEquals(expectedStack, state.backStack.toList())
 
         state.navigate(AppRoute.AlarmSound)

@@ -17,7 +17,7 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 
-/** 기존 화면이나 우선 화면이 표시되는 동안에도 이전이 완료된 백스택 항목의 상태를 유지한다. */
+/** 실제 백스택과 플랫폼에서 우선 표시하는 경로의 상태를 유지하며 현재 화면을 표시한다. */
 @Composable
 internal fun RingoutNavHost(
     navigationState: AppNavigationState,
@@ -27,11 +27,12 @@ internal fun RingoutNavHost(
     modifier: Modifier = Modifier,
     isBackBlocked: Boolean = false,
     onBack: (AppRoute) -> Unit = { navigationState.popBackStack(it) },
-    legacyContent: @Composable () -> Unit,
 ) {
     val provider = entryProvider(builder = graph)
-    val visibleRoutes = navigationState.routesForDisplayedRoute(displayedRoute)
-    val retainedRoutes = navigationState.retainedRoutes()
+    val visibleRoutes = checkNotNull(navigationState.routesForDisplayedRoute(displayedRoute)) {
+        "표시 경로는 현재 백스택 또는 알람 울림 경로여야 한다: $displayedRoute"
+    }
+    val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
     val entries = rememberDecoratedNavEntries(
         entries = retainedRoutes.map(provider),
         entryDecorators = listOf(
@@ -41,24 +42,20 @@ internal fun RingoutNavHost(
             },
         ),
     )
-    if (visibleRoutes != null) {
-        val entriesByRoute = retainedRoutes.zip(entries).toMap()
-        NavDisplay(
-            entries = visibleRoutes.map(entriesByRoute::getValue),
-            modifier = modifier,
-            onBack = { if (!isBackBlocked) onBack(visibleRoutes.last()) },
-            transitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
-            popTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
-            predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
-            sizeTransform = null,
-        )
-        // 두 플랫폼 모두 NavDisplay의 뒤로 가기 미리보기나 백스택 제거 전에 차단된 뒤로 가기 제스처를 소비한다.
-        NavigationBackHandler(
-            state = rememberNavigationEventState(NavigationEventInfo.None),
-            isBackEnabled = isBackBlocked,
-            onBackCompleted = {},
-        )
-    } else {
-        legacyContent()
-    }
+    val entriesByRoute = retainedRoutes.zip(entries).toMap()
+    NavDisplay(
+        entries = visibleRoutes.map(entriesByRoute::getValue),
+        modifier = modifier,
+        onBack = { if (!isBackBlocked) onBack(visibleRoutes.last()) },
+        transitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+        popTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+        predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+        sizeTransform = null,
+    )
+    // 두 플랫폼 모두 NavDisplay의 뒤로 가기 미리보기나 백스택 제거 전에 차단된 뒤로 가기 제스처를 소비한다.
+    NavigationBackHandler(
+        state = rememberNavigationEventState(NavigationEventInfo.None),
+        isBackEnabled = isBackBlocked,
+        onBackCompleted = {},
+    )
 }

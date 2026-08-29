@@ -18,10 +18,7 @@ internal fun rememberAppNavigationState(): AppNavigationState {
     }
 }
 
-/**
- * 화면 이동 요청은 타입 안전한 Navigation 3 백스택으로 관리한다. 알람 울림과 진행 중인
- * 미션 화면의 렌더링은 내비게이션 그래프 이전이 끝날 때까지 기존 화면 분기를 사용한다.
- */
+/** 화면 이동 요청과 표시 경로를 타입 안전한 Navigation 3 백스택으로 관리한다. */
 internal class AppNavigationState(
     private val routes: NavBackStack<AppRoute> = NavBackStack(AppRoute.Home),
 ) {
@@ -58,9 +55,9 @@ internal class AppNavigationState(
             }
             is AppRoute.ActiveAlarmTracking ->
                 routes.filterNot { it is AppRoute.ActiveAlarmTracking } + route
-            AppRoute.Onboarding,
-            is AppRoute.AlarmRinging,
-            -> error("Route has not been migrated: $route")
+            AppRoute.Onboarding -> error("온보딩은 앱 내비게이션 진입 전에 관리한다: $route")
+            is AppRoute.AlarmRinging ->
+                error("알람 울림 경로는 플랫폼 상태에서만 표시한다: $route")
         }
         // 동일 경로 요청은 현재 항목과 화면 상태를 그대로 사용한다.
         if (routes.toList() == destinationStack) return
@@ -80,15 +77,16 @@ internal class AppNavigationState(
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
 
-    fun retainedRoutes(): List<AppRoute> = routes.filterNot(AppRoute::usesLegacyContent)
+    /** 실제 백스택과 플랫폼에서 우선 표시하는 경로의 화면 상태를 함께 유지한다. */
+    fun retainedRoutes(displayedRoute: AppRoute): List<AppRoute> =
+        (routes + displayedRoute).distinct()
 
-    /** 실제 백스택 최상단이 Navigation 3 화면일 때 표시할 경로를 반환한다. */
-    fun routesForDisplayedRoute(displayedRoute: AppRoute): List<AppRoute>? {
-        if (displayedRoute.usesLegacyContent()) return null
-        if (!isCurrentRoute(displayedRoute)) return null
-        return routes.toList()
+    /** 현재 화면에 표시할 경로를 반환한다. 런타임 화면은 아래 백스택을 노출하지 않는다. */
+    fun routesForDisplayedRoute(displayedRoute: AppRoute): List<AppRoute>? = when {
+        displayedRoute is AppRoute.AlarmRinging -> listOf(displayedRoute)
+        displayedRoute is AppRoute.ActiveAlarmTracking && isCurrentRoute(displayedRoute) ->
+            listOf(displayedRoute)
+        isCurrentRoute(displayedRoute) -> routes.toList()
+        else -> null
     }
 }
-
-private fun AppRoute.usesLegacyContent(): Boolean =
-    this is AppRoute.AlarmRinging || this is AppRoute.ActiveAlarmTracking
