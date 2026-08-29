@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.navigation
+package com.joon.ringout.presentation.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -7,11 +7,13 @@ import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
+import com.joon.ringout.presentation.navigation.AppNavigationState
+import com.joon.ringout.presentation.navigation.AppRoute
 import com.joon.ringout.presentation.signup.SignupViewModel
 
 /** 재인증이 필요한 동안 진행 상태를 정리하고 로그인 백스택을 유지한다. */
 @Composable
-internal fun ReauthenticationNavigationEffect(
+internal fun ReauthenticationCoordinator(
     authSessionState: AuthSessionState,
     navigationState: AppNavigationState,
     homeViewModel: HomeViewModel,

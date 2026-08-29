@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.activemission.components
+package com.joon.ringout.presentation.alarmsetup.components
 
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text

@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.navigation
+package com.joon.ringout.presentation.app
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +32,10 @@ import com.joon.ringout.presentation.login.LoginCompletion
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
+import com.joon.ringout.presentation.navigation.AppNavigationState
+import com.joon.ringout.presentation.navigation.AppRoute
+import com.joon.ringout.presentation.navigation.AuthNavigation
+import com.joon.ringout.presentation.navigation.withEffectComposition
 import com.joon.ringout.presentation.signup.SignupViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -48,7 +52,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class ReauthenticationNavigationEffectTest {
+class ReauthenticationCoordinatorTest {
     @Test
     fun `재인증은 연결된 진행 상태와 오류를 정리한 뒤 로그인으로 이동한다`() = runTest {
         val fixture = ReauthenticationFixture(backgroundScope)
@@ -119,7 +123,7 @@ class ReauthenticationNavigationEffectTest {
         var boundSignup by mutableStateOf<SignupViewModel?>(null)
         withEffectComposition(
             content = {
-                ReauthenticationNavigationEffect(
+                ReauthenticationCoordinator(
                     authSessionState = AuthSessionState.ReauthenticationRequired,
                     navigationState = fixture.state,
                     homeViewModel = fixture.home,
@@ -265,7 +269,7 @@ private class ReauthenticationFixture(
 
     @Composable
     fun Content(authSessionState: AuthSessionState) {
-        ReauthenticationNavigationEffect(
+        ReauthenticationCoordinator(
             authSessionState = authSessionState,
             navigationState = state,
             homeViewModel = home,

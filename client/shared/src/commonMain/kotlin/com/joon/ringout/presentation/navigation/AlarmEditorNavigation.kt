@@ -36,7 +36,7 @@ internal fun rememberAlarmEditorNavigation(
 
 /** 기존 결과 처리 방식과 같이 우선 화면이 편집 화면을 가려도 컴포지션에 유지된다. */
 @Composable
-internal fun AlarmEditorNavigationEffects(
+internal fun AlarmEditorNavigationBinding(
     navigation: AlarmEditorNavigation,
     displayedRoute: AppRoute,
 ) {
