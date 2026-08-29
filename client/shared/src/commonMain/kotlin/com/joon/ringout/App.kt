@@ -40,6 +40,7 @@ import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import com.joon.ringout.presentation.navigation.AppRoute
+import com.joon.ringout.presentation.navigation.ReauthenticationNavigationEffect
 import com.joon.ringout.presentation.navigation.AlarmEditorNavigationEffects
 import com.joon.ringout.presentation.navigation.RingoutNavHost
 import com.joon.ringout.presentation.navigation.alarmEditorGraph
@@ -224,27 +225,15 @@ private fun RingoutAppContent(
     LaunchedEffect(authRepository) {
         authRepository.restoreSession()
     }
-    LaunchedEffect(
-        authSessionState,
-        signupViewModel,
-        alarmSetupViewModel,
-        myPageViewModel,
-        alarmSetupUiState,
-        alarmSetupViewModel?.permissionDialog,
-        destinationUiState?.errorMessage,
-        homeUiState.errorMessage,
-    ) {
-        if (authSessionState == AuthSessionState.ReauthenticationRequired) {
-            signupViewModel?.resetSignup()
-            alarmSetupViewModel?.resetSaveFlow()
-            homeViewModel.clearError()
-            myPageViewModel?.resetAccountActionFlow()
-            if (destinationUiState?.errorMessage != null) {
-                destinationViewModel.clearError()
-            }
-            navigationState.navigate(AppScreen.Login)
-        }
-    }
+    ReauthenticationNavigationEffect(
+        authSessionState = authSessionState,
+        navigationState = navigationState,
+        homeViewModel = homeViewModel,
+        signupViewModel = signupViewModel,
+        alarmSetupViewModel = alarmSetupViewModel,
+        myPageViewModel = myPageViewModel,
+        destinationViewModel = destinationViewModel,
+    )
     val completedAccountAction =
         myPageUiState?.accountAction as? MyPageAccountActionState.Completed
     LaunchedEffect(myPageViewModel, completedAccountAction?.eventId) {

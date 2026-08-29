@@ -210,6 +210,10 @@ class AuthNavigationTest {
             AuthSessionState.ReauthenticationRequired,
         )
         assertEquals(AppScreen.Login, fixture.state.requestedScreen)
+
+        assertFalse(fixture.navigation.isBackBlocked(AppScreen.Login, AuthSessionState.Unauthenticated))
+        fixture.navigation.onBack(AppRoute.Login, AppScreen.Login, AuthSessionState.Unauthenticated)
+        assertEquals(AppScreen.MyPage, fixture.state.requestedScreen)
     }
 
     @Test

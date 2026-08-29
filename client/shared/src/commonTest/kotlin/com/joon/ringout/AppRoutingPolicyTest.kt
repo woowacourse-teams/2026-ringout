@@ -12,15 +12,17 @@ class AppRoutingPolicyTest {
     fun `울리는 알람은 모든 화면 전환보다 우선한다`() {
         AppScreen.entries.forEach { requestedScreen ->
             AuthSessionState.entries.forEach { authSessionState ->
-                assertEquals(
-                    AppScreen.AlarmRinging,
-                    resolveAppScreen(
-                        requestedScreen = requestedScreen,
-                        hasRingingAlarm = true,
-                        hasActiveAlarmMission = false,
-                        authSessionState = authSessionState,
-                    ),
-                )
+                listOf(false, true).forEach { hasActiveAlarmMission ->
+                    assertEquals(
+                        AppScreen.AlarmRinging,
+                        resolveAppScreen(
+                            requestedScreen = requestedScreen,
+                            hasRingingAlarm = true,
+                            hasActiveAlarmMission = hasActiveAlarmMission,
+                            authSessionState = authSessionState,
+                        ),
+                    )
+                }
             }
         }
     }
@@ -64,6 +66,21 @@ class AppRoutingPolicyTest {
                 authSessionState = AuthSessionState.Authenticated,
             ),
         )
+    }
+
+    @Test
+    fun `활성 미션이 있어도 일반 화면 요청을 강제로 바꾸지 않는다`() {
+        listOf(AppScreen.Home, AppScreen.MyPage, AppScreen.Destination).forEach { requestedScreen ->
+            assertEquals(
+                requestedScreen,
+                resolveAppScreen(
+                    requestedScreen = requestedScreen,
+                    hasRingingAlarm = false,
+                    hasActiveAlarmMission = true,
+                    authSessionState = AuthSessionState.Authenticated,
+                ),
+            )
+        }
     }
 
     @Test
