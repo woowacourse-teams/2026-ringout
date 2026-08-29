@@ -16,13 +16,12 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
-import com.joon.ringout.AppScreen
 
 /** 기존 화면이나 우선 화면이 표시되는 동안에도 이전이 완료된 백스택 항목의 상태를 유지한다. */
 @Composable
 internal fun RingoutNavHost(
     navigationState: AppNavigationState,
-    screen: AppScreen,
+    displayedRoute: AppRoute,
     viewModelStoreProvider: ViewModelStoreProvider,
     graph: EntryProviderScope<AppRoute>.() -> Unit,
     modifier: Modifier = Modifier,
@@ -31,9 +30,9 @@ internal fun RingoutNavHost(
     legacyContent: @Composable () -> Unit,
 ) {
     val provider = entryProvider(builder = graph)
-    val visibleRoutes = navigationState.routesForScreen(screen)
+    val visibleRoutes = navigationState.routesForDisplayedRoute(displayedRoute)
     // 화면 전환 부수 효과가 실제 백스택을 갱신하기 전에 표시된 우선 경로도 유지한다.
-    val retainedRoutes = navigationState.retainedRoutes(screen)
+    val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
     val entries = rememberDecoratedNavEntries(
         entries = retainedRoutes.map(provider),
         entryDecorators = listOf(

@@ -8,7 +8,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import com.joon.ringout.AppScreen
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
@@ -39,14 +38,14 @@ internal fun rememberAlarmEditorNavigation(
 @Composable
 internal fun AlarmEditorNavigationEffects(
     navigation: AlarmEditorNavigation,
-    screen: AppScreen,
+    displayedRoute: AppRoute,
 ) {
     val savedEvent = navigation.destinationViewModel.uiState.savedEvent
     LaunchedEffect(navigation, savedEvent?.eventId) {
         savedEvent?.let(navigation::onDestinationSaved)
     }
-    LaunchedEffect(navigation, screen, navigation.hasValidDraft()) {
-        navigation.onMissingDraft(screen)
+    LaunchedEffect(navigation, displayedRoute, navigation.hasValidDraft()) {
+        navigation.onMissingDraft(displayedRoute)
     }
 }
 
@@ -84,22 +83,22 @@ internal class AlarmEditorNavigation(
             else -> false
         }
 
-    fun isActive(route: AppRoute, screen: AppScreen): Boolean =
+    fun isActive(route: AppRoute, displayedRoute: AppRoute): Boolean =
         hasValidDraft() && navigationState.isCurrentRoute(route) &&
-            navigationState.requestedScreen == screen
+            displayedRoute == route
 
-    fun isBackBlocked(screen: AppScreen): Boolean = when (screen) {
-        AppScreen.AddAlarm, AppScreen.EditAlarm -> alarmSetupViewModel.uiState.isSaveInProgress
+    fun isBackBlocked(displayedRoute: AppRoute): Boolean = when (displayedRoute) {
+        AppRoute.AddAlarm, is AppRoute.EditAlarm -> alarmSetupViewModel.uiState.isSaveInProgress
         else -> false
     }
 
-    fun onBack(route: AppRoute, screen: AppScreen) {
-        if (!isActive(route, screen) || isBackBlocked(screen)) return
+    fun onBack(route: AppRoute, displayedRoute: AppRoute) {
+        if (!isActive(route, displayedRoute) || isBackBlocked(displayedRoute)) return
         navigationState.popBackStack(route)
     }
 
-    fun onDestinationClick(from: AppRoute, screen: AppScreen) {
-        if (from != navigationState.editorRoute || !isActive(from, screen)) return
+    fun onDestinationClick(from: AppRoute, displayedRoute: AppRoute) {
+        if (from != navigationState.editorRoute || !isActive(from, displayedRoute)) return
         destinationRequestId = maxOf(
             destinationRequestId,
             destinationViewModel.uiState.savedEvent?.requestId ?: 0L,
@@ -107,23 +106,23 @@ internal class AlarmEditorNavigation(
         navigationState.navigate(AppRoute.Destination(destinationRequestId))
     }
 
-    fun onAlarmSoundClick(from: AppRoute, screen: AppScreen) {
-        if (from != navigationState.editorRoute || !isActive(from, screen)) return
+    fun onAlarmSoundClick(from: AppRoute, displayedRoute: AppRoute) {
+        if (from != navigationState.editorRoute || !isActive(from, displayedRoute)) return
         navigationState.navigate(AppRoute.AlarmSound)
     }
 
     fun onSavedDestinationSelected(
         route: AppRoute.Destination,
-        screen: AppScreen,
+        displayedRoute: AppRoute,
         destination: SavedDestination,
     ) {
-        if (!isActive(route, screen)) return
+        if (!isActive(route, displayedRoute)) return
         alarmSetupViewModel.updateDestination(destination.toDestinationSelection())
         navigationState.popBackStack(route)
     }
 
-    fun onAlarmSoundSelected(screen: AppScreen, sound: AlarmSoundSelection) {
-        if (!isActive(AppRoute.AlarmSound, screen)) return
+    fun onAlarmSoundSelected(displayedRoute: AppRoute, sound: AlarmSoundSelection) {
+        if (!isActive(AppRoute.AlarmSound, displayedRoute)) return
         alarmSetupViewModel.updateAlarmSound(sound)
         navigationState.popBackStack(AppRoute.AlarmSound)
     }
@@ -144,10 +143,11 @@ internal class AlarmEditorNavigation(
         destinationViewModel.consumeSavedEvent(event.eventId)
     }
 
-    fun onMissingDraft(screen: AppScreen) {
+    fun onMissingDraft(displayedRoute: AppRoute) {
         if (
-            screen in AlarmEditorScreens &&
-            navigationState.requestedScreen == screen && !hasValidDraft()
+            displayedRoute.isAlarmEditorRoute() &&
+            navigationState.requestedRoute == displayedRoute &&
+            !hasValidDraft()
         ) {
             // 초안은 의도적으로 백스택에 직렬화하지 않는다.
             navigationState.navigate(AppRoute.Home)
@@ -155,9 +155,11 @@ internal class AlarmEditorNavigation(
     }
 }
 
-private val AlarmEditorScreens = setOf(
-    AppScreen.AddAlarm,
-    AppScreen.EditAlarm,
-    AppScreen.Destination,
-    AppScreen.AlarmSound,
-)
+private fun AppRoute.isAlarmEditorRoute(): Boolean = when (this) {
+    AppRoute.AddAlarm,
+    AppRoute.AlarmSound,
+    is AppRoute.EditAlarm,
+    is AppRoute.Destination,
+    -> true
+    else -> false
+}

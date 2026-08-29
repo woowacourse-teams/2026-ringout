@@ -5,7 +5,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSerializable
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
-import com.joon.ringout.AppScreen
 
 @Composable
 internal fun rememberAppNavigationState(): AppNavigationState {
@@ -32,21 +31,8 @@ internal class AppNavigationState(
     val editorRoute: AppRoute?
         get() = routes.lastOrNull { it == AppRoute.AddAlarm || it is AppRoute.EditAlarm }
 
-    val requestedScreen: AppScreen
-        get() = when (routes.last()) {
-            AppRoute.Onboarding -> error("Onboarding is managed before app navigation starts")
-            AppRoute.Home -> AppScreen.Home
-            AppRoute.MyPage -> AppScreen.MyPage
-            AppRoute.NicknameChange -> AppScreen.NicknameChange
-            AppRoute.Login -> AppScreen.Login
-            AppRoute.TermsAgreement -> AppScreen.TermsAgreement
-            AppRoute.AddAlarm -> AppScreen.AddAlarm
-            is AppRoute.EditAlarm -> AppScreen.EditAlarm
-            is AppRoute.Destination -> AppScreen.Destination
-            AppRoute.AlarmSound -> AppScreen.AlarmSound
-            is AppRoute.AlarmRinging -> AppScreen.AlarmRinging
-            is AppRoute.ActiveAlarmTracking -> AppScreen.ActiveAlarmTracking
-        }
+    val requestedRoute: AppRoute
+        get() = routes.last()
 
     /**
      * 요청한 목적지 스택이 현재 백스택과 같으면 singleTop으로 기존 항목을 유지한다.
@@ -85,25 +71,6 @@ internal class AppNavigationState(
         routes.addAll(destinationStack.drop(sharedSize))
     }
 
-    /** AppScreen 제거가 끝날 때까지 식별자가 필요 없는 기존 콜백을 연결하는 어댑터다. */
-    fun navigate(screen: AppScreen) {
-        when (screen) {
-            AppScreen.Home -> navigate(AppRoute.Home)
-            AppScreen.MyPage, AppScreen.Settings -> navigate(AppRoute.MyPage)
-            AppScreen.NicknameChange -> navigate(AppRoute.NicknameChange)
-            AppScreen.Login -> navigate(AppRoute.Login)
-            AppScreen.TermsAgreement -> navigate(AppRoute.TermsAgreement)
-            AppScreen.AddAlarm -> navigate(AppRoute.AddAlarm)
-            AppScreen.AlarmSound -> navigate(AppRoute.AlarmSound)
-            AppScreen.EditAlarm,
-            AppScreen.Destination,
-            AppScreen.AlarmRinging,
-            AppScreen.ActiveAlarmTracking,
-            ->
-                throw IllegalArgumentException("Use an AppRoute with the required identifier for $screen")
-        }
-    }
-
     fun popBackStack(from: AppRoute = routes.last()) {
         // 이미 벗어난 백스택 항목의 콜백은 무시하고, 루트 항목은 제거하지 않는다.
         if (routes.size > 1 && isCurrentRoute(from)) {
@@ -113,26 +80,40 @@ internal class AppNavigationState(
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
 
-    fun retainedRoutes(screen: AppScreen): List<AppRoute> =
-        (routes.filterNot(AppRoute::usesLegacyContent) + routesForScreen(screen).orEmpty()).distinct()
+    fun retainedRoutes(displayedRoute: AppRoute): List<AppRoute> =
+        (
+            routes.filterNot(AppRoute::usesLegacyContent) +
+                routesForDisplayedRoute(displayedRoute).orEmpty()
+        ).distinct()
 
     /** 요청된 백스택을 변경하지 않고 기존 화면 표시 정책에 맞는 경로를 반환한다. */
-    fun routesForScreen(screen: AppScreen): List<AppRoute>? {
-        val route = when (screen) {
-            AppScreen.Home -> AppRoute.Home
-            AppScreen.MyPage, AppScreen.Settings -> AppRoute.MyPage
-            AppScreen.NicknameChange -> AppRoute.NicknameChange
-            AppScreen.Login -> AppRoute.Login
-            AppScreen.TermsAgreement -> AppRoute.TermsAgreement
-            AppScreen.AddAlarm -> AppRoute.AddAlarm
-            AppScreen.EditAlarm -> routes.lastOrNull { it is AppRoute.EditAlarm } ?: return null
-            AppScreen.Destination -> routes.lastOrNull { it is AppRoute.Destination } ?: return null
-            AppScreen.AlarmSound -> routes.lastOrNull { it == AppRoute.AlarmSound } ?: return null
-            else -> return null
+    fun routesForDisplayedRoute(displayedRoute: AppRoute): List<AppRoute>? {
+        if (displayedRoute.usesLegacyContent()) return null
+
+        val index = routes.indexOf(displayedRoute)
+        if (index >= 0) return routes.take(index + 1)
+
+        return when (displayedRoute) {
+            // 편집 화면은 유효한 부모와 초안 없이 표시 경로만 합성하지 않는다.
+            AppRoute.Onboarding,
+            is AppRoute.EditAlarm,
+            is AppRoute.Destination,
+            AppRoute.AlarmSound,
+            -> null
+
+            // 기존 화면 전환 부수 효과가 실행되기 전에도 우선 화면을 표시한다.
+            AppRoute.Home,
+            AppRoute.AddAlarm,
+            AppRoute.MyPage,
+            AppRoute.NicknameChange,
+            AppRoute.Login,
+            AppRoute.TermsAgreement,
+            -> listOf(displayedRoute)
+
+            is AppRoute.AlarmRinging,
+            is AppRoute.ActiveAlarmTracking,
+            -> null
         }
-        val index = routes.indexOf(route)
-        // 기존 화면 전환 부수 효과가 실행되기 전에 로그인 화면이 우선 표시될 수 있다.
-        return if (index >= 0) routes.take(index + 1) else listOf(route)
     }
 }
 

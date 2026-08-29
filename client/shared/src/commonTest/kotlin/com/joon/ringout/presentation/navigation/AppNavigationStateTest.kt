@@ -2,7 +2,6 @@ package com.joon.ringout.presentation.navigation
 
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
-import com.joon.ringout.AppScreen
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.resolveAppScreen
 import kotlinx.serialization.json.Json
@@ -20,19 +19,19 @@ class AppNavigationStateTest {
         val state = AppNavigationState()
 
         state.navigate(AppRoute.MyPage)
-        assertEquals(AppScreen.MyPage, state.requestedScreen)
+        assertEquals(AppRoute.MyPage, state.requestedRoute)
         state.navigate(AppRoute.NicknameChange)
         assertEquals(
             listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange),
             state.backStack.toList(),
         )
-        assertEquals(AppScreen.NicknameChange, state.requestedScreen)
+        assertEquals(AppRoute.NicknameChange, state.requestedRoute)
 
         state.popBackStack()
         assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack.toList())
         state.popBackStack()
         assertEquals(listOf(AppRoute.Home), state.backStack.toList())
-        assertEquals(AppScreen.Home, state.requestedScreen)
+        assertEquals(AppRoute.Home, state.requestedRoute)
     }
 
     @Test
@@ -99,11 +98,11 @@ class AppNavigationStateTest {
         assertEquals(underlyingStack + firstMission, state.backStack.toList())
         assertEquals(
             underlyingStack,
-            state.retainedRoutes(AppScreen.ActiveAlarmTracking),
+            state.retainedRoutes(firstMission),
         )
         assertEquals(
             underlyingStack,
-            state.retainedRoutes(AppScreen.AlarmRinging),
+            state.retainedRoutes(AppRoute.AlarmRinging("alarm-1")),
         )
         assertTrue(state.isCurrentRoute(firstMission))
 
@@ -116,7 +115,7 @@ class AppNavigationStateTest {
         state.popBackStack(nextMission)
 
         assertEquals(underlyingStack, state.backStack.toList())
-        assertEquals(AppScreen.NicknameChange, state.requestedScreen)
+        assertEquals(AppRoute.NicknameChange, state.requestedRoute)
     }
 
     @Test
@@ -125,7 +124,7 @@ class AppNavigationStateTest {
         state.navigate(AppRoute.NicknameChange)
 
         state.popBackStack(AppRoute.MyPage)
-        assertEquals(AppScreen.NicknameChange, state.requestedScreen)
+        assertEquals(AppRoute.NicknameChange, state.requestedRoute)
         repeat(2) { state.popBackStack(AppRoute.NicknameChange) }
 
         assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack.toList())
@@ -145,30 +144,30 @@ class AppNavigationStateTest {
         val state = AppNavigationState()
         state.navigate(AppRoute.MyPage)
 
-        state.navigate(AppScreen.Login)
+        state.navigate(AppRoute.Login)
         state.popBackStack(AppRoute.MyPage)
 
-        assertEquals(AppScreen.Login, state.requestedScreen)
+        assertEquals(AppRoute.Login, state.requestedRoute)
         assertEquals(
             listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login),
             state.backStack.toList(),
         )
 
-        state.navigate(AppScreen.MyPage)
-        assertEquals(AppScreen.MyPage, state.requestedScreen)
+        state.navigate(AppRoute.MyPage)
+        assertEquals(AppRoute.MyPage, state.requestedRoute)
         assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack.toList())
     }
 
     @Test
     fun `로그인에서 마이페이지로 복귀하면 홈까지의 경로가 만들어진다`() {
         val state = AppNavigationState()
-        state.navigate(AppScreen.Login)
+        state.navigate(AppRoute.Login)
 
-        state.navigate(AppScreen.MyPage)
+        state.navigate(AppRoute.MyPage)
 
         assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack.toList())
         state.popBackStack()
-        assertEquals(AppScreen.Home, state.requestedScreen)
+        assertEquals(AppRoute.Home, state.requestedRoute)
     }
 
     @Test
@@ -177,21 +176,10 @@ class AppNavigationStateTest {
         state.navigate(AppRoute.NicknameChange)
         state.navigate(AppRoute.ActiveAlarmTracking("occurrence-1"))
 
-        state.navigate(AppScreen.Home)
+        state.navigate(AppRoute.Home)
 
         assertEquals(listOf(AppRoute.Home), state.backStack.toList())
-        assertEquals(AppScreen.Home, state.requestedScreen)
-    }
-
-    @Test
-    fun `이전 Settings 경로는 마이페이지 경로로 통합한다`() {
-        val state = AppNavigationState()
-        state.navigate(AppRoute.NicknameChange)
-
-        state.navigate(AppScreen.Settings)
-
-        assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack.toList())
-        assertEquals(AppScreen.MyPage, state.requestedScreen)
+        assertEquals(AppRoute.Home, state.requestedRoute)
     }
 
     @Test
@@ -201,25 +189,25 @@ class AppNavigationStateTest {
         val expectedStack = state.backStack.toList()
 
         assertEquals(
-            AppScreen.AlarmRinging,
+            AppRoute.AlarmRinging("alarm-1"),
             resolveAppScreen(
-                requestedScreen = state.requestedScreen,
-                hasRingingAlarm = true,
+                requestedRoute = state.requestedRoute,
+                ringingAlarmId = "alarm-1",
                 hasActiveAlarmMission = false,
                 authSessionState = AuthSessionState.ReauthenticationRequired,
             ),
         )
         assertEquals(
-            AppScreen.Login,
+            AppRoute.Login,
             resolveAppScreen(
-                requestedScreen = state.requestedScreen,
-                hasRingingAlarm = false,
+                requestedRoute = state.requestedRoute,
+                ringingAlarmId = null,
                 hasActiveAlarmMission = false,
                 authSessionState = AuthSessionState.ReauthenticationRequired,
             ),
         )
         assertEquals(expectedStack, state.backStack.toList())
-        assertEquals(AppScreen.NicknameChange, state.requestedScreen)
+        assertEquals(AppRoute.NicknameChange, state.requestedRoute)
     }
 
     @Test
@@ -238,13 +226,13 @@ class AppNavigationStateTest {
         val state = AppNavigationState(restored)
 
         assertEquals(backStack.toList(), state.backStack.toList())
-        assertEquals(AppScreen.ActiveAlarmTracking, state.requestedScreen)
+        assertEquals(activeMission, state.requestedRoute)
         assertTrue(state.isCurrentRoute(activeMission))
 
         state.popBackStack(activeMission)
 
         assertEquals(backStack.dropLast(1), state.backStack.toList())
-        assertEquals(AppScreen.TermsAgreement, state.requestedScreen)
+        assertEquals(AppRoute.TermsAgreement, state.requestedRoute)
         assertTrue(state.isCurrentRoute(AppRoute.TermsAgreement))
     }
 
@@ -252,16 +240,16 @@ class AppNavigationStateTest {
     fun `로그인에서 약관으로 이동하고 역순으로 마이페이지까지 돌아온다`() {
         val state = AppNavigationState()
 
-        state.navigate(AppScreen.Login)
-        state.navigate(AppScreen.TermsAgreement)
+        state.navigate(AppRoute.Login)
+        state.navigate(AppRoute.TermsAgreement)
 
         assertEquals(
             listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement),
             state.backStack.toList(),
         )
-        assertEquals(AppScreen.TermsAgreement, state.requestedScreen)
+        assertEquals(AppRoute.TermsAgreement, state.requestedRoute)
         state.popBackStack(AppRoute.TermsAgreement)
-        assertEquals(AppScreen.Login, state.requestedScreen)
+        assertEquals(AppRoute.Login, state.requestedRoute)
         state.popBackStack(AppRoute.Login)
         assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack.toList())
     }
@@ -286,7 +274,7 @@ class AppNavigationStateTest {
         for (previousRoute in listOf(AppRoute.NicknameChange, AppRoute.TermsAgreement)) {
             state.navigate(previousRoute)
 
-            state.navigate(AppScreen.Login)
+            state.navigate(AppRoute.Login)
 
             assertEquals(
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login),
@@ -306,10 +294,10 @@ class AppNavigationStateTest {
         state.navigate(activeMission)
         state.popBackStack(AppRoute.TermsAgreement)
 
-        assertEquals(AppScreen.ActiveAlarmTracking, state.requestedScreen)
+        assertEquals(activeMission, state.requestedRoute)
         assertEquals(expectedStack + activeMission, state.backStack.toList())
         assertFalse(state.isCurrentRoute(AppRoute.TermsAgreement))
-        assertNull(state.routesForScreen(AppScreen.ActiveAlarmTracking))
+        assertNull(state.routesForDisplayedRoute(activeMission))
 
         state.navigate(AppRoute.TermsAgreement)
 
@@ -325,14 +313,14 @@ class AppNavigationStateTest {
 
         assertEquals(
             listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login),
-            state.routesForScreen(AppScreen.Login)?.toList(),
+            state.routesForDisplayedRoute(AppRoute.Login)?.toList(),
         )
         assertEquals(
             listOf(AppRoute.Home, AppRoute.MyPage),
-            state.routesForScreen(AppScreen.MyPage)?.toList(),
+            state.routesForDisplayedRoute(AppRoute.MyPage)?.toList(),
         )
-        assertEquals(expectedStack, state.routesForScreen(AppScreen.TermsAgreement)?.toList())
-        assertNull(state.routesForScreen(AppScreen.AlarmRinging))
+        assertEquals(expectedStack, state.routesForDisplayedRoute(AppRoute.TermsAgreement)?.toList())
+        assertNull(state.routesForDisplayedRoute(AppRoute.AlarmRinging("alarm-1")))
         assertEquals(expectedStack, state.backStack.toList())
         assertTrue(state.isCurrentRoute(AppRoute.TermsAgreement))
         assertFalse(state.isCurrentRoute(AppRoute.Login))
@@ -344,16 +332,34 @@ class AppNavigationStateTest {
         state.navigate(AppRoute.NicknameChange)
         val expectedStack = state.backStack.toList()
 
-        val screen = resolveAppScreen(
-            requestedScreen = state.requestedScreen,
-            hasRingingAlarm = false,
+        val displayedRoute = resolveAppScreen(
+            requestedRoute = state.requestedRoute,
+            ringingAlarmId = null,
             hasActiveAlarmMission = false,
             authSessionState = AuthSessionState.ReauthenticationRequired,
         )
 
-        assertEquals(listOf(AppRoute.Login), state.routesForScreen(screen)?.toList())
+        assertEquals(listOf(AppRoute.Login), state.routesForDisplayedRoute(displayedRoute)?.toList())
         assertFalse(state.isCurrentRoute(AppRoute.Login))
         assertEquals(expectedStack, state.backStack.toList())
+    }
+
+    @Test
+    fun `백스택에 없는 편집 경로는 초안과 부모 없이 표시 경로로 합성하지 않는다`() {
+        val state = AppNavigationState()
+
+        for (
+            displayedRoute in listOf(
+                AppRoute.EditAlarm("alarm-1"),
+                AppRoute.Destination(1L),
+                AppRoute.AlarmSound,
+                AppRoute.Onboarding,
+            )
+        ) {
+            assertNull(state.routesForDisplayedRoute(displayedRoute))
+        }
+
+        assertEquals(listOf(AppRoute.Home), state.backStack.toList())
     }
 
     @Test
@@ -411,28 +417,6 @@ class AppNavigationStateTest {
     }
 
     @Test
-    fun `기존 화면 adapter는 식별자가 필요한 경로 요청을 거절한다`() {
-        val state = AppNavigationState()
-        state.navigate(AppScreen.AddAlarm)
-        state.navigate(AppScreen.AlarmSound)
-        val expectedStack = listOf(AppRoute.Home, AppRoute.AddAlarm, AppRoute.AlarmSound)
-
-        for (
-            screen in listOf(
-                AppScreen.EditAlarm,
-                AppScreen.Destination,
-                AppScreen.AlarmRinging,
-                AppScreen.ActiveAlarmTracking,
-            )
-        ) {
-            assertFailsWith<IllegalArgumentException> { state.navigate(screen) }
-        }
-
-        assertEquals(expectedStack, state.backStack.toList())
-        assertEquals(AppScreen.AlarmSound, state.requestedScreen)
-    }
-
-    @Test
     fun `편집 화면을 투영할 때 부모 식별자를 보존하고 실제 자식은 제거하지 않는다`() {
         val state = AppNavigationState()
         val parent = AppRoute.EditAlarm("alarm-1")
@@ -442,16 +426,19 @@ class AppNavigationStateTest {
 
         assertEquals(
             listOf(AppRoute.Home, parent),
-            state.routesForScreen(AppScreen.EditAlarm)?.toList(),
+            state.routesForDisplayedRoute(parent)?.toList(),
         )
-        assertEquals(expectedStack, state.routesForScreen(AppScreen.Destination)?.toList())
-        assertNull(state.routesForScreen(AppScreen.AlarmRinging))
+        assertEquals(
+            expectedStack,
+            state.routesForDisplayedRoute(AppRoute.Destination(9L))?.toList(),
+        )
+        assertNull(state.routesForDisplayedRoute(AppRoute.AlarmRinging("alarm-1")))
         assertEquals(expectedStack, state.backStack.toList())
 
         state.navigate(AppRoute.AlarmSound)
         assertEquals(
             listOf(AppRoute.Home, parent, AppRoute.AlarmSound),
-            state.routesForScreen(AppScreen.AlarmSound)?.toList(),
+            state.routesForDisplayedRoute(AppRoute.AlarmSound)?.toList(),
         )
     }
 

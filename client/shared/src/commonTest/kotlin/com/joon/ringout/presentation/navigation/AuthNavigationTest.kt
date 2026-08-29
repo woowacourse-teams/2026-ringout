@@ -2,7 +2,6 @@ package com.joon.ringout.presentation.navigation
 
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
-import com.joon.ringout.AppScreen
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsTracker
 import com.joon.ringout.analytics.DefaultProductAnalyticsRecorder
@@ -48,21 +47,21 @@ class AuthNavigationTest {
 
         assertTrue(
             fixture.navigation.onSignupRequired(
-                screen = AppScreen.Login,
+                displayedRoute = AppRoute.Login,
                 signupToken = completion.signupToken,
                 provider = completion.provider,
             ),
         )
         fixture.login.consumeCompletion(completion.eventId)
 
-        assertEquals(AppScreen.TermsAgreement, fixture.state.requestedScreen)
+        assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
         assertTrue(fixture.signup.uiState.hasPendingSignup)
         fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
         runCurrent()
         val completedEventId = assertNotNull(fixture.signup.uiState.completedEventId)
 
         assertEquals(listOf("signup-token"), fixture.authRepository.signupTokens)
-        assertTrue(fixture.navigation.onSignupCompleted(AppScreen.TermsAgreement))
+        assertTrue(fixture.navigation.onSignupCompleted(AppRoute.TermsAgreement))
         fixture.signup.consumeCompletedEvent(completedEventId)
 
         assertEquals(listOf(AppRoute.Home), fixture.state.backStack.toList())
@@ -79,7 +78,7 @@ class AuthNavigationTest {
         runCurrent()
         assertIs<LoginCompletion.Authenticated>(fixture.login.uiState.completion)
 
-        assertTrue(fixture.navigation.onAuthenticated(AppScreen.Login))
+        assertTrue(fixture.navigation.onAuthenticated(AppRoute.Login))
 
         assertEquals(listOf(AppRoute.Home), fixture.state.backStack.toList())
         assertFalse(fixture.signup.uiState.hasPendingSignup)
@@ -92,20 +91,20 @@ class AuthNavigationTest {
 
         fixture.navigation.onBack(
             AppRoute.TermsAgreement,
-            AppScreen.TermsAgreement,
+            AppRoute.TermsAgreement,
             AuthSessionState.Unauthenticated,
         )
 
-        assertEquals(AppScreen.Login, fixture.state.requestedScreen)
+        assertEquals(AppRoute.Login, fixture.state.requestedRoute)
         assertFalse(fixture.signup.uiState.hasPendingSignup)
         fixture.navigation.onBack(
             AppRoute.TermsAgreement,
-            AppScreen.TermsAgreement,
+            AppRoute.TermsAgreement,
             AuthSessionState.Unauthenticated,
         )
-        assertEquals(AppScreen.Login, fixture.state.requestedScreen)
-        fixture.navigation.onBack(AppRoute.Login, AppScreen.Login, AuthSessionState.Unauthenticated)
-        assertEquals(AppScreen.MyPage, fixture.state.requestedScreen)
+        assertEquals(AppRoute.Login, fixture.state.requestedRoute)
+        fixture.navigation.onBack(AppRoute.Login, AppRoute.Login, AuthSessionState.Unauthenticated)
+        assertEquals(AppRoute.MyPage, fixture.state.requestedRoute)
 
         fixture.enterTerms("new-token")
         fixture.signup.signup(setOf(TermId.Service))
@@ -120,14 +119,14 @@ class AuthNavigationTest {
         fixture.state.navigate(AppRoute.Login)
         fixture.login.beginGoogleSignIn()
 
-        assertTrue(fixture.navigation.isBackBlocked(AppScreen.Login, AuthSessionState.Unauthenticated))
-        fixture.navigation.onBack(AppRoute.Login, AppScreen.Login, AuthSessionState.Unauthenticated)
+        assertTrue(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Unauthenticated))
+        fixture.navigation.onBack(AppRoute.Login, AppRoute.Login, AuthSessionState.Unauthenticated)
 
-        assertEquals(AppScreen.Login, fixture.state.requestedScreen)
+        assertEquals(AppRoute.Login, fixture.state.requestedRoute)
         fixture.login.handleGoogleAccessTokenResult(GoogleAccessTokenResult.Cancelled)
-        assertFalse(fixture.navigation.isBackBlocked(AppScreen.Login, AuthSessionState.Unauthenticated))
-        fixture.navigation.onBack(AppRoute.Login, AppScreen.Login, AuthSessionState.Unauthenticated)
-        assertEquals(AppScreen.MyPage, fixture.state.requestedScreen)
+        assertFalse(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Unauthenticated))
+        fixture.navigation.onBack(AppRoute.Login, AppRoute.Login, AuthSessionState.Unauthenticated)
+        assertEquals(AppRoute.MyPage, fixture.state.requestedRoute)
     }
 
     @Test
@@ -140,10 +139,10 @@ class AuthNavigationTest {
         assertFalse(fixture.login.uiState.isLoading)
         val completion = assertNotNull(fixture.login.uiState.completion)
 
-        assertTrue(fixture.navigation.isBackBlocked(AppScreen.Login, AuthSessionState.Authenticated))
-        fixture.navigation.onBack(AppRoute.Login, AppScreen.Login, AuthSessionState.Authenticated)
+        assertTrue(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Authenticated))
+        fixture.navigation.onBack(AppRoute.Login, AppRoute.Login, AuthSessionState.Authenticated)
 
-        assertEquals(AppScreen.Login, fixture.state.requestedScreen)
+        assertEquals(AppRoute.Login, fixture.state.requestedRoute)
         assertEquals(completion, fixture.login.uiState.completion)
     }
 
@@ -158,14 +157,14 @@ class AuthNavigationTest {
         assertTrue(fixture.signup.uiState.isSaving)
 
         assertTrue(
-            fixture.navigation.isBackBlocked(AppScreen.TermsAgreement, AuthSessionState.Unauthenticated),
+            fixture.navigation.isBackBlocked(AppRoute.TermsAgreement, AuthSessionState.Unauthenticated),
         )
         fixture.navigation.onBack(
             AppRoute.TermsAgreement,
-            AppScreen.TermsAgreement,
+            AppRoute.TermsAgreement,
             AuthSessionState.Unauthenticated,
         )
-        assertEquals(AppScreen.TermsAgreement, fixture.state.requestedScreen)
+        assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
         assertTrue(fixture.signup.uiState.hasPendingSignup)
 
         signupGate.complete(Unit)
@@ -174,14 +173,14 @@ class AuthNavigationTest {
         val completedEventId = assertNotNull(fixture.signup.uiState.completedEventId)
 
         assertTrue(
-            fixture.navigation.isBackBlocked(AppScreen.TermsAgreement, AuthSessionState.Authenticated),
+            fixture.navigation.isBackBlocked(AppRoute.TermsAgreement, AuthSessionState.Authenticated),
         )
         fixture.navigation.onBack(
             AppRoute.TermsAgreement,
-            AppScreen.TermsAgreement,
+            AppRoute.TermsAgreement,
             AuthSessionState.Authenticated,
         )
-        assertEquals(AppScreen.TermsAgreement, fixture.state.requestedScreen)
+        assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
         assertEquals(completedEventId, fixture.signup.uiState.completedEventId)
     }
 
@@ -191,29 +190,29 @@ class AuthNavigationTest {
         fixture.state.navigate(AppRoute.NicknameChange)
         val previousStack = fixture.state.backStack.toList()
 
-        assertFalse(fixture.navigation.isActive(AppRoute.Login, AppScreen.Login))
+        assertFalse(fixture.navigation.isActive(AppRoute.Login, AppRoute.Login))
         assertTrue(
-            fixture.navigation.isBackBlocked(AppScreen.Login, AuthSessionState.ReauthenticationRequired),
+            fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.ReauthenticationRequired),
         )
         fixture.navigation.onBack(
             AppRoute.Login,
-            AppScreen.Login,
+            AppRoute.Login,
             AuthSessionState.ReauthenticationRequired,
         )
         assertEquals(previousStack, fixture.state.backStack.toList())
 
         fixture.state.navigate(AppRoute.Login)
-        assertTrue(fixture.navigation.isActive(AppRoute.Login, AppScreen.Login))
+        assertTrue(fixture.navigation.isActive(AppRoute.Login, AppRoute.Login))
         fixture.navigation.onBack(
             AppRoute.Login,
-            AppScreen.Login,
+            AppRoute.Login,
             AuthSessionState.ReauthenticationRequired,
         )
-        assertEquals(AppScreen.Login, fixture.state.requestedScreen)
+        assertEquals(AppRoute.Login, fixture.state.requestedRoute)
 
-        assertFalse(fixture.navigation.isBackBlocked(AppScreen.Login, AuthSessionState.Unauthenticated))
-        fixture.navigation.onBack(AppRoute.Login, AppScreen.Login, AuthSessionState.Unauthenticated)
-        assertEquals(AppScreen.MyPage, fixture.state.requestedScreen)
+        assertFalse(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Unauthenticated))
+        fixture.navigation.onBack(AppRoute.Login, AppRoute.Login, AuthSessionState.Unauthenticated)
+        assertEquals(AppRoute.MyPage, fixture.state.requestedRoute)
     }
 
     @Test
@@ -225,14 +224,14 @@ class AuthNavigationTest {
         runCurrent()
         val completion = assertIs<LoginCompletion.Authenticated>(fixture.login.uiState.completion)
 
-        assertFalse(fixture.navigation.isActive(AppRoute.Login, AppScreen.AlarmRinging))
-        assertFalse(fixture.navigation.onAuthenticated(AppScreen.AlarmRinging))
+        assertFalse(fixture.navigation.isActive(AppRoute.Login, RingingRoute))
+        assertFalse(fixture.navigation.onAuthenticated(RingingRoute))
         assertEquals(completion, fixture.login.uiState.completion)
-        assertEquals(AppScreen.Login, fixture.state.requestedScreen)
+        assertEquals(AppRoute.Login, fixture.state.requestedRoute)
 
-        assertTrue(fixture.navigation.onAuthenticated(AppScreen.Login))
-        assertEquals(AppScreen.Home, fixture.state.requestedScreen)
-        assertFalse(fixture.navigation.onAuthenticated(AppScreen.Login))
+        assertTrue(fixture.navigation.onAuthenticated(AppRoute.Login))
+        assertEquals(AppRoute.Home, fixture.state.requestedRoute)
+        assertFalse(fixture.navigation.onAuthenticated(AppRoute.Login))
     }
 
     @Test
@@ -247,7 +246,7 @@ class AuthNavigationTest {
 
         assertFalse(
             fixture.navigation.onSignupRequired(
-                AppScreen.AlarmRinging,
+                RingingRoute,
                 completion.signupToken,
                 completion.provider,
             ),
@@ -257,18 +256,18 @@ class AuthNavigationTest {
 
         assertTrue(
             fixture.navigation.onSignupRequired(
-                AppScreen.Login,
+                AppRoute.Login,
                 completion.signupToken,
                 completion.provider,
             ),
         )
         assertFalse(
-            fixture.navigation.onSignupRequired(AppScreen.Login, "stale-token", completion.provider),
+            fixture.navigation.onSignupRequired(AppRoute.Login, "stale-token", completion.provider),
         )
         fixture.signup.signup(setOf(TermId.Service))
         runCurrent()
 
-        assertEquals(AppScreen.TermsAgreement, fixture.state.requestedScreen)
+        assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
         assertEquals(listOf("deferred-token"), fixture.authRepository.signupTokens)
     }
 
@@ -280,17 +279,17 @@ class AuthNavigationTest {
         runCurrent()
         val completedEventId = assertNotNull(fixture.signup.uiState.completedEventId)
 
-        assertFalse(fixture.navigation.onSignupCompleted(AppScreen.AlarmRinging))
+        assertFalse(fixture.navigation.onSignupCompleted(RingingRoute))
         assertEquals(completedEventId, fixture.signup.uiState.completedEventId)
         assertTrue(fixture.signup.uiState.hasPendingSignup)
-        assertEquals(AppScreen.TermsAgreement, fixture.state.requestedScreen)
+        assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
 
-        assertTrue(fixture.navigation.onSignupCompleted(AppScreen.TermsAgreement))
+        assertTrue(fixture.navigation.onSignupCompleted(AppRoute.TermsAgreement))
         fixture.signup.consumeCompletedEvent(completedEventId)
-        fixture.navigation.onMissingSignup(AppScreen.TermsAgreement)
+        fixture.navigation.onMissingSignup(AppRoute.TermsAgreement)
 
-        assertEquals(AppScreen.Home, fixture.state.requestedScreen)
-        assertFalse(fixture.navigation.onSignupCompleted(AppScreen.TermsAgreement))
+        assertEquals(AppRoute.Home, fixture.state.requestedRoute)
+        assertFalse(fixture.navigation.onSignupCompleted(AppRoute.TermsAgreement))
         assertFalse(fixture.signup.uiState.hasPendingSignup)
     }
 
@@ -306,9 +305,9 @@ class AuthNavigationTest {
         val restored = Json.decodeFromString(serializer, Json.encodeToString(serializer, backStack))
         val fixture = AuthNavigationFixture(backgroundScope, AppNavigationState(restored))
 
-        fixture.navigation.onMissingSignup(AppScreen.AlarmRinging)
-        assertEquals(AppScreen.TermsAgreement, fixture.state.requestedScreen)
-        fixture.navigation.onMissingSignup(AppScreen.TermsAgreement)
+        fixture.navigation.onMissingSignup(RingingRoute)
+        assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
+        fixture.navigation.onMissingSignup(AppRoute.TermsAgreement)
 
         assertEquals(
             listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login),
@@ -323,9 +322,9 @@ class AuthNavigationTest {
         val fixture = AuthNavigationFixture(backgroundScope)
         fixture.enterTerms()
 
-        fixture.navigation.onMissingSignup(AppScreen.TermsAgreement)
+        fixture.navigation.onMissingSignup(AppRoute.TermsAgreement)
 
-        assertEquals(AppScreen.TermsAgreement, fixture.state.requestedScreen)
+        assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
         assertTrue(fixture.signup.uiState.hasPendingSignup)
     }
 
@@ -336,14 +335,16 @@ class AuthNavigationTest {
 
         fixture.navigation.onBack(
             AppRoute.TermsAgreement,
-            AppScreen.AlarmRinging,
+            RingingRoute,
             AuthSessionState.Unauthenticated,
         )
 
-        assertEquals(AppScreen.TermsAgreement, fixture.state.requestedScreen)
+        assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
         assertTrue(fixture.signup.uiState.hasPendingSignup)
     }
 }
+
+private val RingingRoute = AppRoute.AlarmRinging("alarm-1")
 
 private class AuthNavigationFixture(
     scope: CoroutineScope,
@@ -370,7 +371,7 @@ private class AuthNavigationFixture(
 
     fun enterTerms(signupToken: String = "signup-token") {
         state.navigate(AppRoute.Login)
-        check(navigation.onSignupRequired(AppScreen.Login, signupToken, AnalyticsAuthProvider.Google))
+        check(navigation.onSignupRequired(AppRoute.Login, signupToken, AnalyticsAuthProvider.Google))
     }
 }
 

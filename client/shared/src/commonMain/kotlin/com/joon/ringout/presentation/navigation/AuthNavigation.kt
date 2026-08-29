@@ -2,7 +2,6 @@ package com.joon.ringout.presentation.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.joon.ringout.AppScreen
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.login.LoginViewModel
@@ -24,52 +23,60 @@ internal class AuthNavigation(
     val loginViewModel: LoginViewModel,
     val signupViewModel: SignupViewModel,
 ) {
-    fun isActive(route: AppRoute, screen: AppScreen): Boolean =
-        navigationState.isCurrentRoute(route) && navigationState.requestedScreen == screen
+    fun isActive(route: AppRoute, displayedRoute: AppRoute): Boolean =
+        navigationState.isCurrentRoute(route) && displayedRoute == route
 
-    fun isBackBlocked(screen: AppScreen, authSessionState: AuthSessionState): Boolean =
-        when (screen) {
-            AppScreen.Login ->
+    fun isBackBlocked(displayedRoute: AppRoute, authSessionState: AuthSessionState): Boolean =
+        when (displayedRoute) {
+            AppRoute.Login ->
                 authSessionState == AuthSessionState.ReauthenticationRequired ||
-                    !isActive(AppRoute.Login, screen) ||
+                    !isActive(AppRoute.Login, displayedRoute) ||
                     loginViewModel.uiState.shouldShowLoadingOverlay
-            AppScreen.TermsAgreement ->
+            AppRoute.TermsAgreement ->
                 signupViewModel.uiState.isSaving || signupViewModel.uiState.completedEventId != null
             else -> false
         }
 
-    fun onBack(route: AppRoute, screen: AppScreen, authSessionState: AuthSessionState) {
-        if (!isActive(route, screen) || isBackBlocked(screen, authSessionState)) return
+    fun onBack(route: AppRoute, displayedRoute: AppRoute, authSessionState: AuthSessionState) {
+        if (
+            !isActive(route, displayedRoute) ||
+            isBackBlocked(displayedRoute, authSessionState)
+        ) {
+            return
+        }
         if (route == AppRoute.TermsAgreement) signupViewModel.resetSignup()
         navigationState.popBackStack(route)
     }
 
-    fun onAuthenticated(screen: AppScreen): Boolean {
-        if (!isActive(AppRoute.Login, screen)) return false
+    fun onAuthenticated(displayedRoute: AppRoute): Boolean {
+        if (!isActive(AppRoute.Login, displayedRoute)) return false
         signupViewModel.resetSignup()
         navigationState.navigate(AppRoute.Home)
         return true
     }
 
     fun onSignupRequired(
-        screen: AppScreen,
+        displayedRoute: AppRoute,
         signupToken: String,
         provider: AnalyticsAuthProvider,
     ): Boolean {
-        if (!isActive(AppRoute.Login, screen)) return false
+        if (!isActive(AppRoute.Login, displayedRoute)) return false
         signupViewModel.startSignup(signupToken, provider)
         navigationState.navigate(AppRoute.TermsAgreement)
         return true
     }
 
-    fun onSignupCompleted(screen: AppScreen): Boolean {
-        if (!isActive(AppRoute.TermsAgreement, screen)) return false
+    fun onSignupCompleted(displayedRoute: AppRoute): Boolean {
+        if (!isActive(AppRoute.TermsAgreement, displayedRoute)) return false
         navigationState.navigate(AppRoute.Home)
         return true
     }
 
-    fun onMissingSignup(screen: AppScreen) {
-        if (isActive(AppRoute.TermsAgreement, screen) && !signupViewModel.uiState.hasPendingSignup) {
+    fun onMissingSignup(displayedRoute: AppRoute) {
+        if (
+            isActive(AppRoute.TermsAgreement, displayedRoute) &&
+            !signupViewModel.uiState.hasPendingSignup
+        ) {
             navigationState.navigate(AppRoute.Login)
         }
     }

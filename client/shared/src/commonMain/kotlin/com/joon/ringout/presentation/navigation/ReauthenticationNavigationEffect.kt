@@ -30,7 +30,7 @@ internal fun ReauthenticationNavigationEffect(
         myPageViewModel,
         destinationViewModel,
         navigationState.backStack.toList(),
-        navigationState.requestedScreen,
+        navigationState.requestedRoute,
         alarmSetupViewModel?.uiState,
         alarmSetupViewModel?.permissionDialog,
         destinationViewModel?.uiState?.errorMessage,

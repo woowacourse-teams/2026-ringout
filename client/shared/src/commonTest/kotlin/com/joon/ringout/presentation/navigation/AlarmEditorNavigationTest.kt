@@ -2,7 +2,6 @@ package com.joon.ringout.presentation.navigation
 
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
-import com.joon.ringout.AppScreen
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.AnalyticsTracker
@@ -62,7 +61,7 @@ class AlarmEditorNavigationTest {
         val draft = fixture.alarmSetup.uiState
         val route = fixture.openDestination()
 
-        fixture.navigation.onSavedDestinationSelected(route, AppScreen.Destination, SelectedDestination)
+        fixture.navigation.onSavedDestinationSelected(route, route, SelectedDestination)
 
         assertEquals(
             draft.copy(destination = SelectedDestination.toDestinationSelection()),
@@ -80,12 +79,12 @@ class AlarmEditorNavigationTest {
         val fixture = AlarmEditorFixture(backgroundScope)
         fixture.navigation.startEditing(SavedAlarm)
         val firstRoute = fixture.openDestination()
-        fixture.navigation.onBack(firstRoute, AppScreen.Destination)
+        fixture.navigation.onBack(firstRoute, firstRoute)
         val secondRoute = fixture.openDestination()
         val draft = fixture.alarmSetup.uiState
 
         assertTrue(secondRoute.requestId > firstRoute.requestId)
-        fixture.navigation.onSavedDestinationSelected(firstRoute, AppScreen.Destination, SelectedDestination)
+        fixture.navigation.onSavedDestinationSelected(firstRoute, secondRoute, SelectedDestination)
 
         assertEquals(secondRoute, fixture.state.backStack.last())
         assertEquals(draft, fixture.alarmSetup.uiState)
@@ -97,22 +96,22 @@ class AlarmEditorNavigationTest {
         fixture.navigation.startEditing(SavedAlarm)
         val parent = AppRoute.EditAlarm(SavedAlarm.id)
         val originalSound = fixture.alarmSetup.uiState.alarmSound
-        fixture.navigation.onAlarmSoundClick(parent, AppScreen.EditAlarm)
+        fixture.navigation.onAlarmSoundClick(parent, parent)
 
-        fixture.navigation.onBack(AppRoute.AlarmSound, AppScreen.AlarmSound)
+        fixture.navigation.onBack(AppRoute.AlarmSound, AppRoute.AlarmSound)
 
         assertEquals(originalSound, fixture.alarmSetup.uiState.alarmSound)
         assertEquals(parent, fixture.state.backStack.last())
-        fixture.navigation.onAlarmSoundClick(parent, AppScreen.EditAlarm)
-        fixture.navigation.onAlarmSoundSelected(AppScreen.AlarmRinging, SelectedSound)
+        fixture.navigation.onAlarmSoundClick(parent, parent)
+        fixture.navigation.onAlarmSoundSelected(RingingRoute, SelectedSound)
         assertEquals(originalSound, fixture.alarmSetup.uiState.alarmSound)
         assertEquals(AppRoute.AlarmSound, fixture.state.backStack.last())
 
-        fixture.navigation.onAlarmSoundSelected(AppScreen.AlarmSound, SelectedSound)
+        fixture.navigation.onAlarmSoundSelected(AppRoute.AlarmSound, SelectedSound)
 
         assertEquals(SelectedSound, fixture.alarmSetup.uiState.alarmSound)
         assertEquals(parent, fixture.state.backStack.last())
-        fixture.navigation.onAlarmSoundSelected(AppScreen.AlarmSound, originalSound)
+        fixture.navigation.onAlarmSoundSelected(AppRoute.AlarmSound, originalSound)
         assertEquals(SelectedSound, fixture.alarmSetup.uiState.alarmSound)
     }
 
@@ -127,17 +126,17 @@ class AlarmEditorNavigationTest {
                 fixture.alarmSetup.updateDestination(OriginalDestination.toDestinationSelection())
             }
             val parent = assertNotNull(fixture.state.editorRoute)
-            val screen = fixture.state.requestedScreen
+            val displayedRoute = fixture.state.requestedRoute
             assertTrue(fixture.alarmSetup.requestSave())
 
-            assertTrue(fixture.navigation.isBackBlocked(screen))
-            fixture.navigation.onBack(parent, screen)
+            assertTrue(fixture.navigation.isBackBlocked(displayedRoute))
+            fixture.navigation.onBack(parent, displayedRoute)
 
             assertEquals(parent, fixture.state.backStack.last())
             fixture.alarmSetup.resetSaveFlow()
-            assertFalse(fixture.navigation.isBackBlocked(screen))
-            fixture.navigation.onBack(parent, screen)
-            assertEquals(AppScreen.Home, fixture.state.requestedScreen)
+            assertFalse(fixture.navigation.isBackBlocked(displayedRoute))
+            fixture.navigation.onBack(parent, displayedRoute)
+            assertEquals(AppRoute.Home, fixture.state.requestedRoute)
         }
     }
 
@@ -154,10 +153,10 @@ class AlarmEditorNavigationTest {
             runCurrent()
             assertTrue(fixture.destination.uiState.isSaving)
 
-            assertFalse(fixture.navigation.isBackBlocked(AppScreen.Destination))
-            fixture.navigation.onBack(firstRoute, AppScreen.Destination)
+            assertFalse(fixture.navigation.isBackBlocked(firstRoute))
+            fixture.navigation.onBack(firstRoute, firstRoute)
 
-            assertEquals(AppScreen.EditAlarm, fixture.state.requestedScreen)
+            assertEquals(AppRoute.EditAlarm(SavedAlarm.id), fixture.state.requestedRoute)
             assertTrue(fixture.destination.uiState.isSaving)
             if (reenterDestination) fixture.openDestination()
             val expectedStack = fixture.state.backStack.toList()
@@ -183,13 +182,13 @@ class AlarmEditorNavigationTest {
         fixture.saveDestination(route)
         runCurrent()
         val event = assertNotNull(fixture.destination.uiState.savedEvent)
-        val visibleScreen = resolveAppScreen(
-            requestedScreen = fixture.state.requestedScreen,
-            hasRingingAlarm = true,
+        val displayedRoute = resolveAppScreen(
+            requestedRoute = fixture.state.requestedRoute,
+            ringingAlarmId = RingingRoute.alarmId,
             hasActiveAlarmMission = false,
             authSessionState = AuthSessionState.Unauthenticated,
         )
-        assertEquals(AppScreen.AlarmRinging, visibleScreen)
+        assertEquals(RingingRoute, displayedRoute)
 
         fixture.navigation.onDestinationSaved(event)
 
@@ -229,19 +228,19 @@ class AlarmEditorNavigationTest {
         )
         for (path in paths) {
             val fixture = AlarmEditorFixture(backgroundScope, restoredState(*path.toTypedArray()))
-            val editorScreen = fixture.state.requestedScreen
+            val editorRoute = fixture.state.requestedRoute
             assertFalse(fixture.navigation.hasValidDraft())
 
-            fixture.navigation.onMissingDraft(AppScreen.AlarmRinging)
+            fixture.navigation.onMissingDraft(RingingRoute)
             assertEquals(path, fixture.state.backStack.toList())
             val activeMission = AppRoute.ActiveAlarmTracking("occurrence-1")
             fixture.state.navigate(activeMission)
-            fixture.navigation.onMissingDraft(editorScreen)
-            assertEquals(AppScreen.ActiveAlarmTracking, fixture.state.requestedScreen)
+            fixture.navigation.onMissingDraft(editorRoute)
+            assertEquals(activeMission, fixture.state.requestedRoute)
             assertEquals(path + activeMission, fixture.state.backStack.toList())
 
             fixture.state.navigate(path.last())
-            fixture.navigation.onMissingDraft(editorScreen)
+            fixture.navigation.onMissingDraft(editorRoute)
 
             assertEquals(listOf(AppRoute.Home), fixture.state.backStack.toList())
         }
@@ -254,9 +253,9 @@ class AlarmEditorNavigationTest {
         fixture.state.navigate(AppRoute.EditAlarm("another-alarm"))
 
         assertFalse(fixture.navigation.hasValidDraft())
-        fixture.navigation.onMissingDraft(AppScreen.EditAlarm)
+        fixture.navigation.onMissingDraft(AppRoute.EditAlarm("another-alarm"))
 
-        assertEquals(AppScreen.Home, fixture.state.requestedScreen)
+        assertEquals(AppRoute.Home, fixture.state.requestedRoute)
         assertEquals(SavedAlarm.id, fixture.alarmSetup.uiState.alarmId)
     }
 
@@ -272,13 +271,13 @@ class AlarmEditorNavigationTest {
         val restored = restoredState(AppRoute.Home, parent, previousRoute)
         val navigation = AlarmEditorNavigation(restored, fixture.alarmSetup, fixture.destination)
 
-        navigation.onMissingDraft(AppScreen.Destination)
+        navigation.onMissingDraft(previousRoute)
 
         assertTrue(navigation.hasValidDraft())
         assertEquals(previousRoute, restored.backStack.last())
         assertEquals(draft, fixture.alarmSetup.uiState)
-        navigation.onBack(previousRoute, AppScreen.Destination)
-        navigation.onDestinationClick(parent, AppScreen.EditAlarm)
+        navigation.onBack(previousRoute, previousRoute)
+        navigation.onDestinationClick(parent, parent)
 
         val nextRoute = assertIs<AppRoute.Destination>(restored.backStack.last())
         assertTrue(nextRoute.requestId > previousRoute.requestId)
@@ -291,20 +290,23 @@ class AlarmEditorNavigationTest {
         fixture.navigation.startEditing(SavedAlarm)
         val previousParent = AppRoute.EditAlarm(SavedAlarm.id)
 
-        fixture.navigation.onDestinationClick(previousParent, AppScreen.AlarmRinging)
-        fixture.navigation.onAlarmSoundClick(previousParent, AppScreen.AlarmRinging)
+        fixture.navigation.onDestinationClick(previousParent, RingingRoute)
+        fixture.navigation.onAlarmSoundClick(previousParent, RingingRoute)
 
         assertEquals(previousParent, fixture.state.backStack.last())
         val nextAlarm = SavedAlarm.copy(id = "another-alarm")
         fixture.navigation.startEditing(nextAlarm)
-        fixture.navigation.onDestinationClick(previousParent, AppScreen.EditAlarm)
-        fixture.navigation.onAlarmSoundClick(previousParent, AppScreen.EditAlarm)
-        fixture.navigation.onBack(previousParent, AppScreen.EditAlarm)
+        val nextParent = AppRoute.EditAlarm(nextAlarm.id)
+        fixture.navigation.onDestinationClick(previousParent, nextParent)
+        fixture.navigation.onAlarmSoundClick(previousParent, nextParent)
+        fixture.navigation.onBack(previousParent, nextParent)
 
         assertEquals(AppRoute.EditAlarm(nextAlarm.id), fixture.state.backStack.last())
         assertEquals(nextAlarm.id, fixture.alarmSetup.uiState.alarmId)
     }
 }
+
+private val RingingRoute = AppRoute.AlarmRinging("alarm-1")
 
 private class AlarmEditorFixture(
     scope: CoroutineScope,
@@ -323,7 +325,7 @@ private class AlarmEditorFixture(
     val navigation = AlarmEditorNavigation(state, alarmSetup, destination)
 
     fun openDestination(): AppRoute.Destination {
-        navigation.onDestinationClick(requireNotNull(state.editorRoute), state.requestedScreen)
+        navigation.onDestinationClick(requireNotNull(state.editorRoute), state.requestedRoute)
         return state.backStack.last() as AppRoute.Destination
     }
 

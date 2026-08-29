@@ -3,6 +3,7 @@ package com.joon.ringout
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.common.AppMessageSource
 import com.joon.ringout.presentation.common.resolveAppMessage
+import com.joon.ringout.presentation.navigation.AppRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -10,14 +11,14 @@ class AppRoutingPolicyTest {
 
     @Test
     fun `울리는 알람은 모든 화면 전환보다 우선한다`() {
-        AppScreen.entries.forEach { requestedScreen ->
+        RequestedRoutes.forEach { requestedRoute ->
             AuthSessionState.entries.forEach { authSessionState ->
                 listOf(false, true).forEach { hasActiveAlarmMission ->
                     assertEquals(
-                        AppScreen.AlarmRinging,
+                        AppRoute.AlarmRinging("ringing-alarm"),
                         resolveAppScreen(
-                            requestedScreen = requestedScreen,
-                            hasRingingAlarm = true,
+                            requestedRoute = requestedRoute,
+                            ringingAlarmId = "ringing-alarm",
                             hasActiveAlarmMission = hasActiveAlarmMission,
                             authSessionState = authSessionState,
                         ),
@@ -29,12 +30,12 @@ class AppRoutingPolicyTest {
 
     @Test
     fun `알람이 울리지 않을 때 재인증은 모든 요청 화면보다 우선한다`() {
-        AppScreen.entries.forEach { requestedScreen ->
+        RequestedRoutes.forEach { requestedRoute ->
             assertEquals(
-                AppScreen.Login,
+                AppRoute.Login,
                 resolveAppScreen(
-                    requestedScreen = requestedScreen,
-                    hasRingingAlarm = false,
+                    requestedRoute = requestedRoute,
+                    ringingAlarmId = null,
                     hasActiveAlarmMission = true,
                     authSessionState = AuthSessionState.ReauthenticationRequired,
                 ),
@@ -45,10 +46,10 @@ class AppRoutingPolicyTest {
     @Test
     fun `활성 미션이 없으면 알람 추적 화면 요청은 홈으로 이동한다`() {
         assertEquals(
-            AppScreen.Home,
+            AppRoute.Home,
             resolveAppScreen(
-                requestedScreen = AppScreen.ActiveAlarmTracking,
-                hasRingingAlarm = false,
+                requestedRoute = ActiveMissionRoute,
+                ringingAlarmId = null,
                 hasActiveAlarmMission = false,
                 authSessionState = AuthSessionState.Authenticated,
             ),
@@ -58,10 +59,10 @@ class AppRoutingPolicyTest {
     @Test
     fun `활성 미션이 있으면 알람 추적 화면을 유지한다`() {
         assertEquals(
-            AppScreen.ActiveAlarmTracking,
+            ActiveMissionRoute,
             resolveAppScreen(
-                requestedScreen = AppScreen.ActiveAlarmTracking,
-                hasRingingAlarm = false,
+                requestedRoute = ActiveMissionRoute,
+                ringingAlarmId = null,
                 hasActiveAlarmMission = true,
                 authSessionState = AuthSessionState.Authenticated,
             ),
@@ -70,12 +71,12 @@ class AppRoutingPolicyTest {
 
     @Test
     fun `활성 미션이 있어도 일반 화면 요청을 강제로 바꾸지 않는다`() {
-        listOf(AppScreen.Home, AppScreen.MyPage, AppScreen.Destination).forEach { requestedScreen ->
+        listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Destination(1L)).forEach { requestedRoute ->
             assertEquals(
-                requestedScreen,
+                requestedRoute,
                 resolveAppScreen(
-                    requestedScreen = requestedScreen,
-                    hasRingingAlarm = false,
+                    requestedRoute = requestedRoute,
+                    ringingAlarmId = null,
                     hasActiveAlarmMission = true,
                     authSessionState = AuthSessionState.Authenticated,
                 ),
@@ -89,7 +90,7 @@ class AppRoutingPolicyTest {
             assertEquals(
                 false,
                 canShowAppDialog(
-                    screen = AppScreen.AlarmRinging,
+                    displayedRoute = AppRoute.AlarmRinging("ringing-alarm"),
                     authSessionState = authSessionState,
                 ),
             )
@@ -99,10 +100,10 @@ class AppRoutingPolicyTest {
     @Test
     fun `일반 비인증 상태에서는 요청한 화면을 유지한다`() {
         assertEquals(
-            AppScreen.Home,
+            AppRoute.Home,
             resolveAppScreen(
-                requestedScreen = AppScreen.Home,
-                hasRingingAlarm = false,
+                requestedRoute = AppRoute.Home,
+                ringingAlarmId = null,
                 hasActiveAlarmMission = false,
                 authSessionState = AuthSessionState.Unauthenticated,
             ),
@@ -114,7 +115,7 @@ class AppRoutingPolicyTest {
         assertEquals(
             false,
             canShowAppDialog(
-                screen = AppScreen.Login,
+                displayedRoute = AppRoute.Login,
                 authSessionState = AuthSessionState.ReauthenticationRequired,
             ),
         )
@@ -125,7 +126,7 @@ class AppRoutingPolicyTest {
         assertEquals(
             true,
             canShowAppDialog(
-                screen = AppScreen.Home,
+                displayedRoute = AppRoute.Home,
                 authSessionState = AuthSessionState.Authenticated,
             ),
         )
@@ -134,7 +135,7 @@ class AppRoutingPolicyTest {
     @Test
     fun `홈 화면에서는 홈 오류를 표시한다`() {
         val message = resolveAppMessage(
-            screen = AppScreen.Home,
+            displayedRoute = AppRoute.Home,
             authSessionState = AuthSessionState.Authenticated,
             homeErrorMessage = "알람을 삭제하지 못했어요.",
             alarmSetupErrorMessage = "알람을 저장하지 못했어요.",
@@ -148,7 +149,7 @@ class AppRoutingPolicyTest {
     @Test
     fun `목적지 화면에서는 알람 설정 오류를 목적지 오류보다 먼저 표시한다`() {
         val message = resolveAppMessage(
-            screen = AppScreen.Destination,
+            displayedRoute = AppRoute.Destination(1L),
             authSessionState = AuthSessionState.Authenticated,
             homeErrorMessage = null,
             alarmSetupErrorMessage = "알람을 저장하지 못했어요.",
@@ -162,7 +163,7 @@ class AppRoutingPolicyTest {
     @Test
     fun `알람 설정 오류가 없으면 목적지 화면에서 목적지 오류를 표시한다`() {
         val message = resolveAppMessage(
-            screen = AppScreen.Destination,
+            displayedRoute = AppRoute.Destination(1L),
             authSessionState = AuthSessionState.Authenticated,
             homeErrorMessage = null,
             alarmSetupErrorMessage = null,
@@ -178,7 +179,7 @@ class AppRoutingPolicyTest {
         assertEquals(
             null,
             resolveAppMessage(
-                screen = AppScreen.MyPage,
+                displayedRoute = AppRoute.MyPage,
                 authSessionState = AuthSessionState.Authenticated,
                 homeErrorMessage = "홈 오류",
                 alarmSetupErrorMessage = "알람 설정 오류",
@@ -187,3 +188,18 @@ class AppRoutingPolicyTest {
         )
     }
 }
+
+private val ActiveMissionRoute = AppRoute.ActiveAlarmTracking("occurrence-1")
+
+private val RequestedRoutes = listOf(
+    AppRoute.Home,
+    AppRoute.MyPage,
+    AppRoute.NicknameChange,
+    AppRoute.Login,
+    AppRoute.TermsAgreement,
+    AppRoute.AddAlarm,
+    AppRoute.EditAlarm("alarm-1"),
+    AppRoute.Destination(1L),
+    AppRoute.AlarmSound,
+    ActiveMissionRoute,
+)

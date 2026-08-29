@@ -5,7 +5,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.joon.ringout.AppScreen
 import com.joon.ringout.alarm.DefaultMissionLocationState
 import com.joon.ringout.alarm.MissionLocationAuthorizationState
 import com.joon.ringout.analytics.AnalyticsAuthProvider
@@ -157,7 +156,7 @@ class ReauthenticationNavigationEffectTest {
 
             fixture.state.navigate(AppRoute.ActiveAlarmTracking("occurrence-1"))
             drain()
-            assertEquals(AppScreen.Login, fixture.state.requestedScreen)
+            assertEquals(AppRoute.Login, fixture.state.requestedRoute)
             assertTrue(fixture.state.isCurrentRoute(AppRoute.Login))
             assertEquals(LoginStack, fixture.state.backStack.toList())
             drain()
@@ -169,27 +168,27 @@ class ReauthenticationNavigationEffectTest {
     fun `알람이 울려도 복귀 경로를 로그인으로 정리하고 울림 표시를 유지한다`() = runTest {
         val fixture = ReauthenticationFixture(backgroundScope)
         fixture.state.navigate(AppRoute.NicknameChange)
-        var hasRingingAlarm by mutableStateOf(true)
-        var displayedScreen = AppScreen.Home
+        var ringingAlarmId by mutableStateOf<String?>("alarm-1")
+        var displayedRoute: AppRoute = AppRoute.Home
         withEffectComposition(
             content = {
-                val screen = resolveAppScreen(
-                    requestedScreen = fixture.state.requestedScreen,
-                    hasRingingAlarm = hasRingingAlarm,
+                val resolvedRoute = resolveAppScreen(
+                    requestedRoute = fixture.state.requestedRoute,
+                    ringingAlarmId = ringingAlarmId,
                     hasActiveAlarmMission = true,
                     authSessionState = AuthSessionState.ReauthenticationRequired,
                 )
                 fixture.Content(AuthSessionState.ReauthenticationRequired)
-                SideEffect { displayedScreen = screen }
+                SideEffect { displayedRoute = resolvedRoute }
             },
         ) { drain ->
             assertEquals(LoginStack, fixture.state.backStack.toList())
-            assertEquals(AppScreen.AlarmRinging, displayedScreen)
+            assertEquals(AppRoute.AlarmRinging("alarm-1"), displayedRoute)
 
-            hasRingingAlarm = false
+            ringingAlarmId = null
             drain()
 
-            assertEquals(AppScreen.Login, displayedScreen)
+            assertEquals(AppRoute.Login, displayedRoute)
             assertEquals(LoginStack, fixture.state.backStack.toList())
         }
     }
@@ -204,7 +203,7 @@ class ReauthenticationNavigationEffectTest {
             fixture.home.showError("로그인 이후의 오류")
             drain()
 
-            assertEquals(AppScreen.Home, fixture.state.requestedScreen)
+            assertEquals(AppRoute.Home, fixture.state.requestedRoute)
             assertEquals("로그인 이후의 오류", fixture.home.uiState.errorMessage)
             sessionState = AuthSessionState.ReauthenticationRequired
             drain()
@@ -223,14 +222,14 @@ class ReauthenticationNavigationEffectTest {
             drain()
             assertTrue(
                 fixture.authNavigation.onSignupRequired(
-                    AppScreen.Login,
+                    AppRoute.Login,
                     "new-token",
                     AnalyticsAuthProvider.Google,
                 ),
             )
             drain()
 
-            assertEquals(AppScreen.TermsAgreement, fixture.state.requestedScreen)
+            assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
             assertTrue(fixture.signup.uiState.hasPendingSignup)
             fixture.signup.signup(setOf(TermId.Service))
             drain()
@@ -254,10 +253,10 @@ class ReauthenticationNavigationEffectTest {
             drain()
             assertIs<LoginCompletion.Authenticated>(fixture.login.uiState.completion)
             sessionState = AuthSessionState.Authenticated
-            assertTrue(fixture.authNavigation.onAuthenticated(AppScreen.Login))
+            assertTrue(fixture.authNavigation.onAuthenticated(AppRoute.Login))
             drain()
 
-            assertEquals(AppScreen.Home, fixture.state.requestedScreen)
+            assertEquals(AppRoute.Home, fixture.state.requestedRoute)
         }
     }
 }

@@ -162,13 +162,13 @@ private fun RingoutAppContent(
     val memberRepository = appContainer.memberRepository
     val authSessionState by authSession.state.collectAsState()
     val navigationState = rememberAppNavigationState()
-    val screen = resolveAppScreen(
-        requestedScreen = navigationState.requestedScreen,
-        hasRingingAlarm = ringingAlarm != null,
+    val displayedRoute = resolveAppScreen(
+        requestedRoute = navigationState.requestedRoute,
+        ringingAlarmId = ringingAlarm?.id,
         hasActiveAlarmMission = activeAlarmMission != null,
         authSessionState = authSessionState,
     )
-    val retainedRoutes = navigationState.retainedRoutes(screen)
+    val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
     val viewModelScopes = rememberNavigationViewModelScopes(appContainer, retainedRoutes)
     val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
     val homeUiState = homeViewModel.uiState
@@ -235,19 +235,22 @@ private fun RingoutAppContent(
         signupViewModel?.resetSignup()
         navigationState.navigate(
             when (completed.action) {
-                MyPageAccountAction.Logout -> AppScreen.Login
-                MyPageAccountAction.Withdraw -> AppScreen.MyPage
+                MyPageAccountAction.Logout -> AppRoute.Login
+                MyPageAccountAction.Withdraw -> AppRoute.MyPage
             },
         )
         myPageViewModel.consumeAccountActionCompletedEvent(completed.eventId)
     }
     if (alarmEditorNavigation != null) {
-        AlarmEditorNavigationEffects(navigation = alarmEditorNavigation, screen = screen)
+        AlarmEditorNavigationEffects(
+            navigation = alarmEditorNavigation,
+            displayedRoute = displayedRoute,
+        )
     }
     SystemBarAppearanceEffect(
         themeMode = if (
-            screen == AppScreen.ActiveAlarmTracking ||
-            screen == AppScreen.AlarmRinging
+            displayedRoute is AppRoute.ActiveAlarmTracking ||
+            displayedRoute is AppRoute.AlarmRinging
         ) {
             ThemeMode.Dark
         } else {
@@ -295,14 +298,14 @@ private fun RingoutAppContent(
         alarmSetupUiState?.pendingSaveRequest?.id,
         alarmSetupUiState?.isScheduling,
         missionLocationState.revision,
-        screen,
+        displayedRoute,
     ) {
         performAlarmSetupCommand(
             alarmSetupViewModel?.onLocationStateChanged(
                 locationState = missionLocationState,
                 useSystemPermissionUiOnly = useSystemLocationPermissionUiOnly,
                 canProcessSave =
-                    screen != AppScreen.AlarmRinging &&
+                    displayedRoute !is AppRoute.AlarmRinging &&
                         authSessionState != AuthSessionState.ReauthenticationRequired,
             ),
         )
@@ -310,7 +313,7 @@ private fun RingoutAppContent(
 
     if (
         !useSystemLocationPermissionUiOnly &&
-        canShowAppDialog(screen, authSessionState)
+        canShowAppDialog(displayedRoute, authSessionState)
     ) {
         MissionLocationPermissionDialog(
             decision = alarmSetupViewModel?.permissionDialog,
@@ -335,7 +338,7 @@ private fun RingoutAppContent(
     )
 
     val pendingAppMessage = resolveAppMessage(
-        screen = screen,
+        displayedRoute = displayedRoute,
         authSessionState = authSessionState,
         homeErrorMessage = homeUiState.errorMessage,
         alarmSetupErrorMessage = alarmSetupUiState?.errorMessage,
@@ -355,20 +358,21 @@ private fun RingoutAppContent(
 
     RingoutNavHost(
         navigationState = navigationState,
-        screen = screen,
+        displayedRoute = displayedRoute,
         viewModelStoreProvider = viewModelScopes.storeProvider,
         modifier = Modifier.fillMaxSize(),
-        isBackBlocked = authNavigation?.isBackBlocked(screen, authSessionState) == true ||
-            alarmEditorNavigation?.isBackBlocked(screen) == true,
+        isBackBlocked =
+            authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true ||
+                alarmEditorNavigation?.isBackBlocked(displayedRoute) == true,
         onBack = { route ->
             when (route) {
                 AppRoute.AddAlarm,
                 is AppRoute.EditAlarm,
                 is AppRoute.Destination,
                 AppRoute.AlarmSound,
-                -> alarmEditorNavigation?.onBack(route, screen)
+                -> alarmEditorNavigation?.onBack(route, displayedRoute)
                 AppRoute.Login, AppRoute.TermsAgreement ->
-                    authNavigation?.onBack(route, screen, authSessionState)
+                    authNavigation?.onBack(route, displayedRoute, authSessionState)
                 else -> navigationState.popBackStack(route)
             }
         },
@@ -407,14 +411,14 @@ private fun RingoutAppContent(
             if (authNavigation != null) {
                 authGraph(
                     authNavigation = authNavigation,
-                    screen = screen,
+                    displayedRoute = displayedRoute,
                     authSessionState = authSessionState,
                 )
             }
             if (alarmEditorNavigation != null) {
                 alarmEditorGraph(
                     navigation = alarmEditorNavigation,
-                    screen = screen,
+                    displayedRoute = displayedRoute,
                     authSessionState = authSessionState,
                     productAnalyticsRecorder = productAnalyticsRecorder,
                 )
@@ -422,8 +426,8 @@ private fun RingoutAppContent(
         },
     ) {
         // 우선 표시되는 알람 울림과 진행 중인 미션 화면은 당분간 기존 화면 이동 방식을 유지한다.
-        when (screen) {
-            AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
+        when (displayedRoute) {
+            is AppRoute.AlarmRinging -> ringingAlarm?.let { alarm ->
                 AlarmRingingScreen(
                     alarmTime = alarm.alarmTime,
                     dateText = alarm.dateText,
@@ -439,7 +443,7 @@ private fun RingoutAppContent(
                 )
             }
 
-            AppScreen.ActiveAlarmTracking -> activeAlarmMission?.let { mission ->
+            is AppRoute.ActiveAlarmTracking -> activeAlarmMission?.let { mission ->
                 ActiveAlarmTrackingScreen(
                     mission = mission,
                     currentLocation = activeAlarmMissionLocation,
@@ -453,34 +457,19 @@ private fun RingoutAppContent(
                 )
             }
 
-            AppScreen.Home,
-            AppScreen.MyPage,
-            AppScreen.Settings,
-            AppScreen.NicknameChange,
-            AppScreen.Login,
-            AppScreen.TermsAgreement,
-            AppScreen.AddAlarm,
-            AppScreen.EditAlarm,
-            AppScreen.Destination,
-            AppScreen.AlarmSound,
+            AppRoute.Onboarding,
+            AppRoute.Home,
+            AppRoute.AddAlarm,
+            is AppRoute.EditAlarm,
+            is AppRoute.Destination,
+            AppRoute.AlarmSound,
+            AppRoute.MyPage,
+            AppRoute.NicknameChange,
+            AppRoute.Login,
+            AppRoute.TermsAgreement,
             -> Unit // HomeGraph, AuthGraph 또는 AlarmEditorGraph에서 표시한다.
         }
     }
-}
-
-internal enum class AppScreen {
-    AlarmRinging,
-    Home,
-    AddAlarm,
-    EditAlarm,
-    Destination,
-    AlarmSound,
-    MyPage,
-    NicknameChange,
-    Login,
-    TermsAgreement,
-    Settings,
-    ActiveAlarmTracking,
 }
 
 internal fun AuthSessionState.toAnalyticsLoginStateOrNull(): AnalyticsLoginState? = when (this) {
@@ -491,20 +480,20 @@ internal fun AuthSessionState.toAnalyticsLoginStateOrNull(): AnalyticsLoginState
 }
 
 internal fun resolveAppScreen(
-    requestedScreen: AppScreen,
-    hasRingingAlarm: Boolean,
+    requestedRoute: AppRoute,
+    ringingAlarmId: String?,
     hasActiveAlarmMission: Boolean,
     authSessionState: AuthSessionState,
-): AppScreen = when {
-    hasRingingAlarm -> AppScreen.AlarmRinging
-    authSessionState == AuthSessionState.ReauthenticationRequired -> AppScreen.Login
-    requestedScreen == AppScreen.ActiveAlarmTracking && !hasActiveAlarmMission -> AppScreen.Home
-    else -> requestedScreen
+): AppRoute = when {
+    ringingAlarmId != null -> AppRoute.AlarmRinging(ringingAlarmId)
+    authSessionState == AuthSessionState.ReauthenticationRequired -> AppRoute.Login
+    requestedRoute is AppRoute.ActiveAlarmTracking && !hasActiveAlarmMission -> AppRoute.Home
+    else -> requestedRoute
 }
 
 internal fun canShowAppDialog(
-    screen: AppScreen,
+    displayedRoute: AppRoute,
     authSessionState: AuthSessionState,
 ): Boolean =
-    screen != AppScreen.AlarmRinging &&
+    displayedRoute !is AppRoute.AlarmRinging &&
         authSessionState != AuthSessionState.ReauthenticationRequired

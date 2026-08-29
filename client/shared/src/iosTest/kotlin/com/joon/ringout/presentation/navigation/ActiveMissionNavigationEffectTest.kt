@@ -7,7 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
 import androidx.compose.runtime.saveable.SaveableStateRegistry
 import androidx.compose.runtime.setValue
-import com.joon.ringout.AppScreen
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -32,7 +31,7 @@ class ActiveMissionNavigationEffectTest {
             },
         ) { drain ->
             val firstMission = AppRoute.ActiveAlarmTracking("occurrence-1")
-            assertEquals(AppScreen.ActiveAlarmTracking, navigationState.requestedScreen)
+            assertEquals(firstMission, navigationState.requestedRoute)
             assertEquals(listOf(AppRoute.Home, firstMission), navigationState.backStack.toList())
             assertTrue(navigationState.isCurrentRoute(firstMission))
 
@@ -41,14 +40,14 @@ class ActiveMissionNavigationEffectTest {
             drain()
 
             assertEquals(1, appliedRevision)
-            assertEquals(AppScreen.Home, navigationState.requestedScreen)
+            assertEquals(AppRoute.Home, navigationState.requestedRoute)
             assertEquals(listOf(AppRoute.Home), navigationState.backStack.toList())
 
             activeMissionOccurrenceId = "occurrence-2"
             drain()
 
             val nextMission = AppRoute.ActiveAlarmTracking("occurrence-2")
-            assertEquals(AppScreen.ActiveAlarmTracking, navigationState.requestedScreen)
+            assertEquals(nextMission, navigationState.requestedRoute)
             assertEquals(listOf(AppRoute.Home, nextMission), navigationState.backStack.toList())
             assertTrue(navigationState.isCurrentRoute(nextMission))
         }
@@ -66,7 +65,7 @@ class ActiveMissionNavigationEffectTest {
             },
         ) { drain ->
             val firstMission = AppRoute.ActiveAlarmTracking("occurrence-1")
-            assertEquals(AppScreen.ActiveAlarmTracking, navigationState.requestedScreen)
+            assertEquals(firstMission, navigationState.requestedRoute)
             assertEquals(
                 listOf(AppRoute.Home, AppRoute.MyPage, firstMission),
                 navigationState.backStack.toList(),
@@ -74,13 +73,13 @@ class ActiveMissionNavigationEffectTest {
 
             activeMissionOccurrenceId = null
             drain()
-            assertEquals(AppScreen.Home, navigationState.requestedScreen)
+            assertEquals(AppRoute.Home, navigationState.requestedRoute)
             assertEquals(listOf(AppRoute.Home), navigationState.backStack.toList())
 
             activeMissionOccurrenceId = "occurrence-2"
             drain()
             val nextMission = AppRoute.ActiveAlarmTracking("occurrence-2")
-            assertEquals(AppScreen.ActiveAlarmTracking, navigationState.requestedScreen)
+            assertEquals(nextMission, navigationState.requestedRoute)
             assertEquals(
                 listOf(AppRoute.Home, nextMission),
                 navigationState.backStack.toList(),
@@ -89,7 +88,7 @@ class ActiveMissionNavigationEffectTest {
             navigationState.navigate(AppRoute.MyPage)
             activeMissionOccurrenceId = null
             drain()
-            assertEquals(AppScreen.MyPage, navigationState.requestedScreen)
+            assertEquals(AppRoute.MyPage, navigationState.requestedRoute)
             assertEquals(
                 listOf(AppRoute.Home, AppRoute.MyPage),
                 navigationState.backStack.toList(),
@@ -98,7 +97,7 @@ class ActiveMissionNavigationEffectTest {
             activeMissionOccurrenceId = "occurrence-3"
             drain()
             val lastMission = AppRoute.ActiveAlarmTracking("occurrence-3")
-            assertEquals(AppScreen.ActiveAlarmTracking, navigationState.requestedScreen)
+            assertEquals(lastMission, navigationState.requestedRoute)
             assertEquals(
                 listOf(AppRoute.Home, AppRoute.MyPage, lastMission),
                 navigationState.backStack.toList(),
@@ -114,7 +113,7 @@ class ActiveMissionNavigationEffectTest {
 
         withRestorableActiveMissionEffect(firstRegistry, firstNavigationState) { drain ->
             val activeMission = AppRoute.ActiveAlarmTracking("occurrence-1")
-            assertEquals(AppScreen.ActiveAlarmTracking, firstNavigationState.requestedScreen)
+            assertEquals(activeMission, firstNavigationState.requestedRoute)
             assertEquals(
                 listOf(AppRoute.Home, activeMission),
                 firstNavigationState.backStack.toList(),
@@ -130,7 +129,7 @@ class ActiveMissionNavigationEffectTest {
         val restoredRegistry = SaveableStateRegistry(savedValues, canBeSaved = { true })
         val restoredNavigationState = AppNavigationState()
         withRestorableActiveMissionEffect(restoredRegistry, restoredNavigationState) {
-            assertEquals(AppScreen.Home, restoredNavigationState.requestedScreen)
+            assertEquals(AppRoute.Home, restoredNavigationState.requestedRoute)
             assertEquals(listOf(AppRoute.Home), restoredNavigationState.backStack.toList())
         }
     }

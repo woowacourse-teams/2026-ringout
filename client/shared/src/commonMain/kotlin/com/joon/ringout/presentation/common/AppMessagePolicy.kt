@@ -1,9 +1,9 @@
 package com.joon.ringout.presentation.common
 
-import com.joon.ringout.AppScreen
 import com.joon.ringout.canShowAppDialog
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.common.component.AppMessageHostState
+import com.joon.ringout.presentation.navigation.AppRoute
 
 internal enum class AppMessageSource {
     Home,
@@ -17,16 +17,16 @@ internal data class PendingAppMessage(
 )
 
 internal fun resolveAppMessage(
-    screen: AppScreen,
+    displayedRoute: AppRoute,
     authSessionState: AuthSessionState,
     homeErrorMessage: String?,
     alarmSetupErrorMessage: String?,
     destinationErrorMessage: String?,
 ): PendingAppMessage? {
-    if (!canShowAppDialog(screen, authSessionState)) return null
+    if (!canShowAppDialog(displayedRoute, authSessionState)) return null
 
     return when {
-        screen == AppScreen.Home && homeErrorMessage != null ->
+        displayedRoute == AppRoute.Home && homeErrorMessage != null ->
             PendingAppMessage(
                 source = AppMessageSource.Home,
                 state = AppMessageHostState(
@@ -35,7 +35,7 @@ internal fun resolveAppMessage(
                 ),
             )
 
-        screen in alarmSetupMessageScreens && alarmSetupErrorMessage != null ->
+        displayedRoute.isAlarmSetupMessageRoute() && alarmSetupErrorMessage != null ->
             PendingAppMessage(
                 source = AppMessageSource.AlarmSetup,
                 state = AppMessageHostState(
@@ -44,7 +44,7 @@ internal fun resolveAppMessage(
                 ),
             )
 
-        screen == AppScreen.Destination && destinationErrorMessage != null ->
+        displayedRoute is AppRoute.Destination && destinationErrorMessage != null ->
             PendingAppMessage(
                 source = AppMessageSource.Destination,
                 state = AppMessageHostState(
@@ -57,9 +57,11 @@ internal fun resolveAppMessage(
     }
 }
 
-private val alarmSetupMessageScreens = setOf(
-    AppScreen.AddAlarm,
-    AppScreen.EditAlarm,
-    AppScreen.Destination,
-    AppScreen.AlarmSound,
-)
+private fun AppRoute.isAlarmSetupMessageRoute(): Boolean = when (this) {
+    AppRoute.AddAlarm,
+    AppRoute.AlarmSound,
+    is AppRoute.EditAlarm,
+    is AppRoute.Destination,
+    -> true
+    else -> false
+}
