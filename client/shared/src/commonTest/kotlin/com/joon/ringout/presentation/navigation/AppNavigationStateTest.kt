@@ -2,8 +2,6 @@ package com.joon.ringout.presentation.navigation
 
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
-import com.joon.ringout.domain.auth.AuthSessionState
-import com.joon.ringout.resolveAppScreen
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -96,14 +94,7 @@ class AppNavigationStateTest {
 
         assertSame(firstMission, state.backStack.last())
         assertEquals(underlyingStack + firstMission, state.backStack.toList())
-        assertEquals(
-            underlyingStack,
-            state.retainedRoutes(firstMission),
-        )
-        assertEquals(
-            underlyingStack,
-            state.retainedRoutes(AppRoute.AlarmRinging("alarm-1")),
-        )
+        assertEquals(underlyingStack, state.retainedRoutes())
         assertTrue(state.isCurrentRoute(firstMission))
 
         val nextMission = AppRoute.ActiveAlarmTracking("occurrence-2")
@@ -180,34 +171,6 @@ class AppNavigationStateTest {
 
         assertEquals(listOf(AppRoute.Home), state.backStack.toList())
         assertEquals(AppRoute.Home, state.requestedRoute)
-    }
-
-    @Test
-    fun `알람과 재인증의 표시 우선순위는 닉네임 백스택을 변경하지 않는다`() {
-        val state = AppNavigationState()
-        state.navigate(AppRoute.NicknameChange)
-        val expectedStack = state.backStack.toList()
-
-        assertEquals(
-            AppRoute.AlarmRinging("alarm-1"),
-            resolveAppScreen(
-                requestedRoute = state.requestedRoute,
-                ringingAlarmId = "alarm-1",
-                hasActiveAlarmMission = false,
-                authSessionState = AuthSessionState.ReauthenticationRequired,
-            ),
-        )
-        assertEquals(
-            AppRoute.Login,
-            resolveAppScreen(
-                requestedRoute = state.requestedRoute,
-                ringingAlarmId = null,
-                hasActiveAlarmMission = false,
-                authSessionState = AuthSessionState.ReauthenticationRequired,
-            ),
-        )
-        assertEquals(expectedStack, state.backStack.toList())
-        assertEquals(AppRoute.NicknameChange, state.requestedRoute)
     }
 
     @Test
@@ -306,42 +269,18 @@ class AppNavigationStateTest {
     }
 
     @Test
-    fun `표시할 인증 화면의 경로만 투영해도 실제 백스택은 바꾸지 않는다`() {
+    fun `현재 백스택 최상단만 표시 경로로 사용한다`() {
         val state = AppNavigationState()
         state.navigate(AppRoute.TermsAgreement)
         val expectedStack = state.backStack.toList()
 
-        assertEquals(
-            listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login),
-            state.routesForDisplayedRoute(AppRoute.Login)?.toList(),
-        )
-        assertEquals(
-            listOf(AppRoute.Home, AppRoute.MyPage),
-            state.routesForDisplayedRoute(AppRoute.MyPage)?.toList(),
-        )
+        assertNull(state.routesForDisplayedRoute(AppRoute.Login))
+        assertNull(state.routesForDisplayedRoute(AppRoute.MyPage))
         assertEquals(expectedStack, state.routesForDisplayedRoute(AppRoute.TermsAgreement)?.toList())
         assertNull(state.routesForDisplayedRoute(AppRoute.AlarmRinging("alarm-1")))
         assertEquals(expectedStack, state.backStack.toList())
         assertTrue(state.isCurrentRoute(AppRoute.TermsAgreement))
         assertFalse(state.isCurrentRoute(AppRoute.Login))
-    }
-
-    @Test
-    fun `재인증 우선 화면은 아직 스택에 없어도 로그인으로 투영한다`() {
-        val state = AppNavigationState()
-        state.navigate(AppRoute.NicknameChange)
-        val expectedStack = state.backStack.toList()
-
-        val displayedRoute = resolveAppScreen(
-            requestedRoute = state.requestedRoute,
-            ringingAlarmId = null,
-            hasActiveAlarmMission = false,
-            authSessionState = AuthSessionState.ReauthenticationRequired,
-        )
-
-        assertEquals(listOf(AppRoute.Login), state.routesForDisplayedRoute(displayedRoute)?.toList())
-        assertFalse(state.isCurrentRoute(AppRoute.Login))
-        assertEquals(expectedStack, state.backStack.toList())
     }
 
     @Test
@@ -417,17 +356,14 @@ class AppNavigationStateTest {
     }
 
     @Test
-    fun `편집 화면을 투영할 때 부모 식별자를 보존하고 실제 자식은 제거하지 않는다`() {
+    fun `현재 편집 자식만 표시하고 부모 식별자와 백스택을 보존한다`() {
         val state = AppNavigationState()
         val parent = AppRoute.EditAlarm("alarm-1")
         state.navigate(parent)
         state.navigate(AppRoute.Destination(9L))
         val expectedStack = state.backStack.toList()
 
-        assertEquals(
-            listOf(AppRoute.Home, parent),
-            state.routesForDisplayedRoute(parent)?.toList(),
-        )
+        assertNull(state.routesForDisplayedRoute(parent))
         assertEquals(
             expectedStack,
             state.routesForDisplayedRoute(AppRoute.Destination(9L))?.toList(),

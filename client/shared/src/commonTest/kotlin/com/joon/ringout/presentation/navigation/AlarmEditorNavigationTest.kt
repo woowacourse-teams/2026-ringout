@@ -7,14 +7,12 @@ import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.AnalyticsTracker
 import com.joon.ringout.analytics.DefaultProductAnalyticsRecorder
 import com.joon.ringout.analytics.ProductAnalyticsUsageStore
-import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.destination.toDestinationSelection
-import com.joon.ringout.resolveAppScreen
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -182,13 +180,7 @@ class AlarmEditorNavigationTest {
         fixture.saveDestination(route)
         runCurrent()
         val event = assertNotNull(fixture.destination.uiState.savedEvent)
-        val displayedRoute = resolveAppScreen(
-            requestedRoute = fixture.state.requestedRoute,
-            ringingAlarmId = RingingRoute.alarmId,
-            hasActiveAlarmMission = false,
-            authSessionState = AuthSessionState.Unauthenticated,
-        )
-        assertEquals(RingingRoute, displayedRoute)
+        assertFalse(fixture.navigation.isActive(route, RingingRoute))
 
         fixture.navigation.onDestinationSaved(event)
 

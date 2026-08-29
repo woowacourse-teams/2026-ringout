@@ -10,81 +10,6 @@ import kotlin.test.assertEquals
 class AppRoutingPolicyTest {
 
     @Test
-    fun `울리는 알람은 모든 화면 전환보다 우선한다`() {
-        RequestedRoutes.forEach { requestedRoute ->
-            AuthSessionState.entries.forEach { authSessionState ->
-                listOf(false, true).forEach { hasActiveAlarmMission ->
-                    assertEquals(
-                        AppRoute.AlarmRinging("ringing-alarm"),
-                        resolveAppScreen(
-                            requestedRoute = requestedRoute,
-                            ringingAlarmId = "ringing-alarm",
-                            hasActiveAlarmMission = hasActiveAlarmMission,
-                            authSessionState = authSessionState,
-                        ),
-                    )
-                }
-            }
-        }
-    }
-
-    @Test
-    fun `알람이 울리지 않을 때 재인증은 모든 요청 화면보다 우선한다`() {
-        RequestedRoutes.forEach { requestedRoute ->
-            assertEquals(
-                AppRoute.Login,
-                resolveAppScreen(
-                    requestedRoute = requestedRoute,
-                    ringingAlarmId = null,
-                    hasActiveAlarmMission = true,
-                    authSessionState = AuthSessionState.ReauthenticationRequired,
-                ),
-            )
-        }
-    }
-
-    @Test
-    fun `활성 미션이 없으면 알람 추적 화면 요청은 홈으로 이동한다`() {
-        assertEquals(
-            AppRoute.Home,
-            resolveAppScreen(
-                requestedRoute = ActiveMissionRoute,
-                ringingAlarmId = null,
-                hasActiveAlarmMission = false,
-                authSessionState = AuthSessionState.Authenticated,
-            ),
-        )
-    }
-
-    @Test
-    fun `활성 미션이 있으면 알람 추적 화면을 유지한다`() {
-        assertEquals(
-            ActiveMissionRoute,
-            resolveAppScreen(
-                requestedRoute = ActiveMissionRoute,
-                ringingAlarmId = null,
-                hasActiveAlarmMission = true,
-                authSessionState = AuthSessionState.Authenticated,
-            ),
-        )
-    }
-
-    @Test
-    fun `활성 미션이 있어도 일반 화면 요청을 강제로 바꾸지 않는다`() {
-        listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Destination(1L)).forEach { requestedRoute ->
-            assertEquals(
-                requestedRoute,
-                resolveAppScreen(
-                    requestedRoute = requestedRoute,
-                    ringingAlarmId = null,
-                    hasActiveAlarmMission = true,
-                    authSessionState = AuthSessionState.Authenticated,
-                ),
-            )
-        }
-    }
-
-    @Test
     fun `알람이 울리는 동안 전역 다이얼로그를 표시하지 않는다`() {
         AuthSessionState.entries.forEach { authSessionState ->
             assertEquals(
@@ -95,19 +20,6 @@ class AppRoutingPolicyTest {
                 ),
             )
         }
-    }
-
-    @Test
-    fun `일반 비인증 상태에서는 요청한 화면을 유지한다`() {
-        assertEquals(
-            AppRoute.Home,
-            resolveAppScreen(
-                requestedRoute = AppRoute.Home,
-                ringingAlarmId = null,
-                hasActiveAlarmMission = false,
-                authSessionState = AuthSessionState.Unauthenticated,
-            ),
-        )
     }
 
     @Test
@@ -188,18 +100,3 @@ class AppRoutingPolicyTest {
         )
     }
 }
-
-private val ActiveMissionRoute = AppRoute.ActiveAlarmTracking("occurrence-1")
-
-private val RequestedRoutes = listOf(
-    AppRoute.Home,
-    AppRoute.MyPage,
-    AppRoute.NicknameChange,
-    AppRoute.Login,
-    AppRoute.TermsAgreement,
-    AppRoute.AddAlarm,
-    AppRoute.EditAlarm("alarm-1"),
-    AppRoute.Destination(1L),
-    AppRoute.AlarmSound,
-    ActiveMissionRoute,
-)

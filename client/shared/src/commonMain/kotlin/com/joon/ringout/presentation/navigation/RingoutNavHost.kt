@@ -31,8 +31,7 @@ internal fun RingoutNavHost(
 ) {
     val provider = entryProvider(builder = graph)
     val visibleRoutes = navigationState.routesForDisplayedRoute(displayedRoute)
-    // 화면 전환 부수 효과가 실제 백스택을 갱신하기 전에 표시된 우선 경로도 유지한다.
-    val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
+    val retainedRoutes = navigationState.retainedRoutes()
     val entries = rememberDecoratedNavEntries(
         entries = retainedRoutes.map(provider),
         entryDecorators = listOf(

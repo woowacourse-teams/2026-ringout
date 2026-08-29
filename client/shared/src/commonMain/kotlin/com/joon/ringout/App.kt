@@ -162,13 +162,11 @@ private fun RingoutAppContent(
     val memberRepository = appContainer.memberRepository
     val authSessionState by authSession.state.collectAsState()
     val navigationState = rememberAppNavigationState()
-    val displayedRoute = resolveAppScreen(
-        requestedRoute = navigationState.requestedRoute,
-        ringingAlarmId = ringingAlarm?.id,
-        hasActiveAlarmMission = activeAlarmMission != null,
-        authSessionState = authSessionState,
-    )
-    val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
+    // iOS 알람 울림 경로 이전이 끝날 때까지 울림 화면만 현재 백스택보다 우선 표시한다.
+    val displayedRoute = ringingAlarm
+        ?.let { alarm -> AppRoute.AlarmRinging(alarm.id) }
+        ?: navigationState.requestedRoute
+    val retainedRoutes = navigationState.retainedRoutes()
     val viewModelScopes = rememberNavigationViewModelScopes(appContainer, retainedRoutes)
     val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
     val homeUiState = homeViewModel.uiState
@@ -477,18 +475,6 @@ internal fun AuthSessionState.toAnalyticsLoginStateOrNull(): AnalyticsLoginState
     AuthSessionState.Unauthenticated -> AnalyticsLoginState.LoggedOut
     AuthSessionState.ReauthenticationRequired -> AnalyticsLoginState.LoggedOut
     AuthSessionState.Authenticated -> AnalyticsLoginState.LoggedIn
-}
-
-internal fun resolveAppScreen(
-    requestedRoute: AppRoute,
-    ringingAlarmId: String?,
-    hasActiveAlarmMission: Boolean,
-    authSessionState: AuthSessionState,
-): AppRoute = when {
-    ringingAlarmId != null -> AppRoute.AlarmRinging(ringingAlarmId)
-    authSessionState == AuthSessionState.ReauthenticationRequired -> AppRoute.Login
-    requestedRoute is AppRoute.ActiveAlarmTracking && !hasActiveAlarmMission -> AppRoute.Home
-    else -> requestedRoute
 }
 
 internal fun canShowAppDialog(

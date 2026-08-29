@@ -80,40 +80,13 @@ internal class AppNavigationState(
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
 
-    fun retainedRoutes(displayedRoute: AppRoute): List<AppRoute> =
-        (
-            routes.filterNot(AppRoute::usesLegacyContent) +
-                routesForDisplayedRoute(displayedRoute).orEmpty()
-        ).distinct()
+    fun retainedRoutes(): List<AppRoute> = routes.filterNot(AppRoute::usesLegacyContent)
 
-    /** 요청된 백스택을 변경하지 않고 기존 화면 표시 정책에 맞는 경로를 반환한다. */
+    /** 실제 백스택 최상단이 Navigation 3 화면일 때 표시할 경로를 반환한다. */
     fun routesForDisplayedRoute(displayedRoute: AppRoute): List<AppRoute>? {
         if (displayedRoute.usesLegacyContent()) return null
-
-        val index = routes.indexOf(displayedRoute)
-        if (index >= 0) return routes.take(index + 1)
-
-        return when (displayedRoute) {
-            // 편집 화면은 유효한 부모와 초안 없이 표시 경로만 합성하지 않는다.
-            AppRoute.Onboarding,
-            is AppRoute.EditAlarm,
-            is AppRoute.Destination,
-            AppRoute.AlarmSound,
-            -> null
-
-            // 기존 화면 전환 부수 효과가 실행되기 전에도 우선 화면을 표시한다.
-            AppRoute.Home,
-            AppRoute.AddAlarm,
-            AppRoute.MyPage,
-            AppRoute.NicknameChange,
-            AppRoute.Login,
-            AppRoute.TermsAgreement,
-            -> listOf(displayedRoute)
-
-            is AppRoute.AlarmRinging,
-            is AppRoute.ActiveAlarmTracking,
-            -> null
-        }
+        if (!isCurrentRoute(displayedRoute)) return null
+        return routes.toList()
     }
 }
 
