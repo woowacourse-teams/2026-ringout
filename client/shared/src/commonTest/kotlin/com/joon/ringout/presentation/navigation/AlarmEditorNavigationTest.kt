@@ -234,10 +234,11 @@ class AlarmEditorNavigationTest {
 
             fixture.navigation.onMissingDraft(AppScreen.AlarmRinging)
             assertEquals(path, fixture.state.backStack.toList())
-            fixture.state.navigate(AppScreen.ActiveAlarmTracking)
+            val activeMission = AppRoute.ActiveAlarmTracking("occurrence-1")
+            fixture.state.navigate(activeMission)
             fixture.navigation.onMissingDraft(editorScreen)
             assertEquals(AppScreen.ActiveAlarmTracking, fixture.state.requestedScreen)
-            assertEquals(path, fixture.state.backStack.toList())
+            assertEquals(path + activeMission, fixture.state.backStack.toList())
 
             fixture.state.navigate(path.last())
             fixture.navigation.onMissingDraft(editorScreen)

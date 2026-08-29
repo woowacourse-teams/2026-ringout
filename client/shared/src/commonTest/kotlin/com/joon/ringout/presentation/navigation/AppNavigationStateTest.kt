@@ -1,6 +1,5 @@
 package com.joon.ringout.presentation.navigation
 
-import androidx.compose.runtime.mutableStateOf
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
 import com.joon.ringout.AppScreen
@@ -87,6 +86,40 @@ class AppNavigationStateTest {
     }
 
     @Test
+    fun `활성 미션은 기존 백스택 위에 쌓고 같은 회차는 유지하며 새 회차로 교체한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.NicknameChange)
+        val underlyingStack = state.backStack.toList()
+        val firstMission = AppRoute.ActiveAlarmTracking("occurrence-1")
+
+        state.navigate(firstMission)
+        state.navigate(firstMission.copy())
+
+        assertSame(firstMission, state.backStack.last())
+        assertEquals(underlyingStack + firstMission, state.backStack.toList())
+        assertEquals(
+            underlyingStack,
+            state.retainedRoutes(AppScreen.ActiveAlarmTracking),
+        )
+        assertEquals(
+            underlyingStack,
+            state.retainedRoutes(AppScreen.AlarmRinging),
+        )
+        assertTrue(state.isCurrentRoute(firstMission))
+
+        val nextMission = AppRoute.ActiveAlarmTracking("occurrence-2")
+        state.navigate(nextMission)
+
+        assertSame(nextMission, state.backStack.last())
+        assertEquals(underlyingStack + nextMission, state.backStack.toList())
+
+        state.popBackStack(nextMission)
+
+        assertEquals(underlyingStack, state.backStack.toList())
+        assertEquals(AppScreen.NicknameChange, state.requestedScreen)
+    }
+
+    @Test
     fun `이미 나간 화면의 뒤로 가기는 현재 화면을 제거하지 않는다`() {
         val state = AppNavigationState()
         state.navigate(AppRoute.NicknameChange)
@@ -139,10 +172,10 @@ class AppNavigationStateTest {
     }
 
     @Test
-    fun `기존 화면에서 홈으로 이동하면 이전 편집 경로를 제거한다`() {
+    fun `활성 미션에서 홈으로 이동하면 이전 경로를 제거한다`() {
         val state = AppNavigationState()
         state.navigate(AppRoute.NicknameChange)
-        state.navigate(AppScreen.ActiveAlarmTracking)
+        state.navigate(AppRoute.ActiveAlarmTracking("occurrence-1"))
 
         state.navigate(AppScreen.Home)
 
@@ -190,44 +223,29 @@ class AppNavigationStateTest {
     }
 
     @Test
-    fun `직렬화한 백스택과 기존 화면을 복원한 뒤 마이페이지로 돌아갈 수 있다`() {
+    fun `직렬화한 활성 미션 백스택을 식별자와 함께 복원한다`() {
+        val activeMission = AppRoute.ActiveAlarmTracking("occurrence-1")
         val backStack = NavBackStack<AppRoute>(
             AppRoute.Home,
             AppRoute.MyPage,
             AppRoute.Login,
             AppRoute.TermsAgreement,
+            activeMission,
         )
         val serializer = NavBackStackSerializer(AppRoute.serializer())
         val saved = Json.encodeToString(serializer, backStack)
         val restored = Json.decodeFromString(serializer, saved)
-        val state = AppNavigationState(restored, mutableStateOf(AppScreen.ActiveAlarmTracking.name))
+        val state = AppNavigationState(restored)
 
         assertEquals(backStack.toList(), state.backStack.toList())
         assertEquals(AppScreen.ActiveAlarmTracking, state.requestedScreen)
-        state.navigate(AppScreen.MyPage)
-        state.popBackStack()
-        assertEquals(AppScreen.Home, state.requestedScreen)
-    }
+        assertTrue(state.isCurrentRoute(activeMission))
 
-    @Test
-    fun `이전 버전에 저장한 로그인과 약관 화면은 타입 안전 경로로 복원한다`() {
-        for (screen in listOf(AppScreen.Login, AppScreen.TermsAgreement)) {
-            val state = AppNavigationState(
-                NavBackStack(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange),
-                mutableStateOf(screen.name),
-            )
-            val expectedStack = when (screen) {
-                AppScreen.Login -> listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
-                else ->
-                    listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
-            }
+        state.popBackStack(activeMission)
 
-            assertEquals(expectedStack, state.backStack.toList())
-            assertEquals(screen, state.requestedScreen)
-            assertTrue(state.isCurrentRoute(expectedStack.last()))
-            state.popBackStack()
-            assertEquals(expectedStack.dropLast(1), state.backStack.toList())
-        }
+        assertEquals(backStack.dropLast(1), state.backStack.toList())
+        assertEquals(AppScreen.TermsAgreement, state.requestedScreen)
+        assertTrue(state.isCurrentRoute(AppRoute.TermsAgreement))
     }
 
     @Test
@@ -279,16 +297,17 @@ class AppNavigationStateTest {
     }
 
     @Test
-    fun `기존 알람 화면에 진입해도 약관 백스택은 유지하고 뒤의 콜백은 무시한다`() {
+    fun `활성 미션에 진입해도 약관 백스택은 유지하고 뒤의 콜백은 무시한다`() {
         val state = AppNavigationState()
         state.navigate(AppRoute.TermsAgreement)
         val expectedStack = state.backStack.toList()
+        val activeMission = AppRoute.ActiveAlarmTracking("occurrence-1")
 
-        state.navigate(AppScreen.ActiveAlarmTracking)
+        state.navigate(activeMission)
         state.popBackStack(AppRoute.TermsAgreement)
 
         assertEquals(AppScreen.ActiveAlarmTracking, state.requestedScreen)
-        assertEquals(expectedStack, state.backStack.toList())
+        assertEquals(expectedStack + activeMission, state.backStack.toList())
         assertFalse(state.isCurrentRoute(AppRoute.TermsAgreement))
         assertNull(state.routesForScreen(AppScreen.ActiveAlarmTracking))
 
@@ -392,13 +411,20 @@ class AppNavigationStateTest {
     }
 
     @Test
-    fun `기존 화면 adapter는 식별자 없는 수정과 목적지 요청을 거절한다`() {
+    fun `기존 화면 adapter는 식별자가 필요한 경로 요청을 거절한다`() {
         val state = AppNavigationState()
         state.navigate(AppScreen.AddAlarm)
         state.navigate(AppScreen.AlarmSound)
         val expectedStack = listOf(AppRoute.Home, AppRoute.AddAlarm, AppRoute.AlarmSound)
 
-        for (screen in listOf(AppScreen.EditAlarm, AppScreen.Destination)) {
+        for (
+            screen in listOf(
+                AppScreen.EditAlarm,
+                AppScreen.Destination,
+                AppScreen.AlarmRinging,
+                AppScreen.ActiveAlarmTracking,
+            )
+        ) {
             assertFailsWith<IllegalArgumentException> { state.navigate(screen) }
         }
 
@@ -429,25 +455,4 @@ class AppNavigationStateTest {
         )
     }
 
-    @Test
-    fun `이전 문자열 편집 경로는 초안을 복원할 수 없어 홈으로 돌아간다`() {
-        for (
-            screen in listOf(
-                AppScreen.AddAlarm,
-                AppScreen.EditAlarm,
-                AppScreen.Destination,
-                AppScreen.AlarmSound,
-            )
-        ) {
-            val state = AppNavigationState(
-                NavBackStack(AppRoute.Home, AppRoute.MyPage),
-                mutableStateOf(screen.name),
-            )
-
-            assertEquals(listOf(AppRoute.Home), state.backStack.toList())
-            assertEquals(AppScreen.Home, state.requestedScreen)
-            assertTrue(state.isCurrentRoute(AppRoute.Home))
-            assertNull(state.editorRoute)
-        }
-    }
 }

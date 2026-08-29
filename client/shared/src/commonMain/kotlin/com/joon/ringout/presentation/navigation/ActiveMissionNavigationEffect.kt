@@ -6,7 +6,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import com.joon.ringout.AppScreen
 
 /** 활성 미션 회차마다 추적 화면 이동을 한 번만 요청하고, 종료 시 복귀 경로를 정리한다. */
 @Composable
@@ -23,14 +22,14 @@ internal fun ActiveMissionNavigationEffect(
         when {
             activeMissionOccurrenceId == null -> {
                 handledOccurrenceId = null
-                if (navigationState.requestedScreen == AppScreen.ActiveAlarmTracking) {
-                    navigationState.navigate(AppScreen.Home)
+                if (navigationState.backStack.lastOrNull() is AppRoute.ActiveAlarmTracking) {
+                    navigationState.navigate(AppRoute.Home)
                 }
             }
 
             handledOccurrenceId != activeMissionOccurrenceId -> {
                 handledOccurrenceId = activeMissionOccurrenceId
-                navigationState.navigate(AppScreen.ActiveAlarmTracking)
+                navigationState.navigate(AppRoute.ActiveAlarmTracking(activeMissionOccurrenceId))
             }
         }
     }

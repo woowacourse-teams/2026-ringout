@@ -398,7 +398,9 @@ private fun RingoutAppContent(
                 },
                 onLogin = { navigationState.navigate(AppRoute.Login) },
                 onActiveAlarmMissionClick = {
-                    navigationState.navigate(AppScreen.ActiveAlarmTracking)
+                    activeAlarmMission?.occurrenceId?.let { occurrenceId ->
+                        navigationState.navigate(AppRoute.ActiveAlarmTracking(occurrenceId))
+                    }
                 },
                 onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
             )
@@ -428,7 +430,10 @@ private fun RingoutAppContent(
                     limitMinutes = alarm.limitMinutes,
                     destinationName = alarm.destinationName,
                     onDismissAndNavigateClick = {
-                        navigationState.navigate(AppScreen.ActiveAlarmTracking)
+                        val destination = activeAlarmMission?.occurrenceId
+                            ?.let { occurrenceId -> AppRoute.ActiveAlarmTracking(occurrenceId) }
+                            ?: AppRoute.Home
+                        navigationState.navigate(destination)
                         onRingingAlarmDismiss(alarm.id)
                     },
                 )
@@ -439,7 +444,7 @@ private fun RingoutAppContent(
                     mission = mission,
                     currentLocation = activeAlarmMissionLocation,
                     locationState = missionLocationState,
-                    onBackClick = { navigationState.navigate(AppScreen.Home) },
+                    onBackClick = { navigationState.navigate(AppRoute.Home) },
                     onForceEndClick = onActiveAlarmMissionForceEnd,
                     onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
                     onForceEndHoldCancelled = onActiveAlarmMissionForceEndHoldCancelled,

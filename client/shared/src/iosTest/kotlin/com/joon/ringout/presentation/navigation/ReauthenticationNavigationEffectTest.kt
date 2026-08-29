@@ -155,7 +155,7 @@ class ReauthenticationNavigationEffectTest {
             drain()
             assertNull(fixture.home.uiState.errorMessage)
 
-            fixture.state.navigate(AppScreen.ActiveAlarmTracking)
+            fixture.state.navigate(AppRoute.ActiveAlarmTracking("occurrence-1"))
             drain()
             assertEquals(AppScreen.Login, fixture.state.requestedScreen)
             assertTrue(fixture.state.isCurrentRoute(AppRoute.Login))
