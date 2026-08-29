@@ -38,7 +38,6 @@ internal sealed interface AppRoute : NavKey {
     @SerialName("alarm_sound")
     data object AlarmSound : AppRoute
 
-    // 기존 Settings 경로도 MyPageScreen을 표시한다.
     @Serializable
     @SerialName("my_page")
     data object MyPage : AppRoute

@@ -20,7 +20,7 @@ fun HomeScreen(
     onAlarmClick: (String) -> Unit,
     onAlarmEnabledChange: (String, Boolean) -> Unit,
     onAlarmDelete: (String) -> Unit,
-    onSettingsClick: () -> Unit,
+    onMyPageClick: () -> Unit,
     onActiveAlarmMissionClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     activeAlarmMission: ActiveAlarmMission? = null,
@@ -35,7 +35,7 @@ fun HomeScreen(
     if (alarms.isEmpty() && activeAlarmMission == null) {
         HomeEmptyState(
             onAddAlarm = onAddAlarm,
-            onSettingsClick = onSettingsClick,
+            onMyPageClick = onMyPageClick,
             modifier = modifier,
         )
         return
@@ -51,7 +51,7 @@ fun HomeScreen(
         onAlarmClick = onAlarmClick,
         onAlarmEnabledChange = onAlarmEnabledChange,
         onAlarmDelete = onAlarmDelete,
-        onSettingsClick = onSettingsClick,
+        onMyPageClick = onMyPageClick,
         onActiveAlarmMissionClick = onActiveAlarmMissionClick,
         modifier = modifier,
         activeAlarmMission = activeAlarmMission,
@@ -74,7 +74,7 @@ private fun DarkLoadingHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onSettingsClick = {},
+            onMyPageClick = {},
         )
     }
 }
@@ -89,7 +89,7 @@ private fun DarkEmptyHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onSettingsClick = {},
+            onMyPageClick = {},
         )
     }
 }
@@ -104,7 +104,7 @@ private fun LightEmptyHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onSettingsClick = {},
+            onMyPageClick = {},
         )
     }
 }
@@ -120,7 +120,7 @@ private fun DarkPopulatedHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onSettingsClick = {},
+            onMyPageClick = {},
         )
     }
 }
@@ -136,7 +136,7 @@ private fun LightPopulatedHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onSettingsClick = {},
+            onMyPageClick = {},
         )
     }
 }

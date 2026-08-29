@@ -38,7 +38,7 @@ internal fun HomeRoute(
             alarmController.perform(viewModel.onAlarmDelete(alarmId))
         },
         onActiveAlarmMissionClick = onActiveAlarmMissionClick,
-        onSettingsClick = onMyPageClick,
+        onMyPageClick = onMyPageClick,
         modifier = modifier,
     )
 }

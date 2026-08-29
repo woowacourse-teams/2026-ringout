@@ -58,7 +58,7 @@ import kotlin.time.Clock
 @Composable
 internal fun AlarmListHeader(
     nextAlarmDescription: String,
-    onSettingsClick: () -> Unit,
+    onMyPageClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = homeAlarmColors()
@@ -94,7 +94,7 @@ internal fun AlarmListHeader(
             )
         }
 
-        HomeMyPageButton(onClick = onSettingsClick)
+        HomeMyPageButton(onClick = onMyPageClick)
     }
 }
 

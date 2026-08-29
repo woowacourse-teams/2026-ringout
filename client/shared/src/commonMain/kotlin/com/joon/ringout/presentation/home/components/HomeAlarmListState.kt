@@ -29,7 +29,7 @@ internal fun HomeAlarmListState(
     onAlarmClick: (String) -> Unit,
     onAlarmEnabledChange: (String, Boolean) -> Unit,
     onAlarmDelete: (String) -> Unit,
-    onSettingsClick: () -> Unit,
+    onMyPageClick: () -> Unit,
     onActiveAlarmMissionClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     activeAlarmMission: ActiveAlarmMission? = null,
@@ -64,7 +64,7 @@ internal fun HomeAlarmListState(
             ) {
                 AlarmListHeader(
                     nextAlarmDescription = nextAlarmDescription,
-                    onSettingsClick = onSettingsClick,
+                    onMyPageClick = onMyPageClick,
                 )
 
                 Spacer(Modifier.height(30.dp))
