@@ -7,9 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,6 +37,7 @@ import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import com.joon.ringout.presentation.navigation.AppRoute
+import com.joon.ringout.presentation.navigation.ActiveMissionNavigationEffect
 import com.joon.ringout.presentation.navigation.ReauthenticationNavigationEffect
 import com.joon.ringout.presentation.navigation.AlarmEditorNavigationEffects
 import com.joon.ringout.presentation.navigation.RingoutNavHost
@@ -218,10 +216,6 @@ private fun RingoutAppContent(
             AuthSessionState.Authenticated -> myPageViewModel?.onAuthenticated()
         }
     }
-    var handledActiveAlarmOccurrenceId by rememberSaveable {
-        mutableStateOf<String?>(null)
-    }
-
     LaunchedEffect(authRepository) {
         authRepository.restoreSession()
     }
@@ -335,23 +329,10 @@ private fun RingoutAppContent(
     LaunchedEffect(alarmController, homeViewModel) {
         homeViewModel.observeAlarms(alarmController.savedAlarms)
     }
-
-    LaunchedEffect(activeAlarmMission?.occurrenceId) {
-        val occurrenceId = activeAlarmMission?.occurrenceId
-        when {
-            occurrenceId == null -> {
-                handledActiveAlarmOccurrenceId = null
-                if (navigationState.requestedScreen == AppScreen.ActiveAlarmTracking) {
-                    navigationState.navigate(AppScreen.Home)
-                }
-            }
-
-            handledActiveAlarmOccurrenceId != occurrenceId -> {
-                handledActiveAlarmOccurrenceId = occurrenceId
-                navigationState.navigate(AppScreen.ActiveAlarmTracking)
-            }
-        }
-    }
+    ActiveMissionNavigationEffect(
+        activeMissionOccurrenceId = activeAlarmMission?.occurrenceId,
+        navigationState = navigationState,
+    )
 
     val pendingAppMessage = resolveAppMessage(
         screen = screen,
