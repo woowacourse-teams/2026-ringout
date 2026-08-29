@@ -69,6 +69,10 @@ internal class AppNavigationState(
             else -> error("Only migrated routes belong in this back stack")
         }
 
+        /**
+     * 요청한 목적지 스택이 현재 백스택과 같으면 singleTop으로 기존 항목을 유지한다.
+     * 경로의 식별자가 다르면 같은 화면 유형이어도 최상위 항목을 교체한다.
+     */
     fun navigate(route: AppRoute) {
         val destinationStack = when (route) {
             AppRoute.Home -> listOf(AppRoute.Home)
@@ -89,7 +93,10 @@ internal class AppNavigationState(
             }
             else -> error("Route has not been migrated: $route")
         }
-        // 공통 백스택 항목과 상태를 유지하고, 반복해서 눌러도 중복 항목을 추가하지 않는다.
+        // 기존 우선 화면이 없다면 동일 경로 요청은 현재 항목과 화면 상태를 그대로 사용한다.
+        if (legacyScreenName == null && routes.toList() == destinationStack) return
+
+        // 나머지 이동은 공통 백스택 항목과 상태를 유지하고 달라진 뒷부분만 교체한다.
         val sharedSize = routes.zip(destinationStack).takeWhile { (a, b) -> a == b }.size
         routes.subList(sharedSize, routes.size).clear()
         routes.addAll(destinationStack.drop(sharedSize))

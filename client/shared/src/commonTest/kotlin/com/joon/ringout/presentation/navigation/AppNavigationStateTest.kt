@@ -12,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class AppNavigationStateTest {
@@ -44,6 +45,43 @@ class AppNavigationStateTest {
 
         assertEquals(
             listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange),
+            state.backStack.toList(),
+        )
+    }
+
+    @Test
+    fun `식별자 경로는 전체 값 기준 singleTop으로 기존 항목을 유지한다`() {
+        val state = AppNavigationState()
+        val firstEditor = AppRoute.EditAlarm("alarm-1")
+
+        state.navigate(firstEditor)
+        state.navigate(firstEditor.copy())
+
+        assertSame(firstEditor, state.backStack.last())
+        assertEquals(listOf(AppRoute.Home, firstEditor), state.backStack.toList())
+
+        val nextEditor = AppRoute.EditAlarm("alarm-2")
+        state.navigate(nextEditor)
+
+        assertSame(nextEditor, state.backStack.last())
+        assertEquals(listOf(AppRoute.Home, nextEditor), state.backStack.toList())
+
+        val firstDestination = AppRoute.Destination(1L)
+        state.navigate(firstDestination)
+        state.navigate(firstDestination.copy())
+
+        assertSame(firstDestination, state.backStack.last())
+        assertEquals(
+            listOf(AppRoute.Home, nextEditor, firstDestination),
+            state.backStack.toList(),
+        )
+
+        val nextDestination = AppRoute.Destination(2L)
+        state.navigate(nextDestination)
+
+        assertSame(nextDestination, state.backStack.last())
+        assertEquals(
+            listOf(AppRoute.Home, nextEditor, nextDestination),
             state.backStack.toList(),
         )
     }
