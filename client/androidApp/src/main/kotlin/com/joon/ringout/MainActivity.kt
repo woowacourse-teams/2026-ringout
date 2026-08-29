@@ -7,18 +7,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.tooling.preview.Preview
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.ActiveAlarmMissionStore
 import com.joon.ringout.alarm.AlarmMissionCoordinator
-import com.joon.ringout.di.AndroidAppContainer
 import com.joon.ringout.presentation.update.AppUpdateDialog
 import com.joon.ringout.presentation.update.PlayStoreUpdateChecker
 

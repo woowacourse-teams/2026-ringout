@@ -1,11 +1,8 @@
 package com.joon.ringout.analytics
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import com.joon.ringout.platform.IosAnalyticsEventDto
 import com.joon.ringout.platform.IosAnalyticsParameterDto
 import com.joon.ringout.platform.IosAnalyticsTracker
-import com.joon.ringout.platform.LocalIosNativeServices
 
 internal fun createProductAnalyticsRecorder(
     nativeTracker: IosAnalyticsTracker,
@@ -14,14 +11,6 @@ internal fun createProductAnalyticsRecorder(
         tracker = IosProductAnalyticsTracker(nativeTracker),
         usageStore = IosAnalyticsUsageStore(),
     )
-
-@Composable
-internal actual fun rememberProductAnalyticsRecorder(): ProductAnalyticsRecorder {
-    val nativeTracker = LocalIosNativeServices.current.analyticsTracker()
-    return remember(nativeTracker) {
-        createProductAnalyticsRecorder(nativeTracker)
-    }
-}
 
 private class IosProductAnalyticsTracker(
     private val delegate: IosAnalyticsTracker,
