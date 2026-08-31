@@ -35,6 +35,8 @@ import com.joon.ringout.presentation.login.PlatformSocialLoginProviders
 import com.joon.ringout.presentation.login.SocialLoginProvider
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import ringout.shared.generated.resources.Res
+import ringout.shared.generated.resources.login_apple_logo
 
 @Composable
 internal fun SocialLoginButtons(
@@ -55,9 +57,11 @@ internal fun SocialLoginButtons(
     ) {
         providers.forEach { provider ->
             when (provider) {
-                SocialLoginProvider.Apple -> AppleLoginButton(
-                    onClick = { onSocialLoginClick(provider) },
+                SocialLoginProvider.Apple -> SocialLoginButton(
+                    style = appleButtonStyle(colors),
+                    dimensions = dimensions,
                     enabled = enabled,
+                    onClick = { onSocialLoginClick(provider) },
                 )
 
                 SocialLoginProvider.Google -> SocialLoginButton(
@@ -141,6 +145,16 @@ private data class SocialLoginButtonStyle(
     val icon: DrawableResource,
     val iconSize: Dp,
     val iconSlotSize: Dp,
+)
+
+private fun appleButtonStyle(colors: LoginColors): SocialLoginButtonStyle = SocialLoginButtonStyle(
+    label = "Apple로 로그인",
+    backgroundColor = colors.appleBackground,
+    contentColor = colors.appleText,
+    borderColor = colors.appleBorder,
+    icon = Res.drawable.login_apple_logo,
+    iconSize = 28.dp,
+    iconSlotSize = 32.dp,
 )
 
 private fun googleButtonStyle(colors: LoginColors): SocialLoginButtonStyle = SocialLoginButtonStyle(
