@@ -69,11 +69,20 @@ class IosAlarmMissionCoordinator(
     private val analytics: IosAlarmAnalyticsRecorder? = null,
 ) {
     private val mutex = Mutex()
-    private val activeMission = MutableStateFlow(
-        missionStore.loadActiveMission().takeUnless { mission ->
-            missionStore.loadPendingTerminal()?.occurrenceId == mission?.occurrenceId
-        },
-    )
+    private val activeMission = MutableStateFlow<ActiveAlarmMission?>(null)
+
+    init {
+        val loadedMission = missionStore.loadActiveMission()
+        val restoredMission = loadedMission
+            ?.withDefaultArrivalRadius()
+            .takeUnless { mission ->
+                missionStore.loadPendingTerminal()?.occurrenceId == mission?.occurrenceId
+            }
+        if (restoredMission != null && restoredMission != loadedMission) {
+            missionStore.saveActiveMission(restoredMission)
+        }
+        activeMission.value = restoredMission
+    }
 
     val activeMissionFlow: StateFlow<ActiveAlarmMission?> = activeMission.asStateFlow()
 
@@ -873,7 +882,7 @@ private fun AlarmScheduleRequest.toActiveAlarmMission(
         startedAtEpochMillis = event.occurredAtEpochMillis,
         destinationLatitude = destinationLatitude,
         destinationLongitude = destinationLongitude,
-        arrivalRadiusMeters = targetDistanceKm * MetersPerKilometer,
+        arrivalRadiusMeters = DefaultArrivalRadiusMeters,
         alarmSoundUri = alarmSoundUri,
         hasAlarmSoundUri = alarmSoundUri != null,
     )
@@ -886,10 +895,13 @@ private fun ActiveAlarmMission.toRetryMissionSeed(): IosRetryMissionSeed =
         alarmTime = alarmTime,
         destinationLatitude = destinationLatitude,
         destinationLongitude = destinationLongitude,
-        arrivalRadiusMeters = arrivalRadiusMeters,
+        arrivalRadiusMeters = DefaultArrivalRadiusMeters,
         alarmSoundUri = alarmSoundUri,
         hasAlarmSoundUri = hasAlarmSoundUri,
     )
+
+private fun ActiveAlarmMission.withDefaultArrivalRadius(): ActiveAlarmMission =
+    copy(arrivalRadiusMeters = DefaultArrivalRadiusMeters)
 
 private fun ActiveAlarmMission.isExpiredAtNow(): Boolean =
     isExpiredAt(Clock.System.now().toEpochMilliseconds())
@@ -908,7 +920,7 @@ private fun IosRetryMissionSeed.toActiveAlarmMission(
         startedAtEpochMillis = event.occurredAtEpochMillis,
         destinationLatitude = destinationLatitude,
         destinationLongitude = destinationLongitude,
-        arrivalRadiusMeters = arrivalRadiusMeters,
+        arrivalRadiusMeters = DefaultArrivalRadiusMeters,
         alarmSoundUri = alarmSoundUri,
         hasAlarmSoundUri = hasAlarmSoundUri,
     )
@@ -963,5 +975,4 @@ internal suspend fun IosAlarmMissionEventInbox.markConsumedAwait(eventId: String
 }
 
 private const val MillisPerMinute = 60_000L
-private const val MetersPerKilometer = 1_000.0
 private const val MillisPerSecond = 1_000.0
