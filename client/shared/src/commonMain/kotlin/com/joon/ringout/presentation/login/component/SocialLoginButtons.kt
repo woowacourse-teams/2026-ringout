@@ -35,8 +35,6 @@ import com.joon.ringout.presentation.login.PlatformSocialLoginProviders
 import com.joon.ringout.presentation.login.SocialLoginProvider
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
-import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.login_apple_logo
 
 @Composable
 internal fun SocialLoginButtons(
@@ -152,7 +150,7 @@ private fun appleButtonStyle(colors: LoginColors): SocialLoginButtonStyle = Soci
     backgroundColor = colors.appleBackground,
     contentColor = colors.appleText,
     borderColor = colors.appleBorder,
-    icon = Res.drawable.login_apple_logo,
+    icon = LoginAppleIconResource,
     iconSize = 28.dp,
     iconSlotSize = 32.dp,
 )
