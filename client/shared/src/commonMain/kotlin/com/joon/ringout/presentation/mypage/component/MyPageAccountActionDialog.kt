@@ -34,11 +34,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-
-enum class MyPageAccountAction {
-    Logout,
-    Withdraw,
-}
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 
 @Composable
 fun MyPageAccountActionDialog(

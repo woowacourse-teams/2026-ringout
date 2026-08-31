@@ -57,6 +57,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.domain.destination.SavedDestination
@@ -94,6 +97,7 @@ fun DestinationMapScreen(
     onSavedDestinationSelected: (DestinationSelectionSource) -> Unit = {},
     isSaveInProgress: Boolean = false,
     isDestinationActionEnabled: Boolean = true,
+    isBackHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
@@ -133,15 +137,22 @@ fun DestinationMapScreen(
         }
     }
 
-    PlatformBackHandler(onBack = {
-        when {
-            nicknameEditingDestination != null -> nicknameEditingDestination = null
-            pendingSelection != null -> pendingSelection = null
-            isDestinationManagementOpen -> isDestinationManagementOpen = false
-            isSearchOpen -> isSearchOpen = false
-            else -> onBackClick()
-        }
-    })
+    NavigationBackHandler(
+        state = rememberNavigationEventState(NavigationEventInfo.None),
+        isBackEnabled = isBackHandlerEnabled && (
+            nicknameEditingDestination != null || pendingSelection != null ||
+                isDestinationManagementOpen || isSearchOpen
+            ),
+        onBackCompleted = {
+            when {
+                nicknameEditingDestination != null -> nicknameEditingDestination = null
+                pendingSelection != null -> pendingSelection = null
+                isDestinationManagementOpen -> isDestinationManagementOpen = false
+                isSearchOpen -> isSearchOpen = false
+                else -> onBackClick()
+            }
+        },
+    )
 
     PlatformDestinationSearchEffect(
         query = submittedQuery,

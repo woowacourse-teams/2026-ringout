@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.login
 
+import androidx.lifecycle.ViewModelStore
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.DestinationSelectionSource
@@ -8,10 +9,14 @@ import com.joon.ringout.analytics.StampMonthChangeDirection
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthTerm
 import com.joon.ringout.domain.auth.SocialLoginOutcome
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -205,6 +210,103 @@ class LoginViewModelTest {
         }
 
     @Test
+    fun clearingTheStoreIgnoresLateSdkResultsAndRejectsNewLoginAttempts() =
+        withViewModel { viewModel, repository, analytics ->
+            assertTrue(viewModel.beginGoogleSignIn())
+
+            clearViewModel(viewModel)
+            viewModel.handleGoogleAccessTokenResult(GoogleAccessTokenResult.Success("late-google"))
+            viewModel.handleAppleIdTokenResult(AppleIdTokenResult.Success("late-apple"))
+            viewModel.handleKakaoAccessTokenResult(KakaoAccessTokenResult.Success("late-kakao"))
+
+            assertFalse(viewModel.beginGoogleSignIn())
+            assertFalse(viewModel.beginAppleSignIn())
+            assertFalse(viewModel.beginKakaoSignIn())
+            assertEquals(LoginUiState(), viewModel.uiState)
+            assertTrue(repository.googleAccessTokens.isEmpty())
+            assertTrue(repository.appleIdTokens.isEmpty())
+            assertTrue(repository.kakaoAccessTokens.isEmpty())
+            assertEquals(listOf(AnalyticsAuthProvider.Google), analytics.startedProviders)
+            assertTrue(analytics.completedRecords.isEmpty())
+        }
+
+    @Test
+    fun clearingTheStoreRemovesTheSignupTokenFromCompletion() =
+        withViewModel { viewModel, repository, _ ->
+            repository.googleOutcome = SocialLoginOutcome.SignupRequired("signup-token")
+            viewModel.beginGoogleSignIn()
+            viewModel.handleGoogleAccessTokenResult(
+                GoogleAccessTokenResult.Success("google-access-token"),
+            )
+            assertIs<LoginCompletion.SignupRequired>(viewModel.uiState.completion)
+
+            clearViewModel(viewModel)
+            viewModel.showUnavailableProvider(SocialLoginProvider.Apple)
+
+            assertEquals(LoginUiState(), viewModel.uiState)
+        }
+
+    @Test
+    fun clearingTheStoreCancelsOnlyTheLoginJob() {
+        val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        withViewModel(scope = parentScope) { viewModel, repository, analytics ->
+            val gate = CompletableDeferred<Unit>()
+            var loginFinished = false
+            repository.googleLogin = {
+                try {
+                    gate.await()
+                    SocialLoginOutcome.Authenticated
+                } finally {
+                    loginFinished = true
+                }
+            }
+            viewModel.beginGoogleSignIn()
+            viewModel.handleGoogleAccessTokenResult(
+                GoogleAccessTokenResult.Success("google-access-token"),
+            )
+            assertTrue(viewModel.uiState.isLoading)
+
+            clearViewModel(viewModel)
+
+            assertTrue(loginFinished)
+            assertFalse(gate.isCompleted)
+            assertTrue(parentScope.isActive)
+            assertEquals(LoginUiState(), viewModel.uiState)
+            assertTrue(analytics.completedRecords.isEmpty())
+        }
+    }
+
+    @Test
+    fun clearingTheStoreIgnoresBackendResultsThatDoNotCooperateWithCancellation() {
+        val outcomes = listOf(
+            Result.success<SocialLoginOutcome>(SocialLoginOutcome.SignupRequired("late-token")),
+            Result.failure<SocialLoginOutcome>(IllegalStateException("late failure")),
+        )
+        outcomes.forEach { outcome ->
+            withViewModel { viewModel, repository, analytics ->
+                val gate = CompletableDeferred<Unit>()
+                var backendReturned = false
+                repository.googleLogin = {
+                    withContext(NonCancellable) { gate.await() }
+                    backendReturned = true
+                    outcome.getOrThrow()
+                }
+                viewModel.beginGoogleSignIn()
+                viewModel.handleGoogleAccessTokenResult(
+                    GoogleAccessTokenResult.Success("google-access-token"),
+                )
+
+                clearViewModel(viewModel)
+                gate.complete(Unit)
+
+                assertTrue(backendReturned)
+                assertEquals(LoginUiState(), viewModel.uiState)
+                assertTrue(analytics.completedRecords.isEmpty())
+            }
+        }
+    }
+
+    @Test
     fun appleRepeatedStartAndMismatchedResultAreIgnored() =
         withViewModel { viewModel, repository, _ ->
             assertTrue(viewModel.beginAppleSignIn())
@@ -223,13 +325,13 @@ class LoginViewModelTest {
 }
 
 private inline fun withViewModel(
+    scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     block: (
         LoginViewModel,
         FakeAuthRepository,
         RecordingLoginAnalyticsRecorder,
     ) -> Unit,
 ) {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     val repository = FakeAuthRepository()
     val analytics = RecordingLoginAnalyticsRecorder()
     val viewModel = LoginViewModel(
@@ -244,6 +346,12 @@ private inline fun withViewModel(
     }
 }
 
+private fun clearViewModel(viewModel: LoginViewModel) {
+    val store = ViewModelStore()
+    store.put("login", viewModel)
+    store.clear()
+}
+
 private class FakeAuthRepository : AuthRepository {
     val appleIdTokens = mutableListOf<String>()
     val googleAccessTokens = mutableListOf<String>()
@@ -253,6 +361,7 @@ private class FakeAuthRepository : AuthRepository {
     var kakaoOutcome: SocialLoginOutcome = SocialLoginOutcome.Authenticated
     var appleFailure: Throwable? = null
     var googleFailure: Throwable? = null
+    var googleLogin: (suspend () -> SocialLoginOutcome)? = null
     var kakaoFailure: Throwable? = null
 
     override suspend fun restoreSession() = Unit
@@ -266,7 +375,7 @@ private class FakeAuthRepository : AuthRepository {
     override suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome {
         googleAccessTokens += accessToken
         googleFailure?.let { throw it }
-        return googleOutcome
+        return googleLogin?.invoke() ?: googleOutcome
     }
 
     override suspend fun loginWithKakao(accessToken: String): SocialLoginOutcome {

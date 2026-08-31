@@ -1,11 +1,12 @@
 package com.joon.ringout.presentation.home
 
+import com.joon.ringout.presentation.home.model.HomeAlarm
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class HomeAlarmOrderingTest {
     @Test
-    fun placesEnabledAlarmsFirstWhilePreservingEachGroupsOrder() {
+    fun `활성화된 알람을 먼저 배치하고 각 그룹의 순서를 유지한다`() {
         val alarms = listOf(
             alarm(id = "disabled-1", isEnabled = false),
             alarm(id = "enabled-1", isEnabled = true),
@@ -22,7 +23,7 @@ class HomeAlarmOrderingTest {
     }
 
     @Test
-    fun preservesOrderWhenAllAlarmsHaveTheSameState() {
+    fun `모든 알람의 활성화 상태가 같으면 기존 순서를 유지한다`() {
         val alarms = listOf(
             alarm(id = "first", isEnabled = true),
             alarm(id = "second", isEnabled = true),

@@ -3,83 +3,45 @@ package com.joon.ringout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.joon.ringout.analytics.AnalyticsAuthProvider
-import com.joon.ringout.analytics.AnalyticsLoginState
-import com.joon.ringout.analytics.completeAccountWithdrawal
-import com.joon.ringout.analytics.rememberProductAnalyticsRecorder
-import com.joon.ringout.data.auth.rememberAuthRepository
-import com.joon.ringout.data.member.rememberMemberRepository
-import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
-import com.joon.ringout.data.preferences.rememberAppPreferencesDataStore
-import com.joon.ringout.domain.auth.AuthSessionState
-import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
-import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.DefaultMissionLocationState
-import com.joon.ringout.alarm.MissionLocationPermissionDecision
 import com.joon.ringout.alarm.MissionLocationState
-import com.joon.ringout.alarm.newAlarmId
-import com.joon.ringout.alarm.permissionDecision
-import com.joon.ringout.alarm.rememberAlarmController
-import com.joon.ringout.presentation.activemission.ActiveAlarmTrackingScreen
-import com.joon.ringout.presentation.activemission.components.MissionLocationPermissionDialog
-import com.joon.ringout.presentation.alarmsound.AlarmSoundScreen
-import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
-import com.joon.ringout.presentation.alarmsetup.AlarmSetupScreen
-import com.joon.ringout.presentation.alarmsetup.PlatformDefaultAlarmSoundName
-import com.joon.ringout.presentation.alarmsetup.components.weekdaySummary
-import com.joon.ringout.presentation.destination.DefaultDestinationSelection
-import com.joon.ringout.presentation.destination.DestinationMapScreen
-import com.joon.ringout.presentation.destination.DestinationSelection
-import com.joon.ringout.presentation.destination.DestinationViewModel
-import com.joon.ringout.presentation.destination.belongsToDestinationRequest
-import com.joon.ringout.presentation.destination.isConfiguredDestination
-import com.joon.ringout.presentation.destination.rememberDestinationRepository
-import com.joon.ringout.presentation.home.HomeAlarm
-import com.joon.ringout.presentation.home.HomeScreen
-import com.joon.ringout.presentation.login.LoginScreen
-import com.joon.ringout.presentation.login.LoginViewModel
+import com.joon.ringout.di.AppContainer
+import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
+import com.joon.ringout.presentation.app.AppRuntimeCoordinator
+import com.joon.ringout.presentation.app.rememberAppAlarmController
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
-import com.joon.ringout.presentation.onboarding.OnboardingScreen
-import com.joon.ringout.presentation.ringing.AlarmRingingScreen
+import com.joon.ringout.presentation.destination.DestinationViewModel
+import com.joon.ringout.presentation.home.HomeViewModel
+import com.joon.ringout.presentation.login.LoginViewModel
+import com.joon.ringout.presentation.mypage.MyPageViewModel
+import com.joon.ringout.presentation.onboarding.OnboardingRoute
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
-import com.joon.ringout.presentation.settings.SettingsScreen
-import com.joon.ringout.presentation.termsagreement.SignupViewModel
-import com.joon.ringout.presentation.termsagreement.TermId
-import com.joon.ringout.presentation.termsagreement.TermsAgreementScreen
-import com.joon.ringout.presentation.mypage.DefaultMyPagePolicies
-import com.joon.ringout.presentation.mypage.MyPageAccountUiState
-import com.joon.ringout.presentation.mypage.MyPageAccountViewModel
-import com.joon.ringout.presentation.mypage.MyPageScreen
-import com.joon.ringout.presentation.mypage.PolicyId
-import com.joon.ringout.presentation.mypage.findPolicyUrl
-import com.joon.ringout.presentation.nickname.NicknameChangeScreen
+import com.joon.ringout.presentation.signup.SignupViewModel
+import com.joon.ringout.presentation.navigation.AppRoute
+import com.joon.ringout.presentation.navigation.RingoutNavHost
+import com.joon.ringout.presentation.navigation.alarmRuntimeGraph
+import com.joon.ringout.presentation.navigation.alarmEditorGraph
+import com.joon.ringout.presentation.navigation.authGraph
+import com.joon.ringout.presentation.navigation.rememberAlarmEditorNavigation
+import com.joon.ringout.presentation.navigation.rememberAuthNavigation
+import com.joon.ringout.presentation.navigation.homeGraph
+import com.joon.ringout.presentation.navigation.rememberAppNavigationState
+import com.joon.ringout.presentation.navigation.rememberNavigationViewModelScopes
 import com.joon.ringout.presentation.currentLocalClockSnapshot
 import com.joon.ringout.presentation.to24HourTimeString
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
 
 @Composable
 fun App(
+    appContainer: AppContainer,
     appVersion: String = "",
     useSystemLocationPermissionUiOnly: Boolean = false,
     ringingAlarm: AlarmRingingUiState? = null,
@@ -99,12 +61,10 @@ fun App(
     onActiveAlarmMissionForceEndHoldCompleted:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
 ) {
-    val preferencesDataStore = rememberAppPreferencesDataStore()
-    val appPreferencesRepository = remember(preferencesDataStore) {
-        DataStoreAppPreferencesRepository(preferencesDataStore)
-    }
     val appBootstrapViewModel = viewModel {
-        AppBootstrapViewModel(appPreferencesRepository)
+        AppBootstrapViewModel(
+            repository = appContainer.appPreferencesRepository
+        )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState
 
@@ -116,7 +76,7 @@ fun App(
     RingoutTheme(themeMode = appBootstrapUiState.themeMode) {
         when (appBootstrapUiState.destination) {
             AppEntryDestination.Onboarding ->
-                OnboardingScreen(
+                OnboardingRoute(
                     onComplete = appBootstrapViewModel::completeOnboarding,
                     completionEnabled = !appBootstrapUiState.isSaving,
                     completionRetryToken = appBootstrapUiState.onboardingRetryToken,
@@ -124,6 +84,7 @@ fun App(
 
             AppEntryDestination.Home ->
                 RingoutAppContent(
+                    appContainer = appContainer,
                     themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
@@ -161,6 +122,7 @@ private fun AppBootstrapSurface() = Box(
 
 @Composable
 private fun RingoutAppContent(
+    appContainer: AppContainer,
     themeMode: ThemeMode,
     appVersion: String,
     useSystemLocationPermissionUiOnly: Boolean,
@@ -182,764 +144,155 @@ private fun RingoutAppContent(
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
-    val uriHandler = LocalUriHandler.current
-    val productAnalyticsRecorder = rememberProductAnalyticsRecorder()
-    val destinationRepository = rememberDestinationRepository()
-    val destinationViewModel: DestinationViewModel = viewModel {
-        DestinationViewModel(
-            repository = destinationRepository,
-            productAnalyticsRecorder = productAnalyticsRecorder,
-        )
-    }
-    val destinationUiState = destinationViewModel.uiState
-    val authSession = remember { getAuthSession() }
-    val authRepository = rememberAuthRepository(authSession)
-    val memberRepository = rememberMemberRepository()
+    val productAnalyticsRecorder = appContainer.productAnalyticsRecorder
+    val authSession = appContainer.authSession
+    val authRepository = appContainer.authRepository
+    val memberRepository = appContainer.memberRepository
     val authSessionState by authSession.state.collectAsState()
-    val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
-    val coroutineScope = rememberCoroutineScope()
-    val myPageAccountViewModel: MyPageAccountViewModel = viewModel {
-        MyPageAccountViewModel(memberRepository)
-    }
-    val myPageAccountUiState = myPageAccountViewModel.uiState
-    var withdrawalErrorMessage by rememberSaveable { mutableStateOf<String?>(null) }
-    var isWithdrawalInProgress by remember { mutableStateOf(false) }
-    LaunchedEffect(authSessionState) {
-        when (authSessionState) {
-            AuthSessionState.Restoring -> myPageAccountViewModel.onSessionRestoring()
-            AuthSessionState.Unauthenticated,
-            AuthSessionState.ReauthenticationRequired,
-            -> {
-                myPageAccountViewModel.onLoggedOut()
-                destinationViewModel.onLoggedOut()
-            }
-
-            AuthSessionState.Authenticated -> myPageAccountViewModel.onAuthenticated()
-        }
-    }
-    val loginViewModel: LoginViewModel = viewModel {
-        LoginViewModel(
-            authRepository = authRepository,
-            productAnalyticsRecorder = productAnalyticsRecorder,
-        )
-    }
-    val signupViewModel: SignupViewModel = viewModel {
-        SignupViewModel(
-            authRepository = authRepository,
-            destinationRepository = destinationRepository,
-            productAnalyticsRecorder = productAnalyticsRecorder,
-        )
-    }
-    var destinationName by rememberSaveable { mutableStateOf("") }
-    var destinationAddress by rememberSaveable { mutableStateOf("") }
-    var destinationLatitude by rememberSaveable { mutableStateOf<Double?>(null) }
-    var destinationLongitude by rememberSaveable { mutableStateOf<Double?>(null) }
-    var alarmSoundName by rememberSaveable {
-        mutableStateOf(PlatformDefaultAlarmSoundName)
-    }
-    var alarmSoundUri by rememberSaveable { mutableStateOf<String?>(null) }
-    var screenName by rememberSaveable { mutableStateOf(AppScreen.Home.name) }
-    var pendingSignup by remember { mutableStateOf<PendingSignup?>(null) }
-    var handledActiveAlarmOccurrenceId by rememberSaveable {
-        mutableStateOf<String?>(null)
-    }
-    var editingAlarmId by rememberSaveable { mutableStateOf<String?>(null) }
-    var newAlarmInitialTime by rememberSaveable {
-        mutableStateOf(UnavailableEditingAlarmTime)
-    }
-    var destinationRequestId by rememberSaveable { mutableStateOf(0L) }
-    var alarms by remember { mutableStateOf<List<HomeAlarm>?>(null) }
-    var alarmScheduleError by rememberSaveable { mutableStateOf<String?>(null) }
-    var pendingAlarmRequest by remember { mutableStateOf<AlarmScheduleRequest?>(null) }
-    var isAlarmSaveInProgress by remember { mutableStateOf(false) }
-    var locationPermissionDialog by remember {
-        mutableStateOf<MissionLocationPermissionDecision?>(null)
-    }
-    var didRequestFullAccuracy by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(authRepository) {
-        authRepository.restoreSession()
-    }
-    LaunchedEffect(
-        authSessionState,
-        alarmScheduleError,
-        destinationUiState.errorMessage,
-        locationPermissionDialog,
-        withdrawalErrorMessage,
-    ) {
-        if (authSessionState == AuthSessionState.ReauthenticationRequired) {
-            pendingSignup = null
-            alarmScheduleError = null
-            locationPermissionDialog = null
-            pendingAlarmRequest = null
-            isAlarmSaveInProgress = false
-            didRequestFullAccuracy = false
-            withdrawalErrorMessage = null
-            if (destinationUiState.errorMessage != null) {
-                destinationViewModel.clearError()
-            }
-            screenName = AppScreen.Login.name
-        }
-    }
-    val destination = destinationLatitude?.let { latitude ->
-        destinationLongitude?.let { longitude ->
-            DestinationSelection(
-                name = destinationName,
-                address = destinationAddress,
-                latitude = latitude,
-                longitude = longitude,
-            ).takeIf(DestinationSelection::isConfiguredDestination)
-        }
-    }
-    val alarmSound = AlarmSoundSelection(
-        name = if (alarmSoundUri == null) {
-            PlatformDefaultAlarmSoundName
-        } else {
-            alarmSoundName.ifBlank { PlatformDefaultAlarmSoundName }
-        },
-        uri = alarmSoundUri,
-    )
-    val requestedScreen = AppScreen.valueOf(screenName)
-    val screen = resolveAppScreen(
-        requestedScreen = requestedScreen,
-        hasRingingAlarm = ringingAlarm != null,
-        hasActiveAlarmMission = activeAlarmMission != null,
-        authSessionState = authSessionState,
-    )
-    SystemBarAppearanceEffect(
-        themeMode = if (
-            screen == AppScreen.ActiveAlarmTracking ||
-            screen == AppScreen.AlarmRinging
-        ) {
-            ThemeMode.Dark
-        } else {
-            themeMode
-        },
-    )
-    val alarmController = rememberAlarmController(
-        onSaveCompleted = { request ->
-            if (pendingAlarmRequest?.id == request.id) {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                editingAlarmId = null
-                screenName = AppScreen.Home.name
-            }
-        },
-        onSaveError = { request, message ->
-            if (pendingAlarmRequest?.id == request.id) {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = message
-            }
-        },
-        onError = {
-            alarmScheduleError = it
-        },
-    )
-
-    LaunchedEffect(
-        pendingAlarmRequest,
-        missionLocationState.revision,
-        screen,
-    ) {
-        if (screen == AppScreen.AlarmRinging) return@LaunchedEffect
-        val request = pendingAlarmRequest ?: return@LaunchedEffect
-        if (isAlarmSaveInProgress) return@LaunchedEffect
-        when (
-            val decision = missionLocationState.permissionDecision(
-                didRequestFullAccuracy = didRequestFullAccuracy,
-            )
-        ) {
-            MissionLocationPermissionDecision.READY -> {
-                locationPermissionDialog = null
-                didRequestFullAccuracy = false
-                if (!isAlarmSaveInProgress) {
-                    isAlarmSaveInProgress = true
-                    alarmController.schedule(request)
-                }
-            }
-
-            MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->
-                if (useSystemLocationPermissionUiOnly) {
-                    locationPermissionDialog = null
-                    onRequestWhenInUseLocation()
-                } else {
-                    locationPermissionDialog = decision
-                }
-
-            MissionLocationPermissionDecision.EXPLAIN_ALWAYS ->
-                if (useSystemLocationPermissionUiOnly) {
-                    locationPermissionDialog = null
-                    onRequestAlwaysLocation()
-                } else {
-                    locationPermissionDialog = decision
-                }
-
-            MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT -> {
-                if (!useSystemLocationPermissionUiOnly) {
-                    locationPermissionDialog = decision
-                }
-            }
-
-            MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY ->
-                if (useSystemLocationPermissionUiOnly) {
-                    locationPermissionDialog = null
-                    didRequestFullAccuracy = true
-                    onRequestTemporaryFullAccuracy()
-                } else {
-                    locationPermissionDialog = decision
-                }
-
-            MissionLocationPermissionDecision.SERVICES_DISABLED -> {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = "위치 서비스가 꺼져 있어 목적지 알람을 시작할 수 없습니다."
-            }
-
-            MissionLocationPermissionDecision.DENIED -> {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = "위치 권한이 없어 목적지 알람을 시작할 수 없습니다."
-            }
-
-            MissionLocationPermissionDecision.ALWAYS_REQUEST_FAILED -> {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = "위치 권한 상태를 확인하지 못했습니다. 다시 시도해 주세요."
-                onConfirmAlwaysLocationResult()
-            }
-
-            MissionLocationPermissionDecision.RESTRICTED -> {
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-                alarmScheduleError = "이 기기에서는 위치 사용이 제한되어 있습니다."
-            }
-        }
-    }
-
-    if (
-        !useSystemLocationPermissionUiOnly &&
-        canShowAppDialog(screen, authSessionState)
-    ) {
-        MissionLocationPermissionDialog(
-            decision = locationPermissionDialog,
-            onConfirm = {
-                when (locationPermissionDialog) {
-                    MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->
-                        onRequestWhenInUseLocation()
-
-                    MissionLocationPermissionDecision.EXPLAIN_ALWAYS ->
-                        onRequestAlwaysLocation()
-
-                    MissionLocationPermissionDecision.CONFIRM_ALWAYS_RESULT ->
-                        onConfirmAlwaysLocationResult()
-
-                    MissionLocationPermissionDecision.WARN_REDUCED_ACCURACY -> {
-                        didRequestFullAccuracy = true
-                        onRequestTemporaryFullAccuracy()
-                    }
-
-                    else -> Unit
-                }
-                locationPermissionDialog = null
-            },
-            onDismiss = {
-                locationPermissionDialog = null
-                pendingAlarmRequest = null
-                isAlarmSaveInProgress = false
-                didRequestFullAccuracy = false
-            },
-        )
-    }
-    val visibleAlarms = alarms.orEmpty()
-    val editingAlarm = editingAlarmId?.let { alarmId ->
-        visibleAlarms.firstOrNull { it.id == alarmId }
-    }
-    val alarmSetupScreen = if (editingAlarmId == null) {
-        AppScreen.AddAlarm
+    val navigationState = rememberAppNavigationState()
+    // iOS 알람 울림 이동 정책 이전이 끝날 때까지 플랫폼 울림 상태를 현재 백스택보다 우선 표시한다.
+    val displayedRoute = ringingAlarm
+        ?.let { alarm -> AppRoute.AlarmRinging(alarm.id) }
+        ?: navigationState.requestedRoute
+    val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
+    val viewModelScopes = rememberNavigationViewModelScopes(appContainer, retainedRoutes)
+    val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
+    val myPageViewModel = if (AppRoute.MyPage in retainedRoutes) {
+        viewModelScopes.get(AppRoute.MyPage, MyPageViewModel::class)
     } else {
-        AppScreen.EditAlarm
+        null
     }
-    val initialSelectedDays = when {
-        editingAlarm == null -> DefaultSelectedDays
-        editingAlarm.repeatEnabled -> editingAlarm.selectedDays
-        else -> emptyList()
-    }
-
-    LaunchedEffect(alarmController) {
-        alarmController.ensureFullScreenAccess()
-    }
-
-    LaunchedEffect(alarmController) {
-        alarmController.savedAlarms.collect { savedAlarms ->
-            alarms = savedAlarms.map { saved ->
-                saved.request.toHomeAlarm(enabled = saved.enabled)
-            }
-        }
-    }
-
-    LaunchedEffect(destinationUiState.savedEvent?.eventId) {
-        destinationUiState.savedEvent?.let { event ->
-            if (
-                event.belongsToDestinationRequest(
-                    currentRequestId = destinationRequestId,
-                    isDestinationScreenVisible = screenName == AppScreen.Destination.name,
-                )
-            ) {
-                destinationName = event.destination.name
-                destinationAddress = event.destination.address
-                destinationLatitude = event.destination.latitude
-                destinationLongitude = event.destination.longitude
-                screenName = alarmSetupScreen.name
-            }
-            destinationViewModel.consumeSavedEvent(event.eventId)
-        }
-    }
-
-    LaunchedEffect(activeAlarmMission?.occurrenceId) {
-        val occurrenceId = activeAlarmMission?.occurrenceId
-        when {
-            occurrenceId == null -> {
-                handledActiveAlarmOccurrenceId = null
-                if (screenName == AppScreen.ActiveAlarmTracking.name) {
-                    screenName = AppScreen.Home.name
-                }
-            }
-
-            handledActiveAlarmOccurrenceId != occurrenceId -> {
-                handledActiveAlarmOccurrenceId = occurrenceId
-                editingAlarmId = null
-                screenName = AppScreen.ActiveAlarmTracking.name
-            }
-        }
-    }
-
-    if (
-        canShowAppDialog(screen, authSessionState) &&
-        alarmScheduleError != null
-    ) {
-        AlertDialog(
-            onDismissRequest = { alarmScheduleError = null },
-            title = { Text("알람을 처리할 수 없습니다") },
-            text = { Text(alarmScheduleError.orEmpty()) },
-            confirmButton = {
-                TextButton(onClick = { alarmScheduleError = null }) {
-                    Text("확인")
-                }
-            },
+    val authNavigation = if (AppRoute.Login in retainedRoutes) {
+        rememberAuthNavigation(
+            navigationState,
+            viewModelScopes.get(AppRoute.Login, LoginViewModel::class),
+            viewModelScopes.get(AppRoute.Login, SignupViewModel::class),
         )
+    } else {
+        null
     }
-
-    if (
-        canShowAppDialog(screen, authSessionState) &&
-        alarmScheduleError == null &&
-        destinationUiState.errorMessage != null
-    ) {
-        AlertDialog(
-            onDismissRequest = destinationViewModel::clearError,
-            title = { Text("목적지를 처리할 수 없습니다") },
-            text = { Text(destinationUiState.errorMessage.orEmpty()) },
-            confirmButton = {
-                TextButton(onClick = destinationViewModel::clearError) {
-                    Text("확인")
-                }
-            },
+    val editorRoute = navigationState.editorRoute
+    val alarmEditorNavigation = if (editorRoute != null) {
+        rememberAlarmEditorNavigation(
+            navigationState,
+            viewModelScopes.get(editorRoute, AlarmSetupViewModel::class),
+            viewModelScopes.get(editorRoute, DestinationViewModel::class),
         )
+    } else {
+        null
     }
+    val alarmController = rememberAppAlarmController(
+        navigationState = navigationState,
+        editorRoute = editorRoute,
+        alarmSetupViewModel = alarmEditorNavigation?.alarmSetupViewModel,
+        homeViewModel = homeViewModel,
+    )
+    AppRuntimeCoordinator(
+        authRepository = authRepository,
+        authSessionState = authSessionState,
+        navigationState = navigationState,
+        displayedRoute = displayedRoute,
+        themeMode = themeMode,
+        activeMissionOccurrenceId = activeAlarmMission?.occurrenceId,
+        homeViewModel = homeViewModel,
+        myPageViewModel = myPageViewModel,
+        authNavigation = authNavigation,
+        alarmEditorNavigation = alarmEditorNavigation,
+        alarmController = alarmController,
+        missionLocationState = missionLocationState,
+        useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
+        onRequestWhenInUseLocation = onRequestWhenInUseLocation,
+        onRequestAlwaysLocation = onRequestAlwaysLocation,
+        onConfirmAlwaysLocationResult = onConfirmAlwaysLocationResult,
+        onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
+    )
 
-    if (
-        (screen == AppScreen.MyPage || screen == AppScreen.Settings) &&
-        withdrawalErrorMessage != null
-    ) {
-        AlertDialog(
-            onDismissRequest = { withdrawalErrorMessage = null },
-            title = { Text("회원 탈퇴를 완료하지 못했습니다") },
-            text = { Text(withdrawalErrorMessage.orEmpty()) },
-            confirmButton = {
-                TextButton(onClick = { withdrawalErrorMessage = null }) {
-                    Text("확인")
-                }
-            },
-        )
-    }
-
-    when (screen) {
-        AppScreen.AlarmRinging -> ringingAlarm?.let { alarm ->
-            AlarmRingingScreen(
-                alarmTime = alarm.alarmTime,
-                dateText = alarm.dateText,
-                limitMinutes = alarm.limitMinutes,
-                destinationName = alarm.destinationName,
-                onDismissAndNavigateClick = {
-                    screenName = AppScreen.ActiveAlarmTracking.name
-                    onRingingAlarmDismiss(alarm.id)
-                },
-            )
-        }
-
-        AppScreen.Home -> HomeScreen(
-            alarms = visibleAlarms,
-            activeAlarmMission = activeAlarmMission,
-            onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
-            onAddAlarm = {
-                editingAlarmId = null
-                newAlarmInitialTime = currentLocalClockSnapshot().to24HourTimeString()
-                destinationName = ""
-                destinationAddress = ""
-                destinationLatitude = null
-                destinationLongitude = null
-                alarmSoundName = PlatformDefaultAlarmSoundName
-                alarmSoundUri = null
-                screenName = AppScreen.AddAlarm.name
-            },
-            onAlarmClick = { alarmId ->
-                visibleAlarms.firstOrNull { it.id == alarmId }?.let { alarm ->
-                    editingAlarmId = alarm.id
-                    destinationName = alarm.destination
-                    destinationAddress = alarm.targetAddress
-                    destinationLatitude = alarm.targetLatitude
-                    destinationLongitude = alarm.targetLongitude
-                    alarmSoundName = if (alarm.alarmSoundUri == null) {
-                        PlatformDefaultAlarmSoundName
-                    } else {
-                        alarm.alarmSoundName.ifBlank { PlatformDefaultAlarmSoundName }
-                    }
-                    alarmSoundUri = alarm.alarmSoundUri
-                    screenName = AppScreen.EditAlarm.name
-                }
-            },
-            onAlarmEnabledChange = { alarmId, enabled ->
-                alarmController.setEnabled(alarmId, enabled)
-            },
-            onAlarmDelete = { alarmId ->
-                alarmController.deleteAlarm(alarmId)
-            },
-            onActiveAlarmMissionClick = {
-                screenName = AppScreen.ActiveAlarmTracking.name
-            },
-            onSettingsClick = { screenName = AppScreen.MyPage.name },
-        )
-
-        AppScreen.ActiveAlarmTracking -> activeAlarmMission?.let { mission ->
-            ActiveAlarmTrackingScreen(
-                mission = mission,
-                currentLocation = activeAlarmMissionLocation,
-                locationState = missionLocationState,
-                onBackClick = { screenName = AppScreen.Home.name },
-                onForceEndClick = onActiveAlarmMissionForceEnd,
-                onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
-                onForceEndHoldCancelled = onActiveAlarmMissionForceEndHoldCancelled,
-                onForceEndHoldCompleted = onActiveAlarmMissionForceEndHoldCompleted,
-                onExpired = onActiveAlarmMissionExpired,
-            )
-        }
-
-        AppScreen.MyPage,
-        AppScreen.Settings,
-        -> MyPageScreen(
-            themeMode = themeMode,
-            appVersion = appVersion,
-            policies = DefaultMyPagePolicies,
-            accountUiState = myPageAccountUiState,
-            onThemeModeChange = onThemeModeChange,
-            onBackClick = { screenName = AppScreen.Home.name },
-            onAccountStatusClick = { screenName = AppScreen.Login.name },
-            onAccountRetry = myPageAccountViewModel::retry,
-            onEditProfileClick = {
-                if (myPageAccountUiState is MyPageAccountUiState.LoggedIn) {
-                    screenName = AppScreen.NicknameChange.name
-                }
-            },
-            onLogoutConfirm = {
-                coroutineScope.launch {
-                    authRepository.logout()
-                    pendingSignup = null
-                    screenName = AppScreen.Login.name
-                }
-            },
-            onWithdrawConfirm = withdraw@ {
-                if (isWithdrawalInProgress) return@withdraw
-                isWithdrawalInProgress = true
-                coroutineScope.launch {
-                    try {
-                        completeAccountWithdrawal(
-                            withdraw = memberRepository::withdraw,
-                            logout = authRepository::logout,
-                            productAnalyticsRecorder = productAnalyticsRecorder,
+    RingoutNavHost(
+        navigationState = navigationState,
+        displayedRoute = displayedRoute,
+        viewModelStoreProvider = viewModelScopes.storeProvider,
+        modifier = Modifier.fillMaxSize(),
+        isBackBlocked =
+            displayedRoute is AppRoute.AlarmRinging ||
+                authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true ||
+                alarmEditorNavigation?.isBackBlocked(displayedRoute) == true,
+        onBack = { route ->
+            when (route) {
+                AppRoute.AddAlarm,
+                is AppRoute.EditAlarm,
+                is AppRoute.Destination,
+                AppRoute.AlarmSound,
+                -> alarmEditorNavigation?.onBack(route, displayedRoute)
+                AppRoute.Login, AppRoute.TermsAgreement ->
+                    authNavigation?.onBack(route, displayedRoute, authSessionState)
+                is AppRoute.ActiveAlarmTracking -> navigationState.navigate(AppRoute.Home)
+                is AppRoute.AlarmRinging -> Unit
+                else -> navigationState.popBackStack(route)
+            }
+        },
+        graph = {
+            homeGraph(
+                navigationState = navigationState,
+                homeViewModel = homeViewModel,
+                myPageViewModel = myPageViewModel,
+                memberRepository = memberRepository,
+                authSessionState = authSessionState,
+                themeMode = themeMode,
+                appVersion = appVersion,
+                alarmController = alarmController,
+                activeAlarmMission = activeAlarmMission,
+                onThemeModeChange = onThemeModeChange,
+                onAddAlarm = {
+                    viewModelScopes.createAlarmEditorNavigation(navigationState, AppRoute.AddAlarm)
+                        .startCreating(
+                            initialTime = currentLocalClockSnapshot().to24HourTimeString(),
                         )
-                        pendingSignup = null
-                        withdrawalErrorMessage = null
-                        screenName = AppScreen.MyPage.name
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (error: Throwable) {
-                        withdrawalErrorMessage = error.message ?: "회원 탈퇴를 다시 시도해 주세요."
-                    } finally {
-                        isWithdrawalInProgress = false
-                    }
-                }
-            },
-            onPolicyClick = { policyId ->
-                findPolicyUrl(policyId)?.let { url ->
-                    runCatching { uriHandler.openUri(url) }
-                }
-            },
-            productAnalyticsRecorder = productAnalyticsRecorder,
-        )
-
-        AppScreen.NicknameChange -> {
-            val account = myPageAccountUiState as? MyPageAccountUiState.LoggedIn
-            if (account == null) {
-                LaunchedEffect(authSessionState) {
-                    if (authSessionState != AuthSessionState.Restoring) {
-                        screenName = AppScreen.MyPage.name
-                    }
-                }
-            } else {
-                NicknameChangeScreen(
-                    initialNickname = account.nickname,
-                    memberRepository = memberRepository,
-                    onBackClick = { screenName = AppScreen.MyPage.name },
-                    onConfirmClick = { updatedNickname ->
-                        myPageAccountViewModel.onNicknameUpdated(updatedNickname)
-                        screenName = AppScreen.MyPage.name
-                    },
-                )
-            }
-        }
-
-        AppScreen.Login -> LoginScreen(
-            onBackClick = { screenName = AppScreen.MyPage.name },
-            onAuthenticated = {
-                pendingSignup = null
-                screenName = AppScreen.Home.name
-            },
-            onSignupRequired = { signupToken, provider ->
-                pendingSignup = PendingSignup(
-                    signupToken = signupToken,
-                    provider = provider,
-                )
-                screenName = AppScreen.TermsAgreement.name
-            },
-            viewModel = loginViewModel,
-        )
-
-        AppScreen.TermsAgreement -> {
-            val pending = pendingSignup
-            if (pending == null) {
-                LaunchedEffect(Unit) {
-                    screenName = AppScreen.Login.name
-                }
-            } else {
-                val signupUiState = signupViewModel.uiState
-                val completedEventId = signupUiState.completedEventId
-                LaunchedEffect(completedEventId) {
-                    completedEventId ?: return@LaunchedEffect
-                    pendingSignup = null
-                    signupViewModel.consumeCompletedEvent(completedEventId)
-                    screenName = AppScreen.Home.name
-                }
-                TermsAgreementScreen(
-                    onStart = { agreedTerms ->
-                        signupViewModel.signup(
-                            signupToken = pending.signupToken,
-                            agreedTermIds = agreedTerms,
-                            provider = pending.provider,
-                        )
-                    },
-                    onTermDetailClick = { termId ->
-                        val policyId = when (termId) {
-                            TermId.Service -> PolicyId("terms")
-                            TermId.Privacy -> PolicyId("privacy")
-                            else -> null
-                        }
-                        val policyUrl = policyId?.let(::findPolicyUrl)
-                        policyUrl?.let { url -> runCatching { uriHandler.openUri(url) } }
-                    },
-                    isSaving = signupUiState.isSaving,
-                    errorMessage = signupUiState.errorMessage,
-                )
-            }
-        }
-
-        AppScreen.AddAlarm,
-        AppScreen.EditAlarm,
-        AppScreen.Destination,
-        AppScreen.AlarmSound,
-        -> Box(Modifier.fillMaxSize()) {
-            AlarmSetupScreen(
-                destination = destination?.name.orEmpty(),
-                alarmSound = alarmSound,
-                isDestinationSet = destination != null,
-                initialTime = alarmSetupInitialTime(
-                    editingAlarmId = editingAlarmId,
-                    editingAlarmTime = editingAlarm?.time,
-                    newAlarmInitialTime = newAlarmInitialTime,
-                ),
-                initialSelectedDays = initialSelectedDays,
-                initialLimitMinutes = editingAlarm?.timeLimitMinutes ?: DefaultLimitMinutes,
-                isSaveInProgress = pendingAlarmRequest != null || isAlarmSaveInProgress,
-                onBackClick = {
-                    if (pendingAlarmRequest == null && !isAlarmSaveInProgress) {
-                        didRequestFullAccuracy = false
-                        editingAlarmId = null
-                        screenName = AppScreen.Home.name
+                },
+                onEditAlarm = { request ->
+                    viewModelScopes.createAlarmEditorNavigation(
+                        navigationState,
+                        AppRoute.EditAlarm(request.id),
+                    ).startEditing(request)
+                },
+                onLogin = { navigationState.navigate(AppRoute.Login) },
+                onActiveAlarmMissionClick = {
+                    activeAlarmMission?.occurrenceId?.let { occurrenceId ->
+                        navigationState.navigate(AppRoute.ActiveAlarmTracking(occurrenceId))
                     }
                 },
-                onDestinationClick = {
-                    destinationRequestId += 1L
-                    screenName = AppScreen.Destination.name
-                },
-                onAlarmSoundClick = { screenName = AppScreen.AlarmSound.name },
-                onSaveClick = saveAlarm@ { time, selectedDays, repeatEnabled, limitMinutes, alarmSound ->
-                    if (pendingAlarmRequest != null || isAlarmSaveInProgress) return@saveAlarm
-                    val configuredDestination = destination ?: return@saveAlarm
-                    didRequestFullAccuracy = false
-                    pendingAlarmRequest = AlarmScheduleRequest(
-                        id = editingAlarmId ?: newAlarmId(),
-                        time = time,
-                        selectedDays = selectedDays,
-                        repeatEnabled = repeatEnabled,
-                        limitMinutes = limitMinutes,
-                        destinationName = configuredDestination.name,
-                        destinationAddress = configuredDestination.address,
-                        destinationLatitude = configuredDestination.latitude,
-                        destinationLongitude = configuredDestination.longitude,
-                        alarmSoundName = alarmSound.name,
-                        alarmSoundUri = alarmSound.uri,
-                    )
-                },
+                onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
             )
-
-            if (screen == AppScreen.Destination) {
-                DestinationMapScreen(
-                    initialSelection = destination ?: DefaultDestinationSelection,
-                    requestCurrentLocationOnStart = false,
-                    isAuthenticated = authSessionState == AuthSessionState.Authenticated,
-                    onEntered = destinationViewModel::onScreenEntered,
-                    onBackClick = { screenName = alarmSetupScreen.name },
-                    onConfirmClick = saveDestination@ { destination ->
-                        val loginState = analyticsLoginState ?: return@saveDestination
-                        destinationViewModel.save(
-                            destination = destination,
-                            requestId = destinationRequestId,
-                            loginState = loginState,
-                        )
-                    },
-                    onSavedDestinationConfirmClick = { savedDestination ->
-                        destinationName = savedDestination.name
-                        destinationAddress = savedDestination.address
-                        destinationLatitude = savedDestination.latitude
-                        destinationLongitude = savedDestination.longitude
-                        screenName = alarmSetupScreen.name
-                    },
-                    savedDestinations = destinationUiState.destinations,
-                    onSavedDestinationRename = destinationViewModel::rename,
-                    onSavedDestinationDeleteClick = destinationViewModel::delete,
-                    onSavedDestinationSelected = { source ->
-                        analyticsLoginState?.let { loginState ->
-                            productAnalyticsRecorder.recordDestinationSelected(
-                                source = source,
-                                loginState = loginState,
-                            )
-                        }
-                    },
-                    isSaveInProgress = destinationUiState.isSaving,
-                    isDestinationActionEnabled = analyticsLoginState != null,
+            alarmRuntimeGraph(
+                navigationState = navigationState,
+                ringingAlarm = ringingAlarm,
+                activeAlarmMission = activeAlarmMission,
+                activeAlarmMissionLocation = activeAlarmMissionLocation,
+                missionLocationState = missionLocationState,
+                onRingingAlarmDismiss = onRingingAlarmDismiss,
+                onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+                onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
+                onActiveAlarmMissionForceEndHoldStarted =
+                    onActiveAlarmMissionForceEndHoldStarted,
+                onActiveAlarmMissionForceEndHoldCancelled =
+                    onActiveAlarmMissionForceEndHoldCancelled,
+                onActiveAlarmMissionForceEndHoldCompleted =
+                    onActiveAlarmMissionForceEndHoldCompleted,
+            )
+            if (authNavigation != null) {
+                authGraph(
+                    authNavigation = authNavigation,
+                    displayedRoute = displayedRoute,
+                    authSessionState = authSessionState,
                 )
             }
-
-            if (screen == AppScreen.AlarmSound) {
-                AlarmSoundScreen(
-                    selectedSound = alarmSound,
-                    onBackClick = { screenName = alarmSetupScreen.name },
-                    onSaveClick = { selectedSound ->
-                        alarmSoundName = selectedSound.name
-                        alarmSoundUri = selectedSound.uri
-                        screenName = alarmSetupScreen.name
-                    },
+            if (alarmEditorNavigation != null) {
+                alarmEditorGraph(
+                    navigation = alarmEditorNavigation,
+                    displayedRoute = displayedRoute,
+                    authSessionState = authSessionState,
+                    productAnalyticsRecorder = productAnalyticsRecorder,
                 )
             }
-        }
-    }
+        },
+    )
 }
-
-internal enum class AppScreen {
-    AlarmRinging,
-    Home,
-    AddAlarm,
-    EditAlarm,
-    Destination,
-    AlarmSound,
-    MyPage,
-    NicknameChange,
-    Login,
-    TermsAgreement,
-    Settings,
-    ActiveAlarmTracking,
-}
-
-private data class PendingSignup(
-    val signupToken: String,
-    val provider: AnalyticsAuthProvider,
-)
-
-private const val UnavailableEditingAlarmTime = "06:20"
-private val DefaultSelectedDays = listOf("월", "화", "수", "목", "금", "토", "일")
-private const val DefaultLimitMinutes = 13
-internal fun alarmSetupInitialTime(
-    editingAlarmId: String?,
-    editingAlarmTime: String?,
-    newAlarmInitialTime: String,
-): String = when {
-    editingAlarmId == null -> newAlarmInitialTime
-    editingAlarmTime != null -> editingAlarmTime
-    else -> UnavailableEditingAlarmTime
-}
-
-internal fun AuthSessionState.toAnalyticsLoginStateOrNull(): AnalyticsLoginState? = when (this) {
-    AuthSessionState.Restoring -> null
-    AuthSessionState.Unauthenticated -> AnalyticsLoginState.LoggedOut
-    AuthSessionState.ReauthenticationRequired -> AnalyticsLoginState.LoggedOut
-    AuthSessionState.Authenticated -> AnalyticsLoginState.LoggedIn
-}
-
-internal fun resolveAppScreen(
-    requestedScreen: AppScreen,
-    hasRingingAlarm: Boolean,
-    hasActiveAlarmMission: Boolean,
-    authSessionState: AuthSessionState,
-): AppScreen = when {
-    hasRingingAlarm -> AppScreen.AlarmRinging
-    authSessionState == AuthSessionState.ReauthenticationRequired -> AppScreen.Login
-    requestedScreen == AppScreen.ActiveAlarmTracking && !hasActiveAlarmMission -> AppScreen.Home
-    else -> requestedScreen
-}
-
-internal fun canShowAppDialog(
-    screen: AppScreen,
-    authSessionState: AuthSessionState,
-): Boolean =
-    screen != AppScreen.AlarmRinging &&
-        authSessionState != AuthSessionState.ReauthenticationRequired
-
-private fun AlarmScheduleRequest.toHomeAlarm(enabled: Boolean): HomeAlarm = HomeAlarm(
-    id = id,
-    time = time,
-    days = if (repeatEnabled) weekdaySummary(selectedDays) else "한 번",
-    destination = destinationName,
-    timeLimitMinutes = limitMinutes,
-    isEnabled = enabled,
-    targetAddress = destinationAddress,
-    targetLatitude = destinationLatitude,
-    targetLongitude = destinationLongitude,
-    alarmSoundName = alarmSoundName,
-    alarmSoundUri = alarmSoundUri,
-    selectedDays = selectedDays,
-    repeatEnabled = repeatEnabled,
-)

@@ -7,11 +7,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.tooling.preview.Preview
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.ActiveAlarmMissionStore
@@ -30,7 +28,6 @@ class MainActivity : ComponentActivity() {
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
             refreshActiveAlarmMission()
         }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.light(
@@ -43,6 +40,7 @@ class MainActivity : ComponentActivity() {
             ),
         )
         super.onCreate(savedInstanceState)
+        val appContainer = (application as RingoutApplication).appContainer
         activeAlarmMissionStore = ActiveAlarmMissionStore(applicationContext)
         alarmMissionCoordinator = AlarmMissionCoordinator(applicationContext)
         playStoreUpdateChecker = PlayStoreUpdateChecker(
@@ -56,6 +54,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             App(
+                appContainer = appContainer,
                 appVersion = BuildConfig.VERSION_NAME,
                 activeAlarmMission = activeAlarmMission,
                 activeAlarmMissionLocation = activeAlarmMissionLocation,
@@ -114,10 +113,4 @@ class MainActivity : ComponentActivity() {
             activeAlarmMissionStore.readLastLocation(activeMission.occurrenceId)
         }
     }
-}
-
-@Preview
-@Composable
-fun AppAndroidPreview() {
-    App(appVersion = BuildConfig.VERSION_NAME)
 }

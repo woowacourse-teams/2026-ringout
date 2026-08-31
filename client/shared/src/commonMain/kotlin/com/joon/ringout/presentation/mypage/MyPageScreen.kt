@@ -28,18 +28,14 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.analytics.AnalyticsLoginState
-import com.joon.ringout.analytics.ProductAnalyticsRecorder
-import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
-import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.mypage.component.MissionCalendarCard
-import com.joon.ringout.presentation.mypage.component.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.component.MyPageAccountActionDialog
+import com.joon.ringout.presentation.mypage.component.MyPageAccountActionErrorDialog
 import com.joon.ringout.presentation.mypage.component.MyPageAccountLoadError
 import com.joon.ringout.presentation.mypage.component.MyPageAccountManagementSection
 import com.joon.ringout.presentation.mypage.component.MyPageAccountStatus
@@ -49,14 +45,22 @@ import com.joon.ringout.presentation.mypage.component.MyPageLoggedInAccountStatu
 import com.joon.ringout.presentation.mypage.component.MyPagePolicySection
 import com.joon.ringout.presentation.mypage.component.MyPageThemeCard
 import com.joon.ringout.presentation.mypage.component.myPageColors
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
+import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
+import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
+import com.joon.ringout.presentation.mypage.model.MyPageUiState
 
 @Composable
-fun MyPageScreen(
+internal fun MyPageScreen(
+    uiState: MyPageUiState,
     themeMode: ThemeMode,
     appVersion: String,
     policies: List<PolicyInfo>,
-    accountUiState: MyPageAccountUiState,
+    onScreenEntered: (MyPageEntryToken, AnalyticsLoginState) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onPreviousMonthClick: (AnalyticsLoginState) -> Unit,
+    onNextMonthClick: (AnalyticsLoginState) -> Unit,
+    onCalendarRetry: () -> Unit,
     onBackClick: () -> Unit,
     onAccountStatusClick: () -> Unit,
     onAccountRetry: () -> Unit,
@@ -64,37 +68,34 @@ fun MyPageScreen(
     onEditProfileClick: () -> Unit,
     onLogoutConfirm: () -> Unit,
     onWithdrawConfirm: () -> Unit,
-    productAnalyticsRecorder: ProductAnalyticsRecorder,
+    onAccountActionErrorDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: MyPageViewModel = rememberMyPageViewModel(productAnalyticsRecorder),
 ) {
     val entryToken = remember { MyPageEntryToken() }
-    val analyticsLoginState = when (accountUiState) {
-        MyPageAccountUiState.Loading -> null
-        MyPageAccountUiState.LoggedOut -> AnalyticsLoginState.LoggedOut
-        MyPageAccountUiState.Error -> AnalyticsLoginState.LoggedIn
-        is MyPageAccountUiState.LoggedIn -> AnalyticsLoginState.LoggedIn
+    val analyticsLoginState = when (uiState.accountStatus) {
+        MyPageAccountStatus.Loading -> null
+        MyPageAccountStatus.LoggedOut -> AnalyticsLoginState.LoggedOut
+        MyPageAccountStatus.Error -> AnalyticsLoginState.LoggedIn
+        is MyPageAccountStatus.LoggedIn -> AnalyticsLoginState.LoggedIn
     }
-    LaunchedEffect(viewModel, entryToken, analyticsLoginState) {
+    LaunchedEffect(entryToken, analyticsLoginState) {
         if (analyticsLoginState != null) {
-            viewModel.onScreenEntered(entryToken, analyticsLoginState)
+            onScreenEntered(entryToken, analyticsLoginState)
         }
     }
-    PlatformBackHandler(onBack = onBackClick)
     MyPageScreenContent(
-        uiState = viewModel.uiState,
+        uiState = uiState,
         themeMode = themeMode,
         appVersion = appVersion,
         policies = policies,
-        accountUiState = accountUiState,
         onThemeModeChange = onThemeModeChange,
         onPreviousMonthClick = {
-            analyticsLoginState?.let(viewModel::onPreviousMonthClick)
+            analyticsLoginState?.let(onPreviousMonthClick)
         },
         onNextMonthClick = {
-            analyticsLoginState?.let(viewModel::onNextMonthClick)
+            analyticsLoginState?.let(onNextMonthClick)
         },
-        onRetry = viewModel::retry,
+        onCalendarRetry = onCalendarRetry,
         isMonthNavigationEnabled = analyticsLoginState != null,
         onBackClick = onBackClick,
         onAccountStatusClick = onAccountStatusClick,
@@ -105,18 +106,13 @@ fun MyPageScreen(
         onWithdrawConfirm = onWithdrawConfirm,
         modifier = modifier,
     )
-}
 
-@Composable
-private fun rememberMyPageViewModel(
-    productAnalyticsRecorder: ProductAnalyticsRecorder,
-): MyPageViewModel {
-    val missionHistoryRepository = rememberMissionHistoryRepository()
-    return viewModel {
-        MyPageViewModel(
-            getMissionSuccessDates = GetMissionSuccessDates(missionHistoryRepository),
-            productAnalyticsRecorder = productAnalyticsRecorder,
-            initialMonth = currentMissionYearMonth(),
+    val actionError = uiState.accountAction as? MyPageAccountActionState.Error
+    if (actionError != null) {
+        MyPageAccountActionErrorDialog(
+            action = actionError.action,
+            message = actionError.message,
+            onDismiss = onAccountActionErrorDismiss,
         )
     }
 }
@@ -130,12 +126,11 @@ fun MyPageScreenContent(
     onThemeModeChange: (ThemeMode) -> Unit,
     onPreviousMonthClick: () -> Unit,
     onNextMonthClick: () -> Unit,
-    onRetry: () -> Unit,
+    onCalendarRetry: () -> Unit,
     onBackClick: () -> Unit,
     onAccountStatusClick: () -> Unit,
     onAccountRetry: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
-    accountUiState: MyPageAccountUiState = MyPageAccountUiState.LoggedOut,
     isMonthNavigationEnabled: Boolean = true,
     onEditProfileClick: () -> Unit = {},
     onLogoutConfirm: () -> Unit = {},
@@ -143,6 +138,9 @@ fun MyPageScreenContent(
     modifier: Modifier = Modifier,
 ) {
     val colors = myPageColors()
+    val accountStatus = uiState.accountStatus
+    val isAccountActionInProgress =
+        uiState.accountAction is MyPageAccountActionState.InProgress
     var pendingAccountAction by remember { mutableStateOf<MyPageAccountAction?>(null) }
 
     LazyColumn(
@@ -156,8 +154,8 @@ fun MyPageScreenContent(
         item { MyPageHeader(onBackClick = onBackClick) }
         item { Spacer(Modifier.height(6.dp)) }
         item {
-            when (accountUiState) {
-                MyPageAccountUiState.Loading -> {
+            when (accountStatus) {
+                MyPageAccountStatus.Loading -> {
                     Text(
                         text = "회원 정보 불러오는 중…",
                         modifier = Modifier.semantics {
@@ -168,18 +166,18 @@ fun MyPageScreenContent(
                     )
                 }
 
-                MyPageAccountUiState.LoggedOut -> {
+                MyPageAccountStatus.LoggedOut -> {
                     MyPageAccountStatus(onClick = onAccountStatusClick)
                 }
 
-                MyPageAccountUiState.Error -> {
+                MyPageAccountStatus.Error -> {
                     MyPageAccountLoadError(onRetry = onAccountRetry)
                 }
 
-                is MyPageAccountUiState.LoggedIn -> {
+                is MyPageAccountStatus.LoggedIn -> {
                     MyPageLoggedInAccountStatus(
-                        nickname = accountUiState.nickname,
-                        email = accountUiState.email,
+                        nickname = accountStatus.nickname,
+                        email = accountStatus.email,
                         onEditClick = onEditProfileClick,
                     )
                 }
@@ -211,7 +209,7 @@ fun MyPageScreenContent(
                 )
             }
             item {
-                TextButton(onClick = onRetry) {
+                TextButton(onClick = onCalendarRetry) {
                     Text("다시 시도")
                 }
             }
@@ -235,14 +233,15 @@ fun MyPageScreenContent(
         item { Spacer(Modifier.height(10.dp)) }
         item { MyPageAppVersionRow(appVersion = appVersion) }
         if (
-            accountUiState is MyPageAccountUiState.LoggedIn ||
-            accountUiState == MyPageAccountUiState.Error
+            accountStatus is MyPageAccountStatus.LoggedIn ||
+            accountStatus == MyPageAccountStatus.Error
         ) {
             item { Spacer(Modifier.height(10.dp)) }
             item {
                 MyPageAccountManagementSection(
                     onLogoutClick = { pendingAccountAction = MyPageAccountAction.Logout },
                     onWithdrawClick = { pendingAccountAction = MyPageAccountAction.Withdraw },
+                    enabled = !isAccountActionInProgress,
                 )
             }
         }
@@ -268,6 +267,7 @@ private val PreviewState = MyPageUiState(
     selectedMonth = MyPageCalendarMonth(MissionYearMonth(2026, 8)),
     successDates = listOf(1, 3, 5, 7, 11, 13, 17, 21, 23, 25, 28)
         .mapTo(mutableSetOf()) { day -> MissionDate.of(2026, 8, day) },
+    accountStatus = MyPageAccountStatus.LoggedOut,
 )
 
 @Preview(name = "Dark My Page - success stamps", widthDp = 402, heightDp = 985)
@@ -304,19 +304,17 @@ private fun MyPageErrorPreview() = MyPagePreview(
 @Composable
 private fun MyPageAccountErrorPreview() = MyPagePreview(
     themeMode = ThemeMode.Light,
-    state = PreviewState,
-    accountUiState = MyPageAccountUiState.Error,
+    state = PreviewState.copy(accountStatus = MyPageAccountStatus.Error),
 )
 
 @Preview(name = "Account Loading My Page", widthDp = 402, heightDp = 941)
 @Composable
 private fun MyPageAccountLoadingPreview() = MyPagePreview(
     themeMode = ThemeMode.Dark,
-    state = PreviewState,
-    accountUiState = MyPageAccountUiState.Loading,
+    state = PreviewState.copy(accountStatus = MyPageAccountStatus.Loading),
 )
 
-private val PreviewLoggedInAccount = MyPageAccountUiState.LoggedIn(
+private val PreviewLoggedInAccount = MyPageAccountStatus.LoggedIn(
     nickname = "닉네임닉네임12312313",
     email = "dsakdfsa@gmail.com",
 )
@@ -327,19 +325,18 @@ private fun MyPageLoggedInInteractivePreview(initialThemeMode: ThemeMode) {
 
     RingoutTheme(previewThemeMode) {
         MyPageScreenContent(
-            uiState = PreviewState,
+            uiState = PreviewState.copy(accountStatus = PreviewLoggedInAccount),
             themeMode = previewThemeMode,
             appVersion = "1.0.0",
             policies = DefaultMyPagePolicies,
             onThemeModeChange = { previewThemeMode = it },
             onPreviousMonthClick = {},
             onNextMonthClick = {},
-            onRetry = {},
+            onCalendarRetry = {},
             onBackClick = {},
             onAccountStatusClick = {},
             onAccountRetry = {},
             onPolicyClick = {},
-            accountUiState = PreviewLoggedInAccount,
         )
     }
 }
@@ -348,7 +345,6 @@ private fun MyPageLoggedInInteractivePreview(initialThemeMode: ThemeMode) {
 private fun MyPagePreview(
     themeMode: ThemeMode,
     state: MyPageUiState,
-    accountUiState: MyPageAccountUiState = MyPageAccountUiState.LoggedOut,
 ) {
     RingoutTheme(themeMode) {
         MyPageScreenContent(
@@ -359,12 +355,11 @@ private fun MyPagePreview(
             onThemeModeChange = {},
             onPreviousMonthClick = {},
             onNextMonthClick = {},
-            onRetry = {},
+            onCalendarRetry = {},
             onBackClick = {},
             onAccountStatusClick = {},
             onAccountRetry = {},
             onPolicyClick = {},
-            accountUiState = accountUiState,
         )
     }
 }

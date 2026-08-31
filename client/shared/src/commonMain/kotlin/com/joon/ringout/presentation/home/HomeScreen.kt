@@ -9,40 +9,33 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.presentation.home.components.HomeAlarmListState
 import com.joon.ringout.presentation.home.components.HomeEmptyState
-
-data class HomeAlarm(
-    val id: String,
-    val time: String,
-    val days: String,
-    val destination: String,
-    val timeLimitMinutes: Int,
-    val isEnabled: Boolean,
-    val targetAddress: String = "",
-    val targetLatitude: Double? = null,
-    val targetLongitude: Double? = null,
-    val alarmSoundName: String = "기본 알람음",
-    val alarmSoundUri: String? = null,
-    val selectedDays: List<String> = emptyList(),
-    val repeatEnabled: Boolean = true,
-)
+import com.joon.ringout.presentation.home.components.HomeLoadingState
+import com.joon.ringout.presentation.home.model.HomeAlarm
+import com.joon.ringout.presentation.home.model.HomeUiState
 
 @Composable
 fun HomeScreen(
-    alarms: List<HomeAlarm>,
+    uiState: HomeUiState,
     onAddAlarm: () -> Unit,
     onAlarmClick: (String) -> Unit,
     onAlarmEnabledChange: (String, Boolean) -> Unit,
     onAlarmDelete: (String) -> Unit,
-    onSettingsClick: () -> Unit,
+    onMyPageClick: () -> Unit,
     onActiveAlarmMissionClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     activeAlarmMission: ActiveAlarmMission? = null,
     onActiveAlarmMissionExpired: () -> Unit = {},
 ) {
+    val alarms = uiState.alarms
+    if (uiState.isLoading && activeAlarmMission == null) {
+        HomeLoadingState(modifier = modifier)
+        return
+    }
+
     if (alarms.isEmpty() && activeAlarmMission == null) {
         HomeEmptyState(
             onAddAlarm = onAddAlarm,
-            onSettingsClick = onSettingsClick,
+            onMyPageClick = onMyPageClick,
             modifier = modifier,
         )
         return
@@ -58,7 +51,7 @@ fun HomeScreen(
         onAlarmClick = onAlarmClick,
         onAlarmEnabledChange = onAlarmEnabledChange,
         onAlarmDelete = onAlarmDelete,
-        onSettingsClick = onSettingsClick,
+        onMyPageClick = onMyPageClick,
         onActiveAlarmMissionClick = onActiveAlarmMissionClick,
         modifier = modifier,
         activeAlarmMission = activeAlarmMission,
@@ -71,17 +64,32 @@ internal fun enabledAlarmsFirst(alarms: List<HomeAlarm>): List<HomeAlarm> {
     return enabledAlarms + disabledAlarms
 }
 
+@Preview(name = "Dark loading Home", widthDp = 402, heightDp = 941)
+@Composable
+private fun DarkLoadingHomeScreenPreview() {
+    RingoutTheme(themeMode = ThemeMode.Dark) {
+        HomeScreen(
+            uiState = HomeUiState(),
+            onAddAlarm = {},
+            onAlarmClick = {},
+            onAlarmEnabledChange = { _, _ -> },
+            onAlarmDelete = {},
+            onMyPageClick = {},
+        )
+    }
+}
+
 @Preview(name = "Dark empty Home", widthDp = 402, heightDp = 941)
 @Composable
 private fun DarkEmptyHomeScreenPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         HomeScreen(
-            alarms = emptyList(),
+            uiState = HomeUiState(isLoading = false),
             onAddAlarm = {},
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onSettingsClick = {},
+            onMyPageClick = {},
         )
     }
 }
@@ -91,12 +99,12 @@ private fun DarkEmptyHomeScreenPreview() {
 private fun LightEmptyHomeScreenPreview() {
     RingoutTheme(themeMode = ThemeMode.Light) {
         HomeScreen(
-            alarms = emptyList(),
+            uiState = HomeUiState(isLoading = false),
             onAddAlarm = {},
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onSettingsClick = {},
+            onMyPageClick = {},
         )
     }
 }
@@ -112,7 +120,7 @@ private fun DarkPopulatedHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onSettingsClick = {},
+            onMyPageClick = {},
         )
     }
 }
@@ -128,7 +136,7 @@ private fun LightPopulatedHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onSettingsClick = {},
+            onMyPageClick = {},
         )
     }
 }
