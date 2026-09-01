@@ -14,13 +14,19 @@ internal fun rememberAppNavigationState(): AppNavigationState {
         NavBackStack<AppRoute>(AppRoute.Home)
     }
     return remember(backStack) {
-        AppNavigationState(backStack)
+        AppNavigationState(
+            routes = backStack,
+            guestOnlyMode = true,
+        ).apply {
+            normalizeForGuestMode()
+        }
     }
 }
 
 /** 화면 이동 요청과 표시 경로를 타입 안전한 Navigation 3 백스택으로 관리한다. */
 internal class AppNavigationState(
     private val routes: NavBackStack<AppRoute> = NavBackStack(AppRoute.Home),
+    private val guestOnlyMode: Boolean = false,
 ) {
     val backStack: List<AppRoute>
         get() = routes
@@ -36,6 +42,19 @@ internal class AppNavigationState(
      * 경로의 식별자가 다르면 같은 화면 유형이어도 최상위 항목을 교체한다.
      */
     fun navigate(route: AppRoute) {
+        if (guestOnlyMode) {
+            when (route) {
+                AppRoute.Login,
+                AppRoute.TermsAgreement,
+                AppRoute.NicknameChange,
+                -> {
+                    navigate(AppRoute.MyPage)
+                    return
+                }
+
+                else -> Unit
+            }
+        }
         val destinationStack = when (route) {
             AppRoute.Home -> listOf(AppRoute.Home)
             AppRoute.MyPage -> listOf(AppRoute.Home, AppRoute.MyPage)
@@ -76,6 +95,18 @@ internal class AppNavigationState(
     }
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
+
+    /** 이전 로그인 버전에서 복원된 계정 화면을 비로그인 마이페이지로 되돌린다. */
+    internal fun normalizeForGuestMode() {
+        when (requestedRoute) {
+            AppRoute.Login,
+            AppRoute.TermsAgreement,
+            AppRoute.NicknameChange,
+            -> navigate(AppRoute.MyPage)
+
+            else -> Unit
+        }
+    }
 
     /** 실제 백스택과 플랫폼에서 우선 표시하는 경로의 화면 상태를 함께 유지한다. */
     fun retainedRoutes(displayedRoute: AppRoute): List<AppRoute> =

@@ -22,6 +22,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(annotations = {RestController.class})
 public class ExceptionAdvice {
 
+    private static final String UNEXPECTED_EXCEPTION_EVENT = "unexpected_exception_occurred";
+    private static final String INTERNAL_SERVER_ERROR_REASON = "INTERNAL_SERVER_ERROR";
+
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<CustomResponse<Void>> handleRequestConstraintViolation(ConstraintViolationException e) {
         String errorMessage = e.getConstraintViolations().stream()
@@ -70,7 +73,12 @@ public class ExceptionAdvice {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<CustomResponse<String>> exception(Exception e) {
-        e.printStackTrace();
+        log.atError()
+            .addKeyValue("event", UNEXPECTED_EXCEPTION_EVENT)
+            .addKeyValue("reason", INTERNAL_SERVER_ERROR_REASON)
+            .addKeyValue("exception", e.getClass().getName())
+            .setCause(e)
+            .log("예상하지 못한 서버 예외 발생");
 
         return fail(ErrorStatus.INTERNAL_SERVER_ERROR, e.getMessage());
     }

@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
 
 @Composable
 internal fun MyPageRoute(
@@ -13,8 +12,6 @@ internal fun MyPageRoute(
     appVersion: String,
     onThemeModeChange: (ThemeMode) -> Unit,
     onBackClick: () -> Unit,
-    onLoginClick: () -> Unit,
-    onNicknameChangeClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -31,16 +28,6 @@ internal fun MyPageRoute(
         onNextMonthClick = viewModel::onNextMonthClick,
         onCalendarRetry = viewModel::retryCalendar,
         onBackClick = onBackClick,
-        onAccountStatusClick = onLoginClick,
-        onAccountRetry = viewModel::retryAccount,
-        onEditProfileClick = {
-            if (uiState.accountStatus is MyPageAccountStatus.LoggedIn) {
-                onNicknameChangeClick()
-            }
-        },
-        onLogoutConfirm = viewModel::logout,
-        onWithdrawConfirm = viewModel::withdraw,
-        onAccountActionErrorDismiss = viewModel::clearAccountActionError,
         onPolicyClick = { policyId ->
             findPolicyUrl(policyId)?.let { url ->
                 runCatching { uriHandler.openUri(url) }
@@ -48,4 +35,7 @@ internal fun MyPageRoute(
         },
         modifier = modifier,
     )
+
+    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 계정 상태, 로그인, 프로필 수정,
+    // 로그아웃, 회원 탈퇴 콜백을 MyPageScreen에 다시 연결한다.
 }

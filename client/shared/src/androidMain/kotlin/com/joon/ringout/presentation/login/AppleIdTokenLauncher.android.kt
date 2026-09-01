@@ -9,10 +9,11 @@ internal actual fun rememberAppleIdTokenLauncher(
     onResult: (AppleIdTokenResult) -> Unit,
 ): () -> Unit {
     val currentOnResult = rememberUpdatedState(onResult)
+    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 플랫폼 Apple 로그인 구현을 복구한다.
     return remember {
         {
             currentOnResult.value(
-                AppleIdTokenResult.Failure("Apple 로그인은 iOS에서만 사용할 수 있어요."),
+                AppleIdTokenResult.Failure("로그인은 현재 버전에서 지원하지 않아요."),
             )
         }
     }

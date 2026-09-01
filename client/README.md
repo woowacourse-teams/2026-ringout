@@ -31,17 +31,18 @@ Android와 iOS를 지원하는 Kotlin Multiplatform 프로젝트입니다. 공�
 
 Android Studio에서 `client`를 열고 `androidApp` 실행 구성을 사용합니다. 로컬 디버그 APK 빌드 명령은 다음과 같습니다.
 
+현재 앱 버전은 비로그인 전용이며 계정 또는 OAuth 설정이 필요하지 않습니다.
+
 ```bash
 ./gradlew :androidApp:assembleDebug
 ```
 
-지도·로그인·Firebase 기능을 실제로 실행하려면 팀에서 받은 설정이 필요합니다.
+지도·Firebase 기능을 실제로 실행하려면 팀에서 받은 설정이 필요합니다.
 
 | 설정 | 로컬 지정 방법 |
 | --- | --- |
 | Android SDK 경로 | `local.properties`의 `sdk.dir` |
 | Maps API 키 | `local.properties` 또는 환경변수 `MAPS_API_KEY` |
-| 카카오 네이티브 앱 키 | `local.properties` 또는 환경변수 `KAKAO_NATIVE_APP_KEY` |
 | Firebase Android 설정 | `androidApp/google-services.json` 또는 환경변수 `GOOGLE_SERVICES_JSON_PATH`로 지정한 파일 |
 
 `local.properties`와 실제 Firebase 설정 파일은 Git에 추가하지 않습니다. 검증용 설정으로 만든 앱은 실제 기능 확인이나 배포에 사용하지 않습니다.
@@ -204,7 +205,6 @@ YAML을 병합하는 것만으로 GitHub 설정이 자동 적용되지는 않습
 | `ANDROID_KEY_ALIAS` | 업로드 키 별칭 |
 | `ANDROID_KEY_PASSWORD` | 개인 키 비밀번호 |
 | `MAPS_API_KEY` | 실제 Android Maps API 키 |
-| `KAKAO_NATIVE_APP_KEY` | 실제 카카오 네이티브 앱 키 |
 | `GOOGLE_SERVICES_JSON_BASE64` | 실제 `google-services.json` 파일의 Base64 |
 
 환경 승인자를 설정하면 AAB 생성은 승인 대기 상태가 됩니다. 완전 자동 빌드를 원한다면 빌드와 향후 배포의 승인 정책을 구분합니다. PR에는 시크릿이 필요하지 않습니다.
