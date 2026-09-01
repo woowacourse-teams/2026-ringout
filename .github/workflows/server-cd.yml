@@ -168,6 +168,9 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.SERVER_DOCKERHUB_TOKEN }}
           APP_PORT: ${{ vars.SERVER_PORT || '8080' }}
+          AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+          SERVER_LOG_GROUP: ${{ vars.SERVER_LOG_GROUP || '/ringout/server' }}
+          SERVER_LOG_STREAM: ${{ vars.SERVER_LOG_STREAM || 'ringout-server' }}
         run: |
           set -eu
           
@@ -218,6 +221,11 @@ jobs:
               --env-file "$APP_ENV_FILE" \
               --env JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
               --publish "$APP_PORT:8080" \
+              --log-driver awslogs \
+              --log-opt awslogs-region="$AWS_REGION" \
+              --log-opt awslogs-group="$SERVER_LOG_GROUP" \
+              --log-opt awslogs-stream="$SERVER_LOG_STREAM" \
+              --log-opt awslogs-create-group=true \
               $label_args \
               "$image"
           }
