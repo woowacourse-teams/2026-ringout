@@ -1,0 +1,29 @@
+name: Server Dev CD
+
+on:
+  workflow_run:
+    workflows: ["Server CI"]
+    types: [completed]
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: spring-development
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Spring and MySQL to development EC2
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: [self-hosted, Linux, ARM64, ringout-development]
+    timeout-minutes: 15
+    environment: development
+    steps:
+      - name: Run deployment script
+        run: bash /home/ubuntu/ringout/deploy.sh

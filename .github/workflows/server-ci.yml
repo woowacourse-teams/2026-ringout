@@ -7,12 +7,14 @@ on:
       - "server/**"
       - "!server/docs/**"
       - ".github/workflows/server-ci.yml"
+      - ".github/workflows/server-dev-cd.yml"
   push:
     branches: [develop, main]
     paths:
       - "server/**"
       - "!server/docs/**"
       - ".github/workflows/server-ci.yml"
+      - ".github/workflows/server-dev-cd.yml"
 
 concurrency:
   group: server-ci-${{ github.workflow }}-${{ github.ref }}
