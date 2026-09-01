@@ -20,7 +20,8 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.login_lock
+import ringout.shared.generated.resources.login_image
+
 
 @Composable
 internal fun LoginHero(modifier: Modifier = Modifier) {
@@ -32,7 +33,7 @@ internal fun LoginHero(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Image(
-            painter = painterResource(Res.drawable.login_lock),
+            painter = painterResource(Res.drawable.login_image),
             contentDescription = null,
             modifier = Modifier.size(dimensions.heroImageSize),
         )

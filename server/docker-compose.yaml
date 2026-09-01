@@ -28,7 +28,7 @@ services:
       - backend
 
   server:
-    image: ${SERVER_IMAGE:-ringout-server:local}
+    image: ${SERVER_IMAGE:-ringout-server}
     container_name: ${SERVER_CONTAINER_NAME:-ringout-server}
     build:
       context: .

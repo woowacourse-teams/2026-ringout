@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.common.WeekdayOrder
 
 @Composable
 fun WeekdaySelector(
@@ -52,13 +53,13 @@ fun WeekdaySelector(
         ) {
             val idealChipWidth = 37.dp
             val daySpacing = (
-                (maxWidth - idealChipWidth * alarmSetupWeekdayOrder.size) /
-                    (alarmSetupWeekdayOrder.size - 1)
+                (maxWidth - idealChipWidth * WeekdayOrder.size) /
+                    (WeekdayOrder.size - 1)
             ).coerceIn(4.dp, 10.dp)
             val chipWidth = minOf(
                 idealChipWidth,
-                (maxWidth - daySpacing * (alarmSetupWeekdayOrder.size - 1)) /
-                    alarmSetupWeekdayOrder.size,
+                (maxWidth - daySpacing * (WeekdayOrder.size - 1)) /
+                    WeekdayOrder.size,
             )
 
             Row(
@@ -66,7 +67,7 @@ fun WeekdaySelector(
                 horizontalArrangement = Arrangement.spacedBy(daySpacing),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                alarmSetupWeekdayOrder.forEach { day ->
+                WeekdayOrder.forEach { day ->
                     val selected = day in selectedDays
                     Box(
                         modifier = Modifier

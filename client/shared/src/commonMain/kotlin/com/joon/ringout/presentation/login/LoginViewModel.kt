@@ -12,6 +12,8 @@ import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.SocialLoginOutcome
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 data class LoginUiState(
@@ -44,6 +46,8 @@ class LoginViewModel(
 
     private var nextEventId = 0L
     private var activeProvider: AnalyticsAuthProvider? = null
+    private var loginJob: Job? = null
+    private var isCleared = false
     private val scope = coroutineScope ?: viewModelScope
 
     fun beginAppleSignIn(): Boolean {
@@ -59,6 +63,7 @@ class LoginViewModel(
     }
 
     private fun beginSocialSignIn(provider: AnalyticsAuthProvider): Boolean {
+        if (isCleared) return false
         if (uiState.isLoading) {
             AuthDiagnosticLogger.debug(
                 "login_start_ignored provider=${provider.logValue} reason=already_in_progress",
@@ -80,7 +85,7 @@ class LoginViewModel(
     }
 
     fun handleGoogleAccessTokenResult(result: GoogleAccessTokenResult) {
-        if (activeProvider != AnalyticsAuthProvider.Google) {
+        if (isCleared || activeProvider != AnalyticsAuthProvider.Google) {
             AuthDiagnosticLogger.debug(
                 "sdk_result_ignored provider=google reason=no_matching_login",
             )
@@ -114,7 +119,7 @@ class LoginViewModel(
     }
 
     fun handleAppleIdTokenResult(result: AppleIdTokenResult) {
-        if (activeProvider != AnalyticsAuthProvider.Apple) {
+        if (isCleared || activeProvider != AnalyticsAuthProvider.Apple) {
             AuthDiagnosticLogger.debug(
                 "sdk_result_ignored provider=apple reason=no_matching_login",
             )
@@ -148,7 +153,7 @@ class LoginViewModel(
     }
 
     fun handleKakaoAccessTokenResult(result: KakaoAccessTokenResult) {
-        if (activeProvider != AnalyticsAuthProvider.Kakao) {
+        if (isCleared || activeProvider != AnalyticsAuthProvider.Kakao) {
             AuthDiagnosticLogger.debug(
                 "sdk_result_ignored provider=kakao reason=no_matching_login",
             )
@@ -182,7 +187,7 @@ class LoginViewModel(
     }
 
     fun showUnavailableProvider(provider: SocialLoginProvider) {
-        if (uiState.isLoading) return
+        if (isCleared || uiState.isLoading) return
         uiState = uiState.copy(
             errorMessage = "${provider.displayName} 로그인은 아직 준비 중이에요.",
         )
@@ -192,6 +197,15 @@ class LoginViewModel(
         if (uiState.completion?.eventId == eventId) {
             uiState = uiState.copy(completion = null)
         }
+    }
+
+    override fun onCleared() {
+        isCleared = true
+        activeProvider = null
+        loginJob?.cancel()
+        loginJob = null
+        uiState = LoginUiState()
+        super.onCleared()
     }
 
     private fun loginWithGoogle(accessToken: String) {
@@ -216,10 +230,13 @@ class LoginViewModel(
         provider: AnalyticsAuthProvider,
         login: suspend () -> SocialLoginOutcome,
     ) {
-        scope.launch {
+        if (isCleared) return
+        loginJob = scope.launch {
+            if (isCleared || !isActive) return@launch
             AuthDiagnosticLogger.debug("backend_login_started provider=${provider.logValue}")
             try {
                 val outcome = login()
+                if (isCleared || !isActive) return@launch
                 val isNewUser = outcome is SocialLoginOutcome.SignupRequired
                 AuthDiagnosticLogger.debug(
                     "backend_login_succeeded provider=${provider.logValue} " +
@@ -236,6 +253,7 @@ class LoginViewModel(
                         error,
                     )
                 }
+                if (isCleared || !isActive) return@launch
                 val completion = when (outcome) {
                     SocialLoginOutcome.Authenticated ->
                         LoginCompletion.Authenticated(++nextEventId)
@@ -255,6 +273,7 @@ class LoginViewModel(
                 AuthDiagnosticLogger.debug("backend_login_cancelled provider=${provider.logValue}")
                 throw error
             } catch (error: Throwable) {
+                if (isCleared || !isActive) return@launch
                 AuthDiagnosticLogger.error(
                     "backend_login_failed provider=${provider.logValue}",
                     error,

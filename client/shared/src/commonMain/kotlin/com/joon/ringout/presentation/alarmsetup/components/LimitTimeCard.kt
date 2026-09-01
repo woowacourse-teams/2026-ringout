@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.alarmsetup.MaxAlarmLimitMinutes
+import com.joon.ringout.presentation.alarmsetup.MinAlarmLimitMinutes
 import kotlin.math.roundToInt
 import org.jetbrains.compose.resources.painterResource
 
@@ -41,10 +43,13 @@ fun LimitTimeCard(
     modifier: Modifier = Modifier,
 ) {
     val colors = alarmSetupColors()
-    val sliderMinutes = minutes.coerceIn(MinLimitMinutes, MaxLimitMinutes)
+    val sliderMinutes = minutes.coerceIn(
+        minimumValue = MinAlarmLimitMinutes,
+        maximumValue = MaxAlarmLimitMinutes,
+    )
     val progress =
-        (sliderMinutes - MinLimitMinutes).toFloat() /
-            (MaxLimitMinutes - MinLimitMinutes).toFloat()
+        (sliderMinutes - MinAlarmLimitMinutes).toFloat() /
+            (MaxAlarmLimitMinutes - MinAlarmLimitMinutes).toFloat()
 
     Column(
         modifier = modifier
@@ -86,14 +91,18 @@ fun LimitTimeCard(
                 value = sliderMinutes.toFloat(),
                 onValueChange = { value ->
                     onMinutesChange(
-                        value.roundToInt().coerceIn(MinLimitMinutes, MaxLimitMinutes),
+                        value.roundToInt().coerceIn(
+                            MinAlarmLimitMinutes,
+                            MaxAlarmLimitMinutes,
+                        ),
                     )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(40.dp),
-                valueRange = MinLimitMinutes.toFloat()..MaxLimitMinutes.toFloat(),
-                steps = MaxLimitMinutes - MinLimitMinutes - 1,
+                valueRange =
+                    MinAlarmLimitMinutes.toFloat()..MaxAlarmLimitMinutes.toFloat(),
+                steps = MaxAlarmLimitMinutes - MinAlarmLimitMinutes - 1,
                 thumb = {
                     Image(
                         painter = painterResource(colors.sliderThumb),
@@ -162,8 +171,6 @@ private fun SliderEndpointLabel(
     )
 }
 
-private const val MinLimitMinutes = 1
-private const val MaxLimitMinutes = 30
 private val SliderThumbSize = 16.dp
 private val SliderThumbRadius = SliderThumbSize / 2
 

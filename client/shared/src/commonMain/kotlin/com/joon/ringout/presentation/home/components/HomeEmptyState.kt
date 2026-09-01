@@ -38,7 +38,7 @@ import ringout.shared.generated.resources.home_empty_logo
 @Composable
 internal fun HomeEmptyState(
     onAddAlarm: () -> Unit,
-    onSettingsClick: () -> Unit,
+    onMyPageClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isDarkTheme = LocalRingoutThemeMode.current == ThemeMode.Dark
@@ -57,7 +57,7 @@ internal fun HomeEmptyState(
                 .padding(20.dp),
         ) {
             EmptyHomeHeader(
-                onSettingsClick = onSettingsClick,
+                onMyPageClick = onMyPageClick,
             )
 
             Box(
@@ -88,7 +88,7 @@ internal fun HomeEmptyState(
 
 @Composable
 private fun EmptyHomeHeader(
-    onSettingsClick: () -> Unit,
+    onMyPageClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -108,7 +108,7 @@ private fun EmptyHomeHeader(
 
         Spacer(Modifier.weight(1f))
 
-        HomeMyPageButton(onClick = onSettingsClick)
+        HomeMyPageButton(onClick = onMyPageClick)
     }
 }
 

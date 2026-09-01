@@ -6,9 +6,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.joon.ringout.domain.alarm.CalculateNextAlarm
+import com.joon.ringout.domain.alarm.CalculateNextAlarm.Alarm as AlarmForCalculation
+import com.joon.ringout.domain.alarm.CalculateNextAlarm.CurrentTime
+import com.joon.ringout.domain.alarm.CalculateNextAlarm.Day
 import com.joon.ringout.presentation.LocalClockSnapshot
 import com.joon.ringout.presentation.currentLocalClockSnapshot
+import com.joon.ringout.presentation.home.model.HomeAlarm
 import kotlinx.coroutines.delay
+
+private val calculateNextAlarm = CalculateNextAlarm()
 
 @Composable
 internal fun rememberNextAlarmDescription(alarms: List<HomeAlarm>): String {
@@ -33,12 +40,12 @@ internal fun nextAlarmDescription(
     alarms: List<HomeAlarm>,
     clock: LocalClockSnapshot,
 ): String {
-    val minutesUntilNext = alarms
-        .asSequence()
-        .filter(HomeAlarm::isEnabled)
-        .mapNotNull { alarm -> alarm.minutesUntilNext(clock) }
-        .minOrNull()
+    val currentTime = clock.toAlarmCurrentTime()
         ?: return "켜진 알람이 없습니다."
+    val minutesUntilNext = calculateNextAlarm(
+        alarms = alarms.mapNotNull(HomeAlarm::toAlarmForCalculation),
+        currentTime = currentTime,
+    )?.minutesUntil ?: return "켜진 알람이 없습니다."
 
     val hours = minutesUntilNext / MinutesPerHour
     val minutes = minutesUntilNext % MinutesPerHour
@@ -50,48 +57,42 @@ internal fun nextAlarmDescription(
     return "$duration 후 알람이 울려요."
 }
 
-private fun HomeAlarm.minutesUntilNext(clock: LocalClockSnapshot): Int? {
+private fun HomeAlarm.toAlarmForCalculation(): AlarmForCalculation? {
     if (!AlarmTimePattern.matches(time)) return null
 
-    val hour = time.substringBefore(":").toInt()
-    val minute = time.substringAfter(":").toInt()
-    val alarmMinuteOfDay = hour * MinutesPerHour + minute
-    val currentMinuteOfDay = clock.hour * MinutesPerHour + clock.minute
-    val repeatDayIndexes = if (repeatEnabled) {
-        selectedDays.mapNotNull(DayIndexByKorean::get).toSet()
-    } else {
-        emptySet()
-    }
+    return AlarmForCalculation(
+        id = id,
+        hour = time.substringBefore(":").toInt(),
+        minute = time.substringAfter(":").toInt(),
+        repeatDays = if (repeatEnabled) {
+            selectedDays.mapNotNull(DayByKorean::get).toSet()
+        } else {
+            emptySet()
+        },
+        isEnabled = isEnabled,
+    )
+}
 
-    if (repeatDayIndexes.isEmpty()) {
-        val todayDelay = alarmMinuteOfDay - currentMinuteOfDay
-        return if (todayDelay > 0) todayDelay else todayDelay + MinutesPerDay
-    }
-
-    for (dayOffset in 0..DaysPerWeek) {
-        val candidateDay = (clock.dayOfWeek + dayOffset) % DaysPerWeek
-        if (candidateDay !in repeatDayIndexes) continue
-
-        val delay = dayOffset * MinutesPerDay + alarmMinuteOfDay - currentMinuteOfDay
-        if (delay > 0) return delay
-    }
-
-    return null
+private fun LocalClockSnapshot.toAlarmCurrentTime(): CurrentTime? {
+    val day = Day.fromIndex(dayOfWeek) ?: return null
+    return CurrentTime(
+        day = day,
+        hour = hour,
+        minute = minute,
+    )
 }
 
 private const val MinuteInMilliseconds = 60_000L
 private const val MinutesPerHour = 60
-private const val MinutesPerDay = 24 * MinutesPerHour
-private const val DaysPerWeek = 7
 
 private val AlarmTimePattern = Regex("(?:[01]\\d|2[0-3]):[0-5]\\d")
 
-private val DayIndexByKorean = mapOf(
-    "월" to 0,
-    "화" to 1,
-    "수" to 2,
-    "목" to 3,
-    "금" to 4,
-    "토" to 5,
-    "일" to 6,
+private val DayByKorean = mapOf(
+    "월" to Day.MONDAY,
+    "화" to Day.TUESDAY,
+    "수" to Day.WEDNESDAY,
+    "목" to Day.THURSDAY,
+    "금" to Day.FRIDAY,
+    "토" to Day.SATURDAY,
+    "일" to Day.SUNDAY,
 )

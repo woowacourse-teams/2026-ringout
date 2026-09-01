@@ -249,6 +249,7 @@ class IosAlarmLifecycleTest {
         assertEquals(CanonicalUuid, mission.alarmId)
         assertEquals(event.occurrenceId, mission.occurrenceId)
         assertEquals(721_000L, mission.expiresAtEpochMillis)
+        assertEquals(DefaultArrivalRadiusMeters, mission.arrivalRadiusMeters)
         assertEquals(listOf("save:${event.occurrenceId}", "consume:event-1", "consume:event-2"),
             missionStore.events + inbox.events)
     }
@@ -365,6 +366,55 @@ class IosAlarmLifecycleTest {
             ),
         )
         assertEquals(listOf(event.occurrenceId), outcomes.successes)
+    }
+
+    @Test
+    fun locationOutsideDefaultArrivalRadiusDoesNotCompleteMission() = runBlocking {
+        val event = missionEvent()
+        val store = LifecycleMissionStore()
+        val outcomes = LifecycleOutcomeRecorder()
+        val coordinator = coordinator(event, store, outcomes)
+        coordinator.processPendingEvents()
+
+        assertFalse(
+            coordinator.onLocationUpdated(
+                occurrenceId = event.occurrenceId,
+                location = ActiveAlarmMissionLocation(37.5005, 127.0, 5f, 2_000L),
+                evaluatedAtEpochMillis = 2_000L,
+            ),
+        )
+
+        assertNotNull(coordinator.activeMissionFlow.value)
+        assertTrue(outcomes.successes.isEmpty())
+    }
+
+    @Test
+    fun restoredLegacyMissionUsesDefaultArrivalRadius() {
+        val store = LifecycleMissionStore().apply {
+            mission = ActiveAlarmMission(
+                alarmId = CanonicalUuid,
+                destinationName = "회사",
+                limitMinutes = 12,
+                expiresAtEpochMillis = 721_000L,
+                occurrenceId = "$CanonicalUuid:legacy",
+                alarmTime = "07:05",
+                startedAtEpochMillis = 1_000L,
+                destinationLatitude = 37.5,
+                destinationLongitude = 127.0,
+                arrivalRadiusMeters = 1_200.0,
+            )
+        }
+
+        val coordinator = IosAlarmMissionCoordinator(
+            dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid))),
+            inbox = LifecycleInbox(emptyList()),
+            scheduler = LifecycleScheduler(),
+            outcomeRecorder = LifecycleOutcomeRecorder(),
+            missionStore = store,
+        )
+
+        assertEquals(DefaultArrivalRadiusMeters, coordinator.activeMissionFlow.value?.arrivalRadiusMeters)
+        assertEquals(DefaultArrivalRadiusMeters, store.loadActiveMission()?.arrivalRadiusMeters)
     }
 
     @Test
@@ -544,6 +594,11 @@ class IosAlarmLifecycleTest {
         )
         coordinator.processPendingEvents()
         val retry = store.loadDeadlineAlarm()!!
+        store.saveDeadlineAlarm(
+            retry.copy(
+                missionSeed = retry.missionSeed!!.copy(arrivalRadiusMeters = 1_200.0),
+            ),
+        )
         coordinator.handleDeadline(firstEvent.occurrenceId)
         dataSource.delete(CanonicalUuid)
         val retriedAtEpochMillis = 800_000L
@@ -567,6 +622,7 @@ class IosAlarmLifecycleTest {
         assertEquals("회사", retriedMission.destinationName)
         assertEquals(37.5, retriedMission.destinationLatitude)
         assertEquals(127.0, retriedMission.destinationLongitude)
+        assertEquals(DefaultArrivalRadiusMeters, retriedMission.arrivalRadiusMeters)
         assertEquals(retriedAtEpochMillis + 720_000L, retriedMission.expiresAtEpochMillis)
         assertEquals(2, store.loadDeadlineAlarm()!!.retryAttempt)
     }
