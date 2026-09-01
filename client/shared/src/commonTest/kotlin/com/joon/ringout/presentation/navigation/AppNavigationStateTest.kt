@@ -13,6 +13,45 @@ import kotlin.test.assertTrue
 
 class AppNavigationStateTest {
     @Test
+    fun guestModeRejectsNewAccountRouteNavigation() {
+        listOf(
+            AppRoute.Login,
+            AppRoute.TermsAgreement,
+            AppRoute.NicknameChange,
+        ).forEach { accountRoute ->
+            val state = AppNavigationState(guestOnlyMode = true)
+
+            state.navigate(accountRoute)
+
+            assertEquals(
+                listOf(AppRoute.Home, AppRoute.MyPage),
+                state.backStack.toList(),
+            )
+            assertEquals(AppRoute.MyPage, state.requestedRoute)
+        }
+    }
+
+    @Test
+    fun guestModeReturnsRestoredAccountRoutesToMyPage() {
+        listOf(
+            AppRoute.Login,
+            AppRoute.TermsAgreement,
+            AppRoute.NicknameChange,
+        ).forEach { accountRoute ->
+            val state = AppNavigationState()
+            state.navigate(accountRoute)
+
+            state.normalizeForGuestMode()
+
+            assertEquals(
+                listOf(AppRoute.Home, AppRoute.MyPage),
+                state.backStack.toList(),
+            )
+            assertEquals(AppRoute.MyPage, state.requestedRoute)
+        }
+    }
+
+    @Test
     fun `홈에서 마이페이지와 닉네임으로 이동하고 역순으로 돌아온다`() {
         val state = AppNavigationState()
 

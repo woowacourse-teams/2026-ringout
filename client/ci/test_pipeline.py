@@ -209,7 +209,7 @@ class SignatureTest(unittest.TestCase):
             "RUNNER_TEMP": str(self.root), "GITHUB_ENV": str(github_env),
             "ANDROID_KEYSTORE_BASE64": base64.b64encode(self.store.read_bytes()).decode(),
             "ANDROID_KEY_ALIAS": "upload", "ANDROID_KEY_PASSWORD": "wrong-password",
-            "MAPS_API_KEY": "test-maps-key", "KAKAO_NATIVE_APP_KEY": "test-kakao-key",
+            "MAPS_API_KEY": "test-maps-key",
             "GOOGLE_SERVICES_JSON_BASE64": base64.b64encode(json.dumps(config).encode()).decode(),
         }
         with patch.dict(os.environ, values), patch.object(ci, "expected_certificate", return_value=self.fingerprint):

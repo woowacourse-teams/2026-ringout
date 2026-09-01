@@ -1,7 +1,4 @@
 package com.joon.ringout.presentation.login
 
-internal actual val PlatformSocialLoginProviders: List<SocialLoginProvider> = listOf(
-    SocialLoginProvider.Apple,
-    SocialLoginProvider.Google,
-    SocialLoginProvider.Kakao,
-)
+// TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 지원할 공급자 목록을 복구한다.
+internal actual val PlatformSocialLoginProviders: List<SocialLoginProvider> = emptyList()
