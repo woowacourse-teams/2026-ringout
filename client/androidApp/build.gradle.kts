@@ -68,7 +68,7 @@ val releaseKeyPassword =
 val appVersionCode = providers.environmentVariable("APP_VERSION_CODE").orNull?.let { value ->
     value.toIntOrNull()?.takeIf { it in 1..2_100_000_000 }
         ?: throw GradleException("APP_VERSION_CODE must be an integer between 1 and 2100000000.")
-} ?: 261010018
+} ?: 261010019
 
 val googleServicesJsonPath = providers.environmentVariable("GOOGLE_SERVICES_JSON_PATH").orNull
 if (ciVerification || !googleServicesJsonPath.isNullOrBlank()) {
