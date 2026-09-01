@@ -54,7 +54,3 @@ app:
     access-token-expiration-millis: ${JWT_ACCESS_TOKEN_EXPIRATION_MILLIS}
     refresh-token-expiration-millis: ${JWT_REFRESH_TOKEN_EXPIRATION_MILLIS}
     signup-token-expiration-millis: ${JWT_SIGNUP_TOKEN_EXPIRATION_MILLIS}
-
-logging:
-  pattern:
-    level: "%5p %mdc %kvp"
