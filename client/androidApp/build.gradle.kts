@@ -53,18 +53,6 @@ val escapedMapsApiKey = mapsApiKey
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
-val ciKakaoNativeAppKey = "00000000000000000000000000000000"
-val kakaoNativeAppKey = if (ciVerification) {
-    ciKakaoNativeAppKey
-} else {
-    localProperties.getProperty("KAKAO_NATIVE_APP_KEY")?.takeIf(String::isNotBlank)
-        ?: providers.environmentVariable("KAKAO_NATIVE_APP_KEY").orNull.orEmpty()
-}
-
-val escapedKakaoNativeAppKey = kakaoNativeAppKey
-    .replace("\\", "\\\\")
-    .replace("\"", "\\\"")
-
 val releaseKeystorePath =
     providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
 
@@ -114,7 +102,6 @@ dependencies {
     implementation(libs.google.places)
     implementation(libs.google.play.app.update)
     implementation(libs.google.play.app.update.ktx)
-    implementation(libs.kakao.user)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
@@ -134,9 +121,7 @@ android {
         versionCode = appVersionCode
         versionName = "1.1.0"
         buildConfigField("String", "MAPS_API_KEY", "\"$escapedMapsApiKey\"")
-        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$escapedKakaoNativeAppKey\"")
         manifestPlaceholders["mapsApiKey"] = mapsApiKey
-        manifestPlaceholders["kakaoNativeAppKey"] = kakaoNativeAppKey
     }
     buildFeatures {
         buildConfig = true
@@ -182,7 +167,6 @@ val validateReleaseConfiguration by tasks.registering(ValidateReleaseConfigurati
     description = "Requires real app configuration and signing credentials outside CI verification."
     missingSettings = if (ciVerification) emptyList() else buildList {
         if (mapsApiKey.isBlank() || mapsApiKey == "CI_VERIFICATION_ONLY") add("MAPS_API_KEY")
-        if (kakaoNativeAppKey.isBlank() || kakaoNativeAppKey == ciKakaoNativeAppKey) add("KAKAO_NATIVE_APP_KEY")
         if (releaseKeystorePath.isNullOrBlank()) add("ANDROID_KEYSTORE_PATH")
         if (releaseKeystorePassword.isNullOrBlank()) add("ANDROID_KEYSTORE_PASSWORD")
         if (releaseKeyAlias.isNullOrBlank()) add("ANDROID_KEY_ALIAS")

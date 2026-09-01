@@ -5,32 +5,25 @@ import com.joon.ringout.SystemBarAppearanceEffect
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.AlarmController
 import com.joon.ringout.alarm.MissionLocationState
-import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupCoordinator
 import com.joon.ringout.presentation.home.HomeAlarmBinding
 import com.joon.ringout.presentation.home.HomeViewModel
-import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.navigation.ActiveMissionNavigationEffect
 import com.joon.ringout.presentation.navigation.AlarmEditorNavigation
 import com.joon.ringout.presentation.navigation.AlarmEditorNavigationBinding
 import com.joon.ringout.presentation.navigation.AppNavigationState
 import com.joon.ringout.presentation.navigation.AppRoute
-import com.joon.ringout.presentation.navigation.AuthNavigation
-import com.joon.ringout.presentation.navigation.MyPageAccountActionCompletionEffect
 
 /** 앱 생명주기 동안 유지할 조정자, 상태 연결, 화면 표시 영역을 연결한다. */
 @Composable
 internal fun AppRuntimeCoordinator(
-    authRepository: AuthRepository,
     authSessionState: AuthSessionState,
     navigationState: AppNavigationState,
     displayedRoute: AppRoute,
     themeMode: ThemeMode,
     activeMissionOccurrenceId: String?,
     homeViewModel: HomeViewModel,
-    myPageViewModel: MyPageViewModel?,
-    authNavigation: AuthNavigation?,
     alarmEditorNavigation: AlarmEditorNavigation?,
     alarmController: AlarmController,
     missionLocationState: MissionLocationState,
@@ -40,30 +33,11 @@ internal fun AppRuntimeCoordinator(
     onConfirmAlwaysLocationResult: () -> Unit,
     onRequestTemporaryFullAccuracy: () -> Unit,
 ) {
-    val signupViewModel = authNavigation?.signupViewModel
     val alarmSetupViewModel = alarmEditorNavigation?.alarmSetupViewModel
     val destinationViewModel = alarmEditorNavigation?.destinationViewModel
 
-    AuthSessionCoordinator(
-        authRepository = authRepository,
-        authSessionState = authSessionState,
-        myPageViewModel = myPageViewModel,
-        destinationViewModel = destinationViewModel,
-    )
-    ReauthenticationCoordinator(
-        authSessionState = authSessionState,
-        navigationState = navigationState,
-        homeViewModel = homeViewModel,
-        signupViewModel = signupViewModel,
-        alarmSetupViewModel = alarmSetupViewModel,
-        myPageViewModel = myPageViewModel,
-        destinationViewModel = destinationViewModel,
-    )
-    MyPageAccountActionCompletionEffect(
-        navigationState = navigationState,
-        myPageViewModel = myPageViewModel,
-        signupViewModel = signupViewModel,
-    )
+    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 AuthSessionCoordinator,
+    // ReauthenticationCoordinator, MyPageAccountActionCompletionEffect를 복구한다.
     if (alarmEditorNavigation != null) {
         AlarmEditorNavigationBinding(
             navigation = alarmEditorNavigation,

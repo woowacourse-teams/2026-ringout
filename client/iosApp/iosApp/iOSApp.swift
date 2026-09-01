@@ -1,6 +1,4 @@
 import SwiftUI
-import GoogleSignIn
-import KakaoSDKAuth
 
 @main
 @MainActor
@@ -19,13 +17,7 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(nativeServices: platformServices)
-                .onOpenURL { url in
-                    if AuthApi.isKakaoTalkLoginUrl(url) {
-                        _ = AuthController.handleOpenUrl(url: url)
-                    } else {
-                        GIDSignIn.sharedInstance.handle(url)
-                    }
-                }
+            // TODO(RINGOUT_ACCOUNT): 소셜 로그인 재도입 시 Google/Kakao URL 콜백을 복구한다.
         }
     }
 }

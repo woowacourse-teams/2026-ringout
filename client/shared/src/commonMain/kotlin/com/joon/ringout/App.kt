@@ -4,35 +4,32 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.DefaultMissionLocationState
 import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.di.AppContainer
+import com.joon.ringout.domain.auth.AuthRepository
+import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.app.AppRuntimeCoordinator
 import com.joon.ringout.presentation.app.rememberAppAlarmController
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.home.HomeViewModel
-import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingRoute
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
-import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.navigation.AppRoute
 import com.joon.ringout.presentation.navigation.RingoutNavHost
 import com.joon.ringout.presentation.navigation.alarmRuntimeGraph
 import com.joon.ringout.presentation.navigation.alarmEditorGraph
-import com.joon.ringout.presentation.navigation.authGraph
 import com.joon.ringout.presentation.navigation.rememberAlarmEditorNavigation
-import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.navigation.homeGraph
 import com.joon.ringout.presentation.navigation.rememberAppNavigationState
 import com.joon.ringout.presentation.navigation.rememberNavigationViewModelScopes
@@ -61,6 +58,7 @@ fun App(
     onActiveAlarmMissionForceEndHoldCompleted:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
 ) {
+    GuestOnlyAuthCleanupEffect(appContainer.authRepository)
     val appBootstrapViewModel = viewModel {
         AppBootstrapViewModel(
             repository = appContainer.appPreferencesRepository
@@ -145,10 +143,8 @@ private fun RingoutAppContent(
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     val productAnalyticsRecorder = appContainer.productAnalyticsRecorder
-    val authSession = appContainer.authSession
-    val authRepository = appContainer.authRepository
-    val memberRepository = appContainer.memberRepository
-    val authSessionState by authSession.state.collectAsState()
+    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 실제 AuthSession 상태 수집과 세션 복원을 복구한다.
+    val authSessionState = AuthSessionState.Unauthenticated
     val navigationState = rememberAppNavigationState()
     // iOS 알람 울림 이동 정책 이전이 끝날 때까지 플랫폼 울림 상태를 현재 백스택보다 우선 표시한다.
     val displayedRoute = ringingAlarm
@@ -159,15 +155,6 @@ private fun RingoutAppContent(
     val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
     val myPageViewModel = if (AppRoute.MyPage in retainedRoutes) {
         viewModelScopes.get(AppRoute.MyPage, MyPageViewModel::class)
-    } else {
-        null
-    }
-    val authNavigation = if (AppRoute.Login in retainedRoutes) {
-        rememberAuthNavigation(
-            navigationState,
-            viewModelScopes.get(AppRoute.Login, LoginViewModel::class),
-            viewModelScopes.get(AppRoute.Login, SignupViewModel::class),
-        )
     } else {
         null
     }
@@ -188,15 +175,12 @@ private fun RingoutAppContent(
         homeViewModel = homeViewModel,
     )
     AppRuntimeCoordinator(
-        authRepository = authRepository,
         authSessionState = authSessionState,
         navigationState = navigationState,
         displayedRoute = displayedRoute,
         themeMode = themeMode,
         activeMissionOccurrenceId = activeAlarmMission?.occurrenceId,
         homeViewModel = homeViewModel,
-        myPageViewModel = myPageViewModel,
-        authNavigation = authNavigation,
         alarmEditorNavigation = alarmEditorNavigation,
         alarmController = alarmController,
         missionLocationState = missionLocationState,
@@ -214,7 +198,6 @@ private fun RingoutAppContent(
         modifier = Modifier.fillMaxSize(),
         isBackBlocked =
             displayedRoute is AppRoute.AlarmRinging ||
-                authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true ||
                 alarmEditorNavigation?.isBackBlocked(displayedRoute) == true,
         onBack = { route ->
             when (route) {
@@ -223,8 +206,6 @@ private fun RingoutAppContent(
                 is AppRoute.Destination,
                 AppRoute.AlarmSound,
                 -> alarmEditorNavigation?.onBack(route, displayedRoute)
-                AppRoute.Login, AppRoute.TermsAgreement ->
-                    authNavigation?.onBack(route, displayedRoute, authSessionState)
                 is AppRoute.ActiveAlarmTracking -> navigationState.navigate(AppRoute.Home)
                 is AppRoute.AlarmRinging -> Unit
                 else -> navigationState.popBackStack(route)
@@ -235,8 +216,6 @@ private fun RingoutAppContent(
                 navigationState = navigationState,
                 homeViewModel = homeViewModel,
                 myPageViewModel = myPageViewModel,
-                memberRepository = memberRepository,
-                authSessionState = authSessionState,
                 themeMode = themeMode,
                 appVersion = appVersion,
                 alarmController = alarmController,
@@ -254,7 +233,6 @@ private fun RingoutAppContent(
                         AppRoute.EditAlarm(request.id),
                     ).startEditing(request)
                 },
-                onLogin = { navigationState.navigate(AppRoute.Login) },
                 onActiveAlarmMissionClick = {
                     activeAlarmMission?.occurrenceId?.let { occurrenceId ->
                         navigationState.navigate(AppRoute.ActiveAlarmTracking(occurrenceId))
@@ -278,13 +256,7 @@ private fun RingoutAppContent(
                 onActiveAlarmMissionForceEndHoldCompleted =
                     onActiveAlarmMissionForceEndHoldCompleted,
             )
-            if (authNavigation != null) {
-                authGraph(
-                    authNavigation = authNavigation,
-                    displayedRoute = displayedRoute,
-                    authSessionState = authSessionState,
-                )
-            }
+            // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 rememberAuthNavigation과 authGraph를 다시 연결한다.
             if (alarmEditorNavigation != null) {
                 alarmEditorGraph(
                     navigation = alarmEditorNavigation,
@@ -295,4 +267,13 @@ private fun RingoutAppContent(
             }
         },
     )
+}
+
+@Composable
+private fun GuestOnlyAuthCleanupEffect(authRepository: AuthRepository) {
+    LaunchedEffect(authRepository) {
+        // 이전 로그인 버전의 토큰만 폐기한다. 서버 계정과 로컬 사용자 데이터는 유지하며,
+        // 서버 데이터를 로컬이나 다른 계정으로 복사하지 않는다.
+        runCatching { authRepository.logout() }
+    }
 }

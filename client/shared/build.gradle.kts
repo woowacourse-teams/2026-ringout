@@ -46,8 +46,7 @@ kotlin {
             implementation(libs.google.maps.compose)
             implementation(libs.google.places)
             implementation(libs.google.play.services.location)
-            implementation(libs.google.play.services.auth)
-            implementation(libs.kakao.user)
+            // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 Google/Kakao 인증 SDK를 다시 추가한다.
             implementation(libs.ktor.client.okhttp)
         }
         commonMain.dependencies {

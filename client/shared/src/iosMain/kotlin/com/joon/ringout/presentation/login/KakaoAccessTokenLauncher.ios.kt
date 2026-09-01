@@ -1,34 +1,20 @@
 package com.joon.ringout.presentation.login
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import com.joon.ringout.platform.IosKakaoSignInCallback
-import com.joon.ringout.platform.LocalIosNativeServices
 
 @Composable
 internal actual fun rememberKakaoAccessTokenLauncher(
     onResult: (KakaoAccessTokenResult) -> Unit,
 ): () -> Unit {
-    val nativeServices = LocalIosNativeServices.current
-    val currentOnResult by rememberUpdatedState(onResult)
-    val callback = remember {
-        object : IosKakaoSignInCallback {
-            override fun onSuccess(accessToken: String) {
-                currentOnResult(KakaoAccessTokenResult.Success(accessToken))
-            }
-
-            override fun onCancelled() {
-                currentOnResult(KakaoAccessTokenResult.Cancelled)
-            }
-
-            override fun onFailure(message: String) {
-                currentOnResult(KakaoAccessTokenResult.Failure(message))
-            }
+    val currentOnResult = rememberUpdatedState(onResult)
+    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 Kakao 인증 launcher를 복구한다.
+    return remember {
+        {
+            currentOnResult.value(
+                KakaoAccessTokenResult.Failure("로그인은 현재 버전에서 지원하지 않아요."),
+            )
         }
-    }
-    return remember(nativeServices, callback) {
-        { nativeServices.kakaoSignInService().signIn(callback) }
     }
 }

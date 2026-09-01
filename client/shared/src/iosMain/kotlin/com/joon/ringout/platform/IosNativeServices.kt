@@ -26,41 +26,7 @@ interface IosAnalyticsTracker {
     fun log(event: IosAnalyticsEventDto)
 }
 
-interface IosGoogleSignInCallback {
-    fun onSuccess(accessToken: String)
-
-    fun onCancelled()
-
-    fun onFailure(message: String)
-}
-
-interface IosGoogleSignInService {
-    fun signIn(callback: IosGoogleSignInCallback)
-}
-
-interface IosAppleSignInCallback {
-    fun onSuccess(idToken: String)
-
-    fun onCancelled()
-
-    fun onFailure(message: String)
-}
-
-interface IosAppleSignInService {
-    fun signIn(callback: IosAppleSignInCallback)
-}
-
-interface IosKakaoSignInCallback {
-    fun onSuccess(accessToken: String)
-
-    fun onCancelled()
-
-    fun onFailure(message: String)
-}
-
-interface IosKakaoSignInService {
-    fun signIn(callback: IosKakaoSignInCallback)
-}
+// TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 iOS 소셜 로그인 service/callback 계약을 복구한다.
 
 interface IosNativeServices {
     fun isMapsAvailable(): Boolean
@@ -93,12 +59,6 @@ interface IosNativeServices {
     fun missionLocationService(): IosMissionLocationService
 
     fun analyticsTracker(): IosAnalyticsTracker
-
-    fun appleSignInService(): IosAppleSignInService
-
-    fun googleSignInService(): IosGoogleSignInService
-
-    fun kakaoSignInService(): IosKakaoSignInService
 }
 
 val LocalIosNativeServices = staticCompositionLocalOf<IosNativeServices> {

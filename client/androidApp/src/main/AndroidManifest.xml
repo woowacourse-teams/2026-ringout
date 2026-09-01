@@ -46,20 +46,7 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data
-                    android:host="oauth"
-                    android:scheme="kakao${kakaoNativeAppKey}" />
-            </intent-filter>
-        </activity>
+        <!-- TODO(RINGOUT_ACCOUNT): 카카오 로그인 재도입 시 OAuth 콜백 Activity를 복구한다. -->
 
         <activity
             android:name="com.joon.ringout.alarm.AlarmRingingActivity"
