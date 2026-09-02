@@ -115,13 +115,13 @@ public interface AuthControllerApi {
 
     @Operation(
         summary = "액세스 토큰 재발급",
-        description = """                                                                                                                                                           
-          만료된 accessToken을 refreshToken으로 재발급합니다.                                                                                                                     
-                                                                                                                                                                                  
-          ### 요청 방법                                                                                                                                                           
-          - Request Body: refreshToken에 로그인/회원가입 시 발급받은 refresh token을 넣어주세요.                                                                                  
-                                                                                                                                                                                  
-          재발급 성공 시 새로운 accessToken이 반환됩니다. (rotation)                                                                                                                                                                
+        description = """
+          만료된 accessToken을 refreshToken으로 재발급합니다.
+
+          ### 요청 방법
+          - Request Body: refreshToken에 로그인/회원가입 시 발급받은 refresh token을 넣어주세요.
+
+          재발급 성공 시 새로운 accessToken이 반환됩니다. (rotation)
           """
     )
     @ApiResponses({
