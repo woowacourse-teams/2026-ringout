@@ -15,6 +15,7 @@ import com.joon.ringout.data.missionhistory.KtorMissionHistoryRemoteDataSource
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
 import com.joon.ringout.data.network.getRingoutHttpClient
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
+import com.joon.ringout.data.preferences.AndroidSystemThemeModeReader
 import com.joon.ringout.data.preferences.getAppPreferencesDataStore
 import com.joon.ringout.domain.auth.getAuthSession
 
@@ -31,6 +32,8 @@ class AndroidAppContainer(
         DataStoreAppPreferencesRepository(
             getAppPreferencesDataStore(context)
         )
+
+    override val systemThemeModeReader = AndroidSystemThemeModeReader(context)
 
     override val authRepository = DefaultAuthRepository(
         authApi = KtorAuthApi(httpClient),

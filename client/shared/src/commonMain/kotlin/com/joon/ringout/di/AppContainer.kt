@@ -7,9 +7,11 @@ import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.MissionHistoryRepository
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
+import com.joon.ringout.domain.preferences.SystemThemeModeReader
 
 interface AppContainer {
     val appPreferencesRepository: AppPreferencesRepository
+    val systemThemeModeReader: SystemThemeModeReader
     val authSession: AuthSession
     val authRepository: AuthRepository
     val memberRepository: MemberRepository
