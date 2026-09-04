@@ -76,7 +76,7 @@ public class TermsService {
     private void saveAgreements(Long userId, List<Terms> newlyAgreedTerms) {
         User user = userRepository.getReferenceById(userId);
         List<UserAgreement> agreements = newlyAgreedTerms.stream()
-            .map(terms -> UserAgreement.of(user, terms, terms.getType(), terms.getVersion()))
+            .map(terms -> UserAgreement.of(user, terms, terms.getVersion()))
             .toList();
         userAgreementRepository.saveAll(agreements);
     }
