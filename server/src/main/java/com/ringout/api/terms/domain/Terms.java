@@ -32,7 +32,7 @@ public class Terms extends BaseEntity {
   private Long id;
 
   @Enumerated(EnumType.STRING)
-  @Column(nullable = false, length = 30)
+  @Column(nullable = false, columnDefinition = "ENUM('SERVICE', 'PRIVACY')")
   private TermsType type;
 
   @Embedded

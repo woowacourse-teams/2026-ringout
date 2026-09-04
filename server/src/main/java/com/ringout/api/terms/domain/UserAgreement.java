@@ -6,8 +6,6 @@ import jakarta.persistence.AttributeOverride;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -40,28 +38,26 @@ public class UserAgreement extends BaseEntity {
   @JoinColumn(name = "terms_id")
   private Terms terms;
 
-  @Enumerated(EnumType.STRING)
-  @Column(nullable = false, length = 30)
-  private TermsType type;
-
   @Embedded
   @AttributeOverride(name = "version", column = @Column(name = "version", nullable = false))
   private TermsVersion version;
 
   @Builder(access = AccessLevel.PRIVATE)
-  public UserAgreement(User user, Terms terms, TermsType type, TermsVersion version) {
+  public UserAgreement(User user, Terms terms, TermsVersion version) {
     this.user = user;
     this.terms = terms;
-    this.type = type;
     this.version = version;
   }
 
-  public static UserAgreement of(User user, Terms terms, TermsType type, TermsVersion version) {
+  public static UserAgreement of(User user, Terms terms, TermsVersion version) {
     return UserAgreement.builder()
         .user(user)
         .terms(terms)
-        .type(type)
         .version(version)
         .build();
+  }
+
+  public TermsType getType() {
+    return terms.getType();
   }
 }
