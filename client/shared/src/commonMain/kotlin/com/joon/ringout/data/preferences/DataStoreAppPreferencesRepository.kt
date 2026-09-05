@@ -29,6 +29,14 @@ class DataStoreAppPreferencesRepository(
         )
     }
 
+    override suspend fun initializeThemeModeIfMissing(themeMode: ThemeMode) {
+        dataStore.edit { preferences ->
+            if (ThemeMode.fromPersistedValue(preferences[ThemeModeKey]) == null) {
+                preferences[ThemeModeKey] = themeMode.persistedValue
+            }
+        }
+    }
+
     override suspend fun setThemeMode(themeMode: ThemeMode) {
         dataStore.edit { preferences ->
             preferences[ThemeModeKey] = themeMode.persistedValue

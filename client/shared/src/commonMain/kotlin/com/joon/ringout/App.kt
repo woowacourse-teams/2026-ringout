@@ -61,7 +61,8 @@ fun App(
     GuestOnlyAuthCleanupEffect(appContainer.authRepository)
     val appBootstrapViewModel = viewModel {
         AppBootstrapViewModel(
-            repository = appContainer.appPreferencesRepository
+            repository = appContainer.appPreferencesRepository,
+            systemThemeModeReader = appContainer.systemThemeModeReader,
         )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState

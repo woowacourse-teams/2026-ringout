@@ -49,16 +49,40 @@ class DataStoreAppPreferencesRepositoryTest {
     }
 
     @Test
-    fun missingAndUnsupportedThemeValuesDefaultToDark() = withRepository(
+    fun missingAndUnsupportedThemeValuesRemainUnresolved() = withRepository(
         prefix = "ringout-theme-fallback-test",
     ) { dataStore, repository ->
-        assertEquals(ThemeMode.Dark, repository.bootstrapState.first().themeMode)
+        assertEquals(null, repository.bootstrapState.first().themeMode)
 
         dataStore.edit { preferences ->
             preferences[stringPreferencesKey("theme.mode")] = "system"
         }
 
+        assertEquals(null, repository.bootstrapState.first().themeMode)
+    }
+
+    @Test
+    fun initializeThemeModeIfMissingStoresMissingAndUnsupportedValues() = withRepository(
+        prefix = "ringout-theme-initialization-test",
+    ) { dataStore, repository ->
+        repository.initializeThemeModeIfMissing(ThemeMode.Light)
+        assertEquals(ThemeMode.Light, repository.bootstrapState.first().themeMode)
+
+        dataStore.edit { preferences ->
+            preferences[stringPreferencesKey("theme.mode")] = "system"
+        }
+        repository.initializeThemeModeIfMissing(ThemeMode.Dark)
         assertEquals(ThemeMode.Dark, repository.bootstrapState.first().themeMode)
+    }
+
+    @Test
+    fun initializeThemeModeIfMissingDoesNotOverwriteValidUserTheme() = withRepository(
+        prefix = "ringout-theme-initialization-race-test",
+    ) { _, repository ->
+        repository.setThemeMode(ThemeMode.Light)
+        repository.initializeThemeModeIfMissing(ThemeMode.Dark)
+
+        assertEquals(ThemeMode.Light, repository.bootstrapState.first().themeMode)
     }
 
     @Test

@@ -2,17 +2,18 @@ package com.joon.ringout
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class ThemeModeTest {
 
     @Test
-    fun missingPersistedValueDefaultsToDark() {
-        assertEquals(ThemeMode.Dark, ThemeMode.fromPersistedValue(null))
+    fun missingPersistedValueIsUnresolved() {
+        assertNull(ThemeMode.fromPersistedValue(null))
     }
 
     @Test
-    fun invalidPersistedValueDefaultsToDark() {
-        assertEquals(ThemeMode.Dark, ThemeMode.fromPersistedValue("system"))
+    fun invalidPersistedValueIsUnresolved() {
+        assertNull(ThemeMode.fromPersistedValue("system"))
     }
 
     @Test
