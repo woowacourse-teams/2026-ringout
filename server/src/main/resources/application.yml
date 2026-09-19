@@ -29,8 +29,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
     tags:
       environment: ${APP_ENV:${spring.profiles.active:local}}
       service: ringout
