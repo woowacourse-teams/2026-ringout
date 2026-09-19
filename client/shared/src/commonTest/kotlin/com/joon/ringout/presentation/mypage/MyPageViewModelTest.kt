@@ -3,6 +3,8 @@ package com.joon.ringout.presentation.mypage
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.DestinationSelectionSource
+import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
+import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.StampMonthChangeDirection
 import com.joon.ringout.domain.auth.AuthRepository
@@ -707,7 +709,8 @@ private class FakeAuthRepository(
 
 private class RecordingProductAnalyticsRecorder(
     private val order: MutableList<String> = mutableListOf(),
-) : ProductAnalyticsRecorder {
+) : ProductAnalyticsRecorder,
+    OnboardingAnalyticsRecorder by NoOpOnboardingAnalyticsRecorder {
     val calendarViewed = mutableListOf<CalendarViewed>()
     val monthChanged = mutableListOf<MonthChanged>()
     var withdrawalEventCount = 0

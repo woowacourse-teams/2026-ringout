@@ -7,10 +7,29 @@ import com.joon.ringout.platform.IosAnalyticsTracker
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSUUID
 import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class IosAlarmAnalyticsTest {
+    @Test
+    fun onboardingClaimsSurviveStoreRecreation() {
+        val suiteName = "ringout-onboarding-test-${NSUUID().UUIDString}"
+        val preferences = requireNotNull(NSUserDefaults(suiteName = suiteName))
+        try {
+            val first = IosAnalyticsUsageStore(preferences)
+            assertTrue(first.claimOnboardingEvent(AnalyticsEventName.TutorialBegin))
+            val recreated = IosAnalyticsUsageStore(requireNotNull(NSUserDefaults(suiteName = suiteName)))
+            assertFalse(recreated.claimOnboardingEvent(AnalyticsEventName.TutorialBegin))
+            assertTrue(recreated.claimOnboardingEvent(AnalyticsEventName.TutorialComplete))
+            assertFalse(first.claimOnboardingEvent(AnalyticsEventName.TutorialComplete))
+            assertEquals(1L, recreated.claimAlarmCreation("first"))
+        } finally {
+            preferences.removePersistentDomainForName(suiteName)
+        }
+    }
+
     @Test
     fun recordsAlarmCreationOnlyOnceWithAndroidCompatibleParameters() = withAnalytics { analytics, tracker ->
         analytics.recordAlarmCreated(

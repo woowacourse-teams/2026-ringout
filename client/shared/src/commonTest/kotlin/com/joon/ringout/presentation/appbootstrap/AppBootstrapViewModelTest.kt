@@ -1,6 +1,10 @@
 package com.joon.ringout.presentation.appbootstrap
 
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.analytics.AnalyticsEventName
+import com.joon.ringout.analytics.AnalyticsParameterName
+import com.joon.ringout.analytics.AnalyticsParameterValue
+import com.joon.ringout.analytics.OnboardingAnalyticsFixture
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.domain.firstlaunch.FirstLaunchStatus
 import com.joon.ringout.domain.preferences.AppBootstrapSnapshot
@@ -22,6 +26,50 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AppBootstrapViewModelTest {
+    @Test
+    fun completionEventWaitsForSuccessfulPreferenceWriteEvenAfterRouteChanges() {
+        val scope = testScope()
+        val gate = CompletableDeferred<Unit>()
+        val repository = FakeAppPreferencesRepository(onboardingWriteGate = gate)
+        val analytics = OnboardingAnalyticsFixture()
+        try {
+            val vm = AppBootstrapViewModel(repository, scope, analytics.recorder)
+            vm.completeOnboarding(stepCount = 4)
+            repository.emit(snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)))
+            assertEquals(AppEntryDestination.Home, vm.uiState.destination)
+            assertTrue(analytics.events.isEmpty())
+            assertTrue(vm.uiState.isSaving)
+            vm.completeOnboarding(stepCount = 4)
+            assertEquals(1, repository.onboardingSaveCount)
+            gate.complete(Unit)
+            val event = analytics.events.single()
+            assertEquals(AnalyticsEventName.TutorialComplete, event.name)
+            assertEquals(AnalyticsParameterValue.Number(4), event.parameters[AnalyticsParameterName.StepCount])
+            assertFalse(vm.uiState.isSaving)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun failedCompletionWriteEmitsNothingAndSuccessfulRetryEmitsOnce() {
+        val scope = testScope()
+        val repository = FakeAppPreferencesRepository(failOnboardingWrite = true)
+        val analytics = OnboardingAnalyticsFixture()
+        try {
+            val vm = AppBootstrapViewModel(repository, scope, analytics.recorder)
+            vm.completeOnboarding(stepCount = 5)
+            assertTrue(analytics.events.isEmpty())
+            assertEquals(1, vm.uiState.onboardingRetryToken)
+            repository.failOnboardingWrite = false
+            vm.completeOnboarding(stepCount = 5)
+            vm.completeOnboarding(stepCount = 5)
+            assertEquals(listOf(AnalyticsEventName.TutorialComplete), analytics.events.map { it.name })
+        } finally {
+            scope.cancel()
+        }
+    }
+
     @Test
     fun staysNotReadyUntilTheRepositoryEmitsItsFirstSnapshot() {
         val scope = testScope()
@@ -149,9 +197,10 @@ private inline fun withViewModel(
 
 private class FakeAppPreferencesRepository(
     initialSnapshot: AppBootstrapSnapshot = snapshot(),
-    private val failOnboardingWrite: Boolean = false,
+    var failOnboardingWrite: Boolean = false,
     private val firstThemeWriteGate: CompletableDeferred<Unit>? = null,
     var themeWriteFailuresRemaining: Int = 0,
+    private val onboardingWriteGate: CompletableDeferred<Unit>? = null,
 ) : AppPreferencesRepository {
     private val mutableBootstrapState = MutableStateFlow(initialSnapshot)
     override val bootstrapState: Flow<AppBootstrapSnapshot> = mutableBootstrapState
@@ -175,6 +224,7 @@ private class FakeAppPreferencesRepository(
 
     override suspend fun markOnboardingCompleted() {
         onboardingSaveCount += 1
+        onboardingWriteGate?.await()
         if (failOnboardingWrite) throw IOException("write failed")
     }
 

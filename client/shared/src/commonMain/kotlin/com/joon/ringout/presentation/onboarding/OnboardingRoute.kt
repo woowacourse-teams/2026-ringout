@@ -33,13 +33,16 @@ internal fun OnboardingRoute(
     onRequestAlwaysLocation: () -> Unit,
     onConfirmAlwaysLocationResult: () -> Unit,
     onRequestTemporaryFullAccuracy: () -> Unit,
-    onComplete: () -> Unit,
+    onComplete: (stepCount: Int) -> Unit,
     modifier: Modifier = Modifier,
     completionEnabled: Boolean = true,
     completionRetryToken: Int = 0,
 ) {
     val flow = viewModel {
-        OnboardingViewModel(includesSoundSelection = PlatformOnboardingIncludesSoundSelection)
+        OnboardingViewModel(
+            includesSoundSelection = PlatformOnboardingIncludesSoundSelection,
+            analytics = appContainer.productAnalyticsRecorder,
+        )
     }
     val editor = viewModel(key = "onboarding-alarm") {
         AlarmSetupViewModel().apply {
@@ -57,7 +60,7 @@ internal fun OnboardingRoute(
             if (editor.onSaveCompleted(request) &&
                 flow.onAlarmSaved(currentRetryToken.value) == OnboardingAdvance.Complete
             ) {
-                currentComplete.value()
+                currentComplete.value(flow.uiState.steps.size)
             }
         },
         onSaveError = editor::onSaveError,
@@ -68,6 +71,9 @@ internal fun OnboardingRoute(
     )
     val soundController = rememberDeviceAlarmSoundController()
     val state = flow.uiState
+    LaunchedEffect(state.step, state.isDestinationOpen) {
+        flow.onStepVisible()
+    }
     val editable = !editor.uiState.isSaveInProgress && completionEnabled && !state.isAlarmSaved
     val sounds = soundController.sounds.ifEmpty { listOf(editor.uiState.alarmSound) }
     LaunchedEffect(sounds) {
@@ -128,8 +134,13 @@ internal fun OnboardingRoute(
                 if (completionEnabled) {
                     soundController.stopPreview()
                     when (flow.requestNext(editor.uiState, completionRetryToken)) {
-                        OnboardingAdvance.SaveAlarm -> editor.requestSave()
-                        OnboardingAdvance.Complete -> onComplete()
+                        OnboardingAdvance.SaveAlarm -> {
+                            if (editor.requestSave()) flow.onSubmitAccepted()
+                        }
+                        OnboardingAdvance.Complete -> {
+                            flow.onSubmitAccepted()
+                            onComplete(state.steps.size)
+                        }
                         OnboardingAdvance.None -> Unit
                     }
                 }

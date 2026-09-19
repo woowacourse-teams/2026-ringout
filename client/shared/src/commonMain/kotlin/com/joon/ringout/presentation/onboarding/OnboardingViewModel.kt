@@ -4,6 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import com.joon.ringout.analytics.AnalyticsOnboardingStep
+import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
+import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupUiState
 
 internal enum class OnboardingStep(val title: String, val description: String) {
@@ -30,11 +33,31 @@ internal data class OnboardingUiState(
 
 internal enum class OnboardingAdvance { None, SaveAlarm, Complete }
 
-internal class OnboardingViewModel(includesSoundSelection: Boolean = true) : ViewModel() {
+internal class OnboardingViewModel(
+    includesSoundSelection: Boolean = true,
+    private val analytics: OnboardingAnalyticsRecorder = NoOpOnboardingAnalyticsRecorder,
+) : ViewModel() {
     var uiState by mutableStateOf(OnboardingUiState(includesSoundSelection = includesSoundSelection))
         private set
 
     private var lastCompletionToken: Int? = null
+    private var lastViewedStep: OnboardingStep? = null
+
+    /** Called only when the step is displayed; recomposition and app resume are not entries. */
+    fun onStepVisible() {
+        if (uiState.isDestinationOpen || lastViewedStep == uiState.step) return
+        lastViewedStep = uiState.step
+        runCatching {
+            analytics.recordOnboardingStarted(uiState.steps.size)
+            analytics.recordOnboardingStepViewed(uiState.step.analyticsStep(), uiState.steps.size)
+        }
+    }
+
+    /** Called after a save request (or completion-only retry) has been accepted. */
+    fun onSubmitAccepted() {
+        if (!uiState.isLastStep || uiState.isDestinationOpen) return
+        runCatching { analytics.recordOnboardingSubmitted(uiState.steps.size) }
+    }
 
     fun requestNext(alarm: AlarmSetupUiState, completionRetryToken: Int): OnboardingAdvance {
         if (alarm.isSaveInProgress || uiState.isDestinationOpen) return OnboardingAdvance.None
@@ -69,6 +92,7 @@ internal class OnboardingViewModel(includesSoundSelection: Boolean = true) : Vie
 
     fun openDestination() {
         if (uiState.step != OnboardingStep.Destination || uiState.isAlarmSaved) return
+        lastViewedStep = null
         uiState = uiState.copy(
             destinationRequestId = uiState.destinationRequestId + 1,
             isDestinationOpen = true,
@@ -80,4 +104,12 @@ internal class OnboardingViewModel(includesSoundSelection: Boolean = true) : Vie
         uiState = uiState.copy(isDestinationOpen = false)
         return true
     }
+}
+
+private fun OnboardingStep.analyticsStep(): AnalyticsOnboardingStep = when (this) {
+    OnboardingStep.Time -> AnalyticsOnboardingStep.Time
+    OnboardingStep.Weekdays -> AnalyticsOnboardingStep.Weekdays
+    OnboardingStep.Destination -> AnalyticsOnboardingStep.Destination
+    OnboardingStep.Interval -> AnalyticsOnboardingStep.Interval
+    OnboardingStep.Sound -> AnalyticsOnboardingStep.Sound
 }

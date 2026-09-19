@@ -230,7 +230,7 @@ class ProductAnalyticsRecorderTest {
     fun analyticsFailuresNeverEscapeToProductFlows() {
         val recorder = DefaultProductAnalyticsRecorder(
             tracker = AnalyticsTracker { error("tracker failure") },
-            usageStore = ProductAnalyticsUsageStore { 1L },
+            usageStore = RecordingProductAnalyticsUsageStore(),
         )
 
         recorder.recordDestinationCreated(1L, AnalyticsLoginState.LoggedIn)
@@ -255,7 +255,10 @@ class ProductAnalyticsRecorderTest {
 
         DefaultProductAnalyticsRecorder(
             tracker = RecordingProductAnalyticsTracker(),
-            usageStore = ProductAnalyticsUsageStore { error("usage store failure") },
+            usageStore = object : ProductAnalyticsUsageStore {
+                override fun claimDestinationCreation(destinationKey: String): Long? = error("usage store failure")
+                override fun claimOnboardingEvent(eventName: AnalyticsEventName): Boolean = error("usage store failure")
+            },
         ).recordDestinationCreated(1L, AnalyticsLoginState.LoggedIn)
     }
 
@@ -276,6 +279,9 @@ private class RecordingProductAnalyticsTracker : AnalyticsTracker {
 }
 
 private class RecordingProductAnalyticsUsageStore : ProductAnalyticsUsageStore {
+    private val onboardingClaims = mutableSetOf<AnalyticsEventName>()
+    override fun claimOnboardingEvent(eventName: AnalyticsEventName): Boolean = onboardingClaims.add(eventName)
+
     private val claimedKeys = mutableSetOf<String>()
     private var creationCounter = 0L
 

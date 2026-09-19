@@ -1,5 +1,7 @@
 # Android 목적지 알람 분석 측정 계획
 
+첫 알람 온보딩의 Android·iOS 이탈 분석은 [온보딩 측정 계획](./ONBOARDING_MEASUREMENT_PLAN.md)을 참고한다.
+
 ## 1. 목적과 범위
 
 이 문서는 Android Firebase Analytics에서 목적지 알람의 첫 설정부터 미션 결과까지를 측정하는 계약을 정의한다. 핵심 질문은 다음과 같다.

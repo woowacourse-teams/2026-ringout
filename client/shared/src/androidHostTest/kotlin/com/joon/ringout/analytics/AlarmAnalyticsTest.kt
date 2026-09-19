@@ -8,6 +8,29 @@ import kotlin.test.assertTrue
 
 class AlarmAnalyticsTest {
     @Test
+    fun onboardingClaimsSurviveStoreRecreationAndAreIndependentOfAlarmCreation() {
+        val preferences = InMemoryAnalyticsUsagePreferences()
+        val first = AnalyticsUsageStore(preferences)
+        assertTrue(first.claimOnboardingEvent(AnalyticsEventName.TutorialBegin))
+        val recreated = AnalyticsUsageStore(preferences)
+        assertFalse(recreated.claimOnboardingEvent(AnalyticsEventName.TutorialBegin))
+        assertTrue(recreated.claimOnboardingEvent(AnalyticsEventName.TutorialComplete))
+        assertFalse(first.claimOnboardingEvent(AnalyticsEventName.TutorialComplete))
+        assertEquals(1L, recreated.claimAlarmCreation("first"))
+    }
+
+    @Test
+    fun failedOnboardingClaimCommitDoesNotReportSuccess() {
+        val store = AnalyticsUsageStore(object : AnalyticsUsagePreferences {
+            override fun contains(key: String): Boolean = false
+            override fun getLong(key: String, defaultValue: Long): Long = defaultValue
+            override fun commit(longValues: Map<String, Long>, trueFlags: Set<String>): Boolean = false
+        })
+        assertFalse(store.claimOnboardingEvent(AnalyticsEventName.TutorialBegin))
+        assertFalse(store.claimOnboardingEvent(AnalyticsEventName.TutorialComplete))
+    }
+
+    @Test
     fun forceEndHoldAttemptAllowsOneTerminalEventBeforeTheNextAttempt() {
         val store = ForceEndHoldAnalyticsAttemptStore()
         val attempt = ForceEndHoldAnalyticsAttempt(

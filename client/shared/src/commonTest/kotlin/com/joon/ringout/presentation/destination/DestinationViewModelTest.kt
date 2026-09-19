@@ -3,6 +3,8 @@ package com.joon.ringout.presentation.destination
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.DestinationSelectionSource
+import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
+import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.StampMonthChangeDirection
 import com.joon.ringout.domain.destination.DestinationRepository
@@ -256,7 +258,8 @@ private data class DestinationCreatedRecord(
     val loginState: AnalyticsLoginState,
 )
 
-private class RecordingProductAnalyticsRecorder : ProductAnalyticsRecorder {
+private class RecordingProductAnalyticsRecorder : ProductAnalyticsRecorder,
+    OnboardingAnalyticsRecorder by NoOpOnboardingAnalyticsRecorder {
     val destinationCreatedRecords = mutableListOf<DestinationCreatedRecord>()
     val order = mutableListOf<String>()
     var destinationCreatedFailure: Throwable? = null

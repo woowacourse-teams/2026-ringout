@@ -29,7 +29,7 @@ enum class AnalyticsAuthProvider(
     Apple("apple"),
 }
 
-interface ProductAnalyticsRecorder {
+interface ProductAnalyticsRecorder : OnboardingAnalyticsRecorder {
     fun recordDestinationCreated(
         destinationId: Long,
         loginState: AnalyticsLoginState,
@@ -65,7 +65,9 @@ interface ProductAnalyticsRecorder {
     fun recordSignupCompleted(provider: AnalyticsAuthProvider)
 }
 
-internal fun interface ProductAnalyticsUsageStore {
+internal interface ProductAnalyticsUsageStore {
+    fun claimOnboardingEvent(eventName: AnalyticsEventName): Boolean
+
     fun claimDestinationCreation(destinationKey: String): Long?
 }
 
@@ -73,6 +75,25 @@ internal class DefaultProductAnalyticsRecorder(
     private val tracker: AnalyticsTracker,
     private val usageStore: ProductAnalyticsUsageStore,
 ) : ProductAnalyticsRecorder {
+    override fun recordOnboardingStarted(stepCount: Int) = safelyRecord {
+        val event = onboardingAnalyticsEvent(AnalyticsEventName.TutorialBegin, stepCount)
+        if (usageStore.claimOnboardingEvent(event.name)) tracker.log(event)
+    }
+
+    override fun recordOnboardingStepViewed(step: AnalyticsOnboardingStep, stepCount: Int) = safelyRecord {
+        tracker.log(onboardingAnalyticsEvent(AnalyticsEventName.OnboardingStepViewed, stepCount, step))
+    }
+
+    override fun recordOnboardingSubmitted(stepCount: Int) = safelyRecord {
+        val step = if (stepCount == 4) AnalyticsOnboardingStep.Interval else AnalyticsOnboardingStep.Sound
+        tracker.log(onboardingAnalyticsEvent(AnalyticsEventName.OnboardingSubmit, stepCount, step))
+    }
+
+    override fun recordOnboardingCompleted(stepCount: Int) = safelyRecord {
+        val event = onboardingAnalyticsEvent(AnalyticsEventName.TutorialComplete, stepCount)
+        if (usageStore.claimOnboardingEvent(event.name)) tracker.log(event)
+    }
+
     override fun recordDestinationCreated(
         destinationId: Long,
         loginState: AnalyticsLoginState,

@@ -9,7 +9,7 @@ import com.joon.ringout.alarm.MissionLocationAuthorizationState
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsTracker
 import com.joon.ringout.analytics.DefaultProductAnalyticsRecorder
-import com.joon.ringout.analytics.ProductAnalyticsUsageStore
+import com.joon.ringout.analytics.InMemoryProductAnalyticsUsageStore
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.AuthTerm
@@ -241,7 +241,7 @@ private class ReauthenticationFixture(
 ) {
     private val analytics = DefaultProductAnalyticsRecorder(
         tracker = AnalyticsTracker {},
-        usageStore = ProductAnalyticsUsageStore { null },
+        usageStore = InMemoryProductAnalyticsUsageStore(),
     )
     val destinationRepository = ReauthenticationDestinationRepository()
     val authRepository = ReauthenticationAuthRepository()
