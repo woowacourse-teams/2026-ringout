@@ -29,7 +29,7 @@ fun OnboardingPrimaryButton(
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.ringoutColors.primaryActionContent,

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
@@ -54,7 +55,7 @@ fun LimitTimeCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(142.dp)
+            .heightIn(min = 142.dp)
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -65,7 +66,7 @@ fun LimitTimeCard(
             AlarmSetupSectionLabel("반복 알람 간격", colors.primaryText)
             Text(
                 text = buildAnnotatedString {
-                    append("움직이지 않으면 ")
+                    append("움직임이 없으면 ")
                     withStyle(
                         SpanStyle(
                             color = colors.accent,
@@ -75,10 +76,9 @@ fun LimitTimeCard(
                     ) {
                         append("${sliderMinutes}분마다")
                     }
-                    append(" 알람이 다시 울려요")
+                    append(" 다시 울려요")
                 },
                 color = colors.supportingText,
-                maxLines = 1,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontSize = 16.sp,
                     lineHeight = 27.sp,
