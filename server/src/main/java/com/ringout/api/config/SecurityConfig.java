@@ -22,7 +22,7 @@ public class SecurityConfig {
 
     private static final String[] PERMIT_ALL_URL_ARRAY = {
             "/v3/api-docs/**", "/swagger-ui/**", "/swagger-resources/**", "/swagger-ui.html",
-            "/actuator/health", "/api/v1/health",
+            "/actuator/health", "/actuator/prometheus", "/api/v1/health",
             "/api/v1/auth/**", "/api/v1/test/**"
     };
 
