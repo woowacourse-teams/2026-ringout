@@ -38,7 +38,9 @@ internal fun OnboardingRoute(
     completionEnabled: Boolean = true,
     completionRetryToken: Int = 0,
 ) {
-    val flow = viewModel { OnboardingViewModel() }
+    val flow = viewModel {
+        OnboardingViewModel(includesSoundSelection = PlatformOnboardingIncludesSoundSelection)
+    }
     val editor = viewModel(key = "onboarding-alarm") {
         AlarmSetupViewModel().apply {
             startCreating(DefaultAlarmTime)

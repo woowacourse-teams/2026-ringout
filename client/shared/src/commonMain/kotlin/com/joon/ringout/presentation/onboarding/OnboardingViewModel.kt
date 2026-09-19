@@ -16,15 +16,22 @@ internal enum class OnboardingStep(val title: String, val description: String) {
 
 internal data class OnboardingUiState(
     val step: OnboardingStep = OnboardingStep.Time,
+    val includesSoundSelection: Boolean = true,
     val destinationRequestId: Long = 0,
     val isDestinationOpen: Boolean = false,
     val isAlarmSaved: Boolean = false,
-)
+) {
+    val steps: List<OnboardingStep>
+        get() = OnboardingStep.entries.filter { includesSoundSelection || it != OnboardingStep.Sound }
+
+    val currentStepIndex: Int get() = steps.indexOf(step)
+    val isLastStep: Boolean get() = step == steps.last()
+}
 
 internal enum class OnboardingAdvance { None, SaveAlarm, Complete }
 
-internal class OnboardingViewModel : ViewModel() {
-    var uiState by mutableStateOf(OnboardingUiState())
+internal class OnboardingViewModel(includesSoundSelection: Boolean = true) : ViewModel() {
+    var uiState by mutableStateOf(OnboardingUiState(includesSoundSelection = includesSoundSelection))
         private set
 
     private var lastCompletionToken: Int? = null
@@ -33,10 +40,10 @@ internal class OnboardingViewModel : ViewModel() {
         if (alarm.isSaveInProgress || uiState.isDestinationOpen) return OnboardingAdvance.None
         if (uiState.isAlarmSaved) return requestCompletion(completionRetryToken)
         if (uiState.step == OnboardingStep.Destination && !alarm.canSave) return OnboardingAdvance.None
-        if (uiState.step == OnboardingStep.Sound) {
+        if (uiState.isLastStep) {
             return if (alarm.canSave) OnboardingAdvance.SaveAlarm else OnboardingAdvance.None
         }
-        uiState = uiState.copy(step = OnboardingStep.entries[uiState.step.ordinal + 1])
+        uiState = uiState.copy(step = uiState.steps[uiState.currentStepIndex + 1])
         return OnboardingAdvance.None
     }
 
@@ -55,7 +62,7 @@ internal class OnboardingViewModel : ViewModel() {
         if (uiState.isAlarmSaved) return
         uiState = when {
             uiState.isDestinationOpen -> uiState.copy(isDestinationOpen = false)
-            uiState.step.ordinal > 0 -> uiState.copy(step = OnboardingStep.entries[uiState.step.ordinal - 1])
+            uiState.currentStepIndex > 0 -> uiState.copy(step = uiState.steps[uiState.currentStepIndex - 1])
             else -> uiState
         }
     }

@@ -100,4 +100,50 @@ class OnboardingStateTest {
         assertEquals(OnboardingStep.Sound, flow.uiState.step)
         assertTrue(flow.uiState.isAlarmSaved)
     }
+
+    @Test
+    fun iosHasFourStepsAndSavesFromIntervalWithDefaultSound() {
+        val flow = OnboardingViewModel(includesSoundSelection = false)
+        val editor = AlarmSetupViewModel(createAlarmId = { "ios-first-alarm" })
+        editor.startCreating("06:20")
+        editor.updateDestination(destination)
+        assertEquals(
+            listOf(OnboardingStep.Time, OnboardingStep.Weekdays, OnboardingStep.Destination, OnboardingStep.Interval),
+            flow.uiState.steps,
+        )
+        repeat(3) { flow.requestNext(editor.uiState, 0) }
+        assertEquals(3, flow.uiState.currentStepIndex)
+        assertTrue(flow.uiState.isLastStep)
+        flow.back()
+        assertEquals(OnboardingStep.Destination, flow.uiState.step)
+        flow.requestNext(editor.uiState, 0)
+        assertEquals(OnboardingAdvance.SaveAlarm, flow.requestNext(editor.uiState, 0))
+        assertTrue(editor.requestSave())
+        val request = assertNotNull(editor.uiState.pendingSaveRequest)
+        assertEquals(AlarmSetupUiState().alarmSound.name, request.alarmSoundName)
+        assertEquals(null, request.alarmSoundUri)
+        assertEquals(OnboardingAdvance.None, flow.requestNext(editor.uiState, 0))
+        editor.onSaveError(request, "저장 실패")
+        assertEquals(OnboardingAdvance.SaveAlarm, flow.requestNext(editor.uiState, 0))
+        assertTrue(editor.requestSave())
+        assertTrue(editor.onSaveCompleted(assertNotNull(editor.uiState.pendingSaveRequest)))
+        assertEquals(OnboardingAdvance.Complete, flow.onAlarmSaved(0))
+        assertEquals(OnboardingAdvance.None, flow.requestNext(editor.uiState, 0))
+        assertEquals(OnboardingAdvance.Complete, flow.requestNext(editor.uiState, 1))
+        flow.back()
+        assertEquals(OnboardingStep.Interval, flow.uiState.step)
+    }
+
+    @Test
+    fun androidIntervalStillAdvancesToSoundBeforeSaving() {
+        val flow = OnboardingViewModel(includesSoundSelection = true)
+        repeat(3) { flow.requestNext(configuredAlarm, 0) }
+        assertEquals(5, flow.uiState.steps.size)
+        assertFalse(flow.uiState.isLastStep)
+        assertEquals(OnboardingAdvance.None, flow.requestNext(configuredAlarm, 0))
+        assertEquals(OnboardingStep.Sound, flow.uiState.step)
+        assertTrue(flow.uiState.isLastStep)
+        assertEquals(OnboardingAdvance.SaveAlarm, flow.requestNext(configuredAlarm, 0))
+    }
+
 }

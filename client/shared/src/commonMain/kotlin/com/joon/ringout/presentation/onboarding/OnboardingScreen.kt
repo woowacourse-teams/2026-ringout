@@ -72,7 +72,7 @@ internal fun OnboardingScreen(
                 if (uiState.step != OnboardingStep.Time && !uiState.isAlarmSaved) {
                     SetupBackButton(onClick = onBack, enabled = !busy)
                 }
-                OnboardingPageIndicator(OnboardingStep.entries.size, uiState.step.ordinal)
+                OnboardingPageIndicator(uiState.steps.size, uiState.currentStepIndex)
             }
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val contentMinHeight = (maxHeight - 160.dp).coerceAtLeast(240.dp)
@@ -134,7 +134,7 @@ internal fun OnboardingScreen(
             OnboardingPrimaryButton(
                 label = when {
                     busy -> "저장 중…"
-                    uiState.step == OnboardingStep.Sound -> "시작하기"
+                    uiState.isLastStep -> "시작하기"
                     else -> "다음으로"
                 },
                 onClick = onNext,
@@ -167,10 +167,14 @@ private fun OnboardingIntervalPreview() = OnboardingPreview(OnboardingStep.Inter
 private fun OnboardingSoundPreview() = OnboardingPreview(OnboardingStep.Sound, ThemeMode.Light)
 
 @Composable
-private fun OnboardingPreview(step: OnboardingStep, theme: ThemeMode = ThemeMode.Dark) {
+private fun OnboardingPreview(
+    step: OnboardingStep,
+    theme: ThemeMode = ThemeMode.Dark,
+    includesSoundSelection: Boolean = true,
+) {
     RingoutTheme(themeMode = theme) {
         OnboardingScreen(
-            uiState = OnboardingUiState(step = step),
+            uiState = OnboardingUiState(step = step, includesSoundSelection = includesSoundSelection),
             alarm = AlarmSetupUiState(limitMinutes = 5),
             sounds = listOf(AlarmSoundSelection("기본 알람음", null), AlarmSoundSelection("Argon", "argon")),
             onAmPmChange = {},
@@ -185,3 +189,11 @@ private fun OnboardingPreview(step: OnboardingStep, theme: ThemeMode = ThemeMode
         )
     }
 }
+
+@Preview(name = "iOS interval final step", widthDp = 402, heightDp = 874)
+@Composable
+private fun OnboardingIosIntervalPreview() = OnboardingPreview(
+    step = OnboardingStep.Interval,
+    theme = ThemeMode.Light,
+    includesSoundSelection = false,
+)
