@@ -152,10 +152,23 @@ jobs:
 
           printf 'Changed files in deployment candidate:\n%s\n' "$changed_files"
 
+          has_server_changes=false
+          has_server_cd_changes=false
+
           if printf '%s\n' "$changed_files" |
             grep -E '^server/' |
             grep -qvE '^server/docs/'; then
-            write_decision true "$HEAD_SHA" "$HEAD_SHA" server_changes
+            has_server_changes=true
+          fi
+
+          if printf '%s\n' "$changed_files" |
+            grep -qFx '.github/workflows/server-cd.yml'; then
+            has_server_cd_changes=true
+          fi
+
+          if [ "$has_server_changes" = true ] ||
+             [ "$has_server_cd_changes" = true ]; then
+            write_decision true "$HEAD_SHA" "$HEAD_SHA" server_deployment_changes
             exit 0
           fi
 
