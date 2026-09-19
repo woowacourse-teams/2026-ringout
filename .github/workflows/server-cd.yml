@@ -263,6 +263,7 @@ jobs:
               --env OTEL_SERVICE_NAME="$OTEL_SERVICE_NAME" \
               --env OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_EXPORTER_OTLP_ENDPOINT" \
               --env OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_EXPORTER_OTLP_PROTOCOL" \
+              --env OTEL_METRICS_EXPORTER=none \
               --volume "$OTEL_AGENT_PATH:/otel/opentelemetry-javaagent.jar:ro" \
               --publish "$APP_PORT:8080" \
               --log-driver json-file \
