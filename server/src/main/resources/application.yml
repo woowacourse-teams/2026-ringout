@@ -50,8 +50,8 @@ springdoc:
 app:
   test-login:
     enabled: ${IS_TEST_LOGIN_ENABLED:false}
-    secret: ${TEST_LOGIN_SECRET}
-    allowed-provider-ids: ${TEST_LOGIN_ALLOWED_PROVIDER_IDS}
+    secret: ${TEST_LOGIN_SECRET:}
+    allowed-provider-ids: ${TEST_LOGIN_ALLOWED_PROVIDER_IDS:}
   api-version: v1
   auth:
     apple:
