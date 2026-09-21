@@ -107,7 +107,7 @@ internal fun HomeAlarmListState(
                 onClick = onAddAlarm,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 30.dp, bottom = 40.dp),
+                    .padding(end = 30.dp, bottom = 114.dp),
             )
         }
 

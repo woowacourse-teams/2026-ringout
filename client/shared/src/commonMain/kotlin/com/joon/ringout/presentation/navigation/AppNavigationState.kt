@@ -58,6 +58,8 @@ internal class AppNavigationState(
         val destinationStack = when (route) {
             AppRoute.Home -> listOf(AppRoute.Home)
             AppRoute.MyPage -> listOf(AppRoute.Home, AppRoute.MyPage)
+            AppRoute.Social -> listOf(AppRoute.Home, AppRoute.Social)
+            AppRoute.Records -> listOf(AppRoute.Home, AppRoute.Records)
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)
             // 로그아웃이나 재인증 후에도 로그인 화면에서 뒤로 가면 마이페이지로 돌아간다.

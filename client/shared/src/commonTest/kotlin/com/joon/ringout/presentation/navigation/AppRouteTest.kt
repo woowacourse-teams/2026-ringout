@@ -1,7 +1,6 @@
 package com.joon.ringout.presentation.navigation
 
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,6 +12,8 @@ class AppRouteTest {
         val routes = listOf<AppRoute>(
             AppRoute.Onboarding,
             AppRoute.Home,
+            AppRoute.Social,
+            AppRoute.Records,
             AppRoute.AddAlarm,
             AppRoute.EditAlarm(alarmId = "alarm/서울?time=07:30&label=\"출근\""),
             AppRoute.Destination(requestId = Long.MAX_VALUE),

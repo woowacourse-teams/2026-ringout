@@ -1,5 +1,9 @@
 package com.joon.ringout.presentation.navigation
 
+import com.joon.ringout.presentation.social.SocialScreen
+import com.joon.ringout.presentation.social.SocialViewModel
+import com.joon.ringout.presentation.records.RecordsScreen
+import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
@@ -14,6 +18,7 @@ import com.joon.ringout.presentation.mypage.MyPageViewModel
 internal fun EntryProviderScope<AppRoute>.homeGraph(
     navigationState: AppNavigationState,
     homeViewModel: HomeViewModel,
+    viewModelScopes: NavigationViewModelScopes,
     myPageViewModel: MyPageViewModel?,
     themeMode: ThemeMode,
     appVersion: String,
@@ -45,6 +50,13 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             onThemeModeChange = onThemeModeChange,
             onBackClick = { navigationState.popBackStack(AppRoute.MyPage) },
         )
+    }
+
+    entry<AppRoute.Social>(clazzContentKey = AppRoute::viewModelStoreKey) {
+        SocialScreen(viewModelScopes.get(AppRoute.Social, SocialViewModel::class).uiState)
+    }
+    entry<AppRoute.Records>(clazzContentKey = AppRoute::viewModelStoreKey) {
+        RecordsScreen(viewModelScopes.get(AppRoute.Records, RecordsViewModel::class).uiState)
     }
 
     // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 NicknameChange 경로를 다시 등록한다.

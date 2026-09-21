@@ -21,7 +21,6 @@ import ringout.shared.generated.resources.pretendard_medium
 import ringout.shared.generated.resources.pretendard_thin
 
 private val RingoutOrange = Color(0xFFFF6D2E)
-private val RingoutLightBackground = Color(0xFFF5F5F5)
 private val RingoutLightContent = Color(0xFF111827)
 
 internal val LocalRingoutThemeMode = staticCompositionLocalOf { ThemeMode.Dark }
@@ -29,6 +28,7 @@ internal val LocalRingoutThemeMode = staticCompositionLocalOf { ThemeMode.Dark }
 @Immutable
 data class RingoutExtendedColors(
     val dialog: RingoutDialogColors,
+    val navigationInactiveContent: Color,
     val primaryActionContent: Color,
     val onboardingDescriptionContent: Color,
     val elevatedSurface: Color,
@@ -59,6 +59,7 @@ private val RingoutConfirmationDialogColors = RingoutDialogColors(
 )
 
 private val RingoutLightExtendedColors = RingoutExtendedColors(
+    navigationInactiveContent = Color(0xFF6B7280),
     dialog = RingoutConfirmationDialogColors,
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.Black,
@@ -68,6 +69,7 @@ private val RingoutLightExtendedColors = RingoutExtendedColors(
 )
 
 private val RingoutDarkExtendedColors = RingoutExtendedColors(
+    navigationInactiveContent = Color(0xFFA7A9B0),
     dialog = RingoutConfirmationDialogColors,
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.White,
@@ -93,7 +95,7 @@ private val RingoutLightColorScheme = lightColorScheme(
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFE0E7E0),
     onSecondaryContainer = Color(0xFF191D19),
-    background = RingoutLightBackground,
+    background = Color.White,
     onBackground = RingoutLightContent,
     surface = Color.White,
     onSurface = RingoutLightContent,
