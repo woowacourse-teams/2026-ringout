@@ -49,7 +49,7 @@ class DataStoreAppPreferencesRepositoryTest {
     }
 
     @Test
-    fun missingAndUnsupportedThemeValuesRemainUnresolved() = withRepository(
+    fun `저장되지 않았거나 지원하지 않는 테마 값은 해결되지 않은 상태로 남는다`() = withRepository(
         prefix = "ringout-theme-fallback-test",
     ) { dataStore, repository ->
         assertEquals(null, repository.bootstrapState.first().themeMode)
@@ -62,7 +62,7 @@ class DataStoreAppPreferencesRepositoryTest {
     }
 
     @Test
-    fun initializeThemeModeIfMissingStoresMissingAndUnsupportedValues() = withRepository(
+    fun `저장된 테마 값이 없거나 지원하지 않으면 초기 테마를 저장한다`() = withRepository(
         prefix = "ringout-theme-initialization-test",
     ) { dataStore, repository ->
         repository.initializeThemeModeIfMissing(ThemeMode.Light)
@@ -76,7 +76,7 @@ class DataStoreAppPreferencesRepositoryTest {
     }
 
     @Test
-    fun initializeThemeModeIfMissingDoesNotOverwriteValidUserTheme() = withRepository(
+    fun `유효한 사용자 테마는 초기화로 덮어쓰지 않는다`() = withRepository(
         prefix = "ringout-theme-initialization-race-test",
     ) { _, repository ->
         repository.setThemeMode(ThemeMode.Light)

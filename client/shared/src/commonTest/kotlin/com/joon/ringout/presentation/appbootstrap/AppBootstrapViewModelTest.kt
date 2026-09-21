@@ -56,7 +56,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun missingThemeUsesSystemThemeAndInitializesItOnce() = withViewModel(
+    fun `저장된 테마가 없으면 시스템 테마를 사용하고 한 번 초기화한다`() = withViewModel(
         repository = FakeAppPreferencesRepository(initialSnapshot = snapshot(themeMode = null)),
         systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Light),
     ) { viewModel, repository, systemThemeModeReader ->
@@ -67,7 +67,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun storedThemeSkipsSystemThemeReadAndInitialization() = withViewModel(
+    fun `저장된 테마가 있으면 시스템 테마를 읽거나 초기화하지 않는다`() = withViewModel(
         repository = FakeAppPreferencesRepository(initialSnapshot = snapshot(themeMode = ThemeMode.Light)),
         systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
     ) { viewModel, repository, systemThemeModeReader ->
@@ -77,7 +77,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun failedThemeInitializationRetriesWithoutBlockingReadyState() = withViewModel(
+    fun `테마 초기화에 실패해도 준비 상태를 막지 않고 재시도한다`() = withViewModel(
         repository = FakeAppPreferencesRepository(
             initialSnapshot = snapshot(themeMode = null),
             themeInitializationFailuresRemaining = 1,
@@ -90,7 +90,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun userThemeChangeWinsWhenInitializationIsAlreadyWriting() {
+    fun `초기화 중에는 사용자 테마 변경이 우선한다`() {
         val initializationGate = CompletableDeferred<Unit>()
         withViewModel(
             repository = FakeAppPreferencesRepository(

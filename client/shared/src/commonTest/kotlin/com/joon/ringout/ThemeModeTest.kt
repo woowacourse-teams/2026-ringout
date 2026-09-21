@@ -7,12 +7,12 @@ import kotlin.test.assertNull
 class ThemeModeTest {
 
     @Test
-    fun missingPersistedValueIsUnresolved() {
+    fun `저장되지 않은 값은 해결되지 않은 상태다`() {
         assertNull(ThemeMode.fromPersistedValue(null))
     }
 
     @Test
-    fun invalidPersistedValueIsUnresolved() {
+    fun `유효하지 않은 저장값은 해결되지 않은 상태다`() {
         assertNull(ThemeMode.fromPersistedValue("system"))
     }
 
