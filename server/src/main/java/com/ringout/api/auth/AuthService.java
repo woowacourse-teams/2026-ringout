@@ -169,6 +169,21 @@ public class AuthService {
             .orElseGet(() -> requireSignup(socialUserInfo));
     }
 
+    @Transactional
+    public LoginResponse loginTestUser(String providerId) {
+        User user = userRepository
+            .findBySocialProviderAndSocialProviderId(SocialProvider.KAKAO, providerId)
+            .orElseThrow(() -> new GeneralException(AuthErrorStatus.UNAUTHORIZED));
+
+        user.login(LocalDateTime.now(), null);
+        LoginResponse response = issueLoginTokens(user);
+        log.atInfo()
+            .addKeyValue("event", "test_login_succeeded")
+            .addKeyValue("userId", user.getId())
+            .log("테스트 계정 로그인 성공");
+        return response;
+    }
+
     private SocialUserInfo authenticateSocialUser(
         SocialProvider provider,
         String socialAccessToken,
@@ -198,6 +213,17 @@ public class AuthService {
         LocalDateTime loginAt
     ) {
         user.login(loginAt, socialUserInfo.email());
+        LoginResponse response = issueLoginTokens(user);
+        log.atInfo()
+            .addKeyValue("event", "social_login_succeeded")
+            .addKeyValue("userId", user.getId())
+            .addKeyValue("provider", socialUserInfo.provider())
+            .log("소셜 로그인 성공");
+
+        return response;
+    }
+
+    private LoginResponse issueLoginTokens(User user) {
         String accessToken = jwtProvider.createAccessToken(
             user.getId(),
             user.getSocialProviderId(),
@@ -208,12 +234,6 @@ public class AuthService {
             user.getSocialProviderId(),
             user.getRole()
         );
-        log.atInfo()
-            .addKeyValue("event", "social_login_succeeded")
-            .addKeyValue("userId", user.getId())
-            .addKeyValue("provider", socialUserInfo.provider())
-            .log("소셜 로그인 성공");
-
         return LoginResponse.loggedIn(accessToken, refreshToken);
     }
 
