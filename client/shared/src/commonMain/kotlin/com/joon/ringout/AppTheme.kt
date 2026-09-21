@@ -28,6 +28,7 @@ internal val LocalRingoutThemeMode = staticCompositionLocalOf { ThemeMode.Dark }
 
 @Immutable
 data class RingoutExtendedColors(
+    val dialog: RingoutDialogColors,
     val primaryActionContent: Color,
     val onboardingDescriptionContent: Color,
     val elevatedSurface: Color,
@@ -35,7 +36,30 @@ data class RingoutExtendedColors(
     val profileIconLoggedOutBackground: Color,
 )
 
+@Immutable
+data class RingoutDialogColors(
+    val surface: Color,
+    val title: Color,
+    val description: Color,
+    val cancel: Color,
+    val actionContent: Color,
+    val shadow: Color,
+    val actionShadow: Color,
+)
+
+// 확인 다이얼로그는 앱 테마와 관계없이 밝은 표면을 사용한다.
+private val RingoutConfirmationDialogColors = RingoutDialogColors(
+    surface = Color.White,
+    title = Color(0xFF1F2937),
+    description = Color(0xFF6B7280),
+    cancel = Color(0xFF808080),
+    actionContent = Color.White,
+    shadow = Color(0x21000000),
+    actionShadow = Color(0x404338CA),
+)
+
 private val RingoutLightExtendedColors = RingoutExtendedColors(
+    dialog = RingoutConfirmationDialogColors,
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.Black,
     elevatedSurface = Color(0xFFF5F5F6),
@@ -44,6 +68,7 @@ private val RingoutLightExtendedColors = RingoutExtendedColors(
 )
 
 private val RingoutDarkExtendedColors = RingoutExtendedColors(
+    dialog = RingoutConfirmationDialogColors,
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.White,
     elevatedSurface = Color(0xFF22242A),

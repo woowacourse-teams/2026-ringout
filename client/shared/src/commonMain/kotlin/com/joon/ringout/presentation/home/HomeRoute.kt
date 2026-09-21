@@ -33,8 +33,10 @@ internal fun HomeRoute(
         onAlarmEnabledChange = { alarmId, enabled ->
             alarmController.perform(viewModel.onAlarmEnabledChange(alarmId, enabled))
         },
-        onAlarmDelete = { alarmId ->
-            alarmController.perform(viewModel.onAlarmDelete(alarmId))
+        onAlarmDelete = viewModel::onAlarmDelete,
+        onAlarmDeleteDismiss = viewModel::dismissAlarmDelete,
+        onAlarmDeleteConfirm = {
+            viewModel.confirmAlarmDelete()?.let { alarmController.perform(it) }
         },
         onActiveAlarmMissionClick = onActiveAlarmMissionClick,
         modifier = modifier,

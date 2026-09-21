@@ -7,6 +7,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
+import com.joon.ringout.presentation.home.components.AlarmDeleteDialog
 import com.joon.ringout.presentation.home.components.HomeAlarmListState
 import com.joon.ringout.presentation.home.components.HomeEmptyState
 import com.joon.ringout.presentation.home.components.HomeLoadingState
@@ -24,7 +25,16 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     activeAlarmMission: ActiveAlarmMission? = null,
     onActiveAlarmMissionExpired: () -> Unit = {},
+    onAlarmDeleteDismiss: () -> Unit = {},
+    onAlarmDeleteConfirm: () -> Unit = {},
 ) {
+    if (uiState.pendingDeleteAlarmId != null) {
+        AlarmDeleteDialog(
+            onDismiss = onAlarmDeleteDismiss,
+            onConfirm = onAlarmDeleteConfirm,
+        )
+    }
+
     val alarms = uiState.alarms
     if (uiState.isLoading && activeAlarmMission == null) {
         HomeLoadingState(modifier = modifier)

@@ -64,12 +64,61 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `알람 삭제를 요청하면 실행 명령을 반환한다`() {
+    fun `삭제를 요청하면 알람을 유지하고 확인 대상을 저장한다`() = runTest {
         val viewModel = HomeViewModel()
+        viewModel.observeAlarms(flowOf(listOf(SavedAlarmSchedule(request, true))))
 
-        val command = viewModel.onAlarmDelete(alarmId = "alarm-1")
+        viewModel.onAlarmDelete(request.id)
 
-        assertEquals(HomeViewModel.Command.DeleteAlarm(alarmId = "alarm-1"), command)
+        assertEquals(request.id, viewModel.uiState.pendingDeleteAlarmId)
+        assertEquals(1, viewModel.uiState.alarms.size)
+    }
+
+    @Test
+    fun `삭제 확인을 취소하면 알람을 유지하고 삭제 명령을 만들지 않는다`() = runTest {
+        val viewModel = HomeViewModel()
+        viewModel.observeAlarms(flowOf(listOf(SavedAlarmSchedule(request, true))))
+        viewModel.onAlarmDelete(request.id)
+
+        viewModel.dismissAlarmDelete()
+
+        assertNull(viewModel.uiState.pendingDeleteAlarmId)
+        assertNull(viewModel.confirmAlarmDelete())
+        assertEquals(1, viewModel.uiState.alarms.size)
+    }
+
+    @Test
+    fun `삭제를 확정하면 선택한 알람의 삭제 명령을 한 번만 반환한다`() = runTest {
+        val viewModel = HomeViewModel()
+        viewModel.observeAlarms(flowOf(listOf(
+            SavedAlarmSchedule(request, true),
+            SavedAlarmSchedule(request.copy(id = "alarm-2"), true),
+        )))
+        viewModel.onAlarmDelete("alarm-2")
+
+        assertEquals(HomeViewModel.Command.DeleteAlarm("alarm-2"), viewModel.confirmAlarmDelete())
+        assertNull(viewModel.uiState.pendingDeleteAlarmId)
+        assertNull(viewModel.confirmAlarmDelete())
+    }
+
+    @Test
+    fun `삭제 확인 중 대상 알람이 사라지면 확인을 닫고 삭제 명령을 만들지 않는다`() = runTest {
+        val viewModel = HomeViewModel()
+        viewModel.observeAlarms(flowOf(listOf(SavedAlarmSchedule(request, true))))
+        viewModel.onAlarmDelete(request.id)
+
+        viewModel.observeAlarms(flowOf(emptyList()))
+
+        assertNull(viewModel.uiState.pendingDeleteAlarmId)
+        assertNull(viewModel.confirmAlarmDelete())
+    }
+
+    @Test
+    fun `존재하지 않는 알람은 삭제 확인을 열지 않는다`() {
+        val viewModel = HomeViewModel()
+        viewModel.onAlarmDelete("missing")
+        assertNull(viewModel.uiState.pendingDeleteAlarmId)
+        assertNull(viewModel.confirmAlarmDelete())
     }
 
     @Test
