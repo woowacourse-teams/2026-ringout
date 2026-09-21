@@ -6,7 +6,7 @@ import kotlin.test.assertNotEquals
 
 class AlarmScheduleFingerprintTest {
     @Test
-    fun canonicalizesRepeatDayOrderAndDuplicates() {
+    fun `반복 요일의 순서와 중복은 같은 fingerprint로 정규화한다`() {
         val request = alarmRequest(selectedDays = listOf("월", "수", "일"))
 
         assertEquals(
@@ -17,14 +17,21 @@ class AlarmScheduleFingerprintTest {
     }
 
     @Test
-    fun changesWhenPersistedScheduleContentChanges() {
+    fun `저장 예약에 쓰이는 설정이 바뀌면 fingerprint가 바뀐다`() {
         val request = alarmRequest()
         val originalFingerprint = request.scheduleFingerprint()
 
         listOf(
             request.copy(time = "08:10"),
+            request.copy(selectedDays = listOf("화", "목")),
             request.copy(repeatEnabled = false),
+            request.copy(limitMinutes = 20),
+            request.copy(destinationName = "집"),
+            request.copy(destinationAddress = "서울특별시 강남구 테헤란로 1"),
             request.copy(destinationLatitude = 37.0),
+            request.copy(destinationLongitude = 127.0),
+            request.copy(targetDistanceKm = 1.5),
+            request.copy(alarmSoundName = "벨"),
             request.copy(alarmSoundUri = null),
         ).forEach { changed ->
             assertNotEquals(originalFingerprint, changed.scheduleFingerprint())
