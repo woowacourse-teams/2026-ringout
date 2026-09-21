@@ -34,7 +34,12 @@ class AppBootstrapViewModelTest {
         val repository = FakeAppPreferencesRepository(onboardingWriteGate = gate)
         val analytics = OnboardingAnalyticsFixture()
         try {
-            val vm = AppBootstrapViewModel(repository, scope, analytics.recorder)
+            val vm = AppBootstrapViewModel(
+                repository = repository,
+                systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
+                coroutineScope = scope,
+                onboardingAnalytics = analytics.recorder,
+            )
             vm.completeOnboarding(stepCount = 4)
             repository.emit(snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)))
             assertEquals(AppEntryDestination.Home, vm.uiState.destination)
@@ -58,7 +63,12 @@ class AppBootstrapViewModelTest {
         val repository = FakeAppPreferencesRepository(failOnboardingWrite = true)
         val analytics = OnboardingAnalyticsFixture()
         try {
-            val vm = AppBootstrapViewModel(repository, scope, analytics.recorder)
+            val vm = AppBootstrapViewModel(
+                repository = repository,
+                systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
+                coroutineScope = scope,
+                onboardingAnalytics = analytics.recorder,
+            )
             vm.completeOnboarding(stepCount = 5)
             assertTrue(analytics.events.isEmpty())
             assertEquals(1, vm.uiState.onboardingRetryToken)
@@ -218,7 +228,7 @@ class AppBootstrapViewModelTest {
         }
 
     @Test
-    fun onboardingWriteFailureKeepsTheScreenAndEnablesRetry() = withViewModel(
+    fun `온보딩 저장에 실패하면 화면을 유지하고 재시도를 허용한다`() = withViewModel(
         repository = FakeAppPreferencesRepository(failOnboardingWrite = true),
     ) { viewModel, repository, _ ->
         viewModel.completeOnboarding()

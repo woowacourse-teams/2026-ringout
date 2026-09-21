@@ -94,8 +94,14 @@ class AppBootstrapViewModel(
             repository.markOnboardingCompleted()
             // This survives removal of the onboarding route after the preference flow emits.
             runCatching { onboardingAnalytics.recordOnboardingCompleted(stepCount) }
-        })
-        
+        },
+        onFailure = {
+            uiState = uiState.copy(
+                onboardingRetryToken = uiState.onboardingRetryToken + 1,
+            )
+        },
+    )
+
     private fun resolveMissingThemeMode(): ThemeMode =
         resolvedMissingThemeMode ?: systemThemeModeReader.read().also {
             resolvedMissingThemeMode = it
