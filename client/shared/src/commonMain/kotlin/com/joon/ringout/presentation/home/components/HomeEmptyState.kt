@@ -38,7 +38,6 @@ import ringout.shared.generated.resources.home_empty_logo
 @Composable
 internal fun HomeEmptyState(
     onAddAlarm: () -> Unit,
-    onMyPageClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isDarkTheme = LocalRingoutThemeMode.current == ThemeMode.Dark
@@ -60,10 +59,7 @@ internal fun HomeEmptyState(
                     .fillMaxSize()
                     .padding(20.dp),
             ) {
-                EmptyHomeHeader(
-                    onMyPageClick = onMyPageClick,
-                )
-
+                EmptyHomeHeader()
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -97,9 +93,7 @@ internal fun HomeEmptyState(
 }
 
 @Composable
-private fun EmptyHomeHeader(
-    onMyPageClick: () -> Unit,
-) {
+private fun EmptyHomeHeader() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -115,10 +109,6 @@ private fun EmptyHomeHeader(
                 fontWeight = FontWeight.Black,
             ),
         )
-
-        Spacer(Modifier.weight(1f))
-
-        HomeMyPageButton(onClick = onMyPageClick)
     }
 }
 
@@ -160,7 +150,7 @@ private val LightNavigationDivider = Color(0xFFE5E7EB)
 @Composable
 private fun HomeEmptyStatePreview() {
     RingoutTheme {
-        HomeEmptyState(onAddAlarm = {}, onMyPageClick = {})
+        HomeEmptyState(onAddAlarm = {})
     }
 }
 
@@ -168,7 +158,7 @@ private fun HomeEmptyStatePreview() {
 @Composable
 private fun EmptyHomeHeaderPreview() {
     RingoutTheme {
-        EmptyHomeHeader(onMyPageClick = {})
+        EmptyHomeHeader()
     }
 }
 

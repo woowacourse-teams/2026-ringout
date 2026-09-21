@@ -32,7 +32,6 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             activeAlarmMission = activeAlarmMission,
             onAddAlarm = onAddAlarm,
             onEditAlarm = onEditAlarm,
-            onMyPageClick = { navigationState.navigate(AppRoute.MyPage) },
             onActiveAlarmMissionClick = onActiveAlarmMissionClick,
             onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
         )

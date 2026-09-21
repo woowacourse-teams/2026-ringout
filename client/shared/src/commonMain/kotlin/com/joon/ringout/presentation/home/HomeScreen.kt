@@ -20,7 +20,6 @@ fun HomeScreen(
     onAlarmClick: (String) -> Unit,
     onAlarmEnabledChange: (String, Boolean) -> Unit,
     onAlarmDelete: (String) -> Unit,
-    onMyPageClick: () -> Unit,
     onActiveAlarmMissionClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     activeAlarmMission: ActiveAlarmMission? = null,
@@ -35,7 +34,6 @@ fun HomeScreen(
     if (alarms.isEmpty() && activeAlarmMission == null) {
         HomeEmptyState(
             onAddAlarm = onAddAlarm,
-            onMyPageClick = onMyPageClick,
             modifier = modifier,
         )
         return
@@ -51,7 +49,6 @@ fun HomeScreen(
         onAlarmClick = onAlarmClick,
         onAlarmEnabledChange = onAlarmEnabledChange,
         onAlarmDelete = onAlarmDelete,
-        onMyPageClick = onMyPageClick,
         onActiveAlarmMissionClick = onActiveAlarmMissionClick,
         modifier = modifier,
         activeAlarmMission = activeAlarmMission,
@@ -74,7 +71,6 @@ private fun DarkLoadingHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }
@@ -89,7 +85,6 @@ private fun DarkEmptyHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }
@@ -104,7 +99,6 @@ private fun LightEmptyHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }
@@ -120,7 +114,6 @@ private fun DarkPopulatedHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }
@@ -136,7 +129,6 @@ private fun LightPopulatedHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }

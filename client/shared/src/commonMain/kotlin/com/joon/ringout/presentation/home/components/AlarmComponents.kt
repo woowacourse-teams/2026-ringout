@@ -3,7 +3,6 @@ package com.joon.ringout.presentation.home.components
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,7 +52,6 @@ import kotlin.time.Clock
 @Composable
 internal fun AlarmListHeader(
     nextAlarmDescription: String,
-    onMyPageClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = homeAlarmColors()
@@ -86,40 +84,6 @@ internal fun AlarmListHeader(
                     lineHeight = 21.6.sp,
                     fontWeight = FontWeight.Medium,
                 ),
-            )
-        }
-
-        HomeMyPageButton(onClick = onMyPageClick)
-    }
-}
-
-@Composable
-internal fun HomeMyPageButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Button,
-                onClickLabel = "마이페이지 열기",
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.CenterEnd,
-    ) {
-        Box(
-            modifier = Modifier.size(26.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(HomeProfileIconResource),
-                contentDescription = "마이페이지",
-                modifier = Modifier.size(width = 18.8333.dp, height = 20.4583.dp),
             )
         }
     }
@@ -339,28 +303,9 @@ internal fun HomeAddAlarmButton(
     }
 }
 
-internal val SecondaryText = Color(0xFF6E756F)
-internal val Orange = Color(0xFFFF6D2E)
-
 private const val CountdownRefreshIntervalMillis = 1_000L
 private const val MillisecondsPerSecond = 1_000L
 private const val SecondsPerMinute = 60L
-
-@Preview(widthDp = 360, heightDp = 65)
-@Composable
-private fun HomeMyPageButtonPreview() {
-    RingoutTheme(themeMode = ThemeMode.Dark) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(65.dp)
-                .background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            HomeMyPageButton(onClick = {})
-        }
-    }
-}
 
 @Preview
 @Composable
@@ -402,3 +347,11 @@ private fun previewActiveAlarmMission() = ActiveAlarmMission(
     limitMinutes = 12,
     expiresAtEpochMillis = 0L,
 )
+
+@Preview
+@Composable
+private fun AlarmListHeaderPreview() {
+    RingoutTheme {
+        AlarmListHeader(nextAlarmDescription = "7시간 20분 후 알람이 울려요.")
+    }
+}
