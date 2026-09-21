@@ -8,16 +8,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,8 +40,6 @@ import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
-import com.joon.ringout.presentation.home.model.HomeAlarm
-import com.joon.ringout.presentation.toTwelveHourDisplay
 import com.joon.ringout.ringoutColors
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.painterResource
@@ -127,141 +122,6 @@ internal fun HomeMyPageButton(
                 modifier = Modifier.size(width = 18.8333.dp, height = 20.4583.dp),
             )
         }
-    }
-}
-
-@Composable
-internal fun AlarmRow(
-    alarm: HomeAlarm,
-    onClick: () -> Unit,
-    onEnabledChange: (Boolean) -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = homeAlarmColors()
-    val displayTime = alarm.time.toTwelveHourDisplay()
-    val shape = RoundedCornerShape(20.dp)
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(colors.cardBackground)
-            .clickable(
-                role = Role.Button,
-                onClickLabel = "알람 편집",
-                onClick = onClick,
-            )
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = alarm.days,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = displayTime.period,
-                        modifier = Modifier.alignByBaseline(),
-                        color = colors.secondaryText,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 12.sp,
-                            lineHeight = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = displayTime.time,
-                        modifier = Modifier.alignByBaseline(),
-                        color = colors.primaryText,
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontSize = 28.sp,
-                            lineHeight = 30.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    )
-                }
-            }
-
-            AlarmToggle(
-                alarmTime = displayTime.time,
-                enabled = alarm.isEnabled,
-                onEnabledChange = onEnabledChange,
-            )
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(35.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Row(
-                modifier = Modifier.width(183.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                AlarmInfoColumn(
-                    label = "목적지",
-                    value = alarm.destination,
-                    valueColor = colors.primaryText,
-                    modifier = Modifier.width(70.dp),
-                )
-                AlarmInfoColumn(
-                    label = "알람 간격",
-                    value = "${alarm.timeLimitMinutes}분",
-                    valueColor = MaterialTheme.colorScheme.primary,
-                    horizontalAlignment = Alignment.End,
-                )
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            AlarmDeleteButton(onClick = onDelete)
-        }
-    }
-}
-
-@Composable
-private fun AlarmDeleteButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = homeAlarmColors()
-
-    Box(
-        modifier = modifier
-            .size(24.dp)
-            .clickable(
-                role = Role.Button,
-                onClickLabel = "알람 삭제",
-                onClick = onClick,
-            )
-            .semantics {
-                contentDescription = "알람 삭제"
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(HomeAlarmDeleteIconResource),
-            contentDescription = null,
-            tint = colors.primaryText,
-            modifier = Modifier.size(width = 14.dp, height = 18.dp),
-        )
     }
 }
 
@@ -418,47 +278,7 @@ internal fun formatAlarmMissionRemainingTime(remainingSeconds: Long): String {
 }
 
 @Composable
-private fun AlarmInfoColumn(
-    label: String,
-    value: String,
-    valueColor: Color,
-    modifier: Modifier = Modifier,
-    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
-    labelColor: Color? = null,
-) {
-    val colors = homeAlarmColors()
-
-    Column(
-        modifier = modifier,
-        horizontalAlignment = horizontalAlignment,
-    ) {
-        Text(
-            text = label,
-            color = labelColor ?: colors.secondaryText,
-            maxLines = 1,
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 11.sp,
-                lineHeight = 14.sp,
-                fontWeight = FontWeight.Medium,
-            ),
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = value,
-            color = valueColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 16.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun AlarmToggle(
+internal fun AlarmToggle(
     alarmTime: String,
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
@@ -519,33 +339,6 @@ internal fun HomeAddAlarmButton(
     }
 }
 
-@Composable
-internal fun homeAlarmColors(): HomeAlarmColors {
-    val isDarkTheme = LocalRingoutThemeMode.current == ThemeMode.Dark
-    return if (isDarkTheme) {
-        HomeAlarmColors(
-            screenBackground = Color.Black,
-            cardBackground = Color(0xFF171717),
-            primaryText = Color.White,
-            secondaryText = Color(0xFF8C8C8C),
-        )
-    } else {
-        HomeAlarmColors(
-            screenBackground = Color.White,
-            cardBackground = Color(0xFFF5F5F5),
-            primaryText = Color(0xFF111827),
-            secondaryText = Color(0xFF6B7280),
-        )
-    }
-}
-
-internal data class HomeAlarmColors(
-    val screenBackground: Color,
-    val cardBackground: Color,
-    val primaryText: Color,
-    val secondaryText: Color,
-)
-
 internal val SecondaryText = Color(0xFF6E756F)
 internal val Orange = Color(0xFFFF6D2E)
 
@@ -602,54 +395,6 @@ private fun LightActiveAlarmMissionRowPreview() {
         }
     }
 }
-
-@Preview
-@Composable
-private fun DarkAlarmRowPreview() {
-    RingoutTheme(themeMode = ThemeMode.Dark) {
-        Box(
-            modifier = Modifier
-                .background(Color.Black)
-                .padding(20.dp),
-        ) {
-            AlarmRow(
-                alarm = previewAlarm(isEnabled = true),
-                onClick = {},
-                onEnabledChange = {},
-                onDelete = {},
-            )
-        }
-    }
-}
-
-@Preview
-@Composable
-private fun LightAlarmRowPreview() {
-    RingoutTheme(themeMode = ThemeMode.Light) {
-        Box(
-            modifier = Modifier
-                .background(Color.White)
-                .padding(20.dp),
-        ) {
-            AlarmRow(
-                alarm = previewAlarm(isEnabled = false),
-                onClick = {},
-                onEnabledChange = {},
-                onDelete = {},
-            )
-        }
-    }
-}
-
-private fun previewAlarm(isEnabled: Boolean) = HomeAlarm(
-    id = "preview-alarm",
-    time = "06:20",
-    days = "주말",
-    destination = "헬스장",
-    timeLimitMinutes = 12,
-    isEnabled = isEnabled,
-    selectedDays = listOf("토", "일"),
-)
 
 private fun previewActiveAlarmMission() = ActiveAlarmMission(
     alarmId = "preview-active-alarm",
