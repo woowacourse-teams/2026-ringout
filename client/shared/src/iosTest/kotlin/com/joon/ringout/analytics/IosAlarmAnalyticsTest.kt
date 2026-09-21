@@ -14,7 +14,7 @@ import kotlin.test.assertNull
 
 class IosAlarmAnalyticsTest {
     @Test
-    fun onboardingClaimsSurviveStoreRecreation() {
+    fun `온보딩 이벤트 중복 방지 기록은 저장소 재생성 후에도 유지된다`() {
         val suiteName = "ringout-onboarding-test-${NSUUID().UUIDString}"
         val preferences = requireNotNull(NSUserDefaults(suiteName = suiteName))
         try {

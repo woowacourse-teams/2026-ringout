@@ -6,7 +6,7 @@ import kotlin.test.assertTrue
 
 class OnboardingAnalyticsRecorderTest {
     @Test
-    fun beginAndCompleteRemainClaimedAcrossRecorderRecreation() {
+    fun `기록기를 재생성해도 온보딩 시작과 완료 이벤트는 중복 기록되지 않는다`() {
         val f = OnboardingAnalyticsFixture()
         repeat(2) {
             val recorder = DefaultProductAnalyticsRecorder(f.tracker, f.store)
@@ -27,7 +27,7 @@ class OnboardingAnalyticsRecorderTest {
     }
 
     @Test
-    fun viewsAndSubmitsUseOnlyApprovedParametersWithPlatformLastStep() {
+    fun `단계 조회와 제출 이벤트는 허용된 매개변수만 사용하고 플랫폼별 마지막 단계를 반영한다`() {
         for (count in listOf(4, 5)) {
             val f = OnboardingAnalyticsFixture()
             AnalyticsOnboardingStep.entries.take(count).forEach { step ->
@@ -53,7 +53,7 @@ class OnboardingAnalyticsRecorderTest {
     }
 
     @Test
-    fun invalidFlowMetadataDoesNotEmitOrConsumeStartClaim() {
+    fun `유효하지 않은 흐름 정보는 이벤트를 전송하지 않고 시작 이벤트 기록 기회를 소진하지 않는다`() {
         val f = OnboardingAnalyticsFixture()
         f.recorder.recordOnboardingStarted(3)
         f.recorder.recordOnboardingStepViewed(AnalyticsOnboardingStep.Sound, 4)
@@ -65,7 +65,7 @@ class OnboardingAnalyticsRecorderTest {
     }
 
     @Test
-    fun trackerAndPersistentStoreFailuresNeverBreakOnboarding() {
+    fun `이벤트 추적기와 영구 저장소에 오류가 발생해도 온보딩은 중단되지 않는다`() {
         val trackerFailure = DefaultProductAnalyticsRecorder(
             AnalyticsTracker { error("offline") }, InMemoryProductAnalyticsUsageStore(),
         )

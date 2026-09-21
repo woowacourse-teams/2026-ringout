@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
 
 class AppBootstrapViewModelTest {
     @Test
-    fun completionEventWaitsForSuccessfulPreferenceWriteEvenAfterRouteChanges() {
+    fun `화면이 전환되어도 완료 이벤트는 설정 저장이 성공할 때까지 기다린다`() {
         val scope = testScope()
         val gate = CompletableDeferred<Unit>()
         val repository = FakeAppPreferencesRepository(onboardingWriteGate = gate)
@@ -52,7 +52,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun failedCompletionWriteEmitsNothingAndSuccessfulRetryEmitsOnce() {
+    fun `완료 상태 저장에 실패하면 이벤트를 전송하지 않고 재시도에 성공하면 한 번 전송한다`() {
         val scope = testScope()
         val repository = FakeAppPreferencesRepository(failOnboardingWrite = true)
         val analytics = OnboardingAnalyticsFixture()

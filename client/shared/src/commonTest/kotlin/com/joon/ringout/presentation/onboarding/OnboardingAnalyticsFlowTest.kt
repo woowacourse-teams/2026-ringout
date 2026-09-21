@@ -18,7 +18,7 @@ class OnboardingAnalyticsFlowTest {
     )
 
     @Test
-    fun recordsOnlyActualEntriesIncludingBackAndMapReturn() {
+    fun `뒤로 가기와 지도 복귀를 포함한 실제 단계 진입만 기록한다`() {
         val f = OnboardingAnalyticsFixture()
         val vm = OnboardingViewModel(analytics = f.recorder)
         repeat(3) { vm.onStepVisible() }
@@ -44,7 +44,7 @@ class OnboardingAnalyticsFlowTest {
     }
 
     @Test
-    fun appRestartRecordsNewEntryButNotNewTutorialBegin() {
+    fun `앱을 재시작하면 단계 진입을 새로 기록하고 온보딩 시작은 중복 기록하지 않는다`() {
         val f = OnboardingAnalyticsFixture()
         repeat(2) { OnboardingViewModel(analytics = f.recorder).onStepVisible() }
         assertEquals(1, f.events.count { it.name == AnalyticsEventName.TutorialBegin })
@@ -52,7 +52,7 @@ class OnboardingAnalyticsFlowTest {
     }
 
     @Test
-    fun acceptedSubmissionAndRetryAreMeasuredButSavingDoesNotMeanTutorialComplete() {
+    fun `수락된 제출과 재시도는 기록하고 알람 저장만으로 온보딩 완료를 기록하지 않는다`() {
         for (sound in listOf(false, true)) {
             val f = OnboardingAnalyticsFixture()
             val vm = OnboardingViewModel(sound, f.recorder)

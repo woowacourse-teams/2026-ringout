@@ -15,7 +15,7 @@ class OnboardingStateTest {
     private val configuredAlarm = AlarmSetupUiState(destination = destination)
 
     @Test
-    fun followsFiveStepsAndRequiresDestination() {
+    fun `다섯 단계를 순서대로 진행하고 목적지 선택을 필수로 요구한다`() {
         val flow = OnboardingViewModel()
         assertEquals(OnboardingStep.Time, flow.uiState.step)
         flow.requestNext(AlarmSetupUiState(), 0)
@@ -33,7 +33,7 @@ class OnboardingStateTest {
     }
 
     @Test
-    fun ignoresDestinationResultsFromClosedOrPreviousPicker() {
+    fun `닫혔거나 이전에 열린 목적지 선택 화면의 결과는 무시한다`() {
         val flow = OnboardingViewModel()
         repeat(2) { flow.requestNext(configuredAlarm, 0) }
         flow.openDestination()
@@ -49,7 +49,7 @@ class OnboardingStateTest {
     }
 
     @Test
-    fun retainsInputsAcrossBackNavigationAndSchedulesSelectedValues() {
+    fun `뒤로 이동해도 입력값을 유지하고 선택한 값으로 알람을 예약한다`() {
         val flow = OnboardingViewModel()
         val editor = AlarmSetupViewModel(createAlarmId = { "first-alarm" })
         editor.startCreating("06:20")
@@ -82,7 +82,7 @@ class OnboardingStateTest {
     }
 
     @Test
-    fun completionRetryDoesNotCreateAnotherAlarm() {
+    fun `온보딩 완료를 재시도해도 알람을 추가로 생성하지 않는다`() {
         val flow = OnboardingViewModel()
         val editor = AlarmSetupViewModel(createAlarmId = { "first-alarm" })
         editor.startCreating("06:20")
@@ -102,7 +102,7 @@ class OnboardingStateTest {
     }
 
     @Test
-    fun iosHasFourStepsAndSavesFromIntervalWithDefaultSound() {
+    fun `아이오에스는 네 단계로 구성되고 제한 시간 단계에서 기본 알람음으로 저장한다`() {
         val flow = OnboardingViewModel(includesSoundSelection = false)
         val editor = AlarmSetupViewModel(createAlarmId = { "ios-first-alarm" })
         editor.startCreating("06:20")
@@ -135,7 +135,7 @@ class OnboardingStateTest {
     }
 
     @Test
-    fun androidIntervalStillAdvancesToSoundBeforeSaving() {
+    fun `안드로이드는 제한 시간 단계에서 알람음 단계로 이동한 뒤 저장한다`() {
         val flow = OnboardingViewModel(includesSoundSelection = true)
         repeat(3) { flow.requestNext(configuredAlarm, 0) }
         assertEquals(5, flow.uiState.steps.size)
