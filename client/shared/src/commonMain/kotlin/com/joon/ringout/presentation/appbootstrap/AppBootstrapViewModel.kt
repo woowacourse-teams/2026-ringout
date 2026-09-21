@@ -9,6 +9,7 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.domain.firstlaunch.determineAppEntryDestination
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
+import com.joon.ringout.domain.preferences.SystemThemeModeReader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -28,7 +29,9 @@ data class AppBootstrapUiState(
 
 class AppBootstrapViewModel(
     private val repository: AppPreferencesRepository,
+    private val systemThemeModeReader: SystemThemeModeReader,
     coroutineScope: CoroutineScope? = null,
+    private val themeInitializationRetryDelayMillis: Long = ThemeInitializationRetryDelayMillis,
 ) : ViewModel() {
     var uiState by mutableStateOf(AppBootstrapUiState())
         private set
@@ -36,6 +39,8 @@ class AppBootstrapViewModel(
     private val scope = coroutineScope ?: viewModelScope
     private val themeWriteMutex = Mutex()
     private var latestRequestedThemeMode: ThemeMode? = null
+    private var resolvedMissingThemeMode: ThemeMode? = null
+    private var isThemeInitializationInProgress = false
 
     init {
         scope.launch {
@@ -46,14 +51,18 @@ class AppBootstrapViewModel(
                     true
                 }
                 .collect { snapshot ->
+                    val themeMode = snapshot.themeMode ?: resolveMissingThemeMode()
                     if (latestRequestedThemeMode == null) {
-                        latestRequestedThemeMode = snapshot.themeMode
+                        latestRequestedThemeMode = themeMode
                     }
                     uiState = uiState.copy(
                         isReady = true,
-                        themeMode = snapshot.themeMode,
+                        themeMode = themeMode,
                         destination = determineAppEntryDestination(snapshot.firstLaunchStatus),
                     )
+                    if (snapshot.themeMode == null) {
+                        initializeThemeModeIfMissing(themeMode)
+                    }
                 }
         }
     }
@@ -73,6 +82,35 @@ class AppBootstrapViewModel(
                         latestRequestedThemeMode = uiState.themeMode
                     }
                 }
+            }
+        }
+    }
+
+    private fun resolveMissingThemeMode(): ThemeMode =
+        resolvedMissingThemeMode ?: systemThemeModeReader.read().also {
+            resolvedMissingThemeMode = it
+        }
+
+    private fun initializeThemeModeIfMissing(themeMode: ThemeMode) {
+        if (isThemeInitializationInProgress) return
+        isThemeInitializationInProgress = true
+
+        scope.launch {
+            try {
+                while (true) {
+                    try {
+                        themeWriteMutex.withLock {
+                            repository.initializeThemeModeIfMissing(themeMode)
+                        }
+                        return@launch
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: IOException) {
+                        delay(themeInitializationRetryDelayMillis)
+                    }
+                }
+            } finally {
+                isThemeInitializationInProgress = false
             }
         }
     }
@@ -107,3 +145,4 @@ class AppBootstrapViewModel(
 }
 
 private const val BootstrapReadRetryDelayMillis = 1_000L
+private const val ThemeInitializationRetryDelayMillis = 1_000L
