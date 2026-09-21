@@ -8,6 +8,29 @@ import kotlin.test.assertTrue
 
 class AlarmAnalyticsTest {
     @Test
+    fun `온보딩 이벤트 중복 방지 기록은 저장소 재생성 후에도 유지되고 알람 생성과 독립적이다`() {
+        val preferences = InMemoryAnalyticsUsagePreferences()
+        val first = AnalyticsUsageStore(preferences)
+        assertTrue(first.claimOnboardingEvent(AnalyticsEventName.TutorialBegin))
+        val recreated = AnalyticsUsageStore(preferences)
+        assertFalse(recreated.claimOnboardingEvent(AnalyticsEventName.TutorialBegin))
+        assertTrue(recreated.claimOnboardingEvent(AnalyticsEventName.TutorialComplete))
+        assertFalse(first.claimOnboardingEvent(AnalyticsEventName.TutorialComplete))
+        assertEquals(1L, recreated.claimAlarmCreation("first"))
+    }
+
+    @Test
+    fun `온보딩 이벤트 중복 방지 기록 저장에 실패하면 성공을 반환하지 않는다`() {
+        val store = AnalyticsUsageStore(object : AnalyticsUsagePreferences {
+            override fun contains(key: String): Boolean = false
+            override fun getLong(key: String, defaultValue: Long): Long = defaultValue
+            override fun commit(longValues: Map<String, Long>, trueFlags: Set<String>): Boolean = false
+        })
+        assertFalse(store.claimOnboardingEvent(AnalyticsEventName.TutorialBegin))
+        assertFalse(store.claimOnboardingEvent(AnalyticsEventName.TutorialComplete))
+    }
+
+    @Test
     fun forceEndHoldAttemptAllowsOneTerminalEventBeforeTheNextAttempt() {
         val store = ForceEndHoldAnalyticsAttemptStore()
         val attempt = ForceEndHoldAnalyticsAttempt(

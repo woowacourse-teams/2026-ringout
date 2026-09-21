@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModelStore
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.DestinationSelectionSource
+import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
+import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.StampMonthChangeDirection
 import com.joon.ringout.domain.auth.AuthRepository
@@ -424,7 +426,8 @@ private class FakeDestinationRepository(
 
 private class RecordingProductAnalyticsRecorder(
     val order: MutableList<String>,
-) : ProductAnalyticsRecorder {
+) : ProductAnalyticsRecorder,
+    OnboardingAnalyticsRecorder by NoOpOnboardingAnalyticsRecorder {
     val signupProviders = mutableListOf<AnalyticsAuthProvider>()
     var signupFailure: Throwable? = null
 

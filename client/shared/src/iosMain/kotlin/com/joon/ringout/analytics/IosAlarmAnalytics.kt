@@ -3,6 +3,7 @@ package com.joon.ringout.analytics
 import com.joon.ringout.platform.IosAnalyticsEventDto
 import com.joon.ringout.platform.IosAnalyticsParameterDto
 import com.joon.ringout.platform.IosAnalyticsTracker
+import platform.Foundation.NSLock
 import platform.Foundation.NSUserDefaults
 import kotlin.time.Clock
 
@@ -216,6 +217,16 @@ internal class IosAlarmAnalytics(
 internal class IosAnalyticsUsageStore(
     private val preferences: NSUserDefaults = NSUserDefaults.standardUserDefaults,
 ) : ProductAnalyticsUsageStore {
+    override fun claimOnboardingEvent(eventName: AnalyticsEventName): Boolean {
+        require(eventName == AnalyticsEventName.TutorialBegin || eventName == AnalyticsEventName.TutorialComplete)
+        OnboardingClaimLock.lock()
+        return try {
+            claimEvent(eventName.wireName, "first_alarm")
+        } finally {
+            OnboardingClaimLock.unlock()
+        }
+    }
+
     fun claimAlarmCreation(alarmId: String): Long? {
         val claimedKey = key("created", alarmId)
         if (preferences.objectForKey(claimedKey) != null) return null
@@ -314,3 +325,5 @@ private const val HoldDurationMillis = "hold_duration_ms"
 
 private const val Once = "once"
 private const val Weekly = "weekly"
+
+private val OnboardingClaimLock = NSLock()

@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModelStore
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.DestinationSelectionSource
+import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
+import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.StampMonthChangeDirection
 import com.joon.ringout.domain.auth.AuthRepository
@@ -398,7 +400,8 @@ private data class LoginCompletedRecord(
     val isNewUser: Boolean,
 )
 
-private class RecordingLoginAnalyticsRecorder : ProductAnalyticsRecorder {
+private class RecordingLoginAnalyticsRecorder : ProductAnalyticsRecorder,
+    OnboardingAnalyticsRecorder by NoOpOnboardingAnalyticsRecorder {
     val startedProviders = mutableListOf<AnalyticsAuthProvider>()
     val completedRecords = mutableListOf<LoginCompletedRecord>()
     var startedFailure: Throwable? = null

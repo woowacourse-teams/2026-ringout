@@ -3,6 +3,10 @@ package com.joon.ringout.analytics
 internal enum class AnalyticsEventName(
     val wireName: String,
 ) {
+    TutorialBegin("tutorial_begin"),
+    OnboardingStepViewed("onboarding_step_viewed"),
+    OnboardingSubmit("onboarding_submit"),
+    TutorialComplete("tutorial_complete"),
     DestinationAlarmCreated("destination_alarm_created"),
     DestinationAlarmRingingStarted("destination_alarm_ringing_started"),
     DestinationMissionStarted("destination_mission_started"),
@@ -25,6 +29,11 @@ internal enum class AnalyticsEventName(
 internal enum class AnalyticsParameterName(
     val wireName: String,
 ) {
+    FlowName("flow_name"),
+    FlowVersion("flow_version"),
+    StepCount("step_count"),
+    StepName("step_name"),
+    StepIndex("step_index"),
     CreationIndex("creation_index"),
     UseIndex("use_index"),
     RetryAttempt("retry_attempt"),

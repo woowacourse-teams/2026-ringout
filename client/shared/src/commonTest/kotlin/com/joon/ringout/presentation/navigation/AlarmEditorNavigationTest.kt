@@ -6,7 +6,7 @@ import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.AnalyticsTracker
 import com.joon.ringout.analytics.DefaultProductAnalyticsRecorder
-import com.joon.ringout.analytics.ProductAnalyticsUsageStore
+import com.joon.ringout.analytics.InMemoryProductAnalyticsUsageStore
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
@@ -310,7 +310,7 @@ private class AlarmEditorFixture(
         repository = repository,
         productAnalyticsRecorder = DefaultProductAnalyticsRecorder(
             tracker = AnalyticsTracker {},
-            usageStore = ProductAnalyticsUsageStore { null },
+            usageStore = InMemoryProductAnalyticsUsageStore(),
         ),
         coroutineScope = scope,
     )

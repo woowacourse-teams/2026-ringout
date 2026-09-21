@@ -1,203 +1,199 @@
 package com.joon.ringout.presentation.onboarding
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.onboarding.component.OnboardingPage
+import com.joon.ringout.presentation.alarmsetup.AlarmSetupUiState
+import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
+import com.joon.ringout.presentation.alarmsetup.components.SetupBackButton
+import com.joon.ringout.presentation.alarmsetup.components.alarmSetupColors
+import com.joon.ringout.presentation.onboarding.component.OnboardingAlarmStep
 import com.joon.ringout.presentation.onboarding.component.OnboardingPageIndicator
 import com.joon.ringout.presentation.onboarding.component.OnboardingPrimaryButton
 
 @Composable
 internal fun OnboardingScreen(
-    pages: List<OnboardingPageContent>,
-    currentPageIndex: Int,
+    uiState: OnboardingUiState,
+    alarm: AlarmSetupUiState,
+    sounds: List<AlarmSoundSelection>,
+    onAmPmChange: (Boolean) -> Unit,
+    onHourChange: (Int) -> Unit,
+    onMinuteChange: (Int) -> Unit,
+    onDayClick: (String) -> Unit,
+    onDestinationClick: () -> Unit,
+    onLimitMinutesChange: (Int) -> Unit,
+    onSoundClick: (AlarmSoundSelection) -> Unit,
+    onBack: () -> Unit,
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
     completionEnabled: Boolean = true,
+    completionFailed: Boolean = false,
 ) {
-    require(pages.isNotEmpty()) { "Onboarding requires at least one page." }
-    require(currentPageIndex in pages.indices) {
-        "Current onboarding page must exist in the supplied pages."
-    }
-    val isLastPage = currentPageIndex == pages.lastIndex
-
-    Surface(
-        modifier = modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.surface,
+    val busy = alarm.isSaveInProgress || !completionEnabled
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(alarmSetupColors().background)
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.TopCenter,
     ) {
-        BoxWithConstraints(
+        Column(
             modifier = Modifier
+                .widthIn(max = 560.dp)
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
-            contentAlignment = Alignment.Center,
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            val horizontalPadding = when {
-                maxWidth <= ExtraCompactScreenWidth -> ExtraCompactHorizontalPadding
-                maxWidth <= CompactScreenWidth -> CompactHorizontalPadding
-                else -> DefaultHorizontalPadding
+            Box(Modifier.fillMaxWidth().height(52.dp), contentAlignment = Alignment.Center) {
+                if (uiState.step != OnboardingStep.Time && !uiState.isAlarmSaved) {
+                    SetupBackButton(onClick = onBack, enabled = !busy)
+                }
+                OnboardingPageIndicator(uiState.steps.size, uiState.currentStepIndex)
             }
-
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 560.dp)
-                    .fillMaxWidth()
-                    .fillMaxHeight()
-                    .padding(
-                        start = horizontalPadding,
-                        top = 12.dp,
-                        end = horizontalPadding,
-                        bottom = 16.dp,
-                    ),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                OnboardingPage(
-                    content = pages[currentPageIndex],
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                )
-                Spacer(modifier = Modifier.height(22.dp))
-                OnboardingPageIndicator(
-                    pageCount = pages.size,
-                    selectedPage = currentPageIndex,
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                OnboardingPrimaryButton(
-                    label = if (isLastPage) "시작하기" else "다음으로",
-                    onClick = onNext,
-                    enabled = !isLastPage || completionEnabled,
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val contentMinHeight = (maxHeight - 160.dp).coerceAtLeast(240.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = uiState.step.title,
+                        modifier = Modifier.padding(top = 18.dp),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 24.sp,
+                        lineHeight = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = uiState.step.description,
+                        modifier = Modifier.padding(top = 12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 16.sp,
+                        lineHeight = 24.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = contentMinHeight)
+                            .padding(vertical = 36.dp),
+                        contentAlignment = if (uiState.step == OnboardingStep.Sound) {
+                            Alignment.TopCenter
+                        } else {
+                            Alignment.Center
+                        },
+                    ) {
+                        OnboardingAlarmStep(
+                            step = uiState.step,
+                            alarm = alarm,
+                            sounds = sounds,
+                            onAmPmChange = onAmPmChange,
+                            onHourChange = onHourChange,
+                            onMinuteChange = onMinuteChange,
+                            onDayClick = onDayClick,
+                            onDestinationClick = onDestinationClick,
+                            onLimitMinutesChange = onLimitMinutesChange,
+                            onSoundClick = onSoundClick,
+                        )
+                    }
+                }
+            }
+            if (completionFailed) {
+                Text(
+                    "알람은 저장됐어요. 시작하기를 눌러 완료 처리를 다시 시도해주세요.",
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
                 )
             }
+            OnboardingPrimaryButton(
+                label = when {
+                    busy -> "저장 중…"
+                    uiState.isLastStep -> "시작하기"
+                    else -> "다음으로"
+                },
+                onClick = onNext,
+                enabled = !busy && (uiState.step != OnboardingStep.Destination || alarm.canSave),
+                modifier = Modifier.padding(top = 12.dp, bottom = 24.dp),
+            )
         }
     }
 }
 
-private val ExtraCompactScreenWidth = 320.dp
-private val CompactScreenWidth = 360.dp
-private val ExtraCompactHorizontalPadding = 12.dp
-private val CompactHorizontalPadding = 16.dp
-private val DefaultHorizontalPadding = 24.dp
-
-@Preview(name = "Dark onboarding first", widthDp = 402, heightDp = 941)
+@Preview(name = "Time dark", widthDp = 402, heightDp = 874)
+@Preview(name = "Time compact", widthDp = 320, heightDp = 568, fontScale = 1.3f)
 @Composable
-private fun DarkOnboardingFirstPagePreview() {
-    OnboardingScreenPreview(themeMode = ThemeMode.Dark, pageIndex = 0)
-}
+private fun OnboardingScreenPreview() = OnboardingPreview(OnboardingStep.Time)
 
-@Preview(name = "Light onboarding first", widthDp = 402, heightDp = 941)
+@Preview(name = "Weekdays", widthDp = 402, heightDp = 874)
 @Composable
-private fun LightOnboardingFirstPagePreview() {
-    OnboardingScreenPreview(themeMode = ThemeMode.Light, pageIndex = 0)
-}
+private fun OnboardingWeekdaysPreview() = OnboardingPreview(OnboardingStep.Weekdays)
 
-@Preview(name = "Dark onboarding second", widthDp = 402, heightDp = 941)
+@Preview(name = "Destination empty", widthDp = 402, heightDp = 874)
 @Composable
-private fun DarkOnboardingSecondPagePreview() {
-    OnboardingScreenPreview(themeMode = ThemeMode.Dark, pageIndex = 1)
-}
+private fun OnboardingDestinationPreview() = OnboardingPreview(OnboardingStep.Destination)
 
-@Preview(name = "Light onboarding second", widthDp = 402, heightDp = 941)
+@Preview(name = "Interval light", widthDp = 402, heightDp = 874)
 @Composable
-private fun LightOnboardingSecondPagePreview() {
-    OnboardingScreenPreview(themeMode = ThemeMode.Light, pageIndex = 1)
-}
+private fun OnboardingIntervalPreview() = OnboardingPreview(OnboardingStep.Interval, ThemeMode.Light)
 
-@Preview(name = "Dark onboarding third", widthDp = 402, heightDp = 941)
+@Preview(name = "Sound light", widthDp = 402, heightDp = 874)
 @Composable
-private fun DarkOnboardingThirdPagePreview() {
-    OnboardingScreenPreview(themeMode = ThemeMode.Dark, pageIndex = 2)
-}
-
-@Preview(name = "Light onboarding third", widthDp = 402, heightDp = 941)
-@Composable
-private fun LightOnboardingThirdPagePreview() {
-    OnboardingScreenPreview(themeMode = ThemeMode.Light, pageIndex = 2)
-}
-
-@Preview(name = "Dark onboarding last", widthDp = 402, heightDp = 941)
-@Composable
-private fun DarkOnboardingLastPagePreview() {
-    OnboardingScreenPreview(
-        themeMode = ThemeMode.Dark,
-        pageIndex = defaultOnboardingPages.lastIndex,
-    )
-}
-
-@Preview(name = "Light onboarding last", widthDp = 402, heightDp = 941)
-@Composable
-private fun LightOnboardingLastPagePreview() {
-    OnboardingScreenPreview(
-        themeMode = ThemeMode.Light,
-        pageIndex = defaultOnboardingPages.lastIndex,
-    )
-}
-
-@Preview(name = "Small onboarding", widthDp = 360, heightDp = 800)
-@Composable
-private fun SmallOnboardingScreenPreview() {
-    OnboardingScreenPreview(themeMode = ThemeMode.Dark, pageIndex = 0)
-}
-
-@Preview(name = "Extra compact onboarding", widthDp = 320, heightDp = 700)
-@Composable
-private fun ExtraCompactOnboardingScreenPreview() {
-    OnboardingScreenPreview(
-        themeMode = ThemeMode.Dark,
-        pageIndex = defaultOnboardingPages.lastIndex,
-    )
-}
-
-@Preview(
-    name = "Onboarding accessibility text",
-    widthDp = 360,
-    heightDp = 800,
-    fontScale = 1.3f,
-)
-@Composable
-private fun OnboardingAccessibilityTextPreview() {
-    OnboardingScreenPreview(
-        themeMode = ThemeMode.Light,
-        pageIndex = defaultOnboardingPages.lastIndex,
-    )
-}
-
-@Preview(name = "Large onboarding", widthDp = 430, heightDp = 932)
-@Composable
-private fun LargeOnboardingScreenPreview() {
-    OnboardingScreenPreview(
-        themeMode = ThemeMode.Light,
-        pageIndex = defaultOnboardingPages.lastIndex,
-    )
-}
+private fun OnboardingSoundPreview() = OnboardingPreview(OnboardingStep.Sound, ThemeMode.Light)
 
 @Composable
-private fun OnboardingScreenPreview(
-    themeMode: ThemeMode,
-    pageIndex: Int,
+private fun OnboardingPreview(
+    step: OnboardingStep,
+    theme: ThemeMode = ThemeMode.Dark,
+    includesSoundSelection: Boolean = true,
 ) {
-    RingoutTheme(themeMode = themeMode) {
+    RingoutTheme(themeMode = theme) {
         OnboardingScreen(
-            pages = defaultOnboardingPages,
-            currentPageIndex = pageIndex,
+            uiState = OnboardingUiState(step = step, includesSoundSelection = includesSoundSelection),
+            alarm = AlarmSetupUiState(limitMinutes = 5),
+            sounds = listOf(AlarmSoundSelection("기본 알람음", null), AlarmSoundSelection("Argon", "argon")),
+            onAmPmChange = {},
+            onHourChange = {},
+            onMinuteChange = {},
+            onDayClick = {},
+            onDestinationClick = {},
+            onLimitMinutesChange = {},
+            onSoundClick = {},
+            onBack = {},
             onNext = {},
         )
     }
 }
+
+@Preview(name = "iOS interval final step", widthDp = 402, heightDp = 874)
+@Composable
+private fun OnboardingIosIntervalPreview() = OnboardingPreview(
+    step = OnboardingStep.Interval,
+    theme = ThemeMode.Light,
+    includesSoundSelection = false,
+)

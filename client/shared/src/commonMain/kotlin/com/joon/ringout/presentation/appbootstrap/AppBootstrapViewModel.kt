@@ -6,6 +6,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
+import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.domain.firstlaunch.determineAppEntryDestination
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
@@ -31,6 +33,7 @@ class AppBootstrapViewModel(
     private val repository: AppPreferencesRepository,
     private val systemThemeModeReader: SystemThemeModeReader,
     coroutineScope: CoroutineScope? = null,
+    private val onboardingAnalytics: OnboardingAnalyticsRecorder = NoOpOnboardingAnalyticsRecorder,
     private val themeInitializationRetryDelayMillis: Long = ThemeInitializationRetryDelayMillis,
 ) : ViewModel() {
     var uiState by mutableStateOf(AppBootstrapUiState())
@@ -86,6 +89,19 @@ class AppBootstrapViewModel(
         }
     }
 
+    fun completeOnboarding(stepCount: Int = 5) = save(
+        block = {
+            repository.markOnboardingCompleted()
+            // This survives removal of the onboarding route after the preference flow emits.
+            runCatching { onboardingAnalytics.recordOnboardingCompleted(stepCount) }
+        },
+        onFailure = {
+            uiState = uiState.copy(
+                onboardingRetryToken = uiState.onboardingRetryToken + 1,
+            )
+        },
+    )
+
     private fun resolveMissingThemeMode(): ThemeMode =
         resolvedMissingThemeMode ?: systemThemeModeReader.read().also {
             resolvedMissingThemeMode = it
@@ -114,15 +130,6 @@ class AppBootstrapViewModel(
             }
         }
     }
-
-    fun completeOnboarding() = save(
-        block = repository::markOnboardingCompleted,
-        onFailure = {
-            uiState = uiState.copy(
-                onboardingRetryToken = uiState.onboardingRetryToken + 1,
-            )
-        },
-    )
 
     private fun save(
         block: suspend () -> Unit,
