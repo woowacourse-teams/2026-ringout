@@ -42,6 +42,9 @@ class HomeViewModel : ViewModel() {
                     isLoading = false,
                     alarms = alarms.map(SavedAlarmSchedule::toHomeAlarm),
                     errorMessage = null,
+                    pendingDeleteAlarmId = uiState.pendingDeleteAlarmId?.takeIf { id ->
+                        alarms.any { it.request.id == id }
+                    },
                 )
             }
     }
@@ -54,8 +57,20 @@ class HomeViewModel : ViewModel() {
         enabled = enabled,
     )
 
-    internal fun onAlarmDelete(alarmId: String): Command =
-        Command.DeleteAlarm(alarmId = alarmId)
+    internal fun onAlarmDelete(alarmId: String) {
+        if (uiState.alarms.none { it.id == alarmId }) return
+        uiState = uiState.copy(pendingDeleteAlarmId = alarmId)
+    }
+
+    internal fun dismissAlarmDelete() {
+        uiState = uiState.copy(pendingDeleteAlarmId = null)
+    }
+
+    internal fun confirmAlarmDelete(): Command? {
+        val alarmId = uiState.pendingDeleteAlarmId ?: return null
+        dismissAlarmDelete()
+        return Command.DeleteAlarm(alarmId = alarmId)
+    }
 
     fun alarmScheduleRequest(alarmId: String): AlarmScheduleRequest? =
         uiState.alarms

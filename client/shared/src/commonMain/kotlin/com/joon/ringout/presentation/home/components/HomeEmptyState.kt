@@ -2,7 +2,6 @@ package com.joon.ringout.presentation.home.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,11 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.LocalRingoutThemeMode
+import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
@@ -38,7 +37,6 @@ import ringout.shared.generated.resources.home_empty_logo
 @Composable
 internal fun HomeEmptyState(
     onAddAlarm: () -> Unit,
-    onMyPageClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isDarkTheme = LocalRingoutThemeMode.current == ThemeMode.Dark
@@ -49,27 +47,34 @@ internal fun HomeEmptyState(
             .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding(),
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .background(MaterialTheme.colorScheme.background)
-                .padding(20.dp),
+                .background(MaterialTheme.colorScheme.background),
         ) {
-            EmptyHomeHeader(
-                onMyPageClick = onMyPageClick,
-            )
-
-            Box(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center,
+                    .fillMaxSize()
+                    .padding(20.dp),
             ) {
-                EmptyAlarmPrompt(
-                    onAddAlarm = onAddAlarm,
-                )
+                EmptyHomeHeader()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EmptyAlarmPrompt()
+                }
             }
+
+            HomeAddAlarmButton(
+                onClick = onAddAlarm,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 30.dp, bottom = 114.dp),
+            )
         }
 
         Box(
@@ -87,9 +92,7 @@ internal fun HomeEmptyState(
 }
 
 @Composable
-private fun EmptyHomeHeader(
-    onMyPageClick: () -> Unit,
-) {
+private fun EmptyHomeHeader() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -105,17 +108,11 @@ private fun EmptyHomeHeader(
                 fontWeight = FontWeight.Black,
             ),
         )
-
-        Spacer(Modifier.weight(1f))
-
-        HomeMyPageButton(onClick = onMyPageClick)
     }
 }
 
 @Composable
-private fun EmptyAlarmPrompt(
-    onAddAlarm: () -> Unit,
-) {
+private fun EmptyAlarmPrompt() {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -132,47 +129,42 @@ private fun EmptyAlarmPrompt(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-
-        Spacer(Modifier.height(10.dp))
-
-        Box(
-            modifier = Modifier
-                .width(313.dp)
-                .height(122.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                modifier = Modifier
-                    .width(174.dp)
-                    .height(65.dp)
-                    .clickable(role = Role.Button, onClick = onAddAlarm),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-            ) {
-                Text(
-                    text = "생성된 알람이 없습니다.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 16.sp,
-                        lineHeight = 19.2.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = "알람 생성하기",
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = 18.sp,
-                        lineHeight = 21.6.sp,
-                        fontWeight = FontWeight.Bold,
-                    ),
-                )
-            }
-        }
+        Spacer(Modifier.height(22.dp))
+        Text(
+            text = "생성된 알람이 없습니다.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 16.sp,
+                lineHeight = 19.2.sp,
+                fontWeight = FontWeight.Medium,
+            ),
+        )
     }
 }
 
 private val LightNavigationDivider = Color(0xFFE5E7EB)
+
+@Preview
+@Composable
+private fun HomeEmptyStatePreview() {
+    RingoutTheme {
+        HomeEmptyState(onAddAlarm = {})
+    }
+}
+
+@Preview
+@Composable
+private fun EmptyHomeHeaderPreview() {
+    RingoutTheme {
+        EmptyHomeHeader()
+    }
+}
+
+@Preview
+@Composable
+private fun EmptyAlarmPromptPreview() {
+    RingoutTheme {
+        EmptyAlarmPrompt()
+    }
+}

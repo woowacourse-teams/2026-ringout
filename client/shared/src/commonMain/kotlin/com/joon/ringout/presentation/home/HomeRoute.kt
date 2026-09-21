@@ -13,7 +13,6 @@ internal fun HomeRoute(
     activeAlarmMission: ActiveAlarmMission?,
     onAddAlarm: () -> Unit,
     onEditAlarm: (AlarmScheduleRequest) -> Unit,
-    onMyPageClick: () -> Unit,
     onActiveAlarmMissionClick: () -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     modifier: Modifier = Modifier,
@@ -34,11 +33,12 @@ internal fun HomeRoute(
         onAlarmEnabledChange = { alarmId, enabled ->
             alarmController.perform(viewModel.onAlarmEnabledChange(alarmId, enabled))
         },
-        onAlarmDelete = { alarmId ->
-            alarmController.perform(viewModel.onAlarmDelete(alarmId))
+        onAlarmDelete = viewModel::onAlarmDelete,
+        onAlarmDeleteDismiss = viewModel::dismissAlarmDelete,
+        onAlarmDeleteConfirm = {
+            viewModel.confirmAlarmDelete()?.let { alarmController.perform(it) }
         },
         onActiveAlarmMissionClick = onActiveAlarmMissionClick,
-        onMyPageClick = onMyPageClick,
         modifier = modifier,
     )
 }

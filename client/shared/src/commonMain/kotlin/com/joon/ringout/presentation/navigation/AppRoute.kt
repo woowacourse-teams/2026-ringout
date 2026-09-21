@@ -22,6 +22,14 @@ internal sealed interface AppRoute : NavKey {
     data object Home : AppRoute
 
     @Serializable
+    @SerialName("social")
+    data object Social : AppRoute
+
+    @Serializable
+    @SerialName("records")
+    data object Records : AppRoute
+
+    @Serializable
     @SerialName("add_alarm")
     data object AddAlarm : AppRoute
 

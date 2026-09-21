@@ -222,6 +222,7 @@ private fun RingoutAppContent(
         },
         graph = {
             homeGraph(
+                viewModelScopes = viewModelScopes,
                 navigationState = navigationState,
                 homeViewModel = homeViewModel,
                 myPageViewModel = myPageViewModel,

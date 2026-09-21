@@ -3,6 +3,13 @@ package com.joon.ringout.presentation.navigation
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import com.joon.ringout.presentation.navigation.component.MainNavigationBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -43,15 +50,28 @@ internal fun RingoutNavHost(
         ),
     )
     val entriesByRoute = retainedRoutes.zip(entries).toMap()
-    NavDisplay(
-        entries = visibleRoutes.map(entriesByRoute::getValue),
-        modifier = modifier,
-        onBack = { if (!isBackBlocked) onBack(visibleRoutes.last()) },
-        transitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
-        popTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
-        predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
-        sizeTransform = null,
-    )
+    val selectedTab = displayedRoute.mainNavigationTab()
+    Box(modifier = modifier) {
+        NavDisplay(
+            entries = visibleRoutes.map(entriesByRoute::getValue),
+            modifier = Modifier.fillMaxSize(),
+            onBack = { if (!isBackBlocked) onBack(visibleRoutes.last()) },
+            transitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+            popTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+            predictivePopTransitionSpec = { EnterTransition.None togetherWith ExitTransition.None },
+            sizeTransform = null,
+        )
+        if (selectedTab != null) {
+            MainNavigationBar(
+                selectedTab = selectedTab,
+                onTabSelected = { navigationState.navigate(it.route) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(top = 12.dp, bottom = 12.dp),
+            )
+        }
+    }
     // 두 플랫폼 모두 NavDisplay의 뒤로 가기 미리보기나 백스택 제거 전에 차단된 뒤로 가기 제스처를 소비한다.
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
