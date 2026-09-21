@@ -34,7 +34,7 @@ data class AlarmSetupUiState(
 }
 
 internal const val DefaultAlarmTime = "06:20"
-internal const val DefaultAlarmLimitMinutes = 13
+internal const val DefaultAlarmLimitMinutes = 5
 internal const val DefaultAlarmSoundName = "기본 알람음"
 internal const val MinAlarmLimitMinutes = 1
 internal const val MaxAlarmLimitMinutes = 30

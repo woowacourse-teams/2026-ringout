@@ -179,7 +179,7 @@ private val SliderThumbRadius = SliderThumbSize / 2
 private fun LimitTimeCardPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         AlarmSetupPreviewSurface {
-            LimitTimeCard(minutes = 13, onMinutesChange = {})
+            LimitTimeCard(minutes = 5, onMinutesChange = {})
         }
     }
 }
