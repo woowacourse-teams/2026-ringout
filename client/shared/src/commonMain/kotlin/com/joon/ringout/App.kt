@@ -63,6 +63,7 @@ fun App(
         AppBootstrapViewModel(
             repository = appContainer.appPreferencesRepository,
             onboardingAnalytics = appContainer.productAnalyticsRecorder,
+            systemThemeModeReader = appContainer.systemThemeModeReader,
         )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState

@@ -23,11 +23,13 @@ jobs:
     name: Inspect deployment candidate
     runs-on: [ self-hosted, Linux, ARM64, ringout-production ]
     timeout-minutes: 5
+
     outputs:
       should_deploy: ${{ steps.decision.outputs.should_deploy }}
       image_tag: ${{ steps.decision.outputs.image_tag }}
       deployment_sha: ${{ steps.decision.outputs.deployment_sha }}
       reason: ${{ steps.decision.outputs.reason }}
+
     steps:
       - name: Checkout workflow run commit
         if: >-
@@ -49,6 +51,7 @@ jobs:
           RUN_EVENT: ${{ github.event.workflow_run.event }}
           RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+
         run: |
           set -eu
 
@@ -62,10 +65,12 @@ jobs:
 
           validate_image_tag() {
             tag="$1"
+
             if [ -z "$tag" ]; then
               echo "image_tag is required for manual deployment."
               exit 1
             fi
+
             if ! printf '%s' "$tag" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'; then
               echo "image_tag must be a valid Docker tag."
               exit 1
@@ -90,7 +95,9 @@ jobs:
           fi
 
           git fetch --no-tags origin main:refs/remotes/origin/main
+
           CURRENT_MAIN_SHA=$(git rev-parse origin/main)
+
           if [ "$CURRENT_MAIN_SHA" != "$HEAD_SHA" ]; then
             echo "Skipping stale deployment candidate. current_main=$CURRENT_MAIN_SHA, candidate=$HEAD_SHA"
             write_decision false "" "" stale_main
@@ -102,21 +109,29 @@ jobs:
 
           if [ -f "$APP_DIRECTORY/.last-deployed-sha" ]; then
             CANDIDATE_SHA=$(sed -n '1p' "$APP_DIRECTORY/.last-deployed-sha")
+
             if is_commit "$CANDIDATE_SHA"; then
               BASE_SHA="$CANDIDATE_SHA"
             fi
           fi
 
           if [ -z "$BASE_SHA" ]; then
-            CANDIDATE_SHA=$(docker inspect --format '{{ index .Config.Labels "com.ringout.deployment-sha" }}' ringout-server 2>/dev/null || true)
+            CANDIDATE_SHA=$(docker inspect \
+              --format '{{ index .Config.Labels "com.ringout.deployment-sha" }}' \
+              ringout-server 2>/dev/null || true)
+
             if [ "$CANDIDATE_SHA" != "<no value>" ] && is_commit "$CANDIDATE_SHA"; then
               BASE_SHA="$CANDIDATE_SHA"
             fi
           fi
 
           if [ -z "$BASE_SHA" ]; then
-            CURRENT_IMAGE=$(docker inspect --format '{{.Config.Image}}' ringout-server 2>/dev/null || true)
+            CURRENT_IMAGE=$(docker inspect \
+              --format '{{.Config.Image}}' \
+              ringout-server 2>/dev/null || true)
+
             CANDIDATE_SHA="${CURRENT_IMAGE##*:}"
+
             if [ "$CANDIDATE_SHA" != "$CURRENT_IMAGE" ] && is_commit "$CANDIDATE_SHA"; then
               BASE_SHA="$CANDIDATE_SHA"
             fi
@@ -137,8 +152,23 @@ jobs:
 
           printf 'Changed files in deployment candidate:\n%s\n' "$changed_files"
 
-          if printf '%s\n' "$changed_files" | grep -E '^server/' | grep -qvE '^server/docs/'; then
-            write_decision true "$HEAD_SHA" "$HEAD_SHA" server_changes
+          has_server_changes=false
+          has_server_cd_changes=false
+
+          if printf '%s\n' "$changed_files" |
+            grep -E '^server/' |
+            grep -qvE '^server/docs/'; then
+            has_server_changes=true
+          fi
+
+          if printf '%s\n' "$changed_files" |
+            grep -qFx '.github/workflows/server-cd.yml'; then
+            has_server_cd_changes=true
+          fi
+
+          if [ "$has_server_changes" = true ] ||
+             [ "$has_server_cd_changes" = true ]; then
+            write_decision true "$HEAD_SHA" "$HEAD_SHA" server_deployment_changes
             exit 0
           fi
 
@@ -151,6 +181,7 @@ jobs:
     runs-on: [ self-hosted, Linux, ARM64, ringout-production ]
     timeout-minutes: 10
     environment: production
+
     steps:
       - name: Checkout deployment commit
         if: needs.inspect.outputs.deployment_sha != ''
@@ -165,52 +196,74 @@ jobs:
           IMAGE_TAG: ${{ needs.inspect.outputs.image_tag }}
           DEPLOYMENT_SHA: ${{ needs.inspect.outputs.deployment_sha }}
           DEPLOYMENT_REASON: ${{ needs.inspect.outputs.reason }}
+
           DOCKERHUB_USERNAME: ${{ secrets.SERVER_DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.SERVER_DOCKERHUB_TOKEN }}
+
           APP_PORT: ${{ vars.SERVER_PORT || '8080' }}
-          AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
-          SERVER_LOG_GROUP: ${{ vars.SERVER_LOG_GROUP || '/ringout/server' }}
-          SERVER_LOG_STREAM: ${{ vars.SERVER_LOG_STREAM || 'ringout-server' }}
+
+          OTEL_AGENT_PATH: /opt/opentelemetry/opentelemetry-javaagent.jar
+          OTEL_SERVICE_NAME: ${{ vars.OTEL_SERVICE_NAME }}
+          OTEL_EXPORTER_OTLP_ENDPOINT: ${{ vars.OTEL_EXPORTER_OTLP_ENDPOINT }}
+          OTEL_EXPORTER_OTLP_PROTOCOL: ${{ vars.OTEL_EXPORTER_OTLP_PROTOCOL }}
+
         run: |
           set -eu
-          
+
           APP_DIRECTORY="$HOME/ringout"
           APP_ENV_FILE="$APP_DIRECTORY/.env"
 
           if [ ! -f "$APP_ENV_FILE" ]; then
             echo "Environment file not found: $APP_ENV_FILE"
-            echo "Create the file on the server before deploying."
             exit 1
           fi
-          
+
+          if [ ! -f "$OTEL_AGENT_PATH" ]; then
+            echo "OpenTelemetry Java Agent not found: $OTEL_AGENT_PATH"
+            exit 1
+          fi
+
           MISSING_KEYS=""
+
           for key in DB_URL DB_USERNAME DB_PASSWORD APPLE_CLIENT_ID JWT_SECRET; do
             if ! grep -Eq "^[[:space:]]*$key=" "$APP_ENV_FILE"; then
               MISSING_KEYS="$MISSING_KEYS $key"
             fi
           done
+
           if [ -n "$MISSING_KEYS" ]; then
             echo "Missing required keys in $APP_ENV_FILE:$MISSING_KEYS"
             exit 1
           fi
-          
+
+          if [ -z "$OTEL_SERVICE_NAME" ] ||
+             [ -z "$OTEL_EXPORTER_OTLP_ENDPOINT" ] ||
+             [ -z "$OTEL_EXPORTER_OTLP_PROTOCOL" ]; then
+            echo "OpenTelemetry environment variables are not configured."
+            exit 1
+          fi
+
           wait_for_health() {
             attempt=1
+
             while [ "$attempt" -le 30 ]; do
               if curl --fail --silent "http://127.0.0.1:$APP_PORT/actuator/health"; then
                 return 0
               fi
+
               echo "Waiting for server... (${attempt}/30)"
               attempt=$((attempt + 1))
               sleep 2
             done
+
             return 1
           }
-          
+
           start_server() {
             image="$1"
             deployment_sha="$2"
             label_args=""
+
             if [ -n "$deployment_sha" ]; then
               label_args="--label com.ringout.deployment-sha=$deployment_sha"
             fi
@@ -219,71 +272,96 @@ jobs:
               --name ringout-server \
               --restart unless-stopped \
               --env-file "$APP_ENV_FILE" \
-              --env JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70" \
+              --env JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -javaagent:/otel/opentelemetry-javaagent.jar" \
+              --env OTEL_SERVICE_NAME="$OTEL_SERVICE_NAME" \
+              --env OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_EXPORTER_OTLP_ENDPOINT" \
+              --env OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_EXPORTER_OTLP_PROTOCOL" \
+              --env OTEL_METRICS_EXPORTER=none \
+              --volume "$OTEL_AGENT_PATH:/otel/opentelemetry-javaagent.jar:ro" \
               --publish "$APP_PORT:8080" \
-              --log-driver awslogs \
-              --log-opt awslogs-region="$AWS_REGION" \
-              --log-opt awslogs-group="$SERVER_LOG_GROUP" \
-              --log-opt awslogs-stream="$SERVER_LOG_STREAM" \
-              --log-opt awslogs-create-group=true \
+              --log-driver json-file \
+              --log-opt max-size=10m \
+              --log-opt max-file=3 \
               $label_args \
               "$image"
           }
-          
+
           rollback() {
             echo "Deployment failed. Rolling back to the previous image."
+
             docker rm --force ringout-server 2>/dev/null || true
+
             if [ -z "$PREVIOUS_IMAGE" ]; then
               echo "No previous image is available for rollback."
               return 1
             fi
+
             if ! start_server "$PREVIOUS_IMAGE" "$PREVIOUS_DEPLOYMENT_SHA"; then
               echo "Failed to start the previous image."
               return 1
             fi
+
             if wait_for_health; then
               echo "Rollback completed successfully."
               return 0
             fi
+
             docker logs ringout-server 2>/dev/null || true
             return 1
           }
 
-          if [ -n "$DEPLOYMENT_SHA" ] && [ "$DEPLOYMENT_REASON" != "manual_dispatch" ]; then
+          if [ -n "$DEPLOYMENT_SHA" ] &&
+             [ "$DEPLOYMENT_REASON" != "manual_dispatch" ]; then
             git fetch --no-tags origin main:refs/remotes/origin/main
+
             CURRENT_MAIN_SHA=$(git rev-parse origin/main)
+
             if [ "$CURRENT_MAIN_SHA" != "$DEPLOYMENT_SHA" ]; then
               echo "Deployment candidate is stale after approval. current_main=$CURRENT_MAIN_SHA, candidate=$DEPLOYMENT_SHA"
               exit 1
             fi
           fi
-          
-          echo "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+
+          echo "$DOCKERHUB_TOKEN" |
+            docker login \
+              --username "$DOCKERHUB_USERNAME" \
+              --password-stdin
+
           trap 'docker logout >/dev/null 2>&1 || true' EXIT
+
           docker pull "$IMAGE_REPOSITORY:$IMAGE_TAG"
-          
-          PREVIOUS_IMAGE=$(docker inspect --format '{{.Image}}' ringout-server 2>/dev/null || true)
-          PREVIOUS_DEPLOYMENT_SHA=$(docker inspect --format '{{ index .Config.Labels "com.ringout.deployment-sha" }}' ringout-server 2>/dev/null || true)
+
+          PREVIOUS_IMAGE=$(docker inspect \
+            --format '{{.Image}}' \
+            ringout-server 2>/dev/null || true)
+
+          PREVIOUS_DEPLOYMENT_SHA=$(docker inspect \
+            --format '{{ index .Config.Labels "com.ringout.deployment-sha" }}' \
+            ringout-server 2>/dev/null || true)
+
           if [ "$PREVIOUS_DEPLOYMENT_SHA" = "<no value>" ]; then
             PREVIOUS_DEPLOYMENT_SHA=""
           fi
+
           docker rm --force ringout-server 2>/dev/null || true
-          
+
           if ! start_server "$IMAGE_REPOSITORY:$IMAGE_TAG" "$DEPLOYMENT_SHA"; then
             rollback || true
             exit 1
           fi
-          
+
           if wait_for_health; then
             echo "Deployment completed successfully."
+
             if [ -n "$DEPLOYMENT_SHA" ]; then
               printf '%s\n' "$DEPLOYMENT_SHA" > "$APP_DIRECTORY/.last-deployed-sha"
               chmod 600 "$APP_DIRECTORY/.last-deployed-sha"
             fi
+
             docker image prune --force
             exit 0
           fi
-          
+
           docker logs ringout-server 2>/dev/null || true
           rollback || true
           exit 1

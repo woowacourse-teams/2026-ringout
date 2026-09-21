@@ -29,8 +29,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
     tags:
       environment: ${APP_ENV:${spring.profiles.active:local}}
       service: ringout
@@ -45,6 +48,10 @@ springdoc:
   packages-to-scan: com.ringout.api
 
 app:
+  test-login:
+    enabled: ${IS_TEST_LOGIN_ENABLED:false}
+    secret: ${TEST_LOGIN_SECRET}
+    allowed-provider-ids: ${TEST_LOGIN_ALLOWED_PROVIDER_IDS}
   api-version: v1
   auth:
     apple:

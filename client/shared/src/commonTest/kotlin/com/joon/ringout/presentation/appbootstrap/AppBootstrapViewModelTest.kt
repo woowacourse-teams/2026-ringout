@@ -9,6 +9,7 @@ import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.domain.firstlaunch.FirstLaunchStatus
 import com.joon.ringout.domain.preferences.AppBootstrapSnapshot
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
+import com.joon.ringout.domain.preferences.SystemThemeModeReader
 import com.joon.ringout.domain.terms.TermConsentRecord
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -76,6 +77,7 @@ class AppBootstrapViewModelTest {
         try {
             val viewModel = AppBootstrapViewModel(
                 repository = EmptyAppPreferencesRepository,
+                systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
                 coroutineScope = scope,
             )
 
@@ -95,14 +97,66 @@ class AppBootstrapViewModelTest {
                 firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
             ),
         ),
-    ) { viewModel, _ ->
+    ) { viewModel, _, _ ->
         assertTrue(viewModel.uiState.isReady)
         assertEquals(ThemeMode.Light, viewModel.uiState.themeMode)
         assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
     }
 
     @Test
-    fun themeChangeWaitsForRepositoryEmission() = withViewModel { viewModel, repository ->
+    fun `저장된 테마가 없으면 시스템 테마를 사용하고 한 번 초기화한다`() = withViewModel(
+        repository = FakeAppPreferencesRepository(initialSnapshot = snapshot(themeMode = null)),
+        systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Light),
+    ) { viewModel, repository, systemThemeModeReader ->
+        assertTrue(viewModel.uiState.isReady)
+        assertEquals(ThemeMode.Light, viewModel.uiState.themeMode)
+        assertEquals(1, systemThemeModeReader.readCount)
+        assertEquals(listOf(ThemeMode.Light), repository.themeInitializationWrites)
+    }
+
+    @Test
+    fun `저장된 테마가 있으면 시스템 테마를 읽거나 초기화하지 않는다`() = withViewModel(
+        repository = FakeAppPreferencesRepository(initialSnapshot = snapshot(themeMode = ThemeMode.Light)),
+        systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
+    ) { viewModel, repository, systemThemeModeReader ->
+        assertEquals(ThemeMode.Light, viewModel.uiState.themeMode)
+        assertEquals(0, systemThemeModeReader.readCount)
+        assertTrue(repository.themeInitializationWrites.isEmpty())
+    }
+
+    @Test
+    fun `테마 초기화에 실패해도 준비 상태를 막지 않고 재시도한다`() = withViewModel(
+        repository = FakeAppPreferencesRepository(
+            initialSnapshot = snapshot(themeMode = null),
+            themeInitializationFailuresRemaining = 1,
+        ),
+        themeInitializationRetryDelayMillis = 0,
+    ) { viewModel, repository, _ ->
+        assertTrue(viewModel.uiState.isReady)
+        assertEquals(ThemeMode.Dark, viewModel.uiState.themeMode)
+        assertEquals(listOf(ThemeMode.Dark, ThemeMode.Dark), repository.themeInitializationWrites)
+    }
+
+    @Test
+    fun `초기화 중에는 사용자 테마 변경이 우선한다`() {
+        val initializationGate = CompletableDeferred<Unit>()
+        withViewModel(
+            repository = FakeAppPreferencesRepository(
+                initialSnapshot = snapshot(themeMode = null),
+                firstThemeInitializationGate = initializationGate,
+            ),
+        ) { viewModel, repository, _ ->
+            viewModel.setThemeMode(ThemeMode.Light)
+            initializationGate.complete(Unit)
+
+            assertEquals(listOf(ThemeMode.Dark), repository.themeInitializationWrites)
+            assertEquals(listOf(ThemeMode.Light), repository.themeWrites)
+            assertEquals(ThemeMode.Light, viewModel.uiState.themeMode)
+        }
+    }
+
+    @Test
+    fun themeChangeWaitsForRepositoryEmission() = withViewModel { viewModel, repository, _ ->
         repository.emitThemeChanges = false
 
         viewModel.setThemeMode(ThemeMode.Light)
@@ -115,7 +169,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun unchangedThemeDoesNotWrite() = withViewModel { viewModel, repository ->
+    fun unchangedThemeDoesNotWrite() = withViewModel { viewModel, repository, _ ->
         viewModel.setThemeMode(ThemeMode.Dark)
 
         assertTrue(repository.themeWrites.isEmpty())
@@ -126,7 +180,7 @@ class AppBootstrapViewModelTest {
         val firstWriteGate = CompletableDeferred<Unit>()
         withViewModel(
             repository = FakeAppPreferencesRepository(firstThemeWriteGate = firstWriteGate),
-        ) { viewModel, repository ->
+        ) { viewModel, repository, _ ->
             viewModel.setThemeMode(ThemeMode.Light)
             viewModel.setThemeMode(ThemeMode.Dark)
 
@@ -140,7 +194,7 @@ class AppBootstrapViewModelTest {
     @Test
     fun failedThemeWriteCanBeRetried() = withViewModel(
         repository = FakeAppPreferencesRepository(themeWriteFailuresRemaining = 1),
-    ) { viewModel, repository ->
+    ) { viewModel, repository, _ ->
         viewModel.setThemeMode(ThemeMode.Light)
         viewModel.setThemeMode(ThemeMode.Light)
 
@@ -150,7 +204,7 @@ class AppBootstrapViewModelTest {
 
     @Test
     fun onboardingCompletionWaitsForRepositorySnapshotBeforeRouting() =
-        withViewModel { viewModel, repository ->
+        withViewModel { viewModel, repository, _ ->
             viewModel.completeOnboarding()
 
             assertEquals(1, repository.onboardingSaveCount)
@@ -166,7 +220,7 @@ class AppBootstrapViewModelTest {
     @Test
     fun onboardingWriteFailureKeepsTheScreenAndEnablesRetry() = withViewModel(
         repository = FakeAppPreferencesRepository(failOnboardingWrite = true),
-    ) { viewModel, repository ->
+    ) { viewModel, repository, _ ->
         viewModel.completeOnboarding()
 
         assertEquals(AppEntryDestination.Onboarding, viewModel.uiState.destination)
@@ -181,15 +235,23 @@ class AppBootstrapViewModelTest {
 
 private inline fun withViewModel(
     repository: FakeAppPreferencesRepository = FakeAppPreferencesRepository(),
-    block: (AppBootstrapViewModel, FakeAppPreferencesRepository) -> Unit,
+    systemThemeModeReader: FakeSystemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
+    themeInitializationRetryDelayMillis: Long = 0,
+    block: (
+        AppBootstrapViewModel,
+        FakeAppPreferencesRepository,
+        FakeSystemThemeModeReader,
+    ) -> Unit,
 ) {
     val scope = testScope()
     val viewModel = AppBootstrapViewModel(
         repository = repository,
+        systemThemeModeReader = systemThemeModeReader,
         coroutineScope = scope,
+        themeInitializationRetryDelayMillis = themeInitializationRetryDelayMillis,
     )
     try {
-        block(viewModel, repository)
+        block(viewModel, repository, systemThemeModeReader)
     } finally {
         scope.cancel()
     }
@@ -199,16 +261,31 @@ private class FakeAppPreferencesRepository(
     initialSnapshot: AppBootstrapSnapshot = snapshot(),
     var failOnboardingWrite: Boolean = false,
     private val firstThemeWriteGate: CompletableDeferred<Unit>? = null,
+    private val firstThemeInitializationGate: CompletableDeferred<Unit>? = null,
     var themeWriteFailuresRemaining: Int = 0,
     private val onboardingWriteGate: CompletableDeferred<Unit>? = null,
+    var themeInitializationFailuresRemaining: Int = 0,
 ) : AppPreferencesRepository {
     private val mutableBootstrapState = MutableStateFlow(initialSnapshot)
     override val bootstrapState: Flow<AppBootstrapSnapshot> = mutableBootstrapState
 
     var emitThemeChanges = true
     val themeWrites = mutableListOf<ThemeMode>()
+    val themeInitializationWrites = mutableListOf<ThemeMode>()
     var onboardingSaveCount = 0
         private set
+
+    override suspend fun initializeThemeModeIfMissing(themeMode: ThemeMode) {
+        themeInitializationWrites += themeMode
+        if (themeInitializationWrites.size == 1) firstThemeInitializationGate?.await()
+        if (themeInitializationFailuresRemaining > 0) {
+            themeInitializationFailuresRemaining -= 1
+            throw IOException("initialization failed")
+        }
+        if (mutableBootstrapState.value.themeMode == null) {
+            emit(mutableBootstrapState.value.copy(themeMode = themeMode))
+        }
+    }
 
     override suspend fun setThemeMode(themeMode: ThemeMode) {
         themeWrites += themeMode
@@ -237,14 +314,27 @@ private class FakeAppPreferencesRepository(
 
 private object EmptyAppPreferencesRepository : AppPreferencesRepository {
     override val bootstrapState: Flow<AppBootstrapSnapshot> = emptyFlow()
+    override suspend fun initializeThemeModeIfMissing(themeMode: ThemeMode) = Unit
     override suspend fun setThemeMode(themeMode: ThemeMode) = Unit
     override suspend fun markOnboardingCompleted() = Unit
     override suspend fun saveTermConsents(records: List<TermConsentRecord>) = Unit
 }
 
 private fun snapshot(
-    themeMode: ThemeMode = ThemeMode.Dark,
+    themeMode: ThemeMode? = ThemeMode.Dark,
     firstLaunchStatus: FirstLaunchStatus = FirstLaunchStatus(),
 ) = AppBootstrapSnapshot(themeMode, firstLaunchStatus)
+
+private class FakeSystemThemeModeReader(
+    private val themeMode: ThemeMode,
+) : SystemThemeModeReader {
+    var readCount = 0
+        private set
+
+    override fun read(): ThemeMode {
+        readCount += 1
+        return themeMode
+    }
+}
 
 private fun testScope() = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
