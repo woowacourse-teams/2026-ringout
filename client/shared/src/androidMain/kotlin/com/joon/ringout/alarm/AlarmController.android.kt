@@ -383,35 +383,44 @@ private sealed interface PendingAlarmAction {
 private val AlarmSchedulerMutationMutex = Mutex()
 
 internal class AndroidAlarmScheduler(
-    private val context: Context,
-    private val dataSource: AlarmDataSource = RoomAlarmDataSource(
-        getRingoutDatabase(context).alarmDao(),
-    ),
-    private val legacyMigrator: LegacyAlarmPreferencesMigrator =
-        LegacyAlarmPreferencesMigrator(context, dataSource),
+    private val dataSource: AlarmDataSource,
+    private val alarmGateway: AndroidAlarmGateway,
+    private val ensureMigrated: suspend () -> Unit = {},
+    private val analytics: AndroidAlarmCreationAnalytics? = null,
 ) {
-    private val alarmManager = context.getSystemService(AlarmManager::class.java)
-    private val analytics = runCatching { AlarmAnalytics(context) }.getOrNull()
+
+    constructor(
+        context: Context,
+        dataSource: AlarmDataSource = RoomAlarmDataSource(
+            getRingoutDatabase(context).alarmDao(),
+        ),
+        legacyMigrator: LegacyAlarmPreferencesMigrator =
+            LegacyAlarmPreferencesMigrator(context, dataSource),
+    ) : this(
+        dataSource = dataSource,
+        alarmGateway = AndroidAlarmManagerGateway(context),
+        ensureMigrated = { legacyMigrator.ensureMigrated() },
+        analytics = runCatching { AndroidAlarmAnalyticsAdapter(AlarmAnalytics(context)) }
+            .getOrNull(),
+    )
 
     suspend fun schedule(request: AlarmScheduleRequest): Unit = AlarmSchedulerMutationMutex.withLock {
-        legacyMigrator.ensureMigrated()
+        ensureMigrated()
         request.validateForStorage()
         val previous = dataSource.getById(request.id)
         val replacement = SavedAlarmSchedule(
             request = request,
-            enabled = previous?.enabled ?: true,
+            enabled = true,
         )
-        if (replacement.enabled) {
-            try {
-                scheduleNext(request, afterMillis = System.currentTimeMillis())
-                dataSource.replace(replacement)
-            } catch (error: Exception) {
-                restorePreviousAlarm(previous, request.id, error)
-                throw error
-            }
-        } else {
+        if (previous?.enabled == true) {
+            dataSource.replace(previous.copy(enabled = false))
+        }
+        try {
+            scheduleNext(request, afterMillis = alarmGateway.currentTimeMillis())
             dataSource.replace(replacement)
-            cancel(request.id)
+        } catch (error: Exception) {
+            restorePreviousAlarm(previous, request.id, error)
+            throw error
         }
         if (previous == null) {
             analytics?.recordAlarmCreated(
@@ -426,11 +435,11 @@ internal class AndroidAlarmScheduler(
         alarmId: String,
         enabled: Boolean,
     ): Unit = AlarmSchedulerMutationMutex.withLock {
-        legacyMigrator.ensureMigrated()
+        ensureMigrated()
         val storedAlarm = dataSource.getById(alarmId) ?: return@withLock
         if (enabled) {
             try {
-                scheduleNext(storedAlarm.request, afterMillis = System.currentTimeMillis())
+                scheduleNext(storedAlarm.request, afterMillis = alarmGateway.currentTimeMillis())
                 check(dataSource.setEnabled(alarmId, true)) {
                     "저장된 알람을 찾지 못했습니다."
                 }
@@ -448,7 +457,7 @@ internal class AndroidAlarmScheduler(
     }
 
     suspend fun delete(alarmId: String): Unit = AlarmSchedulerMutationMutex.withLock {
-        legacyMigrator.ensureMigrated()
+        ensureMigrated()
         val storedAlarm = dataSource.getById(alarmId)
         cancel(alarmId)
         try {
@@ -456,7 +465,7 @@ internal class AndroidAlarmScheduler(
         } catch (error: Exception) {
             if (storedAlarm?.enabled == true) {
                 runCatching {
-                    scheduleNext(storedAlarm.request, afterMillis = System.currentTimeMillis())
+                    scheduleNext(storedAlarm.request, afterMillis = alarmGateway.currentTimeMillis())
                 }.exceptionOrNull()?.let(error::addSuppressed)
             }
             throw error
@@ -468,7 +477,7 @@ internal class AndroidAlarmScheduler(
         expectedFingerprint: String?,
         startRinging: suspend (AlarmScheduleRequest) -> Unit,
     ): Boolean = AlarmSchedulerMutationMutex.withLock {
-        legacyMigrator.ensureMigrated()
+        ensureMigrated()
         val storedAlarm = dataSource.getById(alarmId)
             ?.takeIf(SavedAlarmSchedule::enabled)
             ?: return@withLock false
@@ -481,7 +490,7 @@ internal class AndroidAlarmScheduler(
         }
         startRinging(request)
         if (request.repeatEnabled && request.selectedDays.isNotEmpty()) {
-            scheduleNext(request, afterMillis = System.currentTimeMillis() + 60_000L)
+            scheduleNext(request, afterMillis = alarmGateway.currentTimeMillis() + 60_000L)
         } else {
             check(dataSource.setEnabled(alarmId, false)) {
                 "발화한 알람의 상태를 갱신하지 못했습니다."
@@ -491,13 +500,13 @@ internal class AndroidAlarmScheduler(
     }
 
     suspend fun rescheduleAll(): Unit = AlarmSchedulerMutationMutex.withLock {
-        legacyMigrator.ensureMigrated()
+        ensureMigrated()
         var firstFailure: Exception? = null
         dataSource.getAll().forEach { stored ->
             coroutineContext.ensureActive()
             try {
                 if (stored.enabled) {
-                    scheduleNext(stored.request, afterMillis = System.currentTimeMillis())
+                    scheduleNext(stored.request, afterMillis = alarmGateway.currentTimeMillis())
                 } else {
                     cancel(stored.request.id)
                 }
@@ -518,7 +527,7 @@ internal class AndroidAlarmScheduler(
     }
 
     fun observeAll(): Flow<List<SavedAlarmSchedule>> = flow {
-        legacyMigrator.ensureMigrated()
+        ensureMigrated()
         emitAll(dataSource.observeAll())
     }
 
@@ -532,62 +541,32 @@ internal class AndroidAlarmScheduler(
             if (previous == null) {
                 dataSource.delete(alarmId)
             } else {
-                if (previous.enabled) {
-                    scheduleNext(previous.request, afterMillis = System.currentTimeMillis())
+                val restoreFailure = if (previous.enabled) {
+                    runCatching {
+                        scheduleNext(previous.request, afterMillis = alarmGateway.currentTimeMillis())
+                    }.exceptionOrNull()
+                } else {
+                    null
                 }
-                dataSource.replace(previous)
+                if (restoreFailure == null) {
+                    dataSource.replace(previous)
+                } else {
+                    dataSource.replace(previous.copy(enabled = false))
+                    throw restoreFailure
+                }
             }
-        }.exceptionOrNull()?.let(schedulingError::addSuppressed)
+        }.exceptionOrNull()
+            ?.takeUnless { restoreError -> restoreError === schedulingError }
+            ?.let(schedulingError::addSuppressed)
     }
 
     private fun scheduleNext(request: AlarmScheduleRequest, afterMillis: Long) {
         val triggerAtMillis = calculateNextTrigger(request, afterMillis)
-        val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
-            action = AlarmRuntime.ACTION_RING
-            putAlarmExtras(request)
-        }
-        val operation = PendingIntent.getBroadcast(
-            context,
-            request.id.hashCode(),
-            alarmIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val showIntent = PendingIntent.getActivity(
-            context,
-            request.id.hashCode() xor Int.MIN_VALUE,
-            AlarmRingingActivity.intent(context, request),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        alarmManager.setAlarmClock(
-            AlarmManager.AlarmClockInfo(triggerAtMillis, showIntent),
-            operation,
-        )
+        alarmGateway.schedule(request, triggerAtMillis)
     }
 
     private fun cancel(alarmId: String) {
-        val operation = PendingIntent.getBroadcast(
-            context,
-            alarmId.hashCode(),
-            Intent(context, AlarmReceiver::class.java).apply {
-                action = AlarmRuntime.ACTION_RING
-                data = Uri.parse("ringout://alarm/${Uri.encode(alarmId)}")
-            },
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
-        )
-        operation?.let {
-            alarmManager.cancel(it)
-            it.cancel()
-        }
-
-        PendingIntent.getActivity(
-            context,
-            alarmId.hashCode() xor Int.MIN_VALUE,
-            Intent(context, AlarmRingingActivity::class.java).apply {
-                action = AlarmRuntime.ACTION_RING
-                data = Uri.parse("ringout://alarm/${Uri.encode(alarmId)}")
-            },
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
-        )?.cancel()
+        alarmGateway.cancel(alarmId)
     }
 
     private fun calculateNextTrigger(request: AlarmScheduleRequest, afterMillis: Long): Long {
@@ -641,5 +620,100 @@ internal class AndroidAlarmScheduler(
             "토" to DayOfWeek.SATURDAY,
             "일" to DayOfWeek.SUNDAY,
         )
+    }
+}
+
+internal interface AndroidAlarmGateway {
+    fun currentTimeMillis(): Long
+
+    fun schedule(
+        request: AlarmScheduleRequest,
+        triggerAtMillis: Long,
+    )
+
+    fun cancel(alarmId: String)
+}
+
+internal interface AndroidAlarmCreationAnalytics {
+    fun recordAlarmCreated(
+        alarmId: String,
+        repeatEnabled: Boolean,
+        repeatDayCount: Int,
+    )
+}
+
+private class AndroidAlarmAnalyticsAdapter(
+    private val analytics: AlarmAnalytics,
+) : AndroidAlarmCreationAnalytics {
+    override fun recordAlarmCreated(
+        alarmId: String,
+        repeatEnabled: Boolean,
+        repeatDayCount: Int,
+    ) {
+        analytics.recordAlarmCreated(
+            alarmId = alarmId,
+            repeatEnabled = repeatEnabled,
+            repeatDayCount = repeatDayCount,
+        )
+    }
+}
+
+private class AndroidAlarmManagerGateway(
+    private val context: Context,
+) : AndroidAlarmGateway {
+    private val alarmManager = context.getSystemService(AlarmManager::class.java)
+
+    override fun currentTimeMillis(): Long = System.currentTimeMillis()
+
+    override fun schedule(
+        request: AlarmScheduleRequest,
+        triggerAtMillis: Long,
+    ) {
+        val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
+            action = AlarmRuntime.ACTION_RING
+            putAlarmExtras(request)
+        }
+        val operation = PendingIntent.getBroadcast(
+            context,
+            request.id.hashCode(),
+            alarmIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val showIntent = PendingIntent.getActivity(
+            context,
+            request.id.hashCode() xor Int.MIN_VALUE,
+            AlarmRingingActivity.intent(context, request),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        alarmManager.setAlarmClock(
+            AlarmManager.AlarmClockInfo(triggerAtMillis, showIntent),
+            operation,
+        )
+    }
+
+    override fun cancel(alarmId: String) {
+        val operation = PendingIntent.getBroadcast(
+            context,
+            alarmId.hashCode(),
+            Intent(context, AlarmReceiver::class.java).apply {
+                action = AlarmRuntime.ACTION_RING
+                data = Uri.parse("ringout://alarm/${Uri.encode(alarmId)}")
+            },
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        )
+        operation?.let {
+            alarmManager.cancel(it)
+            it.cancel()
+        }
+
+        PendingIntent.getActivity(
+            context,
+            alarmId.hashCode() xor Int.MIN_VALUE,
+            Intent(context, AlarmRingingActivity::class.java).apply {
+                action = AlarmRuntime.ACTION_RING
+                data = Uri.parse("ringout://alarm/${Uri.encode(alarmId)}")
+            },
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        )?.cancel()
     }
 }
