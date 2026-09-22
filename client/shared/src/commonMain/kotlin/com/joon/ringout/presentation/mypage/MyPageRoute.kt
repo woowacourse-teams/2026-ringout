@@ -15,18 +15,12 @@ internal fun MyPageRoute(
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
-    val uiState = viewModel.uiState
 
     MyPageScreen(
-        uiState = uiState,
         themeMode = themeMode,
         appVersion = appVersion,
         policies = DefaultMyPagePolicies,
-        onScreenEntered = viewModel::onScreenEntered,
         onThemeModeChange = onThemeModeChange,
-        onPreviousMonthClick = viewModel::onPreviousMonthClick,
-        onNextMonthClick = viewModel::onNextMonthClick,
-        onCalendarRetry = viewModel::retryCalendar,
         onBackClick = onBackClick,
         onPolicyClick = { policyId ->
             findPolicyUrl(policyId)?.let { url ->
