@@ -3,16 +3,24 @@ package com.joon.ringout.presentation.onboarding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.alarm.rememberAlarmController
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
+import com.joon.ringout.analytics.AnalyticsAlarmSoundSurface
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.alarmsound.resolveInitialAlarmSoundSelection
+import com.joon.ringout.presentation.alarmsound.resolveAlarmSoundDisplaySelection
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupCoordinator
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
+import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
 import com.joon.ringout.presentation.alarmsetup.DefaultAlarmTime
 import com.joon.ringout.presentation.alarmsetup.rememberDeviceAlarmSoundController
 import com.joon.ringout.presentation.common.component.AppMessageHost
@@ -71,8 +79,16 @@ internal fun OnboardingRoute(
     )
     val soundController = rememberDeviceAlarmSoundController()
     val state = flow.uiState
+    var soundStepInitialSelection by remember { mutableStateOf<AlarmSoundSelection?>(null) }
     LaunchedEffect(state.step, state.isDestinationOpen) {
         flow.onStepVisible()
+    }
+    LaunchedEffect(state.step) {
+        soundStepInitialSelection = if (state.step == OnboardingStep.Sound) {
+            editor.uiState.alarmSound
+        } else {
+            null
+        }
     }
     val editable = !editor.uiState.isSaveInProgress && completionEnabled && !state.isAlarmSaved
     val sounds = soundController.sounds.ifEmpty { listOf(editor.uiState.alarmSound) }
@@ -135,6 +151,16 @@ internal fun OnboardingRoute(
                     soundController.stopPreview()
                     when (flow.requestNext(editor.uiState, completionRetryToken)) {
                         OnboardingAdvance.SaveAlarm -> {
+                            if (state.step == OnboardingStep.Sound) {
+                                editor.updateAlarmSoundAnalyticsContext(
+                                    onboardingSoundAnalyticsContext(
+                                        sounds = sounds,
+                                        initialSelection = soundStepInitialSelection
+                                            ?: editor.uiState.alarmSound,
+                                        selectedSound = editor.uiState.alarmSound,
+                                    ),
+                                )
+                            }
                             if (editor.requestSave()) flow.onSubmitAccepted()
                         }
                         OnboardingAdvance.Complete -> {
@@ -166,5 +192,21 @@ internal fun OnboardingRoute(
     AppMessageHost(
         state = error?.let { AppMessageHostState("설정을 저장하지 못했어요", it) },
         onDismiss = { if (state.isDestinationOpen) destinations.clearError() else editor.clearError() },
+    )
+}
+
+private fun onboardingSoundAnalyticsContext(
+    sounds: List<AlarmSoundSelection>,
+    initialSelection: AlarmSoundSelection,
+    selectedSound: AlarmSoundSelection,
+): AlarmSettingsAnalyticsContext {
+    val displaySelection = resolveAlarmSoundDisplaySelection(
+        sounds = sounds,
+        initialSelection = initialSelection,
+        selectedSound = selectedSound,
+        surface = AnalyticsAlarmSoundSurface.OnboardingStep,
+    ) ?: return AlarmSettingsAnalyticsContext()
+    return AlarmSettingsAnalyticsContext(
+        soundDisplaySelection = displaySelection,
     )
 }

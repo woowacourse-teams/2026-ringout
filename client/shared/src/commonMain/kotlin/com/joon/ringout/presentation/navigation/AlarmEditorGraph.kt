@@ -63,8 +63,8 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
                 selectedSound = navigation.alarmSetupViewModel.uiState.alarmSound,
                 isActive = navigation.isActive(route, displayedRoute),
                 onBackClick = { navigation.onBack(route, displayedRoute) },
-                onSaveClick = { sound ->
-                    navigation.onAlarmSoundSelected(displayedRoute, sound)
+                onSaveClick = { sound, analyticsContext ->
+                    navigation.onAlarmSoundSelected(displayedRoute, sound, analyticsContext)
                 },
             )
         }
