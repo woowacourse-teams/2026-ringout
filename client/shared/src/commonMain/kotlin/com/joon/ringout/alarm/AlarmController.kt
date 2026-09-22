@@ -1,6 +1,7 @@
 package com.joon.ringout.alarm
 
 import androidx.compose.runtime.Composable
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -20,7 +21,7 @@ data class AlarmScheduleRequest(
 )
 
 class AlarmController(
-    val schedule: (AlarmScheduleRequest) -> Unit,
+    val schedule: (AlarmScheduleRequest, AlarmSettingsAnalyticsContext) -> Unit,
     val setEnabled: (alarmId: String, enabled: Boolean) -> Unit,
     val deleteAlarm: (alarmId: String) -> Unit,
     val savedAlarms: Flow<List<SavedAlarmSchedule>> = flowOf(emptyList()),

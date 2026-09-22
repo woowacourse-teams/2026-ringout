@@ -2,6 +2,7 @@ package com.joon.ringout.analytics
 
 import android.content.Context
 import android.util.Log
+import com.joon.ringout.alarm.AlarmScheduleRequest
 
 internal class AlarmAnalytics internal constructor(
     private val tracker: AnalyticsTracker,
@@ -15,34 +16,107 @@ internal class AlarmAnalytics internal constructor(
     )
 
     fun recordAlarmCreated(
-        alarmId: String,
-        repeatEnabled: Boolean,
-        repeatDayCount: Int,
+        request: AlarmScheduleRequest,
+        context: AlarmSettingsAnalyticsContext,
+    ) = recordAlarmSave(
+        eventName = AnalyticsEventName.DestinationAlarmCreated,
+        request = request,
+        context = context,
+        claimCreationIndex = { usageStore.claimAlarmCreation(request.id) },
+    )
+
+    fun recordAlarmUpdated(
+        request: AlarmScheduleRequest,
+        context: AlarmSettingsAnalyticsContext,
+    ) = recordAlarmSave(
+        eventName = AnalyticsEventName.DestinationAlarmUpdated,
+        request = request,
+        context = context,
+        claimCreationIndex = null,
+    )
+
+    private fun recordAlarmSave(
+        eventName: AnalyticsEventName,
+        request: AlarmScheduleRequest,
+        context: AlarmSettingsAnalyticsContext,
+        claimCreationIndex: (() -> Long?)?,
     ) = safelyRecord {
-        val creationIndex = usageStore.claimAlarmCreation(alarmId)
+        val payload = normalizeAlarmSettingsAnalytics(request, context)
             ?: return@safelyRecord
-        val normalizedRepeatDayCount = if (repeatEnabled) {
-            repeatDayCount.coerceIn(0, 7)
-        } else {
-            0
+        val creationIndex = claimCreationIndex?.invoke()
+        if (claimCreationIndex != null && creationIndex == null) {
+            return@safelyRecord
         }
-        val scheduleType = analyticsScheduleType(
-            repeatEnabled = repeatEnabled,
-            repeatDayCount = normalizedRepeatDayCount,
-        )
         tracker.log(
             AnalyticsEvent(
-                name = AnalyticsEventName.DestinationAlarmCreated,
-                parameters = mapOf(
-                    AnalyticsParameterName.CreationIndex to
-                        AnalyticsParameterValue.Number(creationIndex),
-                    AnalyticsParameterName.ScheduleType to
-                        AnalyticsParameterValue.Text(scheduleType.wireName),
-                    AnalyticsParameterName.RepeatDayCount to
-                        AnalyticsParameterValue.Number(normalizedRepeatDayCount.toLong()),
-                ),
+                name = eventName,
+                parameters = buildMap {
+                    creationIndex?.let { index ->
+                        put(
+                            AnalyticsParameterName.CreationIndex,
+                            AnalyticsParameterValue.Number(index),
+                        )
+                    }
+                    putAlarmSettings(payload)
+                },
             ),
         )
+    }
+
+    private fun MutableMap<AnalyticsParameterName, AnalyticsParameterValue>.putAlarmSettings(
+        payload: AlarmSettingsAnalyticsPayload,
+    ) {
+        put(
+            AnalyticsParameterName.SettingsSchemaVersion,
+            AnalyticsParameterValue.Number(SettingsSchemaVersion),
+        )
+        put(
+            AnalyticsParameterName.LimitMinutes,
+            AnalyticsParameterValue.Number(payload.limitMinutes.toLong()),
+        )
+        put(
+            AnalyticsParameterName.AlarmTime,
+            AnalyticsParameterValue.Text(payload.alarmTime),
+        )
+        put(
+            AnalyticsParameterName.RepeatDays,
+            AnalyticsParameterValue.Text(payload.repeatDays),
+        )
+        put(
+            AnalyticsParameterName.ScheduleType,
+            AnalyticsParameterValue.Text(payload.scheduleType.wireName),
+        )
+        put(
+            AnalyticsParameterName.RepeatDayCount,
+            AnalyticsParameterValue.Number(payload.repeatDayCount.toLong()),
+        )
+        put(
+            AnalyticsParameterName.AlarmSoundSource,
+            AnalyticsParameterValue.Text(payload.alarmSoundSource.wireName),
+        )
+        val displaySelection = payload.soundDisplaySelection
+        put(
+            AnalyticsParameterName.AlarmSoundListConfirmed,
+            AnalyticsParameterValue.Number(if (displaySelection == null) 0L else 1L),
+        )
+        displaySelection?.let { selection ->
+            put(
+                AnalyticsParameterName.AlarmSoundSurface,
+                AnalyticsParameterValue.Text(selection.surface.wireName),
+            )
+            put(
+                AnalyticsParameterName.AlarmSoundPosition,
+                AnalyticsParameterValue.Number(selection.position.toLong()),
+            )
+            put(
+                AnalyticsParameterName.AlarmSoundListSize,
+                AnalyticsParameterValue.Number(selection.listSize.toLong()),
+            )
+            put(
+                AnalyticsParameterName.AlarmSoundSelectionChanged,
+                AnalyticsParameterValue.Number(if (selection.selectionChanged) 1L else 0L),
+            )
+        }
     }
 
     fun recordAlarmRingingStarted(
@@ -249,5 +323,6 @@ internal class AlarmAnalytics internal constructor(
 
     private companion object {
         const val LogTag = "RingoutAnalytics"
+        const val SettingsSchemaVersion = 2L
     }
 }

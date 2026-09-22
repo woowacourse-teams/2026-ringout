@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.alarmsetup
 
 import androidx.compose.runtime.Immutable
 import com.joon.ringout.alarm.AlarmScheduleRequest
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
 import com.joon.ringout.presentation.destination.DestinationSelection
 import com.joon.ringout.presentation.destination.isConfiguredDestination
 
@@ -16,6 +17,7 @@ data class AlarmSetupUiState(
         name = DefaultAlarmSoundName,
         uri = null,
     ),
+    val alarmSettingsAnalyticsContext: AlarmSettingsAnalyticsContext = AlarmSettingsAnalyticsContext(),
     val pendingSaveRequest: AlarmScheduleRequest? = null,
     val isScheduling: Boolean = false,
     val errorMessage: String? = null,

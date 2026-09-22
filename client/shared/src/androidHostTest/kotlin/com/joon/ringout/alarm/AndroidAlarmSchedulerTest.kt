@@ -1,5 +1,8 @@
 package com.joon.ringout.alarm
 
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
+import com.joon.ringout.analytics.AlarmSoundDisplaySelection
+import com.joon.ringout.analytics.AnalyticsAlarmSoundSurface
 import com.joon.ringout.data.alarm.AlarmDataSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,6 +14,73 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AndroidAlarmSchedulerTest {
+    @Test
+    fun `신규 저장은 생성으로 기록하고 이후 성공한 재설정마다 업데이트를 기록한다`() = runBlocking {
+        val dataSource = FakeAlarmDataSource()
+        val gateway = FakeAndroidAlarmGateway()
+        val analytics = RecordingAndroidAlarmAnalytics()
+        val scheduler = AndroidAlarmScheduler(dataSource, gateway, analytics = analytics)
+        val context = AlarmSettingsAnalyticsContext(
+            soundDisplaySelection = AlarmSoundDisplaySelection(
+                surface = AnalyticsAlarmSoundSurface.EditorPicker,
+                position = 2,
+                listSize = 3,
+                selectionChanged = true,
+            ),
+        )
+
+        scheduler.schedule(request(), context)
+        scheduler.schedule(request(time = "08:10"), context)
+        scheduler.schedule(request(time = "09:20"), context)
+
+        assertEquals(
+            listOf("created", "updated", "updated"),
+            analytics.events.map(RecordingAndroidAlarmAnalytics.Event::name),
+        )
+        assertEquals(
+            listOf("07:05", "08:10", "09:20"),
+            analytics.events.map { event -> event.request.time },
+        )
+        assertEquals(context, analytics.events[1].context)
+        assertEquals(context, analytics.events[2].context)
+    }
+
+    @Test
+    fun `예약 또는 Room 저장 실패는 생성과 업데이트 이벤트를 기록하지 않는다`() = runBlocking {
+        val analytics = RecordingAndroidAlarmAnalytics()
+        val gateway = FakeAndroidAlarmGateway().apply {
+            scheduleFailure = IllegalStateException("schedule failed")
+        }
+        val scheduler = AndroidAlarmScheduler(
+            dataSource = FakeAlarmDataSource(),
+            alarmGateway = gateway,
+            analytics = analytics,
+        )
+
+        assertFailsWith<Exception> { scheduler.schedule(request()) }
+
+        assertTrue(analytics.events.isEmpty())
+    }
+
+    @Test
+    fun `Room 최종 커밋 실패는 업데이트 이벤트를 기록하지 않는다`() = runBlocking {
+        val previous = request()
+        val latest = previous.copy(time = "08:10")
+        val analytics = RecordingAndroidAlarmAnalytics()
+        val scheduler = AndroidAlarmScheduler(
+            dataSource = FakeAlarmDataSource(
+                initial = listOf(SavedAlarmSchedule(previous, enabled = true)),
+                replaceFailure = { alarm -> alarm.enabled && alarm.request == latest },
+            ),
+            alarmGateway = FakeAndroidAlarmGateway(),
+            analytics = analytics,
+        )
+
+        assertFailsWith<IllegalStateException> { scheduler.schedule(latest) }
+
+        assertTrue(analytics.events.isEmpty())
+    }
+
     @Test
     fun `비활성 기존 알람 수정 저장은 최신 요청으로 예약하고 활성 상태로 저장한다`() = runBlocking {
         val previous = request()
@@ -230,5 +300,29 @@ private class FakeAndroidAlarmGateway(
     override fun cancel(alarmId: String) {
         events += "cancel:$alarmId"
         scheduled.remove(alarmId)
+    }
+}
+
+private class RecordingAndroidAlarmAnalytics : AndroidAlarmCreationAnalytics {
+    data class Event(
+        val name: String,
+        val request: AlarmScheduleRequest,
+        val context: AlarmSettingsAnalyticsContext,
+    )
+
+    val events = mutableListOf<Event>()
+
+    override fun recordAlarmCreated(
+        request: AlarmScheduleRequest,
+        analyticsContext: AlarmSettingsAnalyticsContext,
+    ) {
+        events += Event("created", request, analyticsContext)
+    }
+
+    override fun recordAlarmUpdated(
+        request: AlarmScheduleRequest,
+        analyticsContext: AlarmSettingsAnalyticsContext,
+    ) {
+        events += Event("updated", request, analyticsContext)
     }
 }

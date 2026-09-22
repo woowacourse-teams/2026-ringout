@@ -19,6 +19,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
 import com.joon.ringout.analytics.AlarmAnalytics
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
 import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarm.LegacyAlarmPreferencesMigrator
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
@@ -82,7 +83,10 @@ actual fun rememberAlarmController(
         }
     }
 
-    fun scheduleNow(request: AlarmScheduleRequest) {
+    fun scheduleNow(
+        request: AlarmScheduleRequest,
+        analyticsContext: AlarmSettingsAnalyticsContext,
+    ) {
         if (!context.hasMissionFineLocationPermission()) {
             failPendingAction(EXACT_LOCATION_PERMISSION_ERROR)
             return
@@ -95,7 +99,7 @@ actual fun rememberAlarmController(
         isScheduleInFlight.value = true
         coroutineScope.launch {
             try {
-                scheduler.schedule(request)
+                scheduler.schedule(request, analyticsContext)
                 pendingAction.value = null
                 currentOnSaveCompleted.value(request)
                 requestFullScreenPermissionIfNeeded()
@@ -136,7 +140,7 @@ actual fun rememberAlarmController(
 
     fun completePendingAction() {
         when (val action = pendingAction.value) {
-            is PendingAlarmAction.Schedule -> scheduleNow(action.request)
+            is PendingAlarmAction.Schedule -> scheduleNow(action.request, action.analyticsContext)
             is PendingAlarmAction.Enable -> enableNow(action.alarmId)
             null -> Unit
         }
@@ -262,12 +266,12 @@ actual fun rememberAlarmController(
         coroutineScope,
     ) {
         AlarmController(
-            schedule = { request ->
+            schedule = { request, analyticsContext ->
                 val canStartSchedule =
                     !isScheduleInFlight.value &&
                         pendingAction.value !is PendingAlarmAction.Schedule
                 if (canStartSchedule) {
-                    pendingAction.value = PendingAlarmAction.Schedule(request)
+                    pendingAction.value = PendingAlarmAction.Schedule(request, analyticsContext)
                     continuePermissionChain()
                 }
             },
@@ -375,7 +379,10 @@ private const val KEY_INITIAL_OVERLAY_PERMISSION_REQUESTED = "initial_overlay_pe
 private const val AlarmLoadRetryDelayMillis = 1_000L
 
 private sealed interface PendingAlarmAction {
-    data class Schedule(val request: AlarmScheduleRequest) : PendingAlarmAction
+    data class Schedule(
+        val request: AlarmScheduleRequest,
+        val analyticsContext: AlarmSettingsAnalyticsContext,
+    ) : PendingAlarmAction
 
     data class Enable(val alarmId: String) : PendingAlarmAction
 }
@@ -404,7 +411,10 @@ internal class AndroidAlarmScheduler(
             .getOrNull(),
     )
 
-    suspend fun schedule(request: AlarmScheduleRequest): Unit = AlarmSchedulerMutationMutex.withLock {
+    suspend fun schedule(
+        request: AlarmScheduleRequest,
+        analyticsContext: AlarmSettingsAnalyticsContext = AlarmSettingsAnalyticsContext(),
+    ): Unit = AlarmSchedulerMutationMutex.withLock {
         ensureMigrated()
         request.validateForStorage()
         val previous = dataSource.getById(request.id)
@@ -423,11 +433,9 @@ internal class AndroidAlarmScheduler(
             throw error
         }
         if (previous == null) {
-            analytics?.recordAlarmCreated(
-                alarmId = request.id,
-                repeatEnabled = request.repeatEnabled,
-                repeatDayCount = request.selectedDays.distinct().size,
-            )
+            analytics?.recordAlarmCreated(request, analyticsContext)
+        } else {
+            analytics?.recordAlarmUpdated(request, analyticsContext)
         }
     }
 
@@ -636,9 +644,13 @@ internal interface AndroidAlarmGateway {
 
 internal interface AndroidAlarmCreationAnalytics {
     fun recordAlarmCreated(
-        alarmId: String,
-        repeatEnabled: Boolean,
-        repeatDayCount: Int,
+        request: AlarmScheduleRequest,
+        analyticsContext: AlarmSettingsAnalyticsContext,
+    )
+
+    fun recordAlarmUpdated(
+        request: AlarmScheduleRequest,
+        analyticsContext: AlarmSettingsAnalyticsContext,
     )
 }
 
@@ -646,15 +658,17 @@ private class AndroidAlarmAnalyticsAdapter(
     private val analytics: AlarmAnalytics,
 ) : AndroidAlarmCreationAnalytics {
     override fun recordAlarmCreated(
-        alarmId: String,
-        repeatEnabled: Boolean,
-        repeatDayCount: Int,
+        request: AlarmScheduleRequest,
+        analyticsContext: AlarmSettingsAnalyticsContext,
     ) {
-        analytics.recordAlarmCreated(
-            alarmId = alarmId,
-            repeatEnabled = repeatEnabled,
-            repeatDayCount = repeatDayCount,
-        )
+        analytics.recordAlarmCreated(request, analyticsContext)
+    }
+
+    override fun recordAlarmUpdated(
+        request: AlarmScheduleRequest,
+        analyticsContext: AlarmSettingsAnalyticsContext,
+    ) {
+        analytics.recordAlarmUpdated(request, analyticsContext)
     }
 }
 
