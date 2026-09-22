@@ -13,10 +13,35 @@ import kotlin.test.assertTrue
 
 class AppNavigationStateTest {
     @Test
-    fun guestModeRejectsNewAccountRouteNavigation() {
+    fun `비로그인 모드에서도 로그인 화면을 열고 뒤로 가면 마이페이지로 돌아온다`() {
+        val state = AppNavigationState(guestOnlyMode = true)
+        state.navigate(AppRoute.MyPage)
+        state.navigate(AppRoute.Login)
+        state.navigate(AppRoute.Login)
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login), state.backStack)
+        state.normalizeForGuestMode()
+        assertEquals(AppRoute.Login, state.requestedRoute)
+
+        state.popBackStack(AppRoute.Login)
+        assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack)
+    }
+
+    @Test
+    fun `비로그인 모드에서 로그인 후 약관 화면으로 이동할 수 있다`() {
+        val state = AppNavigationState(guestOnlyMode = true)
+        state.navigate(AppRoute.Login)
+        state.navigate(AppRoute.TermsAgreement)
+        state.normalizeForGuestMode()
+
+        assertEquals(AppRoute.TermsAgreement, state.requestedRoute)
+        state.popBackStack(AppRoute.TermsAgreement)
+        assertEquals(AppRoute.Login, state.requestedRoute)
+    }
+
+    @Test
+    fun `비로그인 모드에서 미지원 닉네임 화면 진입은 마이페이지로 이동한다`() {
         listOf(
-            AppRoute.Login,
-            AppRoute.TermsAgreement,
             AppRoute.NicknameChange,
         ).forEach { accountRoute ->
             val state = AppNavigationState(guestOnlyMode = true)
@@ -32,10 +57,8 @@ class AppNavigationStateTest {
     }
 
     @Test
-    fun guestModeReturnsRestoredAccountRoutesToMyPage() {
+    fun `복원된 미지원 닉네임 화면은 마이페이지로 이동한다`() {
         listOf(
-            AppRoute.Login,
-            AppRoute.TermsAgreement,
             AppRoute.NicknameChange,
         ).forEach { accountRoute ->
             val state = AppNavigationState()

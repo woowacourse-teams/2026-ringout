@@ -44,8 +44,6 @@ internal class AppNavigationState(
     fun navigate(route: AppRoute) {
         if (guestOnlyMode) {
             when (route) {
-                AppRoute.Login,
-                AppRoute.TermsAgreement,
                 AppRoute.NicknameChange,
                 -> {
                     navigate(AppRoute.MyPage)
@@ -98,11 +96,9 @@ internal class AppNavigationState(
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
 
-    /** 이전 로그인 버전에서 복원된 계정 화면을 비로그인 마이페이지로 되돌린다. */
+    /** 아직 제공하지 않는 닉네임 수정 화면은 마이페이지로 되돌린다. */
     internal fun normalizeForGuestMode() {
         when (requestedRoute) {
-            AppRoute.Login,
-            AppRoute.TermsAgreement,
             AppRoute.NicknameChange,
             -> navigate(AppRoute.MyPage)
 

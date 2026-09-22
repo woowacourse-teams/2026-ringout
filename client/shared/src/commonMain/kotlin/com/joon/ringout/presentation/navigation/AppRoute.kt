@@ -50,8 +50,7 @@ internal sealed interface AppRoute : NavKey {
     @SerialName("my_page")
     data object MyPage : AppRoute
 
-    // TODO(RINGOUT_ACCOUNT): 아래 계정 경로는 다음 로그인 버전에서 그래프에 다시 등록한다.
-    // 현재 비로그인 전용 앱에서는 어떤 활성 UI에서도 이 경로로 이동하지 않는다.
+    // TODO(RINGOUT_ACCOUNT): 프로필 수정 도입 시 NicknameChange 경로를 등록한다.
     @Serializable
     @SerialName("nickname_change")
     data object NicknameChange : AppRoute

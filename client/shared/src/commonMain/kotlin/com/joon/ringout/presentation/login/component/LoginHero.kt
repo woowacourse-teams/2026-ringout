@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,7 +43,7 @@ internal fun LoginHero(modifier: Modifier = Modifier) {
             text = "계정을 연동하면\n데이터를 안전하게 보관할 수 있어요",
             modifier = Modifier
                 .fillMaxWidth()
-                .height(dimensions.heroTextHeight),
+                .heightIn(min = dimensions.heroTextHeight),
             color = colors.primaryText,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.headlineSmall.copy(

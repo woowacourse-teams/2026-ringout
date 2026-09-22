@@ -12,6 +12,7 @@ internal fun MyPageRoute(
     appVersion: String,
     onThemeModeChange: (ThemeMode) -> Unit,
     onBackClick: () -> Unit,
+    onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -22,6 +23,7 @@ internal fun MyPageRoute(
         policies = DefaultMyPagePolicies,
         onThemeModeChange = onThemeModeChange,
         onBackClick = onBackClick,
+        onLoginClick = onLoginClick,
         onPolicyClick = { policyId ->
             findPolicyUrl(policyId)?.let { url ->
                 runCatching { uriHandler.openUri(url) }

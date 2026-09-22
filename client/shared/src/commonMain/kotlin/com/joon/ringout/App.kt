@@ -22,6 +22,10 @@ import com.joon.ringout.presentation.app.rememberAppAlarmController
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.home.HomeViewModel
+import com.joon.ringout.presentation.login.LoginViewModel
+import com.joon.ringout.presentation.signup.SignupViewModel
+import com.joon.ringout.presentation.navigation.authGraph
+import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingRoute
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
@@ -167,6 +171,15 @@ private fun RingoutAppContent(
     } else {
         null
     }
+    val authNavigation = if (AppRoute.Login in retainedRoutes) {
+        rememberAuthNavigation(
+            navigationState,
+            viewModelScopes.get(AppRoute.Login, LoginViewModel::class),
+            viewModelScopes.get(AppRoute.Login, SignupViewModel::class),
+        )
+    } else {
+        null
+    }
     val editorRoute = navigationState.editorRoute
     val alarmEditorNavigation = if (editorRoute != null) {
         rememberAlarmEditorNavigation(
@@ -207,9 +220,13 @@ private fun RingoutAppContent(
         modifier = Modifier.fillMaxSize(),
         isBackBlocked =
             displayedRoute is AppRoute.AlarmRinging ||
-                alarmEditorNavigation?.isBackBlocked(displayedRoute) == true,
+                alarmEditorNavigation?.isBackBlocked(displayedRoute) == true ||
+                authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true,
         onBack = { route ->
             when (route) {
+                AppRoute.Login,
+                AppRoute.TermsAgreement,
+                -> authNavigation?.onBack(route, displayedRoute, authSessionState)
                 AppRoute.AddAlarm,
                 is AppRoute.EditAlarm,
                 is AppRoute.Destination,
@@ -266,7 +283,13 @@ private fun RingoutAppContent(
                 onActiveAlarmMissionForceEndHoldCompleted =
                     onActiveAlarmMissionForceEndHoldCompleted,
             )
-            // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 rememberAuthNavigation과 authGraph를 다시 연결한다.
+            if (authNavigation != null) {
+                authGraph(
+                    authNavigation = authNavigation,
+                    displayedRoute = displayedRoute,
+                    authSessionState = authSessionState,
+                )
+            }
             if (alarmEditorNavigation != null) {
                 alarmEditorGraph(
                     navigation = alarmEditorNavigation,
