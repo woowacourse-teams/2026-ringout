@@ -4,6 +4,7 @@ package com.joon.ringout.analytics
 
 import com.joon.ringout.platform.IosAnalyticsEventDto
 import com.joon.ringout.platform.IosAnalyticsTracker
+import com.joon.ringout.alarm.AlarmScheduleRequest
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSUUID
 import kotlin.test.Test
@@ -13,6 +14,28 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class IosAlarmAnalyticsTest {
+    @Test
+    fun `재설정은 생성 인덱스 없이 공통 설정값만 기록한다`() = withAnalytics { analytics, tracker ->
+        analytics.recordAlarmUpdated(
+            request = iosAlarmRequest("alarm-1").copy(
+                time = "23:59",
+                alarmSoundName = "private name",
+                alarmSoundUri = "content://private/alarm",
+            ),
+            context = AlarmSettingsAnalyticsContext(),
+        )
+
+        val event = tracker.events.single()
+        assertEquals("destination_alarm_updated", event.name)
+        assertNull(event.numberParameter("creation_index"))
+        assertEquals(2L, event.numberParameter("settings_schema_version"))
+        assertEquals(12L, event.numberParameter("limit_minutes"))
+        assertEquals("23:59", event.textParameter("alarm_time"))
+        assertTrue(event.parameters.none { it.name.startsWith("alarm_sound_") })
+        assertTrue(event.parameters.none { it.textValue == "private name" })
+        assertTrue(event.parameters.none { it.textValue == "content://private/alarm" })
+    }
+
     @Test
     fun `온보딩 이벤트 중복 방지 기록은 저장소 재생성 후에도 유지된다`() {
         val suiteName = "ringout-onboarding-test-${NSUUID().UUIDString}"
@@ -33,14 +56,12 @@ class IosAlarmAnalyticsTest {
     @Test
     fun recordsAlarmCreationOnlyOnceWithAndroidCompatibleParameters() = withAnalytics { analytics, tracker ->
         analytics.recordAlarmCreated(
-            alarmId = "alarm-1",
-            repeatEnabled = true,
-            repeatDayCount = 3,
+            request = iosAlarmRequest("alarm-1"),
+            context = AlarmSettingsAnalyticsContext(),
         )
         analytics.recordAlarmCreated(
-            alarmId = "alarm-1",
-            repeatEnabled = true,
-            repeatDayCount = 3,
+            request = iosAlarmRequest("alarm-1"),
+            context = AlarmSettingsAnalyticsContext(),
         )
 
         val event = tracker.events.single()
@@ -48,6 +69,11 @@ class IosAlarmAnalyticsTest {
         assertEquals(1L, event.numberParameter("creation_index"))
         assertEquals(3L, event.numberParameter("repeat_day_count"))
         assertEquals("weekly", event.textParameter("schedule_type"))
+        assertEquals(2L, event.numberParameter("settings_schema_version"))
+        assertEquals(12L, event.numberParameter("limit_minutes"))
+        assertEquals("06:20", event.textParameter("alarm_time"))
+        assertEquals("mon,fri", event.textParameter("repeat_days"))
+        assertTrue(event.parameters.none { it.name.startsWith("alarm_sound_") })
     }
 
     @Test
@@ -127,3 +153,17 @@ private fun IosAnalyticsEventDto.numberParameter(name: String): Long? =
 
 private fun IosAnalyticsEventDto.textParameter(name: String): String? =
     parameters.singleOrNull { it.name == name }?.textValue
+
+private fun iosAlarmRequest(id: String) = AlarmScheduleRequest(
+    id = id,
+    time = "06:20",
+    selectedDays = listOf("월", "금"),
+    repeatEnabled = true,
+    limitMinutes = 12,
+    destinationName = "회사",
+    destinationAddress = "서울특별시 중구 세종대로 110",
+    destinationLatitude = 37.5665,
+    destinationLongitude = 126.978,
+    alarmSoundName = "기본 알람음",
+    alarmSoundUri = null,
+)

@@ -7,6 +7,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import com.joon.ringout.alarm.AlarmController
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.MissionLocationState
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.alarmsetup.components.MissionLocationPermissionDialog
 import com.joon.ringout.presentation.common.canShowAppDialog
@@ -111,7 +112,7 @@ private fun AlarmSetupPermissionDialog(
 }
 
 internal class AlarmSetupCommandExecutor(
-    private val scheduleAlarm: (AlarmScheduleRequest) -> Unit,
+    private val scheduleAlarm: (AlarmScheduleRequest, AlarmSettingsAnalyticsContext) -> Unit,
     private val requestWhenInUseLocation: () -> Unit,
     private val requestAlwaysLocation: () -> Unit,
     private val confirmAlwaysLocationResult: () -> Unit,
@@ -119,7 +120,8 @@ internal class AlarmSetupCommandExecutor(
 ) {
     fun execute(command: AlarmSetupViewModel.Command?) {
         when (command) {
-            is AlarmSetupViewModel.Command.ScheduleAlarm -> scheduleAlarm(command.request)
+            is AlarmSetupViewModel.Command.ScheduleAlarm ->
+                scheduleAlarm(command.request, command.analyticsContext)
             AlarmSetupViewModel.Command.RequestWhenInUseLocation -> requestWhenInUseLocation()
             AlarmSetupViewModel.Command.RequestAlwaysLocation -> requestAlwaysLocation()
             AlarmSetupViewModel.Command.ConfirmAlwaysLocationResult -> confirmAlwaysLocationResult()

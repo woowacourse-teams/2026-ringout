@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
+import com.joon.ringout.analytics.AnalyticsAlarmSoundSurface
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
 import com.joon.ringout.presentation.alarmsetup.rememberDeviceAlarmSoundController
 
@@ -16,7 +18,7 @@ internal fun AlarmSoundRoute(
     selectedSound: AlarmSoundSelection,
     isActive: Boolean,
     onBackClick: () -> Unit,
-    onSaveClick: (AlarmSoundSelection) -> Unit,
+    onSaveClick: (AlarmSoundSelection, AlarmSettingsAnalyticsContext) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val soundController = rememberDeviceAlarmSoundController()
@@ -33,6 +35,12 @@ internal fun AlarmSoundRoute(
     val draftSelection = AlarmSoundSelection(
         name = selectedName,
         uri = selectedUri,
+    )
+    val soundDisplaySelection = resolveAlarmSoundDisplaySelection(
+        sounds = availableSounds,
+        initialSelection = initialSelection,
+        selectedSound = draftSelection,
+        surface = AnalyticsAlarmSoundSurface.EditorPicker,
     )
 
     // Also stop when a covering screen leaves this entry composed but inactive.
@@ -59,7 +67,10 @@ internal fun AlarmSoundRoute(
         onSaveClick = {
             if (isActive) {
                 soundController.stopPreview()
-                onSaveClick(draftSelection)
+                onSaveClick(
+                    draftSelection,
+                    AlarmSettingsAnalyticsContext(soundDisplaySelection),
+                )
             }
         },
         modifier = modifier,

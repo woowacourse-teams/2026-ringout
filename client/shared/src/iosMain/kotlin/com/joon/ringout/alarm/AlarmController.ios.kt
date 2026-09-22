@@ -7,6 +7,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.analytics.IosAlarmAnalytics
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
 import com.joon.ringout.platform.LocalIosNativeServices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -48,7 +49,7 @@ actual fun rememberAlarmController(
     val currentOnError = rememberUpdatedState(onError)
     return remember(store, coroutineScope, analytics) {
         AlarmController(
-            schedule = { request ->
+            schedule = { request, analyticsContext ->
                 coroutineScope.launch {
                     runIosAlarmMutation(
                         fallbackErrorMessage = "알람을 저장하지 못했습니다.",
@@ -57,11 +58,9 @@ actual fun rememberAlarmController(
                             val isNewAlarm = dataSource.getById(request.id) == null
                             store.save(request)
                             if (isNewAlarm) {
-                                analytics.recordAlarmCreated(
-                                    alarmId = request.id,
-                                    repeatEnabled = request.repeatEnabled,
-                                    repeatDayCount = request.selectedDays.distinct().size,
-                                )
+                                analytics.recordAlarmCreated(request, analyticsContext)
+                            } else {
+                                analytics.recordAlarmUpdated(request, analyticsContext)
                             }
                         },
                         onSuccess = { currentOnSaveCompleted.value(request) },

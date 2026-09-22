@@ -1,5 +1,6 @@
 package com.joon.ringout.analytics
 
+import com.joon.ringout.alarm.AlarmScheduleRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -7,6 +8,111 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AlarmAnalyticsTest {
+    @Test
+    fun `생성과 재설정은 동일한 설정 계약을 사용하고 재설정에는 생성 인덱스가 없다`() {
+        val tracker = RecordingAnalyticsTracker()
+        val analytics = AlarmAnalytics(
+            tracker = tracker,
+            usageStore = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences()),
+            nowEpochMillis = { 0L },
+        )
+        val request = analyticsAlarmRequest(
+            id = "private-alarm-id",
+            selectedDays = listOf("월", "수", "금"),
+        ).copy(
+            time = "06:20",
+            alarmSoundName = "Private sound name",
+            alarmSoundUri = "content://private/alarm",
+        )
+        val context = AlarmSettingsAnalyticsContext(
+            soundDisplaySelection = AlarmSoundDisplaySelection(
+                surface = AnalyticsAlarmSoundSurface.OnboardingStep,
+                position = 3,
+                listSize = 5,
+                selectionChanged = true,
+            ),
+        )
+
+        analytics.recordAlarmCreated(request, context)
+        analytics.recordAlarmUpdated(request, context)
+
+        val created = tracker.events[0]
+        val updated = tracker.events[1]
+        assertEquals(
+            listOf(
+                AnalyticsEventName.DestinationAlarmCreated,
+                AnalyticsEventName.DestinationAlarmUpdated,
+            ),
+            tracker.events.map(AnalyticsEvent::name),
+        )
+        assertEquals(1L, created.number(AnalyticsParameterName.CreationIndex))
+        assertFalse(updated.parameters.containsKey(AnalyticsParameterName.CreationIndex))
+        listOf(created, updated).forEach { event ->
+            assertEquals(2L, event.number(AnalyticsParameterName.SettingsSchemaVersion))
+            assertEquals(12L, event.number(AnalyticsParameterName.LimitMinutes))
+            assertEquals("06:20", event.text(AnalyticsParameterName.AlarmTime))
+            assertEquals("mon,wed,fri", event.text(AnalyticsParameterName.RepeatDays))
+            assertEquals("weekly", event.text(AnalyticsParameterName.ScheduleType))
+            assertEquals(3L, event.number(AnalyticsParameterName.RepeatDayCount))
+            assertEquals("device_alarm", event.text(AnalyticsParameterName.AlarmSoundSource))
+            assertEquals(1L, event.number(AnalyticsParameterName.AlarmSoundListConfirmed))
+            assertEquals("onboarding_step", event.text(AnalyticsParameterName.AlarmSoundSurface))
+            assertEquals(3L, event.number(AnalyticsParameterName.AlarmSoundPosition))
+            assertEquals(5L, event.number(AnalyticsParameterName.AlarmSoundListSize))
+            assertEquals(1L, event.number(AnalyticsParameterName.AlarmSoundSelectionChanged))
+        }
+        val serializedValues = tracker.events
+            .flatMap { event -> event.parameters.values }
+            .joinToString()
+        assertFalse(serializedValues.contains("private-alarm-id"))
+        assertFalse(serializedValues.contains("Private sound name"))
+        assertFalse(serializedValues.contains("content://private/alarm"))
+    }
+
+    @Test
+    fun `목록 미확인 저장은 기본 음원과 확인 안 함만 기록한다`() {
+        val tracker = RecordingAnalyticsTracker()
+        val analytics = AlarmAnalytics(
+            tracker = tracker,
+            usageStore = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences()),
+            nowEpochMillis = { 0L },
+        )
+
+        analytics.recordAlarmUpdated(
+            request = analyticsAlarmRequest(id = "alarm-1"),
+            context = AlarmSettingsAnalyticsContext(),
+        )
+
+        val event = tracker.events.single()
+        assertEquals("system_default", event.text(AnalyticsParameterName.AlarmSoundSource))
+        assertEquals(0L, event.number(AnalyticsParameterName.AlarmSoundListConfirmed))
+        assertFalse(event.parameters.containsKey(AnalyticsParameterName.AlarmSoundSurface))
+        assertFalse(event.parameters.containsKey(AnalyticsParameterName.AlarmSoundPosition))
+        assertFalse(event.parameters.containsKey(AnalyticsParameterName.AlarmSoundListSize))
+        assertFalse(event.parameters.containsKey(AnalyticsParameterName.AlarmSoundSelectionChanged))
+    }
+
+    @Test
+    fun `잘못된 시간이나 제한 시간은 설정 이벤트를 만들지 않는다`() {
+        val tracker = RecordingAnalyticsTracker()
+        val analytics = AlarmAnalytics(
+            tracker = tracker,
+            usageStore = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences()),
+            nowEpochMillis = { 0L },
+        )
+
+        analytics.recordAlarmUpdated(
+            request = analyticsAlarmRequest(id = "invalid-time").copy(time = "6:20"),
+            context = AlarmSettingsAnalyticsContext(),
+        )
+        analytics.recordAlarmUpdated(
+            request = analyticsAlarmRequest(id = "invalid-limit").copy(limitMinutes = 31),
+            context = AlarmSettingsAnalyticsContext(),
+        )
+
+        assertTrue(tracker.events.isEmpty())
+    }
+
     @Test
     fun `온보딩 이벤트 중복 방지 기록은 저장소 재생성 후에도 유지되고 알람 생성과 독립적이다`() {
         val preferences = InMemoryAnalyticsUsagePreferences()
@@ -256,9 +362,11 @@ class AlarmAnalyticsTest {
         )
 
         analytics.recordAlarmCreated(
-            alarmId = "private-alarm-id",
-            repeatEnabled = true,
-            repeatDayCount = 8,
+            request = analyticsAlarmRequest(
+                id = "private-alarm-id",
+                selectedDays = listOf("월", "화", "수", "목", "금", "토", "일"),
+            ),
+            context = AlarmSettingsAnalyticsContext(),
         )
         analytics.recordMissionStarted(
             occurrenceId = "private-occurrence-id",
@@ -267,12 +375,18 @@ class AlarmAnalyticsTest {
 
         val approvedNames = setOf(
             AnalyticsParameterName.CreationIndex,
+            AnalyticsParameterName.SettingsSchemaVersion,
+            AnalyticsParameterName.LimitMinutes,
+            AnalyticsParameterName.AlarmTime,
+            AnalyticsParameterName.RepeatDays,
             AnalyticsParameterName.UseIndex,
             AnalyticsParameterName.RetryAttempt,
             AnalyticsParameterName.ScheduleType,
             AnalyticsParameterName.RepeatDayCount,
             AnalyticsParameterName.ElapsedBucket,
             AnalyticsParameterName.HoldDurationMillis,
+            AnalyticsParameterName.AlarmSoundSource,
+            AnalyticsParameterName.AlarmSoundListConfirmed,
         )
         assertTrue(
             tracker.events.all { event -> event.parameters.keys.all(approvedNames::contains) },
@@ -298,9 +412,12 @@ class AlarmAnalyticsTest {
         )
 
         analytics.recordAlarmCreated(
-            alarmId = "alarm-1",
-            repeatEnabled = false,
-            repeatDayCount = 3,
+            request = analyticsAlarmRequest(
+                id = "alarm-1",
+                repeatEnabled = false,
+                selectedDays = listOf("월", "화", "수"),
+            ),
+            context = AlarmSettingsAnalyticsContext(),
         )
 
         assertEquals(
@@ -354,3 +471,21 @@ private fun AnalyticsEvent.number(name: AnalyticsParameterName): Long =
 
 private fun AnalyticsEvent.text(name: AnalyticsParameterName): String =
     (parameters.getValue(name) as AnalyticsParameterValue.Text).value
+
+private fun analyticsAlarmRequest(
+    id: String,
+    repeatEnabled: Boolean = true,
+    selectedDays: List<String> = listOf("월", "금"),
+) = AlarmScheduleRequest(
+    id = id,
+    time = "06:20",
+    selectedDays = selectedDays,
+    repeatEnabled = repeatEnabled,
+    limitMinutes = 12,
+    destinationName = "회사",
+    destinationAddress = "서울특별시 중구 세종대로 110",
+    destinationLatitude = 37.5665,
+    destinationLongitude = 126.978,
+    alarmSoundName = "기본 알람음",
+    alarmSoundUri = null,
+)

@@ -22,7 +22,7 @@ class AlarmSetupCoordinatorTest {
             alarmSoundUri = null,
         )
         val executor = AlarmSetupCommandExecutor(
-            scheduleAlarm = { scheduledRequest -> calls += scheduledRequest },
+            scheduleAlarm = { scheduledRequest, _ -> calls += scheduledRequest },
             requestWhenInUseLocation = { calls += "requestWhenInUseLocation" },
             requestAlwaysLocation = { calls += "requestAlwaysLocation" },
             confirmAlwaysLocationResult = { calls += "confirmAlwaysLocationResult" },
