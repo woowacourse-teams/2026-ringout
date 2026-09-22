@@ -26,6 +26,16 @@ interface IosAnalyticsTracker {
     fun log(event: IosAnalyticsEventDto)
 }
 
+interface IosAppleSignInCallback {
+    fun onSuccess(idToken: String)
+    fun onCancelled()
+    fun onFailure(message: String)
+}
+
+interface IosAppleSignInService {
+    fun signIn(appleCallback: IosAppleSignInCallback)
+}
+
 interface IosGoogleSignInCallback {
     fun onSuccess(accessToken: String)
     fun onCancelled()
@@ -33,7 +43,7 @@ interface IosGoogleSignInCallback {
 }
 
 interface IosGoogleSignInService {
-    fun signIn(callback: IosGoogleSignInCallback)
+    fun signIn(googleCallback: IosGoogleSignInCallback)
 }
 
 interface IosKakaoSignInCallback {
@@ -43,10 +53,12 @@ interface IosKakaoSignInCallback {
 }
 
 interface IosKakaoSignInService {
-    fun signIn(callback: IosKakaoSignInCallback)
+    fun signIn(kakaoCallback: IosKakaoSignInCallback)
 }
 
 interface IosNativeServices {
+    fun appleSignInService(): IosAppleSignInService
+
     fun kakaoSignInService(): IosKakaoSignInService
 
     fun isMapsAvailable(): Boolean

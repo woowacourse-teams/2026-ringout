@@ -18,7 +18,7 @@ final class KakaoSignInAdapter: @preconcurrency IosKakaoSignInService {
         }
     }
 
-    func signIn(callback_ callback: IosKakaoSignInCallback) {
+    func signIn(kakaoCallback callback: IosKakaoSignInCallback) {
         if let configurationError {
             callback.onFailure(message: configurationError)
             return
