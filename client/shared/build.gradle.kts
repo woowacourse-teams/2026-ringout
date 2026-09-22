@@ -47,7 +47,7 @@ kotlin {
             implementation(libs.google.places)
             implementation(libs.google.play.services.location)
             implementation(libs.google.play.services.auth)
-            // TODO(RINGOUT_ACCOUNT): 카카오 로그인 구현 시 인증 SDK를 추가한다.
+            implementation(libs.kakao.user)
             implementation(libs.ktor.client.okhttp)
         }
         commonMain.dependencies {

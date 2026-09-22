@@ -36,7 +36,19 @@ interface IosGoogleSignInService {
     fun signIn(callback: IosGoogleSignInCallback)
 }
 
+interface IosKakaoSignInCallback {
+    fun onSuccess(accessToken: String)
+    fun onCancelled()
+    fun onFailure(message: String)
+}
+
+interface IosKakaoSignInService {
+    fun signIn(callback: IosKakaoSignInCallback)
+}
+
 interface IosNativeServices {
+    fun kakaoSignInService(): IosKakaoSignInService
+
     fun isMapsAvailable(): Boolean
 
     fun isPlacesAvailable(): Boolean

@@ -1,5 +1,6 @@
 import SwiftUI
 import GoogleSignIn
+import KakaoSDKAuth
 
 @main
 @MainActor
@@ -19,7 +20,11 @@ struct iOSApp: App {
         WindowGroup {
             ContentView(nativeServices: platformServices)
                 .onOpenURL { url in
-                    _ = GIDSignIn.sharedInstance.handle(url)
+                    if AuthApi.isKakaoTalkLoginUrl(url) {
+                        _ = AuthController.handleOpenUrl(url: url)
+                    } else {
+                        _ = GIDSignIn.sharedInstance.handle(url)
+                    }
                 }
         }
     }

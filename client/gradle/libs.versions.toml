@@ -1,4 +1,5 @@
 [versions]
+kakao-android = "2.24.0"
 agp = "9.0.0"
 android-compileSdk = "36"
 android-minSdk = "26"
@@ -32,6 +33,7 @@ room3 = "3.0.1"
 sqlite = "2.7.0"
 
 [libraries]
+kakao-user = { module = "com.kakao.sdk:v2-user", version.ref = "kakao-android" }
 google-play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "google-play-services-auth" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
