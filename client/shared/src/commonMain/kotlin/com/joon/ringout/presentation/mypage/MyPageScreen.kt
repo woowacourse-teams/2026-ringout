@@ -88,7 +88,7 @@ fun MyPageScreenContent(
             .background(colors.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(horizontal = 20.dp),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        contentPadding = PaddingValues(bottom = MyPageBottomContentPadding),
     ) {
         item { MyPageHeader(onBackClick = onBackClick) }
         item { Spacer(Modifier.height(16.dp)) }
@@ -192,3 +192,12 @@ private fun MyPageLoadingPreview() = MyPagePreview(ThemeMode.Dark, AccountStatus
 @Preview(name = "Account error My Page", widthDp = 402, heightDp = 800)
 @Composable
 private fun MyPageAccountErrorPreview() = MyPagePreview(ThemeMode.Dark, AccountStatus.Error)
+
+private val MyPageBottomContentPadding = 96.dp
+
+@Preview(name = "Logged in My Page - Short screen", widthDp = 360, heightDp = 480)
+@Composable
+private fun MyPageScrollablePreview() = MyPagePreview(
+    ThemeMode.Dark,
+    AccountStatus.LoggedIn(nickname = "링아웃", email = "ringout@example.com"),
+)
