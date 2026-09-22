@@ -14,6 +14,7 @@ internal fun MyPageRoute(
     onBackClick: () -> Unit,
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onEditProfileClick: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
 
@@ -26,6 +27,7 @@ internal fun MyPageRoute(
         onThemeModeChange = onThemeModeChange,
         onBackClick = onBackClick,
         onLoginClick = onLoginClick,
+        onEditProfileClick = onEditProfileClick,
         onPolicyClick = { policyId ->
             findPolicyUrl(policyId)?.let { url ->
                 runCatching { uriHandler.openUri(url) }
@@ -34,5 +36,5 @@ internal fun MyPageRoute(
         modifier = modifier,
     )
 
-    // TODO(RINGOUT_ACCOUNT): 프로필 수정, 로그아웃, 회원 탈퇴 UI를 연결한다.
+
 }

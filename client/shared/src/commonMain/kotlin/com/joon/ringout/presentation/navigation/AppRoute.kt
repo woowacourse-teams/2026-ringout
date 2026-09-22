@@ -50,7 +50,6 @@ internal sealed interface AppRoute : NavKey {
     @SerialName("my_page")
     data object MyPage : AppRoute
 
-    // TODO(RINGOUT_ACCOUNT): 프로필 수정 도입 시 NicknameChange 경로를 등록한다.
     @Serializable
     @SerialName("nickname_change")
     data object NicknameChange : AppRoute

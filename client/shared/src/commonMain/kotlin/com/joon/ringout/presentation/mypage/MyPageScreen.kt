@@ -12,6 +12,13 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.joon.ringout.presentation.mypage.component.MyPageAccountActionDialog
+import com.joon.ringout.presentation.mypage.component.MyPageAccountManagementSection
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -39,6 +46,7 @@ internal fun MyPageScreen(
     onLoginClick: () -> Unit = {},
     accountStatus: AccountStatus = AccountStatus.LoggedOut,
     onAccountRetry: () -> Unit = {},
+    onEditProfileClick: () -> Unit = {},
 ) {
     MyPageScreenContent(
         themeMode = themeMode,
@@ -50,6 +58,7 @@ internal fun MyPageScreen(
         onLoginClick = onLoginClick,
         accountStatus = accountStatus,
         onAccountRetry = onAccountRetry,
+        onEditProfileClick = onEditProfileClick,
         modifier = modifier,
     )
 }
@@ -66,8 +75,12 @@ fun MyPageScreenContent(
     onLoginClick: () -> Unit = {},
     accountStatus: AccountStatus = AccountStatus.LoggedOut,
     onAccountRetry: () -> Unit = {},
+    onEditProfileClick: () -> Unit = {},
 ) {
     val colors = myPageColors()
+    var pendingActionName by rememberSaveable(accountStatus is AccountStatus.LoggedIn) {
+        mutableStateOf<String?>(null)
+    }
 
     LazyColumn(
         modifier = modifier
@@ -91,6 +104,7 @@ fun MyPageScreenContent(
                 is AccountStatus.LoggedIn -> MyPageLoggedInAccountStatus(
                     nickname = accountStatus.nickname,
                     email = accountStatus.email,
+                    onEditClick = onEditProfileClick,
                 )
             }
         }
@@ -110,9 +124,27 @@ fun MyPageScreenContent(
                 )
             }
         }
+        if (accountStatus is AccountStatus.LoggedIn) {
+            item { Spacer(Modifier.height(10.dp)) }
+            item {
+                MyPageAccountManagementSection(
+                    onLogoutClick = { pendingActionName = MyPageAccountAction.Logout.name },
+                    onWithdrawClick = { pendingActionName = MyPageAccountAction.Withdraw.name },
+                )
+            }
+        }
         item { Spacer(Modifier.height(10.dp)) }
         item { MyPageAppVersionRow(appVersion = appVersion) }
-        // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 계정 관리 섹션과 확인 다이얼로그를 복구한다.
+    }
+    if (accountStatus is AccountStatus.LoggedIn) {
+        pendingActionName?.let { actionName ->
+            MyPageAccountActionDialog(
+                action = MyPageAccountAction.valueOf(actionName),
+                onDismiss = { pendingActionName = null },
+                // UI 확인만 제공한다. 계정 변경 API는 연결하지 않는다.
+                onConfirm = { pendingActionName = null },
+            )
+        }
     }
 }
 

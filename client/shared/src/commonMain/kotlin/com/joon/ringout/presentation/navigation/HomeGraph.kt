@@ -5,6 +5,9 @@ import com.joon.ringout.presentation.social.SocialViewModel
 import com.joon.ringout.presentation.records.RecordsScreen
 import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.navigation3.runtime.EntryProviderScope
+import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.member.MemberRepository
+import com.joon.ringout.presentation.nickname.NicknameChangeRoute
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.AlarmController
@@ -20,6 +23,8 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     homeViewModel: HomeViewModel,
     viewModelScopes: NavigationViewModelScopes,
     myPageViewModel: MyPageViewModel?,
+    authSessionState: AuthSessionState,
+    memberRepository: MemberRepository,
     themeMode: ThemeMode,
     appVersion: String,
     alarmController: AlarmController,
@@ -50,6 +55,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             onThemeModeChange = onThemeModeChange,
             onBackClick = { navigationState.popBackStack(AppRoute.MyPage) },
             onLoginClick = { navigationState.navigate(AppRoute.Login) },
+            onEditProfileClick = { navigationState.navigate(AppRoute.NicknameChange) },
         )
     }
 
@@ -60,5 +66,17 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
         RecordsScreen(viewModelScopes.get(AppRoute.Records, RecordsViewModel::class).uiState)
     }
 
-    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 NicknameChange 경로를 다시 등록한다.
+    entry<AppRoute.NicknameChange>(clazzContentKey = AppRoute::viewModelStoreKey) {
+        val myPage = checkNotNull(myPageViewModel)
+        NicknameChangeRoute(
+            accountStatus = myPage.uiState.accountStatus,
+            authSessionState = authSessionState,
+            memberRepository = memberRepository,
+            onBackClick = { navigationState.popBackStack(AppRoute.NicknameChange) },
+            onNicknameChanged = { nickname ->
+                myPage.onNicknameUpdated(nickname)
+                navigationState.popBackStack(AppRoute.NicknameChange)
+            },
+        )
+    }
 }

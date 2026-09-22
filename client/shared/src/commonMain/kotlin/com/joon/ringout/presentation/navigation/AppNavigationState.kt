@@ -16,10 +16,7 @@ internal fun rememberAppNavigationState(): AppNavigationState {
     return remember(backStack) {
         AppNavigationState(
             routes = backStack,
-            guestOnlyMode = true,
-        ).apply {
-            normalizeForGuestMode()
-        }
+        )
     }
 }
 
