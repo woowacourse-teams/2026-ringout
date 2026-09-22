@@ -18,6 +18,8 @@ internal fun MyPageRoute(
     val uriHandler = LocalUriHandler.current
 
     MyPageScreen(
+        accountStatus = viewModel.uiState.accountStatus,
+        onAccountRetry = viewModel::retryAccount,
         themeMode = themeMode,
         appVersion = appVersion,
         policies = DefaultMyPagePolicies,
@@ -32,6 +34,5 @@ internal fun MyPageRoute(
         modifier = modifier,
     )
 
-    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 계정 상태, 로그인, 프로필 수정,
-    // 로그아웃, 회원 탈퇴 콜백을 MyPageScreen에 다시 연결한다.
+    // TODO(RINGOUT_ACCOUNT): 프로필 수정, 로그아웃, 회원 탈퇴 UI를 연결한다.
 }

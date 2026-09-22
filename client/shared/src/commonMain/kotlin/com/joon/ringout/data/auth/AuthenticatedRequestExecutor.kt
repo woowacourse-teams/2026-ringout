@@ -144,7 +144,7 @@ internal class AuthenticatedRequestExecutor(
                         attempt = attempt,
                         refreshedTokens = AuthTokens(
                             accessToken = result.accessToken,
-                            refreshToken = result.refreshToken,
+                            refreshToken = result.refreshToken ?: attempt.rejectedTokens.refreshToken,
                         ),
                         originalFailure = originalFailure,
                     )

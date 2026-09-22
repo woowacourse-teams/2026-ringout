@@ -28,6 +28,28 @@ import kotlin.test.assertTrue
 
 class LoginViewModelTest {
     @Test
+    fun `구글 신규 회원은 로그인 완료 대신 약관 가입 토큰을 전달한다`() =
+        withViewModel { viewModel, repository, analytics ->
+            repository.googleOutcome = SocialLoginOutcome.SignupRequired("google-signup-token")
+            assertTrue(viewModel.beginGoogleSignIn())
+
+            viewModel.handleGoogleAccessTokenResult(
+                GoogleAccessTokenResult.Success("google-access-token"),
+            )
+
+            val completion = assertIs<LoginCompletion.SignupRequired>(viewModel.uiState.completion)
+            assertEquals("google-signup-token", completion.signupToken)
+            assertEquals(AnalyticsAuthProvider.Google, completion.provider)
+            assertEquals(listOf("google-access-token"), repository.googleAccessTokens)
+            assertEquals(
+                listOf(LoginCompletedRecord(AnalyticsAuthProvider.Google, isNewUser = true)),
+                analytics.completedRecords,
+            )
+            assertFalse(viewModel.uiState.isLoading)
+            assertNull(viewModel.uiState.errorMessage)
+        }
+
+    @Test
     fun googleExistingMemberRecordsTheProviderLifecycle() =
         withViewModel { viewModel, repository, analytics ->
             repository.googleOutcome = SocialLoginOutcome.Authenticated

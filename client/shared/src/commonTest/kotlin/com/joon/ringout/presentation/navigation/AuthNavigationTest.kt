@@ -107,7 +107,7 @@ class AuthNavigationTest {
         assertEquals(AppRoute.MyPage, fixture.state.requestedRoute)
 
         fixture.enterTerms("new-token")
-        fixture.signup.signup(setOf(TermId.Service))
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
         runCurrent()
 
         assertEquals(listOf("new-token"), fixture.authRepository.signupTokens)
@@ -152,7 +152,7 @@ class AuthNavigationTest {
         fixture.enterTerms()
         val signupGate = CompletableDeferred<Unit>()
         fixture.authRepository.signupGate = signupGate
-        fixture.signup.signup(setOf(TermId.Service))
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
         runCurrent()
         assertTrue(fixture.signup.uiState.isSaving)
 
@@ -264,7 +264,7 @@ class AuthNavigationTest {
         assertFalse(
             fixture.navigation.onSignupRequired(AppRoute.Login, "stale-token", completion.provider),
         )
-        fixture.signup.signup(setOf(TermId.Service))
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
         runCurrent()
 
         assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
@@ -275,7 +275,7 @@ class AuthNavigationTest {
     fun `알람에 가린 가입 완료는 유지하고 완료 후 늦은 약관 콜백은 무시한다`() = runTest {
         val fixture = AuthNavigationFixture(backgroundScope)
         fixture.enterTerms()
-        fixture.signup.signup(setOf(TermId.Service))
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
         runCurrent()
         val completedEventId = assertNotNull(fixture.signup.uiState.completedEventId)
 

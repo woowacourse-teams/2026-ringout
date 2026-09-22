@@ -84,7 +84,9 @@ class DefaultAuthRepository(
         agreedAt: String,
     ) {
         require(signupToken.isNotBlank()) { "Signup token must not be blank." }
-        require(agreedTerms.isNotEmpty()) { "Agreed terms must not be empty." }
+        require(agreedTerms.containsAll(setOf(AuthTerm.SERVICE, AuthTerm.PRIVACY))) {
+            "필수 약관에 모두 동의해 주세요."
+        }
         require(agreedAt.isNotBlank()) { "Agreement date must not be blank." }
 
         val response = authApi.signup(

@@ -36,6 +36,31 @@ import kotlin.test.assertNotNull
 
 class AuthenticatedRequestExecutorTest {
     @Test
+    fun `재발급 응답에 refresh token이 없으면 기존 토큰을 유지하고 요청을 재시도한다`() = runTest {
+        val storage = RecordingTokenStorage(OldTokens)
+        val session = authenticatedSession()
+        val client = mockClient { request ->
+            when (request.url.encodedPath) {
+                ReissuePath -> respondJson(
+                    """{"isSuccess":true,"code":"AUTH200","message":"OK","result":{"accessToken":"renewed-access"}}""",
+                )
+                ProtectedPath -> if (request.headers[HttpHeaders.Authorization] == "Bearer renewed-access") {
+                    respondJson(SuccessResponse)
+                } else {
+                    respondJson(Auth401Response, HttpStatusCode.Unauthorized)
+                }
+                else -> error("예상하지 않은 요청입니다.")
+            }
+        }
+        val response = AuthenticatedRequestExecutor(client, storage, session).execute(client::getProtected)
+
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(AuthTokens("renewed-access", OldTokens.refreshToken), storage.tokens)
+        assertEquals(AuthSessionState.Authenticated, session.state.value)
+        client.close()
+    }
+
+    @Test
     fun `AUTH401이면 토큰을 재발급하고 새 access token으로 원래 요청을 재시도한다`() = runTest {
         var protectedRequestCount = 0
         var reissueRequestCount = 0

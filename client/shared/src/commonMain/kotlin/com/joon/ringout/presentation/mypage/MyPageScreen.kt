@@ -10,12 +10,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.mypage.component.MyPageAccountLoadError
+import com.joon.ringout.presentation.mypage.component.MyPageLoggedInAccountStatus
+import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus as AccountStatus
 import com.joon.ringout.presentation.mypage.component.MyPageAccountStatus
 import com.joon.ringout.presentation.mypage.component.MyPageAppVersionRow
 import com.joon.ringout.presentation.mypage.component.MyPageHeader
@@ -33,6 +37,8 @@ internal fun MyPageScreen(
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
     onLoginClick: () -> Unit = {},
+    accountStatus: AccountStatus = AccountStatus.LoggedOut,
+    onAccountRetry: () -> Unit = {},
 ) {
     MyPageScreenContent(
         themeMode = themeMode,
@@ -42,6 +48,8 @@ internal fun MyPageScreen(
         onBackClick = onBackClick,
         onPolicyClick = onPolicyClick,
         onLoginClick = onLoginClick,
+        accountStatus = accountStatus,
+        onAccountRetry = onAccountRetry,
         modifier = modifier,
     )
 }
@@ -56,6 +64,8 @@ fun MyPageScreenContent(
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
     onLoginClick: () -> Unit = {},
+    accountStatus: AccountStatus = AccountStatus.LoggedOut,
+    onAccountRetry: () -> Unit = {},
 ) {
     val colors = myPageColors()
 
@@ -69,7 +79,21 @@ fun MyPageScreenContent(
     ) {
         item { MyPageHeader(onBackClick = onBackClick) }
         item { Spacer(Modifier.height(16.dp)) }
-        item { MyPageAccountStatus(onClick = onLoginClick) }
+        item {
+            when (accountStatus) {
+                AccountStatus.Loading -> Text(
+                    text = "계정 정보를 불러오는 중이에요.",
+                    color = colors.secondaryText,
+                    modifier = Modifier.padding(vertical = 20.dp),
+                )
+                AccountStatus.LoggedOut -> MyPageAccountStatus(onClick = onLoginClick)
+                AccountStatus.Error -> MyPageAccountLoadError(onRetry = onAccountRetry)
+                is AccountStatus.LoggedIn -> MyPageLoggedInAccountStatus(
+                    nickname = accountStatus.nickname,
+                    email = accountStatus.email,
+                )
+            }
+        }
         item { Spacer(Modifier.height(10.dp)) }
         item {
             MyPageThemeCard(
@@ -105,15 +129,34 @@ private fun MyPageLightPreview() = MyPagePreview(ThemeMode.Light)
 private fun MyPageSmallPreview() = MyPagePreview(ThemeMode.Dark)
 
 @Composable
-private fun MyPagePreview(themeMode: ThemeMode) {
+private fun MyPagePreview(
+    themeMode: ThemeMode,
+    accountStatus: AccountStatus = AccountStatus.LoggedOut,
+) {
     RingoutTheme(themeMode) {
         MyPageScreenContent(
             themeMode = themeMode,
             appVersion = "1.0.0",
             policies = DefaultMyPagePolicies,
+            accountStatus = accountStatus,
             onThemeModeChange = {},
             onBackClick = {},
             onPolicyClick = {},
         )
     }
 }
+
+@Preview(name = "Logged in My Page", widthDp = 402, heightDp = 800)
+@Composable
+private fun MyPageLoggedInPreview() = MyPagePreview(
+    ThemeMode.Dark,
+    AccountStatus.LoggedIn(nickname = "링아웃", email = "ringout@example.com"),
+)
+
+@Preview(name = "Loading My Page", widthDp = 402, heightDp = 800)
+@Composable
+private fun MyPageLoadingPreview() = MyPagePreview(ThemeMode.Dark, AccountStatus.Loading)
+
+@Preview(name = "Account error My Page", widthDp = 402, heightDp = 800)
+@Composable
+private fun MyPageAccountErrorPreview() = MyPagePreview(ThemeMode.Dark, AccountStatus.Error)
