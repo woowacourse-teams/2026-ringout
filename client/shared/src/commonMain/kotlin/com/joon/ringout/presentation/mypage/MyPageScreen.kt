@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.mypage
 
+import com.joon.ringout.presentation.common.component.LoadingOverlay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +48,8 @@ internal fun MyPageScreen(
     accountStatus: AccountStatus = AccountStatus.LoggedOut,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
+    isAccountActionInProgress: Boolean = false,
+    onConfirmAccountAction: (MyPageAccountAction) -> Unit = {},
 ) {
     MyPageScreenContent(
         themeMode = themeMode,
@@ -59,6 +62,8 @@ internal fun MyPageScreen(
         accountStatus = accountStatus,
         onAccountRetry = onAccountRetry,
         onEditProfileClick = onEditProfileClick,
+        isAccountActionInProgress = isAccountActionInProgress,
+        onConfirmAccountAction = onConfirmAccountAction,
         modifier = modifier,
     )
 }
@@ -76,6 +81,8 @@ fun MyPageScreenContent(
     accountStatus: AccountStatus = AccountStatus.LoggedOut,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
+    isAccountActionInProgress: Boolean = false,
+    onConfirmAccountAction: (MyPageAccountAction) -> Unit = {},
 ) {
     val colors = myPageColors()
     var pendingActionName by rememberSaveable(accountStatus is AccountStatus.LoggedIn) {
@@ -104,7 +111,7 @@ fun MyPageScreenContent(
                 is AccountStatus.LoggedIn -> MyPageLoggedInAccountStatus(
                     nickname = accountStatus.nickname,
                     email = accountStatus.email,
-                    onEditClick = onEditProfileClick,
+                    onEditClick = if (isAccountActionInProgress) null else onEditProfileClick,
                 )
             }
         }
@@ -128,6 +135,7 @@ fun MyPageScreenContent(
             item { Spacer(Modifier.height(10.dp)) }
             item {
                 MyPageAccountManagementSection(
+                    enabled = !isAccountActionInProgress,
                     onLogoutClick = { pendingActionName = MyPageAccountAction.Logout.name },
                     onWithdrawClick = { pendingActionName = MyPageAccountAction.Withdraw.name },
                 )
@@ -136,13 +144,20 @@ fun MyPageScreenContent(
         item { Spacer(Modifier.height(10.dp)) }
         item { MyPageAppVersionRow(appVersion = appVersion) }
     }
+    if (isAccountActionInProgress) {
+        LoadingOverlay(message = "계정 처리 중")
+    }
     if (accountStatus is AccountStatus.LoggedIn) {
         pendingActionName?.let { actionName ->
             MyPageAccountActionDialog(
                 action = MyPageAccountAction.valueOf(actionName),
                 onDismiss = { pendingActionName = null },
-                // UI 확인만 제공한다. 계정 변경 API는 연결하지 않는다.
-                onConfirm = { pendingActionName = null },
+                onConfirm = {
+                    pendingActionName = null
+                    if (!isAccountActionInProgress) {
+                        onConfirmAccountAction(MyPageAccountAction.valueOf(actionName))
+                    }
+                },
             )
         }
     }

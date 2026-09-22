@@ -84,7 +84,7 @@ internal fun LoginScreen(
         }
 
         if (shouldShowLoadingOverlay) {
-            LoginLoadingOverlay(Modifier.matchParentSize())
+            LoginLoadingOverlay()
         }
     }
 }
