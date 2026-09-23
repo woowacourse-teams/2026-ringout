@@ -117,8 +117,9 @@ jobs:
             echo 'Apple Distribution signing identity was not imported' >&2
             exit 1
           fi
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$IOS_PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$IOS_PROFILE_UUID.mobileprovision"
+          profile_directory="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          mkdir -p "$profile_directory"
+          cp "$IOS_PROFILE_PATH" "$profile_directory/$IOS_PROFILE_UUID.mobileprovision"
       - name: Archive signed iOS app
         run: |
           xcodebuild \
@@ -131,7 +132,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY='Apple Distribution' \
             DEVELOPMENT_TEAM=475GWW72JW \
-            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_UUID" \
+            RINGOUT_CI_PROFILE_UUID="$IOS_PROFILE_UUID" \
             CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER" \
             archive
       - name: Verify signed archive and development Firebase
@@ -161,7 +162,7 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/ringout-ios-internal/build.keychain-db" 2>/dev/null || true
           if [[ -n "${IOS_PROFILE_UUID:-}" ]]; then
-            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$IOS_PROFILE_UUID.mobileprovision"
+            rm -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$IOS_PROFILE_UUID.mobileprovision"
           fi
           rm -f iosApp/Configuration/RingoutSecrets.xcconfig
           rm -rf "$RUNNER_TEMP/ringout-ios-internal"
