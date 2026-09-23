@@ -15,6 +15,7 @@ internal fun ProfileChangeRoute(
     memberRepository: MemberRepository,
     onBackClick: () -> Unit,
     onNicknameChanged: (String) -> Unit,
+    onProfileImageChangeClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val account = accountStatus as? MyPageAccountStatus.LoggedIn
@@ -44,6 +45,7 @@ internal fun ProfileChangeRoute(
         uiState = uiState,
         onNicknameChange = viewModel::onNicknameChange,
         onBackClick = onBackClick,
+        onProfileImageChangeClick = onProfileImageChangeClick,
         onConfirmClick = viewModel::confirm,
         modifier = modifier,
     )

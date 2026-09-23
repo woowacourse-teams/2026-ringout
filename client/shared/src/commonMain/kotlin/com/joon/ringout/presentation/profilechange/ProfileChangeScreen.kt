@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -32,12 +33,14 @@ import com.joon.ringout.presentation.profilechange.component.ProfileConfirmButto
 import com.joon.ringout.presentation.profilechange.component.nickname.NicknameInputField
 import com.joon.ringout.presentation.profilechange.component.nickname.NicknameValidationList
 import com.joon.ringout.presentation.profilechange.component.profileChangeColors
+import com.joon.ringout.presentation.profilechange.component.profileimage.ProfileImageEditor
 
 @Composable
 internal fun ProfileChangeScreen(
     uiState: ProfileChangeUiState,
     onNicknameChange: (String) -> Unit,
     onBackClick: () -> Unit,
+    onProfileImageChangeClick: () -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -58,7 +61,12 @@ internal fun ProfileChangeScreen(
                 .padding(horizontal = ProfileChangeHorizontalPadding, vertical = 12.dp),
         ) {
             ProfileChangeHeader(onBackClick = onBackClick)
-            Spacer(Modifier.height(ProfileChangeHeaderToTitleSpacing))
+            Spacer(Modifier.height(ProfileChangeHeaderToProfileImageSpacing))
+            ProfileImageEditor(
+                onProfileImageChangeClick = onProfileImageChangeClick,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+            Spacer(Modifier.height(ProfileImageToTitleSpacing))
             Text(
                 text = "사용할 닉네임을\n입력해주세요",
                 modifier = Modifier
@@ -117,7 +125,8 @@ internal fun ProfileChangeScreen(
 private val ProfileChangeHorizontalPadding = 20.dp
 private val ProfileChangeMainContentMaxWidth = 345.dp
 private val NicknameValidationMaxWidth = 327.dp
-private val ProfileChangeHeaderToTitleSpacing = 9.dp
+private val ProfileChangeHeaderToProfileImageSpacing = 32.dp
+private val ProfileImageToTitleSpacing = 28.dp
 private val ProfileChangeTitleToInputSpacing = 10.dp
 private val NicknameInputToValidationSpacing = 10.dp
 private val ProfileChangeButtonHorizontalPadding = 29.dp
@@ -166,6 +175,7 @@ private fun ProfileChangeInteractivePreview(
             ),
             onNicknameChange = { nickname = it },
             onBackClick = {},
+            onProfileImageChangeClick = {},
             onConfirmClick = {},
         )
     }
