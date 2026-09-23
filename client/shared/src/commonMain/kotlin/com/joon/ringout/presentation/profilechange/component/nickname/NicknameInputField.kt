@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname.component
+package com.joon.ringout.presentation.profilechange.component.nickname
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.profilechange.component.profileChangeColors
+import com.joon.ringout.presentation.profilechange.component.ProfileChangeUserIconResource
 import org.jetbrains.compose.resources.painterResource
 
 @Composable
@@ -43,7 +45,7 @@ internal fun NicknameInputField(
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = nicknameChangeColors()
+    val colors = profileChangeColors()
     val shape = RoundedCornerShape(NicknameInputCornerRadius)
     val borderColor = when {
         !hasInput -> colors.inputIdleBorder
@@ -96,7 +98,7 @@ internal fun NicknameInputField(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Image(
-                    painter = painterResource(NicknameChangeUserIconResource),
+                    painter = painterResource(ProfileChangeUserIconResource),
                     contentDescription = null,
                     modifier = Modifier.size(NicknameInputIconSize),
                 )
@@ -138,9 +140,9 @@ private val NicknameInputIconSpacing = 12.dp
 
 @Preview(name = "Nickname input - Valid", widthDp = 402)
 @Composable
-private fun NicknameInputValidPreview() {
+private fun ProfileInputValidPreview() {
     RingoutTheme(ThemeMode.Dark) {
-        Box(Modifier.background(nicknameChangeColors().background).padding(horizontal = 20.dp)) {
+        Box(Modifier.background(profileChangeColors().background).padding(horizontal = 20.dp)) {
             NicknameInputField(
                 nickname = "닉네임12",
                 hasInput = true,
@@ -154,9 +156,9 @@ private fun NicknameInputValidPreview() {
 
 @Preview(name = "Nickname input - Invalid", widthDp = 402)
 @Composable
-private fun NicknameInputInvalidPreview() {
+private fun ProfileInputInvalidPreview() {
     RingoutTheme(ThemeMode.Dark) {
-        Box(Modifier.background(nicknameChangeColors().background).padding(horizontal = 20.dp)) {
+        Box(Modifier.background(profileChangeColors().background).padding(horizontal = 20.dp)) {
             NicknameInputField(
                 nickname = "닉네임@#12",
                 hasInput = true,

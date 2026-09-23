@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname
+package com.joon.ringout.presentation.profilechange
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -21,27 +21,30 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.nickname.component.NicknameChangeHeader
-import com.joon.ringout.presentation.nickname.component.NicknameConfirmButton
-import com.joon.ringout.presentation.nickname.component.NicknameInputField
-import com.joon.ringout.presentation.nickname.component.NicknameValidationList
-import com.joon.ringout.presentation.nickname.component.nicknameChangeColors
+import com.joon.ringout.presentation.profilechange.component.ProfileChangeHeader
+import com.joon.ringout.presentation.profilechange.component.ProfileConfirmButton
+import com.joon.ringout.presentation.profilechange.component.nickname.NicknameInputField
+import com.joon.ringout.presentation.profilechange.component.nickname.NicknameValidationList
+import com.joon.ringout.presentation.profilechange.component.profileChangeColors
+import com.joon.ringout.presentation.profilechange.component.profileimage.ProfileImageEditor
 
 @Composable
-internal fun NicknameChangeScreen(
-    uiState: NicknameChangeUiState,
+internal fun ProfileChangeScreen(
+    uiState: ProfileChangeUiState,
     onNicknameChange: (String) -> Unit,
     onBackClick: () -> Unit,
+    onProfileImageChangeClick: () -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = nicknameChangeColors()
+    val colors = profileChangeColors()
     val hasInput = uiState.nickname.isNotEmpty()
 
     Column(
@@ -55,14 +58,19 @@ internal fun NicknameChangeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(horizontal = NicknameChangeHorizontalPadding, vertical = 12.dp),
+                .padding(horizontal = ProfileChangeHorizontalPadding, vertical = 12.dp),
         ) {
-            NicknameChangeHeader(onBackClick = onBackClick)
-            Spacer(Modifier.height(NicknameHeaderToTitleSpacing))
+            ProfileChangeHeader(onBackClick = onBackClick)
+            Spacer(Modifier.height(ProfileChangeHeaderToProfileImageSpacing))
+            ProfileImageEditor(
+                onProfileImageChangeClick = onProfileImageChangeClick,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+            Spacer(Modifier.height(ProfileImageToTitleSpacing))
             Text(
                 text = "사용할 닉네임을\n입력해주세요",
                 modifier = Modifier
-                    .widthIn(max = NicknameChangeMainContentMaxWidth)
+                    .widthIn(max = ProfileChangeMainContentMaxWidth)
                     .fillMaxWidth(),
                 color = colors.primaryText,
                 style = MaterialTheme.typography.headlineLarge.copy(
@@ -71,7 +79,7 @@ internal fun NicknameChangeScreen(
                     fontWeight = FontWeight.Bold,
                 ),
             )
-            Spacer(Modifier.height(NicknameTitleToInputSpacing))
+            Spacer(Modifier.height(ProfileChangeTitleToInputSpacing))
             NicknameInputField(
                 nickname = uiState.nickname,
                 hasInput = hasInput,
@@ -99,14 +107,14 @@ internal fun NicknameChangeScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(NicknameChangeBottomBarHeight)
+                .height(ProfileChangeBottomBarHeight)
                 .background(colors.background)
                 .padding(
-                    horizontal = NicknameChangeButtonHorizontalPadding,
-                    vertical = NicknameChangeBottomBarPadding,
+                    horizontal = ProfileChangeButtonHorizontalPadding,
+                    vertical = ProfileChangeBottomBarPadding,
                 ),
         ) {
-            NicknameConfirmButton(
+            ProfileConfirmButton(
                 enabled = uiState.validation.isValid && !uiState.isSaving,
                 onClick = onConfirmClick,
             )
@@ -114,20 +122,21 @@ internal fun NicknameChangeScreen(
     }
 }
 
-private val NicknameChangeHorizontalPadding = 20.dp
-private val NicknameChangeMainContentMaxWidth = 345.dp
+private val ProfileChangeHorizontalPadding = 20.dp
+private val ProfileChangeMainContentMaxWidth = 345.dp
 private val NicknameValidationMaxWidth = 327.dp
-private val NicknameHeaderToTitleSpacing = 9.dp
-private val NicknameTitleToInputSpacing = 10.dp
+private val ProfileChangeHeaderToProfileImageSpacing = 32.dp
+private val ProfileImageToTitleSpacing = 28.dp
+private val ProfileChangeTitleToInputSpacing = 10.dp
 private val NicknameInputToValidationSpacing = 10.dp
-private val NicknameChangeButtonHorizontalPadding = 29.dp
-private val NicknameChangeBottomBarHeight = 77.dp
-private val NicknameChangeBottomBarPadding = 10.dp
+private val ProfileChangeButtonHorizontalPadding = 29.dp
+private val ProfileChangeBottomBarHeight = 77.dp
+private val ProfileChangeBottomBarPadding = 10.dp
 
 @Preview(name = "Nickname change - Valid", widthDp = 402, heightDp = 941)
 @Composable
-private fun NicknameChangeValidPreview() {
-    NicknameChangeInteractivePreview(
+private fun ProfileChangeValidPreview() {
+    ProfileChangeInteractivePreview(
         themeMode = ThemeMode.Dark,
         initialNickname = "닉네임닉네임12",
     )
@@ -135,8 +144,8 @@ private fun NicknameChangeValidPreview() {
 
 @Preview(name = "Nickname change - Invalid", widthDp = 402, heightDp = 941)
 @Composable
-private fun NicknameChangeInvalidPreview() {
-    NicknameChangeInteractivePreview(
+private fun ProfileChangeInvalidPreview() {
+    ProfileChangeInteractivePreview(
         themeMode = ThemeMode.Dark,
         initialNickname = "닉네임@#12",
     )
@@ -144,28 +153,29 @@ private fun NicknameChangeInvalidPreview() {
 
 @Preview(name = "Nickname change - Light", widthDp = 402, heightDp = 941)
 @Composable
-private fun NicknameChangeLightPreview() {
-    NicknameChangeInteractivePreview(
+private fun ProfileChangeLightPreview() {
+    ProfileChangeInteractivePreview(
         themeMode = ThemeMode.Light,
         initialNickname = "Ringout12",
     )
 }
 
 @Composable
-private fun NicknameChangeInteractivePreview(
+private fun ProfileChangeInteractivePreview(
     themeMode: ThemeMode,
     initialNickname: String,
 ) {
     var nickname by remember(initialNickname) { mutableStateOf(initialNickname) }
 
     RingoutTheme(themeMode) {
-        NicknameChangeScreen(
-            uiState = NicknameChangeUiState(
+        ProfileChangeScreen(
+            uiState = ProfileChangeUiState(
                 nickname = nickname,
                 validation = validateNickname(nickname),
             ),
             onNicknameChange = { nickname = it },
             onBackClick = {},
+            onProfileImageChangeClick = {},
             onConfirmClick = {},
         )
     }

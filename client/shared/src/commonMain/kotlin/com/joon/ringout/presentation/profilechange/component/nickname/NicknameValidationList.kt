@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname.component
+package com.joon.ringout.presentation.profilechange.component.nickname
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -21,6 +21,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.profilechange.component.profileChangeColors
+import com.joon.ringout.presentation.profilechange.component.ProfileChangeInvalidIconResource
+import com.joon.ringout.presentation.profilechange.component.ProfileChangeValidIconResource
 import org.jetbrains.compose.resources.painterResource
 
 @Composable
@@ -49,7 +52,7 @@ private fun NicknameValidationItem(
     text: String,
     isValid: Boolean,
 ) {
-    val colors = nicknameChangeColors()
+    val colors = profileChangeColors()
     val stateText = if (isValid) "충족" else "미충족"
 
     Row(
@@ -64,9 +67,9 @@ private fun NicknameValidationItem(
         Image(
             painter = painterResource(
                 if (isValid) {
-                    NicknameChangeValidIconResource
+                    ProfileChangeValidIconResource
                 } else {
-                    NicknameChangeInvalidIconResource
+                    ProfileChangeInvalidIconResource
                 },
             ),
             contentDescription = null,
@@ -91,13 +94,13 @@ private val NicknameValidationIconSize = 16.dp
 
 @Preview(name = "Nickname validation - Valid", widthDp = 402)
 @Composable
-private fun NicknameValidationValidPreview() {
+private fun ProfileValidationValidPreview() {
     RingoutTheme(ThemeMode.Dark) {
         NicknameValidationList(
             isLengthValid = true,
             hasOnlyAllowedCharacters = true,
             modifier = Modifier
-                .background(nicknameChangeColors().background)
+                .background(profileChangeColors().background)
                 .padding(horizontal = 20.dp),
         )
     }
@@ -105,13 +108,13 @@ private fun NicknameValidationValidPreview() {
 
 @Preview(name = "Nickname validation - Invalid", widthDp = 402)
 @Composable
-private fun NicknameValidationInvalidPreview() {
+private fun ProfileValidationInvalidPreview() {
     RingoutTheme(ThemeMode.Dark) {
         NicknameValidationList(
             isLengthValid = true,
             hasOnlyAllowedCharacters = false,
             modifier = Modifier
-                .background(nicknameChangeColors().background)
+                .background(profileChangeColors().background)
                 .padding(horizontal = 20.dp),
         )
     }

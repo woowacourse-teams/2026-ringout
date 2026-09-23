@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname
+package com.joon.ringout.presentation.profilechange
 
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.member.MemberProfile
@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
-class NicknameChangeViewModelTest {
+class ProfileChangeViewModelTest {
     @Test
     fun `확인하면 저장된 닉네임으로 완료 상태가 된다`() = withViewModel { viewModel, repository ->
         viewModel.onNicknameChange("새닉네임")
@@ -29,11 +29,11 @@ class NicknameChangeViewModelTest {
 }
 
 private inline fun withViewModel(
-    block: (NicknameChangeViewModel, FakeMemberRepository) -> Unit,
+    block: (ProfileChangeViewModel, FakeMemberRepository) -> Unit,
 ) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     val repository = FakeMemberRepository()
-    val viewModel = NicknameChangeViewModel(
+    val viewModel = ProfileChangeViewModel(
         initialNickname = "기존닉네임",
         memberRepository = repository,
         coroutineScope = scope,

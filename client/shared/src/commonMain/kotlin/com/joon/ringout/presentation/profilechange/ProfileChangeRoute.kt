@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname
+package com.joon.ringout.presentation.profilechange
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -9,12 +9,13 @@ import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
 
 @Composable
-internal fun NicknameChangeRoute(
+internal fun ProfileChangeRoute(
     accountStatus: MyPageAccountStatus,
     authSessionState: AuthSessionState,
     memberRepository: MemberRepository,
     onBackClick: () -> Unit,
     onNicknameChanged: (String) -> Unit,
+    onProfileImageChangeClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val account = accountStatus as? MyPageAccountStatus.LoggedIn
@@ -30,8 +31,8 @@ internal fun NicknameChangeRoute(
         return
     }
 
-    val viewModel: NicknameChangeViewModel = viewModel {
-        NicknameChangeViewModel(account.nickname, memberRepository)
+    val viewModel: ProfileChangeViewModel = viewModel {
+        ProfileChangeViewModel(account.nickname, memberRepository)
     }
     val uiState = viewModel.uiState
     LaunchedEffect(viewModel, uiState.completedNickname) {
@@ -40,10 +41,11 @@ internal fun NicknameChangeRoute(
         viewModel.consumeCompletedNickname()
     }
 
-    NicknameChangeScreen(
+    ProfileChangeScreen(
         uiState = uiState,
         onNicknameChange = viewModel::onNicknameChange,
         onBackClick = onBackClick,
+        onProfileImageChangeClick = onProfileImageChangeClick,
         onConfirmClick = viewModel::confirm,
         modifier = modifier,
     )

@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname.component
+package com.joon.ringout.presentation.profilechange.component
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -23,22 +23,22 @@ import com.joon.ringout.ThemeMode
 import org.jetbrains.compose.resources.painterResource
 
 @Composable
-internal fun NicknameChangeHeader(
+internal fun ProfileChangeHeader(
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = nicknameChangeColors()
+    val colors = profileChangeColors()
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(NicknameChangeHeaderHeight),
+            .height(ProfileChangeHeaderHeight),
         contentAlignment = Alignment.TopCenter,
     ) {
         Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .size(NicknameChangeBackTouchSize)
+                .size(ProfileChangeBackTouchSize)
                 .clickable(
                     role = Role.Button,
                     onClickLabel = "이전 화면으로 이동",
@@ -47,14 +47,14 @@ internal fun NicknameChangeHeader(
             contentAlignment = Alignment.TopStart,
         ) {
             Image(
-                painter = painterResource(NicknameChangeBackIconResource),
+                painter = painterResource(ProfileChangeBackIconResource),
                 contentDescription = null,
-                modifier = Modifier.size(NicknameChangeBackIconSize),
+                modifier = Modifier.size(ProfileChangeBackIconSize),
                 colorFilter = ColorFilter.tint(colors.primaryText),
             )
         }
         Text(
-            text = "닉네임 변경",
+            text = "프로필 변경",
             color = colors.primaryText,
             maxLines = 1,
             style = MaterialTheme.typography.titleLarge.copy(
@@ -66,26 +66,26 @@ internal fun NicknameChangeHeader(
     }
 }
 
-private val NicknameChangeHeaderHeight = 48.dp
-private val NicknameChangeBackTouchSize = 48.dp
-private val NicknameChangeBackIconSize = 24.dp
+private val ProfileChangeHeaderHeight = 48.dp
+private val ProfileChangeBackTouchSize = 48.dp
+private val ProfileChangeBackIconSize = 24.dp
 
 @Preview(name = "Nickname header - Dark", widthDp = 402)
 @Composable
-private fun NicknameChangeHeaderDarkPreview() {
+private fun ProfileChangeHeaderDarkPreview() {
     RingoutTheme(ThemeMode.Dark) {
-        Box(Modifier.background(nicknameChangeColors().background)) {
-            NicknameChangeHeader(onBackClick = {})
+        Box(Modifier.background(profileChangeColors().background)) {
+            ProfileChangeHeader(onBackClick = {})
         }
     }
 }
 
 @Preview(name = "Nickname header - Light", widthDp = 402)
 @Composable
-private fun NicknameChangeHeaderLightPreview() {
+private fun ProfileChangeHeaderLightPreview() {
     RingoutTheme(ThemeMode.Light) {
-        Box(Modifier.background(nicknameChangeColors().background)) {
-            NicknameChangeHeader(onBackClick = {})
+        Box(Modifier.background(profileChangeColors().background)) {
+            ProfileChangeHeader(onBackClick = {})
         }
     }
 }
