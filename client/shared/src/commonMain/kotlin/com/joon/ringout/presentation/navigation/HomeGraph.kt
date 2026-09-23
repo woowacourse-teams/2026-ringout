@@ -7,7 +7,7 @@ import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.member.MemberRepository
-import com.joon.ringout.presentation.nickname.NicknameChangeRoute
+import com.joon.ringout.presentation.profilechange.ProfileChangeRoute
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.AlarmController
@@ -68,7 +68,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
 
     entry<AppRoute.NicknameChange>(clazzContentKey = AppRoute::viewModelStoreKey) {
         val myPage = checkNotNull(myPageViewModel)
-        NicknameChangeRoute(
+        ProfileChangeRoute(
             accountStatus = myPage.uiState.accountStatus,
             authSessionState = authSessionState,
             memberRepository = memberRepository,
