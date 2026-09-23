@@ -204,7 +204,7 @@ class ReauthenticationCoordinatorTest {
 
             assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
             assertTrue(fixture.signup.uiState.hasPendingSignup)
-            fixture.signup.signup(setOf(TermId.Service))
+            fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
             drain()
             assertEquals(listOf("new-token"), fixture.authRepository.signupTokens)
             assertNotNull(fixture.signup.uiState.completedEventId)
