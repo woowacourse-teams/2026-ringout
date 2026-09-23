@@ -86,7 +86,9 @@ Apple Silicon Mac에서 공통 테스트와 iOS 테스트를 실행합니다.
 ./gradlew :shared:iosSimulatorArm64Test
 ```
 
-현재 Android CI에는 이 태스크를 포함하지 않습니다. Android CI 성공이 iOS 테스트 성공을 의미하지 않습니다.
+Android CI에는 이 태스크를 포함하지 않습니다. `develop` 대상 PR과 `develop` 푸시에서 iOS 관련 파일이 변경되면 별도의 iOS CI가 실행합니다.
+
+iOS CI는 macOS 26 러너에서 공유 Kotlin iOS 테스트와 서명 없는 Debug 시뮬레이터 빌드를 실행합니다. 빌드된 `Ringout.app`의 `GoogleService-Info.plist`가 개발 Firebase 프로젝트 `ringout-8abf2` 및 iOS 번들 ID와 일치하는지도 검사합니다. 서명이나 App Store Connect 업로드는 수행하지 않습니다.
 
 ### Android Lint
 
@@ -134,11 +136,13 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 | 시점 | 워크플로우 | 실행 내용 | 산출물 |
 | --- | --- | --- | --- |
 | 작업 브랜치 → `develop` 클라이언트 변경 PR 생성·수정·재오픈 | `Client CI` | 테스트, Android Lint, 서명 없는 release AAB 빌드, R8 검사 | 검증 보고서 |
+| 작업 브랜치 → `develop` iOS 관련 변경 PR 생성·수정·재오픈 | `iOS CI` | 공유 Kotlin iOS 테스트, 서명 없는 시뮬레이터 빌드, 개발 Firebase 확인 | 검사 결과 |
 | `develop`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 내부 테스트용 AAB |
+| `develop`에 iOS 관련 변경 병합 | `iOS CI` | PR과 동일한 iOS 검사 | 검사 결과 |
 | `develop` → `main` 클라이언트 변경 PR 생성·수정·재오픈 | `Client CI` | 같은 품질 검사와 출발 브랜치 검사 | 검증 보고서 |
 | `main`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 릴리스용 AAB |
 
-워크플로우는 저장소 루트의 [client-ci.yml](../.github/workflows/client-ci.yml)과 [build-release-aab.yml](../.github/workflows/build-release-aab.yml)에 있습니다.
+워크플로우는 저장소 루트의 [client-ci.yml](../.github/workflows/client-ci.yml), [ios-ci.yml](../.github/workflows/ios-ci.yml), [build-release-aab.yml](../.github/workflows/build-release-aab.yml)에 있습니다.
 
 ### PR 검증과 병합 조건
 

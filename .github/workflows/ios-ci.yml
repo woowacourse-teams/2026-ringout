@@ -1,0 +1,80 @@
+name: iOS CI
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'client/iosApp/**'
+      - 'client/shared/**'
+      - 'client/ci/verify_ios_firebase.py'
+      - 'client/gradle/**'
+      - 'client/gradlew'
+      - 'client/build.gradle.kts'
+      - 'client/settings.gradle.kts'
+      - 'client/gradle.properties'
+      - '.github/workflows/ios-ci.yml'
+  push:
+    branches: [develop]
+    paths:
+      - 'client/iosApp/**'
+      - 'client/shared/**'
+      - 'client/ci/verify_ios_firebase.py'
+      - 'client/gradle/**'
+      - 'client/gradlew'
+      - 'client/build.gradle.kts'
+      - 'client/settings.gradle.kts'
+      - 'client/gradle.properties'
+      - '.github/workflows/ios-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: client
+
+jobs:
+  verify:
+    name: Kotlin tests and iOS simulator build
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Corretto JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: corretto
+          java-version: '21'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
+        with:
+          cache-read-only: true
+      - name: Print Xcode version
+        run: xcodebuild -version
+      - name: Test shared Kotlin code on iOS simulator
+        run: ./gradlew :shared:iosSimulatorArm64Test --no-daemon --stacktrace
+      - name: Build unsigned iOS simulator app
+        run: |
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/ringout-ios-derived-data" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Verify embedded development Firebase config
+        run: |
+          python3 ci/verify_ios_firebase.py \
+            --source iosApp/iosApp/GoogleService-Info.plist \
+            --app "$RUNNER_TEMP/ringout-ios-derived-data/Build/Products/Debug-iphonesimulator/Ringout.app"
