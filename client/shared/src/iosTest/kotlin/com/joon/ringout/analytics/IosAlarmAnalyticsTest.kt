@@ -54,7 +54,7 @@ class IosAlarmAnalyticsTest {
     }
 
     @Test
-    fun recordsAlarmCreationOnlyOnceWithAndroidCompatibleParameters() = withAnalytics { analytics, tracker ->
+    fun `알람 생성 이벤트는 한 번만 기록하고 Android와 같은 요일 설정값을 전달한다`() = withAnalytics { analytics, tracker ->
         analytics.recordAlarmCreated(
             request = iosAlarmRequest("alarm-1"),
             context = AlarmSettingsAnalyticsContext(),
@@ -72,7 +72,7 @@ class IosAlarmAnalyticsTest {
         assertEquals(2L, event.numberParameter("settings_schema_version"))
         assertEquals(12L, event.numberParameter("limit_minutes"))
         assertEquals("06:20", event.textParameter("alarm_time"))
-        assertEquals("mon,fri", event.textParameter("repeat_days"))
+        assertEquals("mon,wed,fri", event.textParameter("repeat_days"))
         assertTrue(event.parameters.none { it.name.startsWith("alarm_sound_") })
     }
 
@@ -157,7 +157,7 @@ private fun IosAnalyticsEventDto.textParameter(name: String): String? =
 private fun iosAlarmRequest(id: String) = AlarmScheduleRequest(
     id = id,
     time = "06:20",
-    selectedDays = listOf("월", "금"),
+    selectedDays = listOf("월", "수", "금"),
     repeatEnabled = true,
     limitMinutes = 12,
     destinationName = "회사",

@@ -95,7 +95,7 @@ class IosAlarmStoreTest {
     }
 
     @Test
-    fun processWideMutexSerializesMutationsAcrossStoreInstances() = runBlocking {
+    fun `서로 다른 저장소 인스턴스의 변경을 순서대로 처리한다`() = runBlocking {
         val events = mutableListOf<String>()
         val firstMutationEntered = CompletableDeferred<Unit>()
         val releaseFirstMutation = CompletableDeferred<Unit>()
@@ -120,7 +120,14 @@ class IosAlarmStoreTest {
         }
 
         assertEquals(
-            listOf("start:07:05", "end:07:05", "start:08:10", "end:08:10"),
+            listOf(
+                "start:07:05",
+                "end:07:05",
+                "start:07:05",
+                "end:07:05",
+                "start:08:10",
+                "end:08:10",
+            ),
             events,
         )
         assertEquals("08:10", dataSource.getById("alarm-1")!!.request.time)
@@ -181,12 +188,13 @@ class IosAlarmStoreTest {
     }
 
     @Test
-    fun roomFailureAfterScheduleCancelsNewAlarmAndRestoresPreviousSchedule() = runBlocking {
+    fun `새 예약 후 저장 실패 시 새 예약을 취소하고 이전 예약을 복구한다`() = runBlocking {
         val dataSource = FakeAlarmDataSource()
         val scheduler = FakeIosAlarmScheduler()
         val store = IosAlarmStore(dataSource, scheduler)
         store.save(request())
         dataSource.replaceFailure = IllegalStateException("write failed")
+        dataSource.replaceFailureAtCall = dataSource.replaceCalls + 2
 
         assertFailsWith<IllegalStateException> {
             store.save(request(time = "08:10"))
@@ -207,7 +215,7 @@ class IosAlarmStoreTest {
     }
 
     @Test
-    fun editScheduleAndRestoreFailureReportsRecoveryNeeded() = runBlocking {
+    fun `수정 예약과 이전 예약 복구가 모두 실패하면 복구 필요 상태를 보고한다`() = runBlocking {
         val dataSource = FakeAlarmDataSource()
         val scheduler = FakeIosAlarmScheduler()
         val store = IosAlarmStore(dataSource, scheduler)
@@ -224,6 +232,7 @@ class IosAlarmStoreTest {
                 "schedule:alarm-1",
                 "cancel:alarm-1",
                 "schedule:alarm-1",
+                "cancel:alarm-1",
                 "schedule:alarm-1",
             ),
             scheduler.events,
@@ -377,6 +386,7 @@ private class FakeAlarmDataSource(
     var replaceCalls: Int = 0
         private set
     var replaceFailure: Throwable? = replaceFailure
+    var replaceFailureAtCall: Int? = null
     var setEnabledResult: Boolean = true
 
     override fun observeAll(): Flow<List<SavedAlarmSchedule>> = observed
@@ -391,7 +401,9 @@ private class FakeAlarmDataSource(
     override suspend fun replace(alarm: SavedAlarmSchedule) {
         replaceCalls += 1
         beforeReplace(alarm)
-        replaceFailure?.let { throw it }
+        if (replaceFailureAtCall == null || replaceFailureAtCall == replaceCalls) {
+            replaceFailure?.let { throw it }
+        }
         alarms[alarm.request.id] = alarm
         observed.value = alarms.values.toList()
     }
