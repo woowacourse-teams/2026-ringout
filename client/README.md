@@ -86,7 +86,23 @@ Apple Silicon Mac에서 공통 테스트와 iOS 테스트를 실행합니다.
 ./gradlew :shared:iosSimulatorArm64Test
 ```
 
-현재 Android CI에는 이 태스크를 포함하지 않습니다. Android CI 성공이 iOS 테스트 성공을 의미하지 않습니다.
+Android CI에는 이 태스크를 포함하지 않습니다. `develop` 대상 PR에서 iOS 관련 파일이 변경되거나 `develop`에 푸시되면 별도의 iOS CI가 실행합니다.
+
+iOS CI는 macOS 26 러너에서 공유 Kotlin iOS 테스트와 서명 없는 Debug 시뮬레이터 빌드를 실행합니다. 빌드된 `Ringout.app`의 `GoogleService-Info.plist`가 개발 Firebase 프로젝트 `ringout-8abf2` 및 iOS 번들 ID와 일치하는지도 검사합니다. `develop` 푸시에서는 이 검사가 통과한 뒤 배포 서명 아카이브를 만들고, 아카이브의 Firebase 설정을 다시 검증한 다음 TestFlight 내부 테스트 전용 빌드로 업로드합니다. PR에서는 업로드하지 않습니다.
+
+TestFlight 작업은 GitHub Environment `ios-internal`을 사용하며, 이 환경은 `develop` 브랜치만 허용해야 합니다. 다음 Environment secrets가 필요합니다.
+
+| Secret | 내용 |
+| --- | --- |
+| `APPLE_CERTIFICATE_P12_BASE64` | Apple Distribution `.p12`의 Base64 |
+| `APPLE_CERTIFICATE_PASSWORD` | `.p12` 암호 |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | App Store Connect 배포용 `.mobileprovision`의 Base64 |
+| `APP_STORE_CONNECT_API_KEY_BASE64` | App Store Connect API `AuthKey_*.p8`의 Base64 |
+| `APP_STORE_CONNECT_KEY_ID` | API Key ID |
+| `APP_STORE_CONNECT_ISSUER_ID` | API Issuer ID |
+| `RINGOUT_IOS_SECRETS_XCCONFIG_BASE64` | 개발 환경용 `iosApp/Configuration/RingoutSecrets.xcconfig`의 Base64 |
+
+마지막 xcconfig Secret에는 로그인·지도 기능의 앱 설정이 들어갑니다. 누락되거나 값이 비어 있으면 배포 아카이브를 만들기 전에 실패합니다. TestFlight 내부 그룹의 자동 배포도 App Store Connect에서 켜야 팀원에게 빌드가 전달됩니다. CI 빌드 번호는 GitHub 실행 번호와 재시도 번호를 이용해 생성하며, App Store Connect에서 이미 사용한 빌드 번호보다 높아야 합니다.
 
 ### Android Lint
 
@@ -133,21 +149,23 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 
 | 시점 | 워크플로우 | 실행 내용 | 산출물 |
 | --- | --- | --- | --- |
-| 작업 브랜치 → `develop` 클라이언트 변경 PR 생성·수정·재오픈 | `Client CI` | 테스트, Android Lint, 서명 없는 release AAB 빌드, R8 검사 | 검증 보고서 |
+| 작업 브랜치 → `develop` 클라이언트 변경 PR 생성·수정·재오픈 | `Android CI` | 테스트, Android Lint, 서명 없는 release AAB 빌드, R8 검사 | 검증 보고서 |
+| 작업 브랜치 → `develop` iOS 관련 변경 PR 생성·수정·재오픈 | `iOS CI` | 공유 Kotlin iOS 테스트, 서명 없는 시뮬레이터 빌드, 개발 Firebase 확인 | 검사 결과 |
 | `develop`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 내부 테스트용 AAB |
-| `develop` → `main` 클라이언트 변경 PR 생성·수정·재오픈 | `Client CI` | 같은 품질 검사와 출발 브랜치 검사 | 검증 보고서 |
+| `develop`에 병합 | `iOS CI` | iOS 검사 통과 후 개발 Firebase로 서명 아카이브 생성·검증·TestFlight 내부 테스트 업로드 | 내부 테스트 빌드 |
+| `develop` → `main` 클라이언트 변경 PR 생성·수정·재오픈 | `Android CI` | 같은 품질 검사와 출발 브랜치 검사 | 검증 보고서 |
 | `main`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 릴리스용 AAB |
 
-워크플로우는 저장소 루트의 [client-ci.yml](../.github/workflows/client-ci.yml)과 [build-release-aab.yml](../.github/workflows/build-release-aab.yml)에 있습니다.
+워크플로우는 저장소 루트의 [android-ci.yml](../.github/workflows/android-ci.yml), [ios-ci.yml](../.github/workflows/ios-ci.yml), [build-release-aab.yml](../.github/workflows/build-release-aab.yml)에 있습니다.
 
 ### PR 검증과 병합 조건
 
 - `develop` 대상 PR은 `feature`, `fix`, `chore` 등 작업 브랜치 이름으로 제한하지 않습니다.
 - `main` 대상 클라이언트 변경 PR은 **같은 저장소의 `develop`**에서만 허용합니다. fork의 동명 브랜치도 실패합니다.
-- PR 전체 변경 경로에 `client/**`, `.github/workflows/client-ci.yml`, `.github/workflows/build-release-aab.yml`, `.github/actions/**` 중 하나가 포함될 때만 워크플로우를 실행합니다. 실행 후 내부 변경 검사에서도 삭제나 `client` 밖으로의 이동을 확인합니다.
-- 서버나 루트 문서만 변경한 PR은 `Client CI` 워크플로우 자체를 실행하지 않습니다. `main` PR의 출발 브랜치 검사도 클라이언트 관련 변경이 있는 PR에만 적용합니다.
+- PR 전체 변경 경로에 `client/**`, `.github/workflows/android-ci.yml`, `.github/workflows/build-release-aab.yml`, `.github/actions/**` 중 하나가 포함될 때만 워크플로우를 실행합니다. 실행 후 내부 변경 검사에서도 삭제나 `client` 밖으로의 이동을 확인합니다.
+- 서버나 루트 문서만 변경한 PR은 `Android CI` 워크플로우 자체를 실행하지 않습니다. `main` PR의 출발 브랜치 검사도 클라이언트 관련 변경이 있는 PR에만 적용합니다.
 - 경로 필터는 마지막 커밋이 아닌 PR 전체 변경을 기준으로 합니다. 이미 클라이언트 변경이 포함된 PR에 서버 커밋을 추가하면 CI가 다시 실행됩니다.
-- 필요한 검사의 실패·취소·예상치 못한 건너뛰기는 최종 `Client CI` 실패로 이어집니다.
+- 필요한 검사의 실패·취소·예상치 못한 건너뛰기는 최종 `Android CI` 실패로 이어집니다.
 - 추가 커밋이 올라오면 이전 PR 실행을 취소하고 최신 PR 병합 커밋을 검사합니다.
 - 업로드 키를 PR에 제공하지 않습니다. `pull_request_target`이나 PR 아티팩트 전달을 통한 서명도 사용하지 않습니다.
 
@@ -231,12 +249,12 @@ versionCode = APP_VERSION_CODE_BASE + GITHUB_RUN_NUMBER
 ### 브랜치 보호와 최초 적용
 
 1. 기존 리뷰·보호 규칙을 유지한 채 CI 변경 PR을 실행합니다.
-2. 클라이언트 변경 PR에서 최종 **`Client CI`** 체크가 성공하고, 서버만 변경한 PR에서는 워크플로우가 실행되지 않는지 확인합니다.
-3. `Client CI`는 모든 PR의 필수 상태 검사로 등록하지 않습니다. 이미 `develop` 또는 `main`의 Ruleset이나 Branch protection에 등록했다면 이 변경을 적용하기 전에 해제해야 합니다. 경로 필터로 워크플로우를 건너뛰면 필수 체크가 `Pending`으로 남아 서버 PR의 병합을 막을 수 있습니다.
+2. 클라이언트 변경 PR에서 최종 **`Android CI`** 체크가 성공하고, 서버만 변경한 PR에서는 워크플로우가 실행되지 않는지 확인합니다.
+3. `Android CI`는 모든 PR의 필수 상태 검사로 등록하지 않습니다. 이미 `develop` 또는 `main`의 Ruleset이나 Branch protection에 등록했다면 이 변경을 적용하기 전에 해제해야 합니다. 경로 필터로 워크플로우를 건너뛰면 필수 체크가 `Pending`으로 남아 서버 PR의 병합을 막을 수 있습니다.
 4. PR을 통한 변경과 최신 기준 브랜치 반영을 요구하고, 직접 push·강제 push·삭제 및 우회 권한을 검토합니다. YAML 자체는 직접 push를 막지 못합니다.
 5. `develop` 병합 후 내부 AAB, `main` 병합 후 릴리스 AAB 생성과 인증서·체크섬을 확인합니다.
 
-모든 PR에 `Client CI` 필수 검사를 유지해야 한다면 워크플로우 경로 필터를 제거하고 내부 변경 검사와 최종 체크를 항상 실행하는 방식으로 돌아가야 합니다. 현재 merge queue는 지원하지 않습니다. 향후 도입 시 `merge_group` 이벤트와 변경 경로 판정을 함께 추가해야 합니다.
+모든 PR에 `Android CI` 필수 검사를 유지해야 한다면 워크플로우 경로 필터를 제거하고 내부 변경 검사와 최종 체크를 항상 실행하는 방식으로 돌아가야 합니다. 현재 merge queue는 지원하지 않습니다. 향후 도입 시 `merge_group` 이벤트와 변경 경로 판정을 함께 추가해야 합니다.
 
 수동 실행은 복구용입니다. `develop`·`main` 이외 브랜치를 선택하면 서명 job은 실행하지 않습니다. 브랜치별 실행 중인 AAB 빌드는 취소하지 않으며, GitHub concurrency 정책상 여러 대기 실행은 최신 실행으로 대체될 수 있습니다.
 
@@ -244,7 +262,7 @@ versionCode = APP_VERSION_CODE_BASE + GITHUB_RUN_NUMBER
 
 - 현재 API 주소는 `shared/src/commonMain/kotlin/com/joon/ringout/data/network/ApiConfig.kt`에 고정되어 있습니다. **Environment를 나눠도 QA 서버가 분리되지는 않습니다.**
 - AAB는 기기에 직접 설치하는 파일이 아닙니다. 실제 QA에는 Google Play 내부 테스트 등의 배포 경로가 필요합니다.
-- CI는 AAB 생성·검증·보관까지 수행합니다. Play 자동 업로드·출시, iOS CI, 실기기 E2E 테스트, ktlint는 포함하지 않습니다. 기존 Crashlytics mapping 업로드는 실제 서명 빌드에서 유지합니다.
+- Android AAB 워크플로우는 AAB 생성·검증·보관까지 수행합니다. Play 자동 업로드·출시와 실기기 E2E 테스트, ktlint는 포함하지 않습니다. 기존 Crashlytics mapping 업로드는 실제 서명 빌드에서 유지합니다. iOS 내부 테스트 업로드는 별도의 `iOS CI`에서 수행합니다.
 - `main` AAB는 `develop`에서 QA한 파일을 재사용하지 않고 새로 빌드합니다. 최종 릴리스 파일도 확인해야 합니다. 동일 바이너리 승격이나 별도 QA 서버·동시 설치 앱이 필요하면 배포 정책과 빌드 변형을 추가로 설계합니다.
 
 ## 참고 문서

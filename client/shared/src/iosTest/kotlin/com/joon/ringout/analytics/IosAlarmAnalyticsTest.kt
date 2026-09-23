@@ -54,7 +54,7 @@ class IosAlarmAnalyticsTest {
     }
 
     @Test
-    fun recordsAlarmCreationOnlyOnceWithAndroidCompatibleParameters() = withAnalytics { analytics, tracker ->
+    fun `알람 생성 이벤트는 반복 요일 수와 함께 한 번만 기록한다`() = withAnalytics { analytics, tracker ->
         analytics.recordAlarmCreated(
             request = iosAlarmRequest("alarm-1"),
             context = AlarmSettingsAnalyticsContext(),
@@ -67,7 +67,7 @@ class IosAlarmAnalyticsTest {
         val event = tracker.events.single()
         assertEquals("destination_alarm_created", event.name)
         assertEquals(1L, event.numberParameter("creation_index"))
-        assertEquals(3L, event.numberParameter("repeat_day_count"))
+        assertEquals(2L, event.numberParameter("repeat_day_count"))
         assertEquals("weekly", event.textParameter("schedule_type"))
         assertEquals(2L, event.numberParameter("settings_schema_version"))
         assertEquals(12L, event.numberParameter("limit_minutes"))

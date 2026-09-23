@@ -70,7 +70,7 @@ def validate_pr_route(event):
 
 def is_client_path(path):
     return path.startswith(b"client/") or path in (
-        b".github/workflows/client-ci.yml", b".github/workflows/build-release-aab.yml",
+        b".github/workflows/android-ci.yml", b".github/workflows/build-release-aab.yml",
     ) or path.startswith(b".github/actions/")
 
 
@@ -342,7 +342,7 @@ def main():
         detect_changes()
     elif command == "gate":
         check_gate(require_env("CHANGES_RESULT"), require_env("CLIENT_CHANGED"), require_env("QUALITY_RESULT"))
-        print("Client CI 검증을 통과했습니다.")
+        print("Android CI 검증을 통과했습니다.")
     elif command == "version":
         select_build()
     elif command == "prepare-signing":
