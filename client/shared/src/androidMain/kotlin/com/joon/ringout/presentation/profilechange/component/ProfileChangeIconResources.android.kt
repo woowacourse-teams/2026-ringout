@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname.component
+package com.joon.ringout.presentation.profilechange.component
 
 import org.jetbrains.compose.resources.DrawableResource
 import ringout.shared.generated.resources.Res
@@ -7,11 +7,11 @@ import ringout.shared.generated.resources.nickname_change_invalid_android
 import ringout.shared.generated.resources.nickname_change_user_android
 import ringout.shared.generated.resources.nickname_change_valid_android
 
-internal actual val NicknameChangeBackIconResource: DrawableResource =
+internal actual val ProfileChangeBackIconResource: DrawableResource =
     Res.drawable.mypage_arrow_left_android
-internal actual val NicknameChangeUserIconResource: DrawableResource =
+internal actual val ProfileChangeUserIconResource: DrawableResource =
     Res.drawable.nickname_change_user_android
-internal actual val NicknameChangeValidIconResource: DrawableResource =
+internal actual val ProfileChangeValidIconResource: DrawableResource =
     Res.drawable.nickname_change_valid_android
-internal actual val NicknameChangeInvalidIconResource: DrawableResource =
+internal actual val ProfileChangeInvalidIconResource: DrawableResource =
     Res.drawable.nickname_change_invalid_android

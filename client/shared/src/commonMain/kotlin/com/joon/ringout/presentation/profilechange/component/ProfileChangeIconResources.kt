@@ -1,0 +1,8 @@
+package com.joon.ringout.presentation.profilechange.component
+
+import org.jetbrains.compose.resources.DrawableResource
+
+internal expect val ProfileChangeBackIconResource: DrawableResource
+internal expect val ProfileChangeUserIconResource: DrawableResource
+internal expect val ProfileChangeValidIconResource: DrawableResource
+internal expect val ProfileChangeInvalidIconResource: DrawableResource
