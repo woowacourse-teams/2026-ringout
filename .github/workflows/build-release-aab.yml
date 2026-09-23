@@ -5,7 +5,7 @@ on:
     branches: [develop, main]
     paths:
       - 'client/**'
-      - '.github/workflows/client-ci.yml'
+      - '.github/workflows/android-ci.yml'
       - '.github/workflows/build-release-aab.yml'
       - '.github/actions/**'
   # Recovery only. Normal builds start automatically after a protected-branch merge.
