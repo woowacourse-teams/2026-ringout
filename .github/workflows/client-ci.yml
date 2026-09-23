@@ -1,4 +1,4 @@
-name: Client CI
+name: Android CI
 
 on:
   pull_request:
@@ -93,7 +93,7 @@ jobs:
 
   result:
     # Summarize triggered runs; path-filtered workflows must not be required for every PR.
-    name: Client CI
+    name: Android CI
     if: always()
     needs: [changes, quality]
     runs-on: ubuntu-24.04
