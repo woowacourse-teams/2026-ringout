@@ -26,9 +26,41 @@ interface IosAnalyticsTracker {
     fun log(event: IosAnalyticsEventDto)
 }
 
-// TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 iOS 소셜 로그인 service/callback 계약을 복구한다.
+interface IosAppleSignInCallback {
+    fun onSuccess(idToken: String)
+    fun onCancelled()
+    fun onFailure(message: String)
+}
+
+interface IosAppleSignInService {
+    fun signIn(appleCallback: IosAppleSignInCallback)
+}
+
+interface IosGoogleSignInCallback {
+    fun onSuccess(accessToken: String)
+    fun onCancelled()
+    fun onFailure(message: String)
+}
+
+interface IosGoogleSignInService {
+    fun signIn(googleCallback: IosGoogleSignInCallback)
+}
+
+interface IosKakaoSignInCallback {
+    fun onSuccess(accessToken: String)
+    fun onCancelled()
+    fun onFailure(message: String)
+}
+
+interface IosKakaoSignInService {
+    fun signIn(kakaoCallback: IosKakaoSignInCallback)
+}
 
 interface IosNativeServices {
+    fun appleSignInService(): IosAppleSignInService
+
+    fun kakaoSignInService(): IosKakaoSignInService
+
     fun isMapsAvailable(): Boolean
 
     fun isPlacesAvailable(): Boolean
@@ -57,6 +89,8 @@ interface IosNativeServices {
     fun alarmMissionEventInbox(): IosAlarmMissionEventInbox
 
     fun missionLocationService(): IosMissionLocationService
+
+    fun googleSignInService(): IosGoogleSignInService
 
     fun analyticsTracker(): IosAnalyticsTracker
 }

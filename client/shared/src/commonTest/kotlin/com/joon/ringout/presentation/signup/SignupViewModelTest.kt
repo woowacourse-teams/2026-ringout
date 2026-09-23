@@ -34,15 +34,30 @@ import kotlin.test.assertTrue
 
 class SignupViewModelTest {
     @Test
-    fun clearingTheStoreDropsSignupInformationAndRejectsAnotherSignup() =
+    fun `필수 약관 중 하나라도 동의하지 않으면 회원가입을 요청하지 않는다`() {
+        listOf(emptySet(), setOf(TermId.Service), setOf(TermId.Privacy)).forEach { terms ->
+            withViewModel { viewModel, repository, destinations, _ ->
+                viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
+                viewModel.signup(terms)
+
+                assertTrue(repository.signupRequests.isEmpty())
+                assertEquals(0, destinations.syncCount)
+                assertFalse(viewModel.uiState.isSaving)
+                assertEquals("필수 약관에 모두 동의해 주세요.", viewModel.uiState.errorMessage)
+            }
+        }
+    }
+
+    @Test
+    fun `저장소를 정리하면 가입 정보를 버리고 추가 가입을 무시한다`() =
         withViewModel { viewModel, repository, destinations, analytics ->
             viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
-            viewModel.signup(setOf(TermId.Service))
+            viewModel.signup(setOf(TermId.Service, TermId.Privacy))
             assertNotNull(viewModel.uiState.completedEventId)
 
             clearViewModel(viewModel)
             viewModel.startSignup("another-token", AnalyticsAuthProvider.Apple)
-            viewModel.signup(setOf(TermId.Service))
+            viewModel.signup(setOf(TermId.Service, TermId.Privacy))
 
             assertEquals(SignupUiState(), viewModel.uiState)
             assertEquals(1, repository.signupRequests.size)
@@ -51,7 +66,7 @@ class SignupViewModelTest {
         }
 
     @Test
-    fun clearingTheStoreCancelsOnlyTheSignupJob() {
+    fun `저장소를 정리하면 회원가입 작업만 취소한다`() {
         val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         withViewModel(scope = parentScope) { viewModel, repository, destinations, analytics ->
             val gate = CompletableDeferred<Unit>()
@@ -64,7 +79,7 @@ class SignupViewModelTest {
                 }
             }
             viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
-            viewModel.signup(setOf(TermId.Service))
+            viewModel.signup(setOf(TermId.Service, TermId.Privacy))
             assertTrue(viewModel.uiState.isSaving)
 
             clearViewModel(viewModel)
@@ -79,7 +94,7 @@ class SignupViewModelTest {
     }
 
     @Test
-    fun clearingTheStoreIgnoresLateSignupResultsThatDoNotCooperateWithCancellation() {
+    fun `저장소 정리 후 취소에 협조하지 않는 가입 응답을 무시한다`() {
         val outcomes = listOf(
             Result.success(Unit),
             Result.failure<Unit>(IllegalStateException("late signup failure")),
@@ -94,7 +109,7 @@ class SignupViewModelTest {
                     outcome.getOrThrow()
                 }
                 viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
-                viewModel.signup(setOf(TermId.Service))
+                viewModel.signup(setOf(TermId.Service, TermId.Privacy))
 
                 clearViewModel(viewModel)
                 gate.complete(Unit)
@@ -108,7 +123,7 @@ class SignupViewModelTest {
     }
 
     @Test
-    fun clearingTheStoreIgnoresLateSyncResultsThatDoNotCooperateWithCancellation() {
+    fun `저장소 정리 후 늦은 동기화 응답을 무시한다`() {
         val outcomes = listOf(
             Result.success(Unit),
             Result.failure<Unit>(IllegalStateException("late sync failure")),
@@ -123,7 +138,7 @@ class SignupViewModelTest {
                     outcome.getOrThrow()
                 }
                 viewModel.startSignup("signup-token", AnalyticsAuthProvider.Kakao)
-                viewModel.signup(setOf(TermId.Service))
+                viewModel.signup(setOf(TermId.Service, TermId.Privacy))
 
                 clearViewModel(viewModel)
                 gate.complete(Unit)
@@ -180,7 +195,7 @@ class SignupViewModelTest {
             )
 
             viewModel.signup(
-                agreedTermIds = setOf(TermId.Service),
+                agreedTermIds = setOf(TermId.Service, TermId.Privacy),
             )
 
             assertEquals(listOf(AnalyticsAuthProvider.Google), analytics.signupProviders)
@@ -190,7 +205,7 @@ class SignupViewModelTest {
             assertNull(viewModel.uiState.completedEventId)
 
             viewModel.signup(
-                agreedTermIds = setOf(TermId.Service),
+                agreedTermIds = setOf(TermId.Service, TermId.Privacy),
             )
 
             assertEquals(1, authRepository.signupRequests.size)
@@ -210,7 +225,7 @@ class SignupViewModelTest {
             )
 
             viewModel.signup(
-                agreedTermIds = setOf(TermId.Service),
+                agreedTermIds = setOf(TermId.Service, TermId.Privacy),
             )
 
             assertTrue(analytics.signupProviders.isEmpty())
@@ -230,7 +245,7 @@ class SignupViewModelTest {
             )
 
             viewModel.signup(
-                agreedTermIds = setOf(TermId.Service),
+                agreedTermIds = setOf(TermId.Service, TermId.Privacy),
             )
 
             assertEquals(
@@ -253,7 +268,7 @@ class SignupViewModelTest {
             )
 
             viewModel.signup(
-                agreedTermIds = setOf(TermId.Service),
+                agreedTermIds = setOf(TermId.Service, TermId.Privacy),
             )
             viewModel.signup(
                 agreedTermIds = setOf(TermId.Privacy),
@@ -273,7 +288,7 @@ class SignupViewModelTest {
     @Test
     fun `회원가입 시작 정보가 없으면 회원가입 요청을 실행하지 않는다`() =
         withViewModel { viewModel, authRepository, destinationRepository, analytics ->
-            viewModel.signup(agreedTermIds = setOf(TermId.Service))
+            viewModel.signup(agreedTermIds = setOf(TermId.Service, TermId.Privacy))
 
             assertTrue(authRepository.signupRequests.isEmpty())
             assertTrue(analytics.signupProviders.isEmpty())
@@ -291,7 +306,7 @@ class SignupViewModelTest {
                 signupToken = "signup-token",
                 provider = AnalyticsAuthProvider.Kakao,
             )
-            viewModel.signup(agreedTermIds = setOf(TermId.Service))
+            viewModel.signup(agreedTermIds = setOf(TermId.Service, TermId.Privacy))
 
             viewModel.resetSignup()
             signupGate.complete(Unit)
@@ -310,7 +325,7 @@ class SignupViewModelTest {
                 signupToken = "signup-token",
                 provider = AnalyticsAuthProvider.Google,
             )
-            viewModel.signup(agreedTermIds = setOf(TermId.Service))
+            viewModel.signup(agreedTermIds = setOf(TermId.Service, TermId.Privacy))
             val completedEventId = requireNotNull(viewModel.uiState.completedEventId)
 
             viewModel.consumeCompletedEvent(completedEventId)

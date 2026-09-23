@@ -1,6 +1,10 @@
 package com.joon.ringout.presentation.mypage
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import com.joon.ringout.presentation.mypage.component.MyPageAccountActionErrorDialog
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
+import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import com.joon.ringout.ThemeMode
@@ -12,22 +16,35 @@ internal fun MyPageRoute(
     appVersion: String,
     onThemeModeChange: (ThemeMode) -> Unit,
     onBackClick: () -> Unit,
+    onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onEditProfileClick: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
-    val uiState = viewModel.uiState
+    val accountAction = viewModel.uiState.accountAction
+    LaunchedEffect(accountAction) {
+        if (accountAction is MyPageAccountActionState.Completed) {
+            viewModel.consumeAccountActionCompletedEvent(accountAction.eventId)
+        }
+    }
 
     MyPageScreen(
-        uiState = uiState,
+        accountStatus = viewModel.uiState.accountStatus,
+        onAccountRetry = viewModel::retryAccount,
+        isAccountActionInProgress = accountAction is MyPageAccountActionState.InProgress,
+        onConfirmAccountAction = { action ->
+            when (action) {
+                MyPageAccountAction.Logout -> viewModel.logout()
+                MyPageAccountAction.Withdraw -> viewModel.withdraw()
+            }
+        },
         themeMode = themeMode,
         appVersion = appVersion,
         policies = DefaultMyPagePolicies,
-        onScreenEntered = viewModel::onScreenEntered,
         onThemeModeChange = onThemeModeChange,
-        onPreviousMonthClick = viewModel::onPreviousMonthClick,
-        onNextMonthClick = viewModel::onNextMonthClick,
-        onCalendarRetry = viewModel::retryCalendar,
         onBackClick = onBackClick,
+        onLoginClick = onLoginClick,
+        onEditProfileClick = onEditProfileClick,
         onPolicyClick = { policyId ->
             findPolicyUrl(policyId)?.let { url ->
                 runCatching { uriHandler.openUri(url) }
@@ -36,6 +53,11 @@ internal fun MyPageRoute(
         modifier = modifier,
     )
 
-    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 계정 상태, 로그인, 프로필 수정,
-    // 로그아웃, 회원 탈퇴 콜백을 MyPageScreen에 다시 연결한다.
+    if (accountAction is MyPageAccountActionState.Error) {
+        MyPageAccountActionErrorDialog(
+            action = accountAction.action,
+            message = accountAction.message,
+            onDismiss = viewModel::clearAccountActionError,
+        )
+    }
 }

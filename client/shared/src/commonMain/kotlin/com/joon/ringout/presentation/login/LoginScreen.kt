@@ -40,6 +40,7 @@ internal fun LoginScreen(
     onBackClick: () -> Unit,
     onSocialLoginClick: (SocialLoginProvider) -> Unit,
     modifier: Modifier = Modifier,
+    providers: List<SocialLoginProvider> = PlatformSocialLoginProviders,
 ) {
     val colors = loginColors()
     val dimensions = loginDimensions()
@@ -74,6 +75,7 @@ internal fun LoginScreen(
             Spacer(Modifier.height(dimensions.textToSocialSpacing))
             SocialLoginButtons(
                 onSocialLoginClick = onSocialLoginClick,
+                providers = providers,
                 enabled = !shouldShowLoadingOverlay,
             )
             LoginStatus(
@@ -82,7 +84,7 @@ internal fun LoginScreen(
         }
 
         if (shouldShowLoadingOverlay) {
-            LoginLoadingOverlay(Modifier.matchParentSize())
+            LoginLoadingOverlay()
         }
     }
 }
@@ -139,3 +141,33 @@ private fun LoginScreenLoadingDarkPreview() {
 
 internal val LoginUiState.shouldShowLoadingOverlay: Boolean
     get() = isLoading || completion != null
+
+@Preview(name = "Android Login", widthDp = 402, heightDp = 941)
+@Composable
+private fun LoginScreenAndroidPreview() {
+    RingoutTheme(ThemeMode.Dark) {
+        LoginScreen(
+            uiState = LoginUiState(),
+            onBackClick = {},
+            onSocialLoginClick = {},
+            providers = listOf(SocialLoginProvider.Google, SocialLoginProvider.Kakao),
+        )
+    }
+}
+
+@Preview(name = "iOS Login", widthDp = 402, heightDp = 941)
+@Composable
+private fun LoginScreenIosPreview() {
+    RingoutTheme(ThemeMode.Dark) {
+        LoginScreen(
+            uiState = LoginUiState(),
+            onBackClick = {},
+            onSocialLoginClick = {},
+            providers = listOf(
+                SocialLoginProvider.Apple,
+                SocialLoginProvider.Google,
+                SocialLoginProvider.Kakao,
+            ),
+        )
+    }
+}

@@ -113,7 +113,7 @@ fun MyPageAccountActionDialog(
                 }
                 Row(
                     modifier = Modifier
-                        .align(Alignment.End)
+                        .align(Alignment.CenterHorizontally)
                         .widthIn(max = ActionRowMaxWidth)
                         .fillMaxWidth()
                         .height(ActionTouchHeight),

@@ -40,8 +40,8 @@ import ringout.shared.generated.resources.mypage_logged_in_profile
 fun MyPageLoggedInAccountStatus(
     nickname: String,
     email: String,
-    onEditClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onEditClick: (() -> Unit)? = null,
 ) {
     val colors = myPageColors()
 
@@ -95,23 +95,25 @@ fun MyPageLoggedInAccountStatus(
                 ),
             )
         }
-        Box(
-            modifier = Modifier
-                .size(LoggedInEditTouchTargetSize)
-                .offset(x = LoggedInEditTouchTargetOffset)
-                .clickable(
-                    role = Role.Button,
-                    onClickLabel = "프로필 수정",
-                    onClick = onEditClick,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(MyPageEditProfileIconResource),
-                contentDescription = null,
-                modifier = Modifier.size(LoggedInEditIconSize),
-                colorFilter = ColorFilter.tint(colors.primaryText),
-            )
+        if (onEditClick != null) {
+            Box(
+                modifier = Modifier
+                    .size(LoggedInEditTouchTargetSize)
+                    .offset(x = LoggedInEditTouchTargetOffset)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "프로필 수정",
+                        onClick = onEditClick,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(MyPageEditProfileIconResource),
+                    contentDescription = null,
+                    modifier = Modifier.size(LoggedInEditIconSize),
+                    colorFilter = ColorFilter.tint(colors.primaryText),
+                )
+            }
         }
     }
 }

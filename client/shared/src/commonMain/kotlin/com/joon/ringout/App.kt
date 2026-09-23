@@ -4,7 +4,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -13,15 +14,20 @@ import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.DefaultMissionLocationState
 import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.di.AppContainer
-import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
+import com.joon.ringout.presentation.app.AuthSessionCoordinator
+import com.joon.ringout.presentation.app.ReauthenticationCoordinator
 import com.joon.ringout.presentation.app.AppRuntimeCoordinator
 import com.joon.ringout.presentation.app.rememberAppAlarmController
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.home.HomeViewModel
+import com.joon.ringout.presentation.login.LoginViewModel
+import com.joon.ringout.presentation.signup.SignupViewModel
+import com.joon.ringout.presentation.navigation.authGraph
+import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingRoute
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
@@ -58,7 +64,6 @@ fun App(
     onActiveAlarmMissionForceEndHoldCompleted:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
 ) {
-    GuestOnlyAuthCleanupEffect(appContainer.authRepository)
     val appBootstrapViewModel = viewModel {
         AppBootstrapViewModel(
             repository = appContainer.appPreferencesRepository,
@@ -152,8 +157,7 @@ private fun RingoutAppContent(
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     val productAnalyticsRecorder = appContainer.productAnalyticsRecorder
-    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 실제 AuthSession 상태 수집과 세션 복원을 복구한다.
-    val authSessionState = AuthSessionState.Unauthenticated
+    val authSessionState by appContainer.authSession.state.collectAsStateWithLifecycle()
     val navigationState = rememberAppNavigationState()
     // iOS 알람 울림 이동 정책 이전이 끝날 때까지 플랫폼 울림 상태를 현재 백스택보다 우선 표시한다.
     val displayedRoute = ringingAlarm
@@ -167,6 +171,15 @@ private fun RingoutAppContent(
     } else {
         null
     }
+    val authNavigation = if (AppRoute.Login in retainedRoutes) {
+        rememberAuthNavigation(
+            navigationState,
+            viewModelScopes.get(AppRoute.Login, LoginViewModel::class),
+            viewModelScopes.get(AppRoute.Login, SignupViewModel::class),
+        )
+    } else {
+        null
+    }
     val editorRoute = navigationState.editorRoute
     val alarmEditorNavigation = if (editorRoute != null) {
         rememberAlarmEditorNavigation(
@@ -177,6 +190,21 @@ private fun RingoutAppContent(
     } else {
         null
     }
+    AuthSessionCoordinator(
+        authRepository = appContainer.authRepository,
+        authSessionState = authSessionState,
+        myPageViewModel = myPageViewModel,
+        destinationViewModel = alarmEditorNavigation?.destinationViewModel,
+    )
+    ReauthenticationCoordinator(
+        authSessionState = authSessionState,
+        navigationState = navigationState,
+        homeViewModel = homeViewModel,
+        signupViewModel = authNavigation?.signupViewModel,
+        alarmSetupViewModel = alarmEditorNavigation?.alarmSetupViewModel,
+        myPageViewModel = myPageViewModel,
+        destinationViewModel = alarmEditorNavigation?.destinationViewModel,
+    )
     val alarmController = rememberAppAlarmController(
         navigationState = navigationState,
         editorRoute = editorRoute,
@@ -207,9 +235,13 @@ private fun RingoutAppContent(
         modifier = Modifier.fillMaxSize(),
         isBackBlocked =
             displayedRoute is AppRoute.AlarmRinging ||
-                alarmEditorNavigation?.isBackBlocked(displayedRoute) == true,
+                alarmEditorNavigation?.isBackBlocked(displayedRoute) == true ||
+                authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true,
         onBack = { route ->
             when (route) {
+                AppRoute.Login,
+                AppRoute.TermsAgreement,
+                -> authNavigation?.onBack(route, displayedRoute, authSessionState)
                 AppRoute.AddAlarm,
                 is AppRoute.EditAlarm,
                 is AppRoute.Destination,
@@ -222,6 +254,8 @@ private fun RingoutAppContent(
         },
         graph = {
             homeGraph(
+                authSessionState = authSessionState,
+                memberRepository = appContainer.memberRepository,
                 viewModelScopes = viewModelScopes,
                 navigationState = navigationState,
                 homeViewModel = homeViewModel,
@@ -266,7 +300,13 @@ private fun RingoutAppContent(
                 onActiveAlarmMissionForceEndHoldCompleted =
                     onActiveAlarmMissionForceEndHoldCompleted,
             )
-            // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 rememberAuthNavigation과 authGraph를 다시 연결한다.
+            if (authNavigation != null) {
+                authGraph(
+                    authNavigation = authNavigation,
+                    displayedRoute = displayedRoute,
+                    authSessionState = authSessionState,
+                )
+            }
             if (alarmEditorNavigation != null) {
                 alarmEditorGraph(
                     navigation = alarmEditorNavigation,
@@ -277,13 +317,4 @@ private fun RingoutAppContent(
             }
         },
     )
-}
-
-@Composable
-private fun GuestOnlyAuthCleanupEffect(authRepository: AuthRepository) {
-    LaunchedEffect(authRepository) {
-        // 이전 로그인 버전의 토큰만 폐기한다. 서버 계정과 로컬 사용자 데이터는 유지하며,
-        // 서버 데이터를 로컬이나 다른 계정으로 복사하지 않는다.
-        runCatching { authRepository.logout() }
-    }
 }

@@ -63,6 +63,10 @@ class SignupViewModel(
                 else -> null
             }
         }
+        if (!terms.containsAll(setOf(AuthTerm.SERVICE, AuthTerm.PRIVACY))) {
+            uiState = uiState.copy(errorMessage = "필수 약관에 모두 동의해 주세요.")
+            return
+        }
         uiState = uiState.copy(isSaving = true, errorMessage = null)
         signupJob = scope.launch {
             if (isCleared || !isActive || sessionId != signupSessionId) return@launch

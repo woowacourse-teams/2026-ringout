@@ -8,7 +8,9 @@ final class PlatformServices: @preconcurrency IosNativeServices {
     private let alarmKitAdapter: AlarmKitAdapter
     private let missionLocationAdapter: MissionLocationAdapter
     private let firebaseAnalyticsAdapter: FirebaseAnalyticsAdapter
-    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 소셜 로그인 어댑터를 다시 연결한다.
+    private let appleSignInAdapter = AppleSignInAdapter()
+    private let kakaoSignInAdapter = KakaoSignInAdapter()
+    private let googleSignInAdapter = GoogleSignInAdapter()
 
     init(googleSdkConfiguration: GoogleSdkConfiguration) {
         mapsAdapter = MapsAdapter(configurationState: googleSdkConfiguration.maps)
@@ -75,6 +77,18 @@ final class PlatformServices: @preconcurrency IosNativeServices {
 
     func missionLocationService() -> IosMissionLocationService {
         missionLocationAdapter
+    }
+
+    func appleSignInService() -> IosAppleSignInService {
+        appleSignInAdapter
+    }
+
+    func kakaoSignInService() -> IosKakaoSignInService {
+        kakaoSignInAdapter
+    }
+
+    func googleSignInService() -> IosGoogleSignInService {
+        googleSignInAdapter
     }
 
     func analyticsTracker() -> IosAnalyticsTracker {

@@ -28,6 +28,61 @@ import kotlin.test.assertTrue
 
 class LoginViewModelTest {
     @Test
+    fun `카카오 기존 회원은 토큰 전달 후 로그인 완료 상태가 된다`() =
+        withViewModel { viewModel, repository, analytics ->
+            repository.kakaoOutcome = SocialLoginOutcome.Authenticated
+            assertTrue(viewModel.beginKakaoSignIn())
+            viewModel.handleKakaoAccessTokenResult(KakaoAccessTokenResult.Success("kakao-access"))
+
+            assertEquals(listOf("kakao-access"), repository.kakaoAccessTokens)
+            assertIs<LoginCompletion.Authenticated>(viewModel.uiState.completion)
+            assertFalse(viewModel.uiState.isLoading)
+            assertEquals(
+                listOf(LoginCompletedRecord(AnalyticsAuthProvider.Kakao, isNewUser = false)),
+                analytics.completedRecords,
+            )
+        }
+
+    @Test
+    fun `카카오 인증을 취소하거나 실패하면 서버 요청 없이 다시 시도할 수 있다`() {
+        listOf(KakaoAccessTokenResult.Cancelled, KakaoAccessTokenResult.Failure("인증 실패")).forEach { result ->
+            withViewModel { viewModel, repository, _ ->
+                assertTrue(viewModel.beginKakaoSignIn())
+                viewModel.handleKakaoAccessTokenResult(result)
+
+                assertTrue(repository.kakaoAccessTokens.isEmpty())
+                assertFalse(viewModel.uiState.isLoading)
+                assertNull(viewModel.uiState.completion)
+                if (result is KakaoAccessTokenResult.Cancelled) assertNull(viewModel.uiState.errorMessage)
+                else assertEquals("인증 실패", viewModel.uiState.errorMessage)
+                assertTrue(viewModel.beginKakaoSignIn())
+            }
+        }
+    }
+
+    @Test
+    fun `구글 신규 회원은 로그인 완료 대신 약관 가입 토큰을 전달한다`() =
+        withViewModel { viewModel, repository, analytics ->
+            repository.googleOutcome = SocialLoginOutcome.SignupRequired("google-signup-token")
+            assertTrue(viewModel.beginGoogleSignIn())
+
+            viewModel.handleGoogleAccessTokenResult(
+                GoogleAccessTokenResult.Success("google-access-token"),
+            )
+
+            val completion = assertIs<LoginCompletion.SignupRequired>(viewModel.uiState.completion)
+            assertEquals("google-signup-token", completion.signupToken)
+            assertEquals(AnalyticsAuthProvider.Google, completion.provider)
+            assertEquals(listOf("google-access-token"), repository.googleAccessTokens)
+            assertEquals(
+                listOf(LoginCompletedRecord(AnalyticsAuthProvider.Google, isNewUser = true)),
+                analytics.completedRecords,
+            )
+            assertFalse(viewModel.uiState.isLoading)
+            assertNull(viewModel.uiState.errorMessage)
+        }
+
+    @Test
     fun googleExistingMemberRecordsTheProviderLifecycle() =
         withViewModel { viewModel, repository, analytics ->
             repository.googleOutcome = SocialLoginOutcome.Authenticated
