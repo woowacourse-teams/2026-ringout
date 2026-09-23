@@ -163,6 +163,9 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 서명 빌드의 검사 순서는 다음과 같습니다.
 
 1. 필수 설정과 Firebase의 Android package name 확인.
+   `develop`은 `ringout-8abf2`, `main`은 `ringout-prod` 프로젝트만 허용하며,
+   빌드 후 생성된 Firebase 리소스의 프로젝트 ID·앱 ID·프로젝트 번호를 다시 확인합니다.
+   불일치하면 아티팩트 생성 전에 실패합니다.
 2. 복원한 키스토어의 인증서 SHA-256 및 개인 키 비밀번호 확인.
 3. 병합 커밋의 `commonTest`·`androidHostTest`와 Android Lint 실행.
 4. `bundleRelease` 실행 및 R8 산출물 확인.
@@ -205,7 +208,7 @@ YAML을 병합하는 것만으로 GitHub 설정이 자동 적용되지는 않습
 | `ANDROID_KEY_ALIAS` | 업로드 키 별칭 |
 | `ANDROID_KEY_PASSWORD` | 개인 키 비밀번호 |
 | `MAPS_API_KEY` | 실제 Android Maps API 키 |
-| `GOOGLE_SERVICES_JSON_BASE64` | 실제 `google-services.json` 파일의 Base64 |
+| `GOOGLE_SERVICES_JSON_BASE64` | `internal`에는 개발 Firebase(`ringout-8abf2`), `production`에는 운영 Firebase(`ringout-prod`)의 `google-services.json` Base64 |
 
 환경 승인자를 설정하면 AAB 생성은 승인 대기 상태가 됩니다. 완전 자동 빌드를 원한다면 빌드와 향후 배포의 승인 정책을 구분합니다. PR에는 시크릿이 필요하지 않습니다.
 
