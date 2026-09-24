@@ -102,7 +102,7 @@ TestFlight 작업은 GitHub Environment `ios-internal`을 사용하며, 이 환�
 | `APP_STORE_CONNECT_ISSUER_ID` | API Issuer ID |
 | `RINGOUT_IOS_SECRETS_XCCONFIG_BASE64` | 개발 환경용 `iosApp/Configuration/RingoutSecrets.xcconfig`의 Base64 |
 
-마지막 xcconfig Secret에는 로그인·지도 기능의 앱 설정이 들어갑니다. 누락되거나 값이 비어 있으면 배포 아카이브를 만들기 전에 실패합니다. TestFlight 내부 그룹의 자동 배포도 App Store Connect에서 켜야 팀원에게 빌드가 전달됩니다. CI 빌드 번호는 GitHub 실행 번호와 재시도 번호를 이용해 생성하며, App Store Connect에서 이미 사용한 빌드 번호보다 높아야 합니다.
+마지막 xcconfig Secret에는 로그인·지도 기능의 앱 설정이 들어갑니다. 누락되거나 값이 비어 있으면 배포 아카이브를 만들기 전에 실패합니다. TestFlight 내부 그룹의 자동 배포도 App Store Connect에서 켜야 팀원에게 빌드가 전달됩니다. iOS 버전명(`MARKETING_VERSION`)과 빌드 번호(`CURRENT_PROJECT_VERSION`)는 개발자가 `iosApp/iosApp.xcodeproj/project.pbxproj`에서 지정합니다. CI는 값을 변경하지 않고 Release 설정과 아카이브의 `Info.plist`가 일치하는지 확인합니다. 업로드할 때는 App Store Connect에서 이미 사용한 빌드 번호보다 높게 지정해야 합니다. 같은 커밋을 재실행하거나 버전을 올리지 않고 다시 업로드하면 App Store Connect에서 중복 번호로 거절할 수 있습니다.
 
 ### Android Lint
 
@@ -188,7 +188,7 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 3. 병합 커밋의 `commonTest`·`androidHostTest`와 Android Lint 실행.
 4. `bundleRelease` 실행 및 R8 산출물 확인.
 5. `jarsigner -verify -strict`로 서명 검증. 승인 키스토어를 신뢰 기준으로 사용하며 미서명 항목과 변조도 거부.
-6. AAB 인증서, 빌드된 Manifest의 applicationId·versionCode 확인 후 아티팩트 업로드.
+6. AAB 인증서, 빌드된 Manifest의 applicationId·versionCode·versionName과 Gradle 설정의 일치 여부를 확인한 후 아티팩트 업로드.
 
 `assembleRelease`, APK 탐색, `apksigner`, APK 체크섬 단계는 없습니다. 필요해지면 APK용 CI를 별도로 설계합니다.
 
@@ -230,21 +230,13 @@ YAML을 병합하는 것만으로 GitHub 설정이 자동 적용되지는 않습
 
 환경 승인자를 설정하면 AAB 생성은 승인 대기 상태가 됩니다. 완전 자동 빌드를 원한다면 빌드와 향후 배포의 승인 정책을 구분합니다. PR에는 시크릿이 필요하지 않습니다.
 
-### versionCode 발급
+### Android 버전 지정
 
-**Settings → Secrets and variables → Actions → Variables**에 저장소 변수 `APP_VERSION_CODE_BASE`를 등록합니다.
+개발자가 `androidApp/build.gradle.kts`의 `versionCode`와 `versionName`을 직접 수정합니다. CI는 버전을 발급하거나 덮어쓰지 않으며, 빌드된 Manifest와 설정값이 같은지 확인합니다. `APP_VERSION_CODE_BASE` 저장소 변수는 더 이상 사용하지 않습니다.
 
-```text
-versionCode = APP_VERSION_CODE_BASE + GITHUB_RUN_NUMBER
-```
-
-- 기준값은 **Play의 모든 트랙에서 이미 사용한 가장 큰 versionCode 이상**으로 설정합니다. 로컬 코드의 기본값만 보고 Play의 최신값이라고 가정하지 않습니다.
-- 두 채널이 같은 AAB 워크플로우의 실행 번호를 공유합니다. 환경별로 서로 다른 기준값을 덮어쓰지 않습니다.
-- 기준값이 없거나 결과가 `1..2100000000`을 벗어나면 빌드를 시작하지 않습니다.
-- **Re-run jobs**는 같은 versionCode를 사용합니다. 아티팩트 이름에는 재실행 번호를 붙이지만 이미 Play에 업로드한 versionCode로 새 파일을 다시 업로드할 수는 없습니다.
-- 새 업로드가 필요하면 해당 브랜치에서 **Run workflow**로 새 실행을 시작합니다.
-- 기존 워크플로우 파일을 삭제·재생성하거나 발급 정책을 바꿀 때는 Play 최대값을 다시 확인합니다.
-- 로컬 기본 versionCode와 versionName은 `androidApp/build.gradle.kts`에서 관리합니다. CI는 `APP_VERSION_CODE`로 versionCode만 주입합니다.
+- Play에 올릴 때 `versionCode`는 **모든 트랙에서 이미 사용한 가장 큰 값보다 높아야** 합니다.
+- 같은 커밋을 재실행하면 같은 버전으로 AAB가 만들어집니다. 새 업로드에 다른 번호가 필요하면 개발자가 `versionCode`를 수정해 커밋합니다.
+- `versionCode`는 `1..2100000000` 범위의 정수로 지정합니다.
 
 ### 브랜치 보호와 최초 적용
 

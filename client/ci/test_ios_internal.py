@@ -1,4 +1,4 @@
-import os
+import json
 import plistlib
 import tempfile
 import unittest
@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import ios_internal
+import verify_ios_version
 
 
 class IosInternalTest(unittest.TestCase):
@@ -23,13 +24,30 @@ class IosInternalTest(unittest.TestCase):
         self.assertFalse(options["manageAppVersionAndBuildNumber"])
         self.assertEqual(options["provisioningProfiles"], {ios_internal.BUNDLE_ID: "profile-uuid"})
 
-    def test_build_number_changes_for_each_attempt(self):
-        with patch.dict(os.environ, {"GITHUB_RUN_NUMBER": "42", "GITHUB_RUN_ATTEMPT": "1"}):
-            first = ios_internal.build_number()
-        with patch.dict(os.environ, {"GITHUB_RUN_NUMBER": "42", "GITHUB_RUN_ATTEMPT": "2"}):
-            retry = ios_internal.build_number()
-        self.assertEqual(int(retry), int(first) + 1)
-        self.assertGreater(int(first), 261000004)
+    def test_archive_matches_xcode_release_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = root / "settings.json"
+            settings.write_text(json.dumps([{"target": "iosApp", "buildSettings": {
+                "MARKETING_VERSION": "1.0.0", "CURRENT_PROJECT_VERSION": "261000006",
+            }}]))
+            app = root / "Ringout.app"
+            app.mkdir()
+            info = app / "Info.plist"
+            info.write_bytes(plistlib.dumps({
+                "CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "261000006",
+            }))
+            self.assertEqual(verify_ios_version.verify_archive(settings, app), ("1.0.0", "261000006"))
+            info.write_bytes(plistlib.dumps({
+                "CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "300000701",
+            }))
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                verify_ios_version.verify_archive(settings, app)
+            info.write_bytes(plistlib.dumps({
+                "CFBundleShortVersionString": "1.1.0", "CFBundleVersion": "261000006",
+            }))
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                verify_ios_version.verify_archive(settings, app)
 
     def test_profile_rejects_a_different_app(self):
         profile = {

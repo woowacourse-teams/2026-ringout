@@ -70,11 +70,16 @@ class RoutingTest(unittest.TestCase):
 
 
 class ConfigurationTest(unittest.TestCase):
-    def test_version_is_shared_across_channels_and_reruns(self):
-        self.assertEqual(ci.version_code("261010004", "42"), 261010046)
-        for base, number in (("", "1"), ("-1", "1"), ("12", "0"), ("2100000000", "1"), ("12", "1.0")):
-            with self.subTest(base=base, number=number), self.assertRaises(ci.CIError):
-                ci.version_code(base, number)
+    def test_channel_selection_does_not_allocate_a_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env_file = Path(directory) / "github-env"
+            env_file.touch()
+            with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/develop", "GITHUB_ENV": str(env_file)}):
+                ci.select_build()
+            self.assertEqual(env_file.read_text(), "AAB_CHANNEL=internal\n")
+            with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/main", "GITHUB_ENV": str(env_file)}):
+                ci.select_build()
+            self.assertEqual(env_file.read_text(), "AAB_CHANNEL=internal\nAAB_CHANNEL=release\n")
 
     def test_google_services_rejects_fixture_and_wrong_app(self):
         fixture = json.loads((ci.CLIENT_ROOT / "ci/google-services.ci.json").read_text())
@@ -150,17 +155,24 @@ class ArtifactTest(unittest.TestCase):
             ci.find_aab(self.root)
 
     def test_metadata_matches_built_version(self):
+        source = self.root / "androidApp/build.gradle.kts"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text('versionCode = 42\nversionName = "1.1.0"\n')
         directory = self.root / "androidApp/build/intermediates/merged_manifests/release/processReleaseManifest"
         directory.mkdir(parents=True)
         (directory / "AndroidManifest.xml").write_text(
             '<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
             'package="com.joon.ringout" android:versionCode="42" android:versionName="1.1.0"/>'
         )
-        env = {"APP_VERSION_CODE": "42", "AAB_CHANNEL": "internal", "GITHUB_SHA": "a" * 40,
+        env = {"AAB_CHANNEL": "internal", "GITHUB_SHA": "a" * 40,
                "GITHUB_REF_NAME": "develop", "GITHUB_RUN_ID": "10", "GITHUB_RUN_ATTEMPT": "1"}
         with patch.dict(os.environ, env):
             self.assertEqual(ci.release_metadata(self.root)["versionCode"], 42)
-            with patch.dict(os.environ, {"APP_VERSION_CODE": "43"}), self.assertRaises(ci.CIError):
+            source.write_text('versionCode = 43\nversionName = "1.1.0"\n')
+            with self.assertRaises(ci.CIError):
+                ci.release_metadata(self.root)
+            source.write_text('versionCode = 42\nversionName = "1.2.0"\n')
+            with self.assertRaises(ci.CIError):
                 ci.release_metadata(self.root)
 
     def test_ci_configuration_rejects_real_or_overridden_firebase_inputs(self):

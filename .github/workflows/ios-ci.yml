@@ -9,6 +9,7 @@ on:
       - 'client/shared/**'
       - 'client/ci/verify_ios_firebase.py'
       - 'client/ci/ios_internal.py'
+      - 'client/ci/verify_ios_version.py'
       - 'client/gradle/**'
       - 'client/gradlew'
       - 'client/build.gradle.kts'
@@ -133,7 +134,6 @@ jobs:
             CODE_SIGN_IDENTITY='Apple Distribution' \
             DEVELOPMENT_TEAM=475GWW72JW \
             RINGOUT_CI_PROFILE_UUID="$IOS_PROFILE_UUID" \
-            CURRENT_PROJECT_VERSION="$IOS_BUILD_NUMBER" \
             archive
       - name: Verify signed archive and development Firebase
         run: |
@@ -142,7 +142,15 @@ jobs:
             --source iosApp/iosApp/GoogleService-Info.plist \
             --app "$app"
           codesign --verify --deep --strict "$app"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" = "$IOS_BUILD_NUMBER"
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -target iosApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -showBuildSettings -json > "$RUNNER_TEMP/ringout-ios-release-settings.json"
+          python3 ci/verify_ios_version.py \
+            --settings "$RUNNER_TEMP/ringout-ios-release-settings.json" \
+            --app "$app"
           security cms -D -i "$app/embedded.mobileprovision" > "$RUNNER_TEMP/embedded-profile.plist"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/embedded-profile.plist")" = "$IOS_PROFILE_UUID"
       - name: Upload internal-only build to App Store Connect
