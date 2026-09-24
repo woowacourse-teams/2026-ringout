@@ -88,9 +88,9 @@ Apple Silicon Mac에서 공통 테스트와 iOS 테스트를 실행합니다.
 
 Android CI에는 이 태스크를 포함하지 않습니다. `develop` 대상 PR에서 iOS 관련 파일이 변경되거나 `develop`에 푸시되면 별도의 iOS CI가 실행합니다.
 
-iOS CI는 macOS 26 러너에서 공유 Kotlin iOS 테스트와 서명 없는 Debug 시뮬레이터 빌드를 실행합니다. 빌드된 `Ringout.app`의 `GoogleService-Info.plist`가 개발 Firebase 프로젝트 `ringout-8abf2` 및 iOS 번들 ID와 일치하는지도 검사합니다. `develop` 푸시에서는 이 검사가 통과한 뒤 배포 서명 아카이브를 만들고, 아카이브의 Firebase 설정을 다시 검증한 다음 TestFlight 내부 테스트 전용 빌드로 업로드합니다. PR에서는 업로드하지 않습니다.
+iOS CI는 macOS 26 러너에서 공유 Kotlin iOS 테스트와 서명 없는 Debug 시뮬레이터 빌드를 실행합니다. 빌드된 `Ringout.app`의 `GoogleService-Info.plist`가 개발 Firebase 프로젝트 `ringout-8abf2` 및 iOS 번들 ID와 일치하는지도 검사합니다. PR에서는 CI 검증만 실행합니다. `develop` 푸시에서는 별도 `iOS Internal TestFlight CD`가 같은 커밋의 iOS CI 성공을 확인한 뒤 배포 서명 아카이브를 만들고, Firebase·서명·버전을 다시 검증한 다음 TestFlight 내부 테스트 전용 빌드로 업로드합니다. CI가 실패하거나 취소되면 업로드 job은 건너뜁니다.
 
-TestFlight 작업은 GitHub Environment `ios-internal`을 사용하며, 이 환경은 `develop` 브랜치만 허용해야 합니다. 다음 Environment secrets가 필요합니다.
+TestFlight CD 작업은 GitHub Environment `ios-internal`을 사용하며, 이 환경은 `develop` 브랜치만 허용해야 합니다. CI 작업에는 Apple 배포 시크릿을 제공하지 않습니다. 다음 Environment secrets가 CD에 필요합니다.
 
 | Secret | 내용 |
 | --- | --- |
@@ -102,7 +102,9 @@ TestFlight 작업은 GitHub Environment `ios-internal`을 사용하며, 이 환�
 | `APP_STORE_CONNECT_ISSUER_ID` | API Issuer ID |
 | `RINGOUT_IOS_SECRETS_XCCONFIG_BASE64` | 개발 환경용 `iosApp/Configuration/RingoutSecrets.xcconfig`의 Base64 |
 
-마지막 xcconfig Secret에는 로그인·지도 기능의 앱 설정이 들어갑니다. 누락되거나 값이 비어 있으면 배포 아카이브를 만들기 전에 실패합니다. TestFlight 내부 그룹의 자동 배포도 App Store Connect에서 켜야 팀원에게 빌드가 전달됩니다. iOS 버전명(`MARKETING_VERSION`)과 빌드 번호(`CURRENT_PROJECT_VERSION`)는 개발자가 `iosApp/iosApp.xcodeproj/project.pbxproj`에서 지정합니다. CI는 값을 변경하지 않고 Release 설정과 아카이브의 `Info.plist`가 일치하는지 확인합니다. 업로드할 때는 App Store Connect에서 이미 사용한 빌드 번호보다 높게 지정해야 합니다. 같은 커밋을 재실행하거나 버전을 올리지 않고 다시 업로드하면 App Store Connect에서 중복 번호로 거절할 수 있습니다.
+마지막 xcconfig Secret에는 로그인·지도 기능의 앱 설정이 들어갑니다. 누락되거나 값이 비어 있으면 배포 아카이브를 만들기 전에 실패합니다. TestFlight 내부 그룹의 자동 배포도 App Store Connect에서 켜야 팀원에게 빌드가 전달됩니다. iOS 버전명(`MARKETING_VERSION`)과 빌드 번호(`CURRENT_PROJECT_VERSION`)는 개발자가 `iosApp/iosApp.xcodeproj/project.pbxproj`에서 지정합니다. CD는 값을 변경하지 않고 Release 설정과 아카이브의 `Info.plist`가 일치하는지 확인합니다. 업로드할 때는 App Store Connect에서 이미 사용한 빌드 번호보다 높게 지정해야 합니다. 같은 커밋을 재실행하거나 버전을 올리지 않고 다시 업로드하면 App Store Connect에서 중복 번호로 거절할 수 있습니다.
+
+CD는 `develop` 푸시 직후 별도 실행으로 시작해 GitHub Actions API에서 동일 커밋의 `iOS CI` 성공을 기다립니다. CD 실패 원인은 `iOS Internal TestFlight CD` 실행 기록에서 확인합니다. CI 실패 후 수정 없이 CI만 재실행해 성공했다면 CD 실행도 **Re-run all jobs**로 다시 시작할 수 있습니다. 업로드 단계 실패 후 재실행할 때는 App Store Connect의 Build Uploads에서 해당 버전·빌드 번호가 이미 접수되었는지 먼저 확인합니다.
 
 ### Android Lint
 
@@ -152,11 +154,12 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 | 작업 브랜치 → `develop` 클라이언트 변경 PR 생성·수정·재오픈 | `Android CI` | 테스트, Android Lint, 서명 없는 release AAB 빌드, R8 검사 | 검증 보고서 |
 | 작업 브랜치 → `develop` iOS 관련 변경 PR 생성·수정·재오픈 | `iOS CI` | 공유 Kotlin iOS 테스트, 서명 없는 시뮬레이터 빌드, 개발 Firebase 확인 | 검사 결과 |
 | `develop`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 내부 테스트용 AAB |
-| `develop`에 병합 | `iOS CI` | iOS 검사 통과 후 개발 Firebase로 서명 아카이브 생성·검증·TestFlight 내부 테스트 업로드 | 내부 테스트 빌드 |
+| `develop`에 병합 | `iOS CI` | 공유 Kotlin 테스트, 시뮬레이터 빌드, 개발 Firebase 확인 | 검사 결과 |
+| 동일 `develop` 커밋의 iOS CI 성공 | `iOS Internal TestFlight CD` | 개발 Firebase로 서명 아카이브 생성·검증·TestFlight 내부 테스트 업로드 | 내부 테스트 빌드 |
 | `develop` → `main` 클라이언트 변경 PR 생성·수정·재오픈 | `Android CI` | 같은 품질 검사와 출발 브랜치 검사 | 검증 보고서 |
 | `main`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 릴리스용 AAB |
 
-워크플로우는 저장소 루트의 [android-ci.yml](../.github/workflows/android-ci.yml), [ios-ci.yml](../.github/workflows/ios-ci.yml), [build-release-aab.yml](../.github/workflows/build-release-aab.yml)에 있습니다.
+워크플로우는 저장소 루트의 [android-ci.yml](../.github/workflows/android-ci.yml), [ios-ci.yml](../.github/workflows/ios-ci.yml), [ios-internal-cd.yml](../.github/workflows/ios-internal-cd.yml), [build-release-aab.yml](../.github/workflows/build-release-aab.yml)에 있습니다.
 
 ### PR 검증과 병합 조건
 
@@ -254,7 +257,7 @@ YAML을 병합하는 것만으로 GitHub 설정이 자동 적용되지는 않습
 
 - 현재 API 주소는 `shared/src/commonMain/kotlin/com/joon/ringout/data/network/ApiConfig.kt`에 고정되어 있습니다. **Environment를 나눠도 QA 서버가 분리되지는 않습니다.**
 - AAB는 기기에 직접 설치하는 파일이 아닙니다. 실제 QA에는 Google Play 내부 테스트 등의 배포 경로가 필요합니다.
-- Android AAB 워크플로우는 AAB 생성·검증·보관까지 수행합니다. Play 자동 업로드·출시와 실기기 E2E 테스트, ktlint는 포함하지 않습니다. 기존 Crashlytics mapping 업로드는 실제 서명 빌드에서 유지합니다. iOS 내부 테스트 업로드는 별도의 `iOS CI`에서 수행합니다.
+- Android AAB 워크플로우는 AAB 생성·검증·보관까지 수행합니다. Play 자동 업로드·출시와 실기기 E2E 테스트, ktlint는 포함하지 않습니다. 기존 Crashlytics mapping 업로드는 실제 서명 빌드에서 유지합니다. iOS 내부 테스트 업로드는 별도의 `iOS Internal TestFlight CD`에서 수행합니다.
 - `main` AAB는 `develop`에서 QA한 파일을 재사용하지 않고 새로 빌드합니다. 최종 릴리스 파일도 확인해야 합니다. 동일 바이너리 승격이나 별도 QA 서버·동시 설치 앱이 필요하면 배포 정책과 빌드 변형을 추가로 설계합니다.
 
 ## 참고 문서
