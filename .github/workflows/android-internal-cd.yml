@@ -1,0 +1,103 @@
+name: Android Internal Play CD
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'client/**'
+      - '.github/workflows/android-ci.yml'
+      - '.github/workflows/build-release-aab.yml'
+      - '.github/workflows/android-internal-cd.yml'
+      - '.github/actions/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-play-internal
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+    working-directory: client
+
+jobs:
+  gate:
+    name: Wait for matching signed AAB build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run_id: ${{ steps.check.outputs.run_id }}
+      run_attempt: ${{ steps.check.outputs.run_attempt }}
+      artifact_name: ${{ steps.check.outputs.artifact_name }}
+    steps:
+      - name: Checkout the triggering commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Wait for the matching signed AAB run
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 ci/android_internal_cd.py gate
+
+  publish:
+    name: Publish verified AAB to Play internal testing
+    needs: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: internal
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Checkout the triggering commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Confirm checked out commit
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Set up Corretto JDK 21 for signature verification
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: corretto
+          java-version: '21'
+      - name: Download signed AAB from the matching run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AAB_RUN_ID: ${{ needs.gate.outputs.run_id }}
+          ARTIFACT_NAME: ${{ needs.gate.outputs.artifact_name }}
+        run: |
+          download_dir="$RUNNER_TEMP/ringout-aab/$ARTIFACT_NAME"
+          mkdir -p "$download_dir"
+          gh run download "$AAB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$ARTIFACT_NAME" --dir "$download_dir"
+      - name: Verify AAB provenance, Firebase, version, checksum, and signature
+        id: verify
+        env:
+          AAB_DOWNLOAD_DIR: ${{ runner.temp }}/ringout-aab
+          AAB_RUN_ID: ${{ needs.gate.outputs.run_id }}
+          AAB_RUN_ATTEMPT: ${{ needs.gate.outputs.run_attempt }}
+        run: python3 ci/android_internal_cd.py verify
+      - name: Authenticate to Google Cloud using GitHub OIDC
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          create_credentials_file: false
+      - name: Publish verified AAB to Google Play internal track
+        env:
+          GOOGLE_PLAY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          VERIFIED_AAB_PATH: ${{ steps.verify.outputs.aab_path }}
+          VERIFIED_VERSION_CODE: ${{ steps.verify.outputs.version_code }}
+        run: python3 ci/android_internal_cd.py publish

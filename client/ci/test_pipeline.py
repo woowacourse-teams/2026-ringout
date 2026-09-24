@@ -43,7 +43,8 @@ class RoutingTest(unittest.TestCase):
 
     def test_client_and_ci_changes_are_detected(self):
         for path in (b"client/README.md", b"client/shared/test.kt", b".github/workflows/android-ci.yml",
-                     b".github/workflows/build-release-aab.yml", b".github/actions/setup/action.yml"):
+                     b".github/workflows/build-release-aab.yml", b".github/workflows/android-internal-cd.yml",
+                     b".github/actions/setup/action.yml"):
             self.assertTrue(ci.is_client_path(path), path)
         self.assertFalse(ci.is_client_path(b"server/App.java"))
         self.assertFalse(ci.is_client_path(b"README.md"))
