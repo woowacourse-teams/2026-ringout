@@ -8,6 +8,7 @@ on:
       - 'client/**'
       - '.github/workflows/android-ci.yml'
       - '.github/workflows/build-release-aab.yml'
+      - '.github/workflows/android-internal-cd.yml'
       - '.github/actions/**'
 
 permissions:

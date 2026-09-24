@@ -71,6 +71,7 @@ def validate_pr_route(event):
 def is_client_path(path):
     return path.startswith(b"client/") or path in (
         b".github/workflows/android-ci.yml", b".github/workflows/build-release-aab.yml",
+        b".github/workflows/android-internal-cd.yml",
     ) or path.startswith(b".github/actions/")
 
 
