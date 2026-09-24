@@ -74,14 +74,6 @@ def validate_xcconfig(path: Path) -> None:
         raise ValueError(f"RingoutSecrets.xcconfig is missing: {', '.join(missing)}")
 
 
-def build_number() -> str:
-    run_number = int(os.environ["GITHUB_RUN_NUMBER"])
-    run_attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
-    if run_number < 1 or not 1 <= run_attempt <= 99:
-        raise ValueError("Invalid GitHub run number or attempt")
-    return str(300000000 + run_number * 100 + run_attempt)
-
-
 def export_options(profile_uuid: str, path: Path) -> None:
     options = {
         "method": "app-store-connect",
@@ -126,7 +118,6 @@ def main() -> int:
             "IOS_PROFILE_UUID": profile_uuid,
             "IOS_API_KEY_PATH": api_key_path,
             "IOS_EXPORT_OPTIONS_PATH": export_path,
-            "IOS_BUILD_NUMBER": build_number(),
         }
         with env_path.open("a", encoding="utf-8") as stream:
             for key, value in values.items():

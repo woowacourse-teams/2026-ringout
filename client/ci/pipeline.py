@@ -106,23 +106,12 @@ def check_gate(changes_result, client_changed, quality_result):
     raise CIError("필요한 클라이언트 검증이 성공하지 않았습니다.")
 
 
-def version_code(base, run_number):
-    if not re.fullmatch(r"[0-9]+", base) or not re.fullmatch(r"[0-9]+", run_number):
-        raise CIError("APP_VERSION_CODE_BASE와 GITHUB_RUN_NUMBER는 정수여야 합니다.")
-    value = int(base) + int(run_number)
-    if int(run_number) < 1 or not 1 <= value <= MAX_VERSION_CODE:
-        raise CIError("versionCode는 1~2100000000 범위여야 합니다.")
-    return value
-
-
 def select_build():
     branch = require_env("GITHUB_REF")
     expected_firebase_project(branch)
-    code = version_code(require_env("APP_VERSION_CODE_BASE"), require_env("GITHUB_RUN_NUMBER"))
     channel = "internal" if branch == "refs/heads/develop" else "release"
-    for key, value in (("APP_VERSION_CODE", code), ("AAB_CHANNEL", channel)):
-        github_value("GITHUB_ENV", key, value)
-    print(f"AAB 채널: {channel}, versionCode: {code}")
+    github_value("GITHUB_ENV", "AAB_CHANNEL", channel)
+    print(f"AAB 채널: {channel}")
 
 
 def decode_secret(name):
@@ -286,6 +275,15 @@ def verify_signature(aab, keystore, alias, expected):
         raise CIError("AAB 서명 인증서가 승인된 업로드 인증서와 다릅니다.")
 
 
+def declared_android_version(root=CLIENT_ROOT):
+    build_script = (root / "androidApp/build.gradle.kts").read_text(encoding="utf-8")
+    code = re.findall(r'^\s*versionCode\s*=\s*([0-9]+)\s*$', build_script, re.M)
+    name = re.findall(r'^\s*versionName\s*=\s*"([^"\n]+)"\s*$', build_script, re.M)
+    if len(code) != 1 or len(name) != 1 or not 1 <= int(code[0]) <= MAX_VERSION_CODE:
+        raise CIError("androidApp/build.gradle.kts의 versionCode·versionName을 확인할 수 없습니다.")
+    return code[0], name[0]
+
+
 def release_metadata(root=CLIENT_ROOT):
     manifests = list((root / "androidApp/build/intermediates/merged_manifests/release").glob("*/AndroidManifest.xml"))
     if len(manifests) != 1:
@@ -294,8 +292,9 @@ def release_metadata(root=CLIENT_ROOT):
     android = "{http://schemas.android.com/apk/res/android}"
     if manifest.get("package") != APPLICATION_ID:
         raise CIError("빌드한 앱의 applicationId가 다릅니다.")
-    if manifest.get(android + "versionCode") != require_env("APP_VERSION_CODE"):
-        raise CIError("빌드한 앱의 versionCode가 CI 발급값과 다릅니다.")
+    code, name = declared_android_version(root)
+    if manifest.get(android + "versionCode") != code or manifest.get(android + "versionName") != name:
+        raise CIError("빌드한 앱의 버전이 androidApp/build.gradle.kts 설정과 다릅니다.")
     return {
         "applicationId": APPLICATION_ID,
         "versionCode": int(manifest.get(android + "versionCode")),
@@ -336,14 +335,14 @@ def package_aab():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("changes", "gate", "version", "prepare-signing", "verify-r8", "verify-unsigned", "package", "cleanup"))
+    parser.add_argument("command", choices=("changes", "gate", "channel", "prepare-signing", "verify-r8", "verify-unsigned", "package", "cleanup"))
     command = parser.parse_args().command
     if command == "changes":
         detect_changes()
     elif command == "gate":
         check_gate(require_env("CHANGES_RESULT"), require_env("CLIENT_CHANGED"), require_env("QUALITY_RESULT"))
         print("Android CI 검증을 통과했습니다.")
-    elif command == "version":
+    elif command == "channel":
         select_build()
     elif command == "prepare-signing":
         prepare_signing()

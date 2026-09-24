@@ -73,11 +73,6 @@ val releaseKeyAlias =
 val releaseKeyPassword =
     providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
 
-val appVersionCode = providers.environmentVariable("APP_VERSION_CODE").orNull?.let { value ->
-    value.toIntOrNull()?.takeIf { it in 1..2_100_000_000 }
-        ?: throw GradleException("APP_VERSION_CODE must be an integer between 1 and 2100000000.")
-} ?: 261010019
-
 val googleServicesJsonPath = providers.environmentVariable("GOOGLE_SERVICES_JSON_PATH").orNull
 if (ciVerification || !googleServicesJsonPath.isNullOrBlank()) {
     // Configure after Google's onVariants callback has registered the task and its defaults.
@@ -127,7 +122,7 @@ android {
         applicationId = "com.joon.ringout"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = appVersionCode
+        versionCode = 261010019
         versionName = "1.1.0"
         buildConfigField("String", "MAPS_API_KEY", "\"$escapedMapsApiKey\"")
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$escapedKakaoNativeAppKey\"")
