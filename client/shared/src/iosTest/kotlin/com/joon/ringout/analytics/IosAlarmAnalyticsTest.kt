@@ -67,7 +67,7 @@ class IosAlarmAnalyticsTest {
         val event = tracker.events.single()
         assertEquals("destination_alarm_created", event.name)
         assertEquals(1L, event.numberParameter("creation_index"))
-        assertEquals(2L, event.numberParameter("repeat_day_count"))
+        assertEquals(3L, event.numberParameter("repeat_day_count"))
         assertEquals("weekly", event.textParameter("schedule_type"))
         assertEquals(2L, event.numberParameter("settings_schema_version"))
         assertEquals(12L, event.numberParameter("limit_minutes"))
