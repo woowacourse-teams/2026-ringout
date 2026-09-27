@@ -1,8 +1,8 @@
 package com.joon.ringout.presentation.profilechange
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,8 +20,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -40,6 +45,8 @@ internal fun ProfileChangeScreen(
     uiState: ProfileChangeUiState,
     onNicknameChange: (String) -> Unit,
     onBackClick: () -> Unit,
+    profileImage: ImageBitmap?,
+    profileImageError: String?,
     onProfileImageChangeClick: () -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -63,6 +70,8 @@ internal fun ProfileChangeScreen(
             ProfileChangeHeader(onBackClick = onBackClick)
             Spacer(Modifier.height(ProfileChangeHeaderToProfileImageSpacing))
             ProfileImageEditor(
+                profileImage = profileImage,
+                errorMessage = profileImageError,
                 onProfileImageChangeClick = onProfileImageChangeClick,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
@@ -160,12 +169,35 @@ private fun ProfileChangeLightPreview() {
     )
 }
 
+@Preview(name = "Nickname change - Profile photo selected", widthDp = 402, heightDp = 941)
+@Composable
+private fun ProfileChangeProfileImagePreview() {
+    ProfileChangeInteractivePreview(
+        themeMode = ThemeMode.Dark,
+        initialNickname = "Ringout12",
+        showProfileImage = true,
+    )
+}
+
 @Composable
 private fun ProfileChangeInteractivePreview(
     themeMode: ThemeMode,
     initialNickname: String,
+    showProfileImage: Boolean = false,
 ) {
     var nickname by remember(initialNickname) { mutableStateOf(initialNickname) }
+    val profileImage = remember(showProfileImage) {
+        if (showProfileImage) {
+            ImageBitmap(1, 1).also { bitmap ->
+                Canvas(bitmap).drawRect(
+                    rect = Rect(left = 0f, top = 0f, right = 1f, bottom = 1f),
+                    paint = Paint().apply { color = Color(0xFF7D62D9) },
+                )
+            }
+        } else {
+            null
+        }
+    }
 
     RingoutTheme(themeMode) {
         ProfileChangeScreen(
@@ -175,6 +207,8 @@ private fun ProfileChangeInteractivePreview(
             ),
             onNicknameChange = { nickname = it },
             onBackClick = {},
+            profileImage = profileImage,
+            profileImageError = null,
             onProfileImageChangeClick = {},
             onConfirmClick = {},
         )

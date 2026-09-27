@@ -2,7 +2,12 @@ package com.joon.ringout.presentation.profilechange
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.member.MemberRepository
@@ -15,7 +20,6 @@ internal fun ProfileChangeRoute(
     memberRepository: MemberRepository,
     onBackClick: () -> Unit,
     onNicknameChanged: (String) -> Unit,
-    onProfileImageChangeClick: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val account = accountStatus as? MyPageAccountStatus.LoggedIn
@@ -35,6 +39,20 @@ internal fun ProfileChangeRoute(
         ProfileChangeViewModel(account.nickname, memberRepository)
     }
     val uiState = viewModel.uiState
+    var profileImage by remember { mutableStateOf<ImageBitmap?>(null) }
+    var profileImageError by remember { mutableStateOf<String?>(null) }
+    val launchProfileImagePicker = rememberProfileImagePicker { result ->
+        when (result) {
+            is ProfileImagePickResult.Selected -> {
+                profileImage = result.image
+                profileImageError = null
+            }
+            ProfileImagePickResult.Cancelled -> profileImageError = null
+            ProfileImagePickResult.Failure -> {
+                profileImageError = "사진을 불러오지 못했어요. 다시 선택해 주세요."
+            }
+        }
+    }
     LaunchedEffect(viewModel, uiState.completedNickname) {
         val updatedNickname = uiState.completedNickname ?: return@LaunchedEffect
         onNicknameChanged(updatedNickname)
@@ -45,7 +63,12 @@ internal fun ProfileChangeRoute(
         uiState = uiState,
         onNicknameChange = viewModel::onNicknameChange,
         onBackClick = onBackClick,
-        onProfileImageChangeClick = onProfileImageChangeClick,
+        profileImage = profileImage,
+        profileImageError = profileImageError,
+        onProfileImageChangeClick = {
+            profileImageError = null
+            launchProfileImagePicker()
+        },
         onConfirmClick = viewModel::confirm,
         modifier = modifier,
     )
