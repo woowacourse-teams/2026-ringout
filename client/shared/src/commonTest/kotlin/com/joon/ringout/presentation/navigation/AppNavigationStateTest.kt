@@ -19,12 +19,12 @@ class AppNavigationStateTest {
         state.navigate(AppRoute.Login)
         state.navigate(AppRoute.Login)
 
-        assertEquals(listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login), state.backStack)
+        assertEquals(listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login), state.backStack.toList())
         state.normalizeForGuestMode()
         assertEquals(AppRoute.Login, state.requestedRoute)
 
         state.popBackStack(AppRoute.Login)
-        assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack)
+        assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack.toList())
     }
 
     @Test

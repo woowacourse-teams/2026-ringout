@@ -1,4 +1,4 @@
-name: Client CI
+name: Android CI
 
 on:
   pull_request:
@@ -6,8 +6,9 @@ on:
     types: [opened, synchronize, reopened, edited]
     paths:
       - 'client/**'
-      - '.github/workflows/client-ci.yml'
+      - '.github/workflows/android-ci.yml'
       - '.github/workflows/build-release-aab.yml'
+      - '.github/workflows/android-internal-cd.yml'
       - '.github/actions/**'
 
 permissions:
@@ -93,7 +94,7 @@ jobs:
 
   result:
     # Summarize triggered runs; path-filtered workflows must not be required for every PR.
-    name: Client CI
+    name: Android CI
     if: always()
     needs: [changes, quality]
     runs-on: ubuntu-24.04
