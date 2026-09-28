@@ -23,5 +23,9 @@ public abstract class BaseEntity {
   private LocalDateTime updated_at;
 
   @Column(name = "deleted_at")
-  private LocalDateTime deleted_at;
+  private LocalDateTime deletedAt;
+
+  protected void markDeleted() {
+    this.deletedAt = LocalDateTime.now();
+  }
 }

@@ -17,6 +17,7 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
+import com.ringout.api.room.repository.RoomBlackListRepository;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
@@ -34,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -47,13 +49,16 @@ class RoomServiceTest {
     private RoomUserRepository roomUserRepository;
 
     @Mock
+    private RoomBlackListRepository roomBlackListRepository;
+
+    @Mock
     private UserRepository userRepository;
 
     private RoomService roomService;
 
     @BeforeEach
     void setUp() {
-        roomService = new RoomService(roomRepository, roomUserRepository, userRepository);
+        roomService = new RoomService(roomRepository, roomUserRepository, roomBlackListRepository, userRepository);
     }
 
     @Nested
@@ -416,6 +421,111 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_IMAGE_INVALID));
             verify(roomRepository, never()).findById(10L);
+        }
+    }
+
+    @Nested
+    class 방장_모임방_삭제_처리 {
+
+        @Test
+        void 모임방을_soft_delete하고_블랙리스트를_제거한다() {
+            // given
+            Long userId = 1L;
+            Long roomId = 10L;
+            User user = userWithId(userId, "가나다");
+            Room room = roomWithHost(userId, roomId);
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+
+            // when
+            roomService.deleteRoom(userId, roomId);
+
+            // then
+            assertThat(room.getDeletedAt()).isNotNull();
+            verify(roomBlackListRepository).deleteAllByRoom(room);
+            verify(roomRepository, never()).delete(room);
+        }
+    }
+
+    @Nested
+    class 모임방_삭제_권한_검증 {
+
+        @Test
+        void 인증되지_않은_사용자는_모임방을_삭제할_수_없다() {
+            // given
+            Long userId = null;
+            Long roomId = 10L;
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.deleteRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
+            verify(roomRepository, never()).findActiveById(any());
+            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+        }
+
+        @Test
+        void 존재하지_않는_사용자는_모임방을_삭제할_수_없다() {
+            // given
+            Long userId = 1L;
+            Long roomId = 10L;
+            given(userRepository.findById(userId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.deleteRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
+            verify(roomRepository, never()).findActiveById(any());
+            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+        }
+
+        @Test
+        void 존재하지_않거나_삭제된_모임방은_삭제할_수_없다() {
+            // given
+            Long userId = 1L;
+            Long roomId = 10L;
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.deleteRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_NOT_FOUND));
+            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+        }
+
+        @Test
+        void 방장이_아니면_모임방을_삭제할_수_없다() {
+            // given
+            Long userId = 1L;
+            Long roomId = 10L;
+            Room room = roomWithHost(2L, roomId);
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.deleteRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception -> {
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_DELETE_FORBIDDEN);
+                    assertThat(exception.getErrorReasonHttpStatus().httpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                    assertThat(exception.getErrorReasonHttpStatus().code()).isEqualTo("ROOM403");
+                    assertThat(exception.getErrorReasonHttpStatus().message()).isEqualTo("모임 방을 삭제할 권한이 없습니다.");
+                });
+            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
         }
     }
 

@@ -12,6 +12,7 @@ public enum RoomErrorStatus implements BaseErrorCode {
 
     ROOM_UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "ROOM401", "인증되지 않은 사용자입니다."),
     ROOM_FORBIDDEN(HttpStatus.FORBIDDEN, "ROOM403", "모임 방을 수정할 권한이 없습니다."),
+    ROOM_DELETE_FORBIDDEN(HttpStatus.FORBIDDEN, "ROOM403", "모임 방을 삭제할 권한이 없습니다."),
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "ROOM404", "존재하지 않는 모임 방입니다."),
     ROOM_NAME_INVALID(HttpStatus.BAD_REQUEST, "ROOM400", "모임 방 이름의 형식이 올바르지 않습니다."),
     ROOM_DESCRIPTION_INVALID(HttpStatus.BAD_REQUEST, "ROOM400", "모임 소개의 형식이 올바르지 않습니다."),

@@ -7,6 +7,7 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
+import com.ringout.api.room.repository.RoomBlackListRepository;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
@@ -25,6 +26,7 @@ public class RoomService {
     private static final String DEFAULT_ROOM_IMAGE_URL = "/images/default-room.png";
     private final RoomRepository roomRepository;
     private final RoomUserRepository roomUserRepository;
+    private final RoomBlackListRepository roomBlackListRepository;
     private final UserRepository userRepository;
 
     @Transactional
@@ -91,6 +93,32 @@ public class RoomService {
         return RoomUpdateResponse.from(room, DEFAULT_ROOM_IMAGE_URL);
     }
 
+    @Transactional
+    public void deleteRoom(Long userId, Long roomId) {
+        log.atInfo()
+            .addKeyValue("event", "room_deletion_requested")
+            .addKeyValue("userId", userId)
+            .addKeyValue("roomId", roomId)
+            .log("모임방 삭제 요청 시작");
+
+        User user = findAuthenticatedUser(userId);
+        Room room = findActiveRoom(roomId);
+        if (!room.isHostedBy(user.getId())) {
+            throw new GeneralException(RoomErrorStatus.ROOM_DELETE_FORBIDDEN);
+        }
+
+        room.softDelete();
+        
+        // TODO: 아직 추방 기능이 구현되지 않았기 때문에 hard deleted로 구현했습니다.
+        roomBlackListRepository.deleteAllByRoom(room);
+
+        log.atInfo()
+            .addKeyValue("event", "room_deletion_succeeded")
+            .addKeyValue("userId", userId)
+            .addKeyValue("roomId", room.getId())
+            .log("모임방 삭제 성공");
+    }
+
     private User findAuthenticatedUser(Long userId) {
         if (userId == null) {
             throw new GeneralException(RoomErrorStatus.ROOM_UNAUTHORIZED);
@@ -98,6 +126,11 @@ public class RoomService {
 
         return userRepository.findById(userId)
             .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_UNAUTHORIZED));
+    }
+
+    private Room findActiveRoom(Long roomId) {
+        return roomRepository.findActiveById(roomId)
+            .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_NOT_FOUND));
     }
 
     private void validateRequestExists(RoomCreateRequest request) {
