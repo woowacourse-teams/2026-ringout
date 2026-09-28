@@ -3,6 +3,8 @@ package com.ringout.api.common.response.error;
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.common.response.code.ErrorReasonResponse;
 import com.ringout.api.common.response.code.status.ErrorStatus;
+import com.ringout.api.config.security.CustomUserDetails;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
@@ -12,6 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,20 +28,27 @@ public class ExceptionAdvice {
 
     private static final String UNEXPECTED_EXCEPTION_EVENT = "unexpected_exception_occurred";
     private static final String INTERNAL_SERVER_ERROR_REASON = "INTERNAL_SERVER_ERROR";
+    private static final String CLIENT_REQUEST_FAILURE_EVENT = "client_request_failed";
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<CustomResponse<Void>> handleRequestConstraintViolation(ConstraintViolationException e) {
+    public ResponseEntity<CustomResponse<Void>> handleRequestConstraintViolation(
+        ConstraintViolationException e,
+        HttpServletRequest request
+    ) {
         String errorMessage = e.getConstraintViolations().stream()
             .map(constraintViolation -> constraintViolation.getMessage())
             .findFirst()
             .orElseThrow(() -> new RuntimeException("ConstraintViolationException 추출 도중 에러 발생"));
 
-        return fail(ErrorStatus.valueOf(errorMessage));
+        ErrorStatus errorStatus = ErrorStatus.valueOf(errorMessage);
+        logClientRequestFailure(errorStatus, request);
+        return fail(errorStatus);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<CustomResponse<Map<String, String>>> handleMethodArgumentNotValid(
-        MethodArgumentNotValidException e
+        MethodArgumentNotValidException e,
+        HttpServletRequest request
     ) {
         Map<String, String> errors = new LinkedHashMap<>();
 
@@ -49,25 +60,33 @@ public class ExceptionAdvice {
                     (existingErrorMessage, newErrorMessage) -> existingErrorMessage + ", " + newErrorMessage);
             });
 
+        logClientRequestFailure(ErrorStatus.BAD_REQUEST, request);
         return fail(ErrorStatus.BAD_REQUEST, errors);
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<CustomResponse<String>> handleMissingServletRequestParameter(
-        MissingServletRequestParameterException e
+        MissingServletRequestParameterException e,
+        HttpServletRequest request
     ) {
         String errorPoint = String.format("%s 파라미터가 누락되었습니다.", e.getParameterName());
 
+        logClientRequestFailure(ErrorStatus.BAD_REQUEST, request);
         return fail(ErrorStatus.BAD_REQUEST, errorPoint);
     }
 
     @ExceptionHandler(TypeMismatchException.class)
-    public ResponseEntity<CustomResponse<Void>> handleTypeMismatch(TypeMismatchException e) {
+    public ResponseEntity<CustomResponse<Void>> handleTypeMismatch(TypeMismatchException e, HttpServletRequest request) {
+        logClientRequestFailure(ErrorStatus.BAD_REQUEST, request);
         return fail(ErrorStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<CustomResponse<Void>> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
+    public ResponseEntity<CustomResponse<Void>> handleHttpMessageNotReadable(
+        HttpMessageNotReadableException e,
+        HttpServletRequest request
+    ) {
+        logClientRequestFailure(ErrorStatus.BAD_REQUEST, request);
         return fail(ErrorStatus.BAD_REQUEST);
     }
 
@@ -84,15 +103,21 @@ public class ExceptionAdvice {
     }
 
     @ExceptionHandler(GeneralException.class)
-    public ResponseEntity<CustomResponse<Void>> onThrowException(GeneralException generalException) {
+    public ResponseEntity<CustomResponse<Void>> onThrowException(
+        GeneralException generalException,
+        HttpServletRequest request
+    ) {
         ErrorReasonResponse errorReasonHttpStatus = generalException.getErrorReasonHttpStatus();
+        logClientRequestFailure(errorReasonHttpStatus, request);
         return fail(errorReasonHttpStatus);
     }
 
     @ExceptionHandler(DateTimeParseException.class)
     public ResponseEntity<CustomResponse<String>> handleDateTimeParseException(
-        DateTimeParseException dateTimeParseException
+        DateTimeParseException dateTimeParseException,
+        HttpServletRequest request
     ) {
+        logClientRequestFailure(ErrorStatus.BAD_REQUEST, request);
         return fail(
             ErrorStatus.BAD_REQUEST,
             dateTimeParseException.getMessage()
@@ -120,5 +145,37 @@ public class ExceptionAdvice {
     ) {
         return ResponseEntity.status(errorStatus.getHttpStatus())
             .body(CustomResponse.onFailure(errorStatus.getCode(), errorStatus.getMessage(), errorArgs));
+    }
+
+    private void logClientRequestFailure(ErrorStatus errorStatus, HttpServletRequest request) {
+        logClientRequestFailure(
+            errorStatus.getCode(),
+            errorStatus.getHttpStatus().value(),
+            request
+        );
+    }
+
+    private void logClientRequestFailure(ErrorReasonResponse errorReason, HttpServletRequest request) {
+        logClientRequestFailure(errorReason.code(), errorReason.httpStatus().value(), request);
+    }
+
+    private void logClientRequestFailure(String reason, int httpStatus, HttpServletRequest request) {
+        log.atWarn()
+            .addKeyValue("event", CLIENT_REQUEST_FAILURE_EVENT)
+            .addKeyValue("reason", reason)
+            .addKeyValue("httpStatus", httpStatus)
+            .addKeyValue("method", request.getMethod())
+            .addKeyValue("path", request.getRequestURI())
+            .addKeyValue("userId", resolveAuthenticatedUserId())
+            .log("클라이언트 요청 처리 실패");
+    }
+
+    private Long resolveAuthenticatedUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails userDetails)) {
+            return null;
+        }
+
+        return userDetails.getUserId();
     }
 }
