@@ -48,10 +48,8 @@ internal fun RecordHistoryCard(
 ) {
     val colors = recordsColors()
     val lastResult = record.entries.last().result
-    val canCollapse = lastResult != null
-    val showDetails = expanded || !canCollapse
     val times = record.entries.map { it.recordTimes() }
-    val rowCount = if (showDetails) record.entries.size + record.entries.count { it.result != null } else 1
+    val rowCount = if (expanded) record.entries.size + record.entries.count { it.result != null } else 1
     val lastRowCenter = when (lastResult) {
         MissionResult.SUCCESS -> 24.dp
         MissionResult.FAILURE -> 29.dp
@@ -60,15 +58,13 @@ internal fun RecordHistoryCard(
     Column(modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(colors.card)) {
         Row(
             modifier = Modifier.fillMaxWidth()
-                .then(if (canCollapse) Modifier
-                    .clickable(role = Role.Button, onClickLabel = if (expanded) "기록 접기" else "기록 펼치기", onClick = onExpandedChange)
-                    .semantics { stateDescription = if (expanded) "펼쳐짐" else "접힘" }
-                else Modifier)
+                .clickable(role = Role.Button, onClickLabel = if (expanded) "기록 접기" else "기록 펼치기", onClick = onExpandedChange)
+                .semantics { stateDescription = if (expanded) "펼쳐짐" else "접힘" }
                 .heightIn(min = 44.dp).padding(horizontal = 20.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(times.first().title, modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.text)
-            if (canCollapse) Icon(painterResource(Res.drawable.records_chevron), null, Modifier.size(20.dp).rotate(if (expanded) -90f else 90f), tint = colors.text)
+            Icon(painterResource(Res.drawable.records_chevron), null, Modifier.size(20.dp).rotate(if (expanded) -90f else 90f), tint = colors.text)
         }
         Column(
             modifier = Modifier.padding(start = 10.dp, end = 16.dp, bottom = 16.dp)
@@ -84,7 +80,7 @@ internal fun RecordHistoryCard(
                 },
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (showDetails) {
+            if (expanded) {
                 record.entries.forEachIndexed { index, entry ->
                     key(entry.key) {
                         RecordRingingRow(times[index])
@@ -99,6 +95,7 @@ internal fun RecordHistoryCard(
                 when (lastResult) {
                     MissionResult.SUCCESS -> RecordArrivalRow(completedTime = times.last().completedTime, showTime = false)
                     MissionResult.FAILURE -> RecordForceEndRow(completedTime = times.last().completedTime, showTime = false)
+                    null -> RecordRingingRow(times.last())
                 }
             }
         }
@@ -156,6 +153,14 @@ private fun RecordHistoryCardRingingPreview() {
 @Preview(widthDp = 342)
 @Composable
 private fun RecordHistoryCardRepeatedRingingPreview() {
+    RingoutTheme {
+        RecordHistoryCard(previewRepeatedRinging(), expanded = true, onExpandedChange = {})
+    }
+}
+
+@Preview(widthDp = 342)
+@Composable
+private fun RecordHistoryCardRepeatedRingingCollapsedPreview() {
     RingoutTheme {
         RecordHistoryCard(previewRepeatedRinging(), expanded = false, onExpandedChange = {})
     }
