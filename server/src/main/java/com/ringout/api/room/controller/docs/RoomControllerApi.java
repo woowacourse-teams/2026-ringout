@@ -216,4 +216,76 @@ public interface RoomControllerApi {
         )
         RoomUpdateRequest request
     );
+
+    @Operation(
+        summary = "모임 방 삭제",
+        description = "방장만 모임 방을 삭제할 수 있습니다. 삭제된 방은 조회 대상에서 제외되며, 해당 방의 블랙리스트는 함께 제거됩니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "모임 방 삭제 성공",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": true,
+                      "code": "ROOM200",
+                      "message": "방 삭제에 성공했습니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "ROOM401",
+                      "message": "인증되지 않은 사용자입니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "모임 방 삭제 권한 없음",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "ROOM403",
+                      "message": "모임 방을 삭제할 권한이 없습니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "존재하지 않거나 이미 삭제된 모임 방",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "ROOM404",
+                      "message": "존재하지 않는 모임 방입니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<Void>> deleteRoom(
+        @Parameter(hidden = true) CustomUserDetails customUserDetails,
+        @Parameter(description = "삭제할 모임 방 식별자", required = true, example = "1") Long roomId
+    );
 }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.mock;
 
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.file.domain.ImageFile;
 import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.user.domain.User;
 import java.time.LocalTime;
@@ -252,7 +253,8 @@ class RoomTest {
         @Test
         void 전달한_이름으로_수정하고_앞뒤_공백을_제거한다() {
             // given
-            Room room = createRoom(1L);
+            ImageFile image = mock(ImageFile.class);
+            Room room = createRoom(image);
 
             // when
             room.update("  새로운 아침 운동 모임  ", null);
@@ -260,13 +262,14 @@ class RoomTest {
             // then
             assertThat(room.getName()).isEqualTo("새로운 아침 운동 모임");
             assertThat(room.getDescription()).isEqualTo("운동을 함께하는 모임입니다.");
-            assertThat(room.getImageId()).isEqualTo(1L);
+            assertThat(room.getImage()).isSameAs(image);
         }
 
         @Test
         void 전달한_소개로_수정하고_다른_정보는_유지한다() {
             // given
-            Room room = createRoom(1L);
+            ImageFile image = mock(ImageFile.class);
+            Room room = createRoom(image);
 
             // when
             room.update(null, "매주 아침 함께 운동하는 모임입니다.");
@@ -274,13 +277,13 @@ class RoomTest {
             // then
             assertThat(room.getName()).isEqualTo("운동 모임");
             assertThat(room.getDescription()).isEqualTo("매주 아침 함께 운동하는 모임입니다.");
-            assertThat(room.getImageId()).isEqualTo(1L);
+            assertThat(room.getImage()).isSameAs(image);
         }
 
         @Test
         void 수정할_정보를_하나도_전달하지_않으면_요청_형식_오류를_반환한다() {
             // given
-            Room room = createRoom(1L);
+            Room room = createRoom(mock(ImageFile.class));
 
             // when
             Throwable thrown = catchThrowable(() -> room.update(null, null));
@@ -294,7 +297,7 @@ class RoomTest {
         @Test
         void 수정할_이름이_공백만_있으면_이름_형식_오류를_반환한다() {
             // given
-            Room room = createRoom(1L);
+            Room room = createRoom(mock(ImageFile.class));
 
             // when
             Throwable thrown = catchThrowable(() -> room.update("   ", null));
@@ -308,7 +311,7 @@ class RoomTest {
         @Test
         void 수정할_소개를_빈_문자열로_변경할_수_있다() {
             // given
-            Room room = createRoom(1L);
+            Room room = createRoom(mock(ImageFile.class));
 
             // when
             room.update(null, "");
@@ -320,7 +323,7 @@ class RoomTest {
         @Test
         void 수정할_소개가_300자를_초과하면_소개_형식_오류를_반환한다() {
             // given
-            Room room = createRoom(1L);
+            Room room = createRoom(mock(ImageFile.class));
 
             // when
             Throwable thrown = catchThrowable(() -> room.update(null, "가".repeat(301)));
@@ -332,18 +335,34 @@ class RoomTest {
         }
     }
 
+    @Nested
+    class 모임방_삭제_규칙 {
+
+        @Test
+        void 모임방을_삭제하면_삭제_시각을_기록한다() {
+            // given
+            Room room = createRoom(List.of(ActivityDay.MONDAY));
+
+            // when
+            room.softDelete();
+
+            // then
+            assertThat(room.getDeletedAt()).isNotNull();
+        }
+    }
+
     private Room createRoom(List<ActivityDay> activityDays) {
         return createRoom(null, activityDays);
     }
 
-    private Room createRoom(Long imageId) {
-        return createRoom(imageId, List.of(ActivityDay.MONDAY));
+    private Room createRoom(ImageFile image) {
+        return createRoom(image, List.of(ActivityDay.MONDAY));
     }
 
-    private Room createRoom(Long imageId, List<ActivityDay> activityDays) {
+    private Room createRoom(ImageFile image, List<ActivityDay> activityDays) {
         return Room.of(
             mock(User.class),
-            imageId,
+            image,
             "운동 모임",
             "운동을 함께하는 모임입니다.",
             activityDays,

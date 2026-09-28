@@ -114,4 +114,28 @@ class RoomControllerTest {
             verify(roomService).updateRoom(userId, roomId, request);
         }
     }
+
+    @Nested
+    class 인증된_방장_모임방_삭제_응답 {
+
+        @Test
+        void 삭제_성공_응답을_반환한다() {
+            // given
+            Long userId = 1L;
+            Long roomId = 10L;
+            CustomUserDetails userDetails = new CustomUserDetails(userId, Role.USER);
+
+            // when
+            ResponseEntity<CustomResponse<Void>> response = roomController.deleteRoom(userDetails, roomId);
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getIsSuccess()).isTrue();
+            assertThat(response.getBody().getCode()).isEqualTo("ROOM200");
+            assertThat(response.getBody().getMessage()).isEqualTo("방 삭제에 성공했습니다.");
+            assertThat(response.getBody().getResult()).isNull();
+            verify(roomService).deleteRoom(userId, roomId);
+        }
+    }
 }

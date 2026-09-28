@@ -103,6 +103,10 @@ public class Room extends BaseEntity {
         return hostUser != null && hostUser.getId() != null && hostUser.getId().equals(userId);
     }
 
+    public void softDelete() {
+        markDeleted();
+    }
+
     public List<ActivityDay> getActivityDays() {
         return activityDays.getDays();
     }
