@@ -1,0 +1,104 @@
+package com.joon.ringout.presentation.social.component
+
+import com.joon.ringout.presentation.social.model.RoomUiModel
+
+internal class SocialPreviewData {
+    val allRooms = listOf(
+        RoomUiModel(
+            id = "preview-room-1",
+            name = "아침 러닝가는 사람들",
+            activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
+            activityTimeText = "오전 06:00",
+            participantCount = 6,
+            isJoined = true,
+        ),
+        RoomUiModel(
+            id = "preview-room-2",
+            name = "저녁 헬스장 ㅋㅋ",
+            activityDays = listOf("월", "수", "금"),
+            activityTimeText = "오후 08:30",
+            participantCount = 12,
+            isJoined = true,
+        ),
+        RoomUiModel(
+            id = "preview-room-3",
+            name = "주말에는 러닝이지",
+            activityDays = listOf("토", "일"),
+            activityTimeText = "오후 5:00",
+            participantCount = 3,
+            isJoined = true,
+        ),
+        RoomUiModel(
+            id = "preview-room-4",
+            name = "재수생들 모여라",
+            activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
+            activityTimeText = "오전 07:00",
+            participantCount = 32,
+            isJoined = false,
+        ),
+        RoomUiModel(
+            id = "preview-room-5",
+            name = "아침 러닝가는 사람들",
+            activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
+            activityTimeText = "오전 06:00",
+            participantCount = 6,
+            isJoined = true,
+        ),
+        RoomUiModel(
+            id = "preview-room-6",
+            name = "저녁 헬스장 ㅋㅋ",
+            activityDays = listOf("월", "수", "금"),
+            activityTimeText = "오후 08:30",
+            participantCount = 12,
+            isJoined = true,
+        ),
+        RoomUiModel(
+            id = "preview-room-7",
+            name = "주말에는 러닝이지",
+            activityDays = listOf("토", "일"),
+            activityTimeText = "오후 5:00",
+            participantCount = 3,
+            isJoined = true,
+        ),
+        RoomUiModel(
+            id = "preview-room-8",
+            name = "재수생들 모여라",
+            activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
+            activityTimeText = "오전 07:00",
+            participantCount = 32,
+            isJoined = false,
+        ),
+        RoomUiModel(
+            id = "preview-room-9",
+            name = "아침 러닝가는 사람들",
+            activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
+            activityTimeText = "오전 06:00",
+            participantCount = 6,
+            isJoined = true,
+        ),
+        RoomUiModel(
+            id = "preview-room-10",
+            name = "저녁 헬스장 ㅋㅋ",
+            activityDays = listOf("월", "수", "금"),
+            activityTimeText = "오후 08:30",
+            participantCount = 12,
+            isJoined = true,
+        ),
+        RoomUiModel(
+            id = "preview-room-11",
+            name = "주말에는 러닝이지",
+            activityDays = listOf("토", "일"),
+            activityTimeText = "오후 5:00",
+            participantCount = 3,
+            isJoined = true,
+        ),
+        RoomUiModel(
+            id = "preview-room-12",
+            name = "재수생들 모여라",
+            activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
+            activityTimeText = "오전 07:00",
+            participantCount = 32,
+            isJoined = false,
+        ),
+    )
+}
