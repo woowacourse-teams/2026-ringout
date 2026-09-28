@@ -5,10 +5,23 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
+import com.joon.ringout.domain.missionhistory.AlarmUsageRecord
 
 class RoomMissionHistoryDataSource(
     private val missionHistoryDao: MissionHistoryDao,
 ) : MissionHistoryDataSource {
+    override suspend fun getRecords(month: MissionYearMonth): List<AlarmUsageRecord> =
+        missionHistoryDao.getRecords(
+            MissionDate.of(month.year, month.month, 1).iso8601,
+            MissionDate.of(month.year, month.month, month.dayCount).iso8601,
+        ).map(AlarmUsageRecordRow::toDomain)
+
+    override fun observeRecords(month: MissionYearMonth): Flow<List<AlarmUsageRecord>> =
+        missionHistoryDao.observeRecords(
+            MissionDate.of(month.year, month.month, 1).iso8601,
+            MissionDate.of(month.year, month.month, month.dayCount).iso8601,
+        ).map { rows -> rows.map(AlarmUsageRecordRow::toDomain) }
+
     override suspend fun getHistory(month: MissionYearMonth): List<MissionHistoryDto> {
         val firstDay = MissionDate.of(month.year, month.month, 1).iso8601
         val lastDay = MissionDate.of(month.year, month.month, month.dayCount).iso8601

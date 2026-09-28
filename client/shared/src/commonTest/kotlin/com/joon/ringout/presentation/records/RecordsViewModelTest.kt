@@ -3,6 +3,8 @@ package com.joon.ringout.presentation.records
 import com.joon.ringout.domain.alarmactivity.AlarmActivitySummary
 import com.joon.ringout.domain.alarmactivity.AlarmActivityRepository
 
+import com.joon.ringout.domain.missionhistory.AlarmUsageRecord
+import com.joon.ringout.domain.missionhistory.toAlarmUsageRecord
 import com.joon.ringout.domain.missionhistory.GetRecordsHistory
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
@@ -27,6 +29,70 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecordsViewModelTest {
     @Test
+    fun `재울림이 저장되면 기존 카드에 행을 추가하고 도착 결과도 같은 행에 반영한다`() = runTest {
+        val first = AlarmUsageRecord(
+            key = "one", date = MissionDate.parse("2026-09-28"), alarmId = "alarm",
+            ringingStartedAtEpochMillis = 1_000, ringingStoppedAtEpochMillis = 2_000,
+        )
+        val records = kotlinx.coroutines.flow.MutableStateFlow(listOf(first))
+        val repository = object : MissionHistoryRepository {
+            override suspend fun getHistory(month: MissionYearMonth) = emptyList<MissionHistoryEntry>()
+            override fun observeLocalRecords(month: MissionYearMonth) = records
+            override suspend fun record(entry: MissionHistoryEntry) = error("Not used")
+        }
+        val viewModel = recordsViewModel(repository, backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        val cardKey = viewModel.uiState.value.records.single().key
+
+        val retry = first.copy(key = "retry", ringingStartedAtEpochMillis = 3_000, ringingStoppedAtEpochMillis = null)
+        records.value = listOf(first, retry)
+        runCurrent()
+
+        val card = viewModel.uiState.value.records.single()
+        assertEquals(cardKey, card.key)
+        assertEquals(listOf(first, retry), card.entries)
+        assertEquals(2, viewModel.uiState.value.weekDays.single { it.isSelected }.recordCount)
+
+        val arrived = retry.copy(ringingStoppedAtEpochMillis = 4_000, result = MissionResult.SUCCESS, missionCompletedAtEpochMillis = 5_000)
+        records.value = listOf(first, arrived)
+        runCurrent()
+
+        assertEquals(cardKey, viewModel.uiState.value.records.single().key)
+        assertEquals(listOf(first, arrived), viewModel.uiState.value.records.single().entries)
+        assertEquals(MissionResult.SUCCESS, viewModel.uiState.value.weekDays.single { it.isSelected }.result)
+    }
+
+    @Test
+    fun `도착 전 울림 카드가 나타나고 도착하면 같은 카드에 완료 결과를 반영한다`() = runTest {
+        val ringing = AlarmUsageRecord(
+            key = "occurrence:one", date = MissionDate.parse("2026-09-28"), occurrenceId = "one",
+            ringingStartedAtEpochMillis = 1_000, ringingStoppedAtEpochMillis = 2_000,
+        )
+        val records = kotlinx.coroutines.flow.MutableStateFlow(listOf(ringing))
+        val repository = object : MissionHistoryRepository {
+            override suspend fun getHistory(month: MissionYearMonth) = emptyList<MissionHistoryEntry>()
+            override fun observeLocalRecords(month: MissionYearMonth) = records
+            override suspend fun record(entry: MissionHistoryEntry) = error("Not used")
+        }
+        val viewModel = recordsViewModel(repository, backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+
+        assertEquals(ringing, viewModel.uiState.value.records.single().entries.single())
+        val cardKey = viewModel.uiState.value.records.single().key
+        assertNull(viewModel.uiState.value.weekDays.single { it.isSelected }.result)
+
+        val arrived = ringing.copy(result = MissionResult.SUCCESS, missionCompletedAtEpochMillis = 3_000)
+        records.value = listOf(arrived)
+        runCurrent()
+
+        assertEquals(arrived, viewModel.uiState.value.records.single().entries.single())
+        assertEquals(cardKey, viewModel.uiState.value.records.single().key)
+        assertEquals(MissionResult.SUCCESS, viewModel.uiState.value.weekDays.single { it.isSelected }.result)
+    }
+
+    @Test
     fun `화면에 있는 기록에 종료 시각이 추가되면 새로고침 없이 갱신한다`() = runTest {
         val original = entry("2026-09-28", occurrenceId = "one")
         val history = kotlinx.coroutines.flow.MutableStateFlow(listOf(original))
@@ -38,12 +104,12 @@ class RecordsViewModelTest {
         val viewModel = recordsViewModel(repository, backgroundScope)
         viewModel.refresh()
         runCurrent()
-        assertNull(viewModel.uiState.value.records.single().ringingStoppedAtEpochMillis)
+        assertNull(viewModel.uiState.value.records.single().entries.single().ringingStoppedAtEpochMillis)
 
         history.value = listOf(original.copy(ringingStoppedAtEpochMillis = 2_000))
         runCurrent()
 
-        assertEquals(2_000L, viewModel.uiState.value.records.single().ringingStoppedAtEpochMillis)
+        assertEquals(2_000L, viewModel.uiState.value.records.single().entries.single().ringingStoppedAtEpochMillis)
     }
 
     @Test
@@ -134,13 +200,13 @@ class RecordsViewModelTest {
 
         val state = viewModel.uiState.value
         assertFalse(state.isLoading)
-        assertEquals(listOf(failure, success), state.records)
+        assertEquals(listOf(failure.toAlarmUsageRecord(2), success.toAlarmUsageRecord(1)), state.records.flatMap { it.entries })
         assertEquals(MissionResult.FAILURE, state.weekDays.single { it.isSelected }.result)
         assertEquals(2, state.weekDays.single { it.isSelected }.recordCount)
 
         viewModel.selectDate(MissionDate.parse("2026-09-27"))
 
-        assertEquals(listOf(yesterday), viewModel.uiState.value.records)
+        assertEquals(listOf(yesterday.toAlarmUsageRecord()), viewModel.uiState.value.records.flatMap { it.entries })
         assertEquals(1, repository.queries.size)
     }
 
@@ -217,7 +283,7 @@ class RecordsViewModelTest {
         runCurrent()
 
         assertEquals(MissionDate.parse("2026-09-21"), viewModel.uiState.value.selectedDate)
-        assertEquals(listOf(selectedEntry), viewModel.uiState.value.records)
+        assertEquals(listOf(selectedEntry.toAlarmUsageRecord()), viewModel.uiState.value.records.flatMap { it.entries })
         assertFalse(viewModel.uiState.value.isLoading)
     }
 
@@ -275,7 +341,7 @@ class RecordsViewModelTest {
 
         assertNotNull(viewModel.uiState.value.calendarErrorMessage)
         assertNull(viewModel.uiState.value.errorMessage)
-        assertEquals(listOf(todayEntry), viewModel.uiState.value.records)
+        assertEquals(listOf(todayEntry.toAlarmUsageRecord()), viewModel.uiState.value.records.flatMap { it.entries })
 
         repository.loader = null
         viewModel.retryCalendar()
@@ -302,7 +368,7 @@ class RecordsViewModelTest {
         assertEquals(record.completedAt, state.selectedDate)
         assertEquals(MissionDate.parse("2026-08-30"), state.weekDays.first().date)
         assertEquals(MissionDate.parse("2026-09-05"), state.weekDays.last().date)
-        assertEquals(listOf(record), state.records)
+        assertEquals(listOf(record.toAlarmUsageRecord()), state.records.flatMap { it.entries })
     }
 
     @Test

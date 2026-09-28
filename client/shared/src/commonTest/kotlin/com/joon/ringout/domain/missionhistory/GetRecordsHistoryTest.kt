@@ -19,7 +19,7 @@ class GetRecordsHistoryTest {
             today = MissionDate.parse("2026-09-04"),
         )
 
-        assertEquals(listOf(first, second, nextMonth), result)
+        assertEquals(listOf(first.toAlarmUsageRecord(0), second.toAlarmUsageRecord(1), nextMonth.toAlarmUsageRecord()), result)
         assertEquals(listOf(MissionYearMonth(2026, 8), MissionYearMonth(2026, 9)), repository.queries)
     }
 

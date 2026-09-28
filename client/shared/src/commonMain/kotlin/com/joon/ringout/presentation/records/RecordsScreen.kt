@@ -24,7 +24,9 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.domain.alarmactivity.AlarmActivitySummary
 import com.joon.ringout.domain.missionhistory.MissionDate
-import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
+import com.joon.ringout.domain.missionhistory.AlarmUsageRecord
+import com.joon.ringout.domain.missionhistory.AlarmUsageRecordGroup
+import com.joon.ringout.domain.missionhistory.groupByAlarm
 import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.presentation.records.component.RecordHistoryCard
 import com.joon.ringout.presentation.records.component.RecordsHeader
@@ -47,10 +49,7 @@ fun RecordsScreen(
     onRetry: () -> Unit = {},
     onCalendarRetry: () -> Unit = {},
 ) {
-    // Legacy rows have no occurrence ID. A reverse index stays stable as results are appended.
-    val recordKeys = uiState.records.mapIndexed { index, record ->
-        record.occurrenceId ?: "${record.completedAt.iso8601}-legacy-${uiState.records.lastIndex - index}"
-    }
+    val recordKeys = uiState.records.map(AlarmUsageRecordGroup::key)
     var expandedRecordKeys by rememberSaveable(uiState.selectedDate.iso8601) {
         mutableStateOf<List<String>?>(null)
     }
@@ -164,13 +163,22 @@ private fun previewRecordsState(): RecordsUiState {
             RecordsDayUiState(MissionDate.of(2026, 9, it), it == 28, it == 28, it > 28, if (it <= 28) MissionResult.SUCCESS else null, if (it <= 28) 2 else 0)
         } + (1..3).map { RecordsDayUiState(MissionDate.of(2026, 10, it), false, false, true, null, 0) },
         records = listOf(
-            MissionHistoryEntry(
-                MissionResult.SUCCESS, date, "preview-success",
+            AlarmUsageRecord(
+                key = "preview-first", date = date, alarmId = "preview-alarm",
                 ringingStartedAtEpochMillis = 1790546400000L,
                 ringingStoppedAtEpochMillis = 1790546700000L,
+            ),
+            AlarmUsageRecord(
+                key = "preview-retry", date = date, alarmId = "preview-alarm", result = MissionResult.SUCCESS,
+                ringingStartedAtEpochMillis = 1790547000000L,
+                ringingStoppedAtEpochMillis = 1790547120000L,
                 missionCompletedAtEpochMillis = 1790547480000L,
             ),
-            MissionHistoryEntry(MissionResult.FAILURE, date, "preview-failure"),
-        ),
+            AlarmUsageRecord(
+                key = "preview-ringing", date = date, alarmId = "another-alarm",
+                ringingStartedAtEpochMillis = 1790542800000L,
+                ringingStoppedAtEpochMillis = 1790542920000L,
+            ),
+        ).groupByAlarm(),
     )
 }

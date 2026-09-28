@@ -6,7 +6,8 @@ import com.joon.ringout.domain.alarmactivity.AlarmActivityRepository
 import com.joon.ringout.domain.alarmactivity.AlarmActivitySummary
 import com.joon.ringout.domain.missionhistory.GetRecordsHistory
 import com.joon.ringout.domain.missionhistory.MissionDate
-import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
+import com.joon.ringout.domain.missionhistory.AlarmUsageRecord
+import com.joon.ringout.domain.missionhistory.groupByAlarm
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.domain.missionhistory.calendarDates
 import com.joon.ringout.domain.missionhistory.plusDays
@@ -38,7 +39,7 @@ class RecordsViewModel(
     private var weekRequestId = 0L
     private var calendarLoadJob: Job? = null
     private var calendarRequestId = 0L
-    private var weekHistory: List<MissionHistoryEntry> = emptyList()
+    private var weekHistory: List<AlarmUsageRecord> = emptyList()
 
     fun selectDate(date: MissionDate) {
         val previous = uiState.value
@@ -162,14 +163,13 @@ class RecordsViewModel(
         }
     }
 
-    private fun showWeekHistory(history: List<MissionHistoryEntry>) {
-        val historyByDate = history.groupBy(MissionHistoryEntry::completedAt)
+    private fun showWeekHistory(history: List<AlarmUsageRecord>) {
+        val historyByDate = history.groupBy(AlarmUsageRecord::date)
         mutableUiState.update { state ->
             state.copy(
                 isLoading = false,
                 errorMessage = null,
-                // The DAO returns oldest first. Display the latest recorded result first.
-                records = historyByDate[state.selectedDate].orEmpty().asReversed(),
+                records = historyByDate[state.selectedDate].orEmpty().groupByAlarm(),
                 weekDays = state.selectedDate.weekDates().map { date ->
                     recordsDayUiState(date, state.today, state.selectedDate, historyByDate[date].orEmpty())
                 },
@@ -194,7 +194,7 @@ class RecordsViewModel(
         calendarLoadJob = scope.launch {
             try {
                 val historyByDate = getRecordsHistory(dates.filterNotNull(), state.today)
-                    .groupBy(MissionHistoryEntry::completedAt)
+                    .groupBy(AlarmUsageRecord::date)
                 if (requestId != calendarRequestId) return@launch
                 mutableUiState.update { current ->
                     current.copy(

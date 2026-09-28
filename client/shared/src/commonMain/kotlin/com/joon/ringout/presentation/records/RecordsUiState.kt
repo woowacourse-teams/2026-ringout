@@ -2,7 +2,8 @@ package com.joon.ringout.presentation.records
 
 import com.joon.ringout.domain.alarmactivity.AlarmActivitySummary
 import com.joon.ringout.domain.missionhistory.MissionDate
-import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
+import com.joon.ringout.domain.missionhistory.AlarmUsageRecord
+import com.joon.ringout.domain.missionhistory.AlarmUsageRecordGroup
 import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.domain.missionhistory.calendarDates
@@ -25,7 +26,7 @@ data class RecordsUiState(
     val weekDays: List<RecordsDayUiState> = selectedDate.weekDates().map {
         recordsDayUiState(it, today, selectedDate)
     },
-    val records: List<MissionHistoryEntry> = emptyList(),
+    val records: List<AlarmUsageRecordGroup> = emptyList(),
     val activitySummary: AlarmActivitySummary = AlarmActivitySummary(),
     val isSummaryLoading: Boolean = false,
     val summaryErrorMessage: String? = null,
@@ -44,12 +45,12 @@ internal fun recordsDayUiState(
     date: MissionDate,
     today: MissionDate,
     selectedDate: MissionDate,
-    records: List<MissionHistoryEntry> = emptyList(),
+    records: List<AlarmUsageRecord> = emptyList(),
 ): RecordsDayUiState = RecordsDayUiState(
     date = date,
     isToday = date == today,
     isSelected = date == selectedDate,
     isFuture = date.isAfter(today),
-    result = records.lastOrNull()?.result,
+    result = records.lastOrNull { it.result != null }?.result,
     recordCount = records.size,
 )
