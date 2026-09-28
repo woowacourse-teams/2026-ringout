@@ -79,7 +79,7 @@ class RecordsTimeTest {
         val times = MissionHistoryEntry(MissionResult.SUCCESS, date).toAlarmUsageRecord().recordTimes(format)
         assertEquals("시간 기록 없는 알람", times.title)
         assertEquals("--:-- ~ --:--", times.ringingRange)
-        assertEquals("울림·종료 시각 기록 없음", times.ringingDescription)
+        assertEquals("울림/종료 시각 기록 없음", times.ringingDescription)
         assertEquals("완료 시각 기록 없음", times.completedDescription)
     }
 

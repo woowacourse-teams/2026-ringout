@@ -36,7 +36,7 @@ internal fun RecordsSummary(
 ) {
     val ringing = when {
         errorMessage != null -> "—"
-        summary.ringingCount != null -> if (summary.observedRingingOnly) "확인된 ${summary.ringingCount}번" else "${summary.ringingCount}번"
+        summary.ringingCount != null -> "${summary.ringingCount}번"
         isLoading -> null
         else -> "0번"
     }
