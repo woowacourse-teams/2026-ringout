@@ -187,9 +187,9 @@ class RecordsViewModelTest {
     }
 
     @Test
-    fun `선택 날짜의 모든 기록을 최신순으로 보여주고 마지막 결과로 날짜를 표시한다`() = runTest {
-        val success = entry("2026-09-28", MissionResult.SUCCESS)
-        val failure = entry("2026-09-28", MissionResult.FAILURE)
+    fun `선택 날짜의 카드를 이른 울림부터 보여주고 마지막 결과로 날짜를 표시한다`() = runTest {
+        val success = entry("2026-09-28", MissionResult.SUCCESS).copy(ringingStartedAtEpochMillis = 1_000)
+        val failure = entry("2026-09-28", MissionResult.FAILURE).copy(ringingStartedAtEpochMillis = 2_000)
         val yesterday = entry("2026-09-27")
         val repository = RecordsRepository(listOf(yesterday, success, failure))
         val viewModel = recordsViewModel(repository, backgroundScope)
@@ -200,7 +200,7 @@ class RecordsViewModelTest {
 
         val state = viewModel.uiState.value
         assertFalse(state.isLoading)
-        assertEquals(listOf(failure.toAlarmUsageRecord(2), success.toAlarmUsageRecord(1)), state.records.flatMap { it.entries })
+        assertEquals(listOf(success.toAlarmUsageRecord(1), failure.toAlarmUsageRecord(2)), state.records.flatMap { it.entries })
         assertEquals(MissionResult.FAILURE, state.weekDays.single { it.isSelected }.result)
         assertEquals(2, state.weekDays.single { it.isSelected }.recordCount)
 
