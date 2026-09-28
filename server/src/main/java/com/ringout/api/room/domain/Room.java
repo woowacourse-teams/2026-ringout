@@ -2,18 +2,11 @@ package com.ringout.api.room.domain;
 
 import com.ringout.api.common.BaseEntity;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.file.domain.ImageFile;
 import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.user.domain.User;
-import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
-import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
+
 import java.time.LocalTime;
 import java.util.List;
 import lombok.AccessLevel;
@@ -39,9 +32,10 @@ public class Room extends BaseEntity {
     @Getter
     private User hostUser;
 
-    @Column(name = "image_id")
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "image_id", unique = true)
     @Getter
-    private Long imageId;
+    private ImageFile image;
 
     @Column(nullable = false, length = 20)
     @Getter
@@ -59,23 +53,23 @@ public class Room extends BaseEntity {
     @Getter
     private LocalTime activityTime;
 
-    private Room(User hostUser, Long imageId, String name, String description, List<ActivityDay> activityDays,
+    private Room(User hostUser, ImageFile image, String name, String description, List<ActivityDay> activityDays,
         LocalTime activityTime) {
         this.hostUser = hostUser;
-        this.imageId = imageId;
+        this.image = image;
         this.name = name;
         this.description = description;
         this.activityDays = ActivityDays.from(activityDays);
         this.activityTime = activityTime;
     }
 
-    public static Room of(User hostUser, Long imageId, String rawName, String description, List<ActivityDay> activityDays,
+    public static Room of(User hostUser, ImageFile image, String rawName, String description, List<ActivityDay> activityDays,
         LocalTime activityTime) {
         String name = validateName(rawName);
         validateDescription(description);
         validateActivityTime(activityTime);
 
-        return new Room(hostUser, imageId, name, description, activityDays, activityTime);
+        return new Room(hostUser, image, name, description, activityDays, activityTime);
     }
 
     public void addActivityDay(ActivityDay activityDay) {

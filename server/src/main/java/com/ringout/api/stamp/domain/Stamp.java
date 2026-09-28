@@ -25,7 +25,7 @@ import lombok.NoArgsConstructor;
 @Table(
     name = "stamp",
     indexes = {
-        @Index(name = "idx_user_id_record_date", columnList = "user_id, record_date", unique = true)
+        @Index(name = "uk_stamp_user_id_record_date", columnList = "user_id, record_date", unique = true)
     }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -39,11 +39,11 @@ public class Stamp extends BaseEntity {
     private LocalDate recordDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
+    @Column(nullable = false, length = 20)
     private GoalResult result;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     @Builder(access = AccessLevel.PRIVATE)
