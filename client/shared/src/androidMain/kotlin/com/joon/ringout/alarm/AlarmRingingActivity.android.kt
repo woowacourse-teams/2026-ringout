@@ -18,10 +18,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.SystemBarAppearanceEffect
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.ringing.AlarmRingingScreen
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import com.joon.ringout.presentation.ringing.AlarmRingingRoute
 
 class AlarmRingingActivity : ComponentActivity() {
     private val alarmMissionCoordinator by lazy {
@@ -92,7 +89,6 @@ class AlarmRingingActivity : ComponentActivity() {
             },
         )
 
-        val alarmTime = intent.getStringExtra(AlarmRuntime.EXTRA_ALARM_TIME).orEmpty()
         val limitMinutes = intent.getIntExtra(AlarmRuntime.EXTRA_LIMIT_MINUTES, 12)
         val destinationName = intent
             .getStringExtra(AlarmRuntime.EXTRA_DESTINATION_NAME)
@@ -101,9 +97,7 @@ class AlarmRingingActivity : ComponentActivity() {
         setContent {
             SystemBarAppearanceEffect(ThemeMode.Dark)
             RingoutTheme(themeMode = ThemeMode.Dark) {
-                AlarmRingingScreen(
-                    alarmTime = alarmTime,
-                    dateText = currentDateText(),
+                AlarmRingingRoute(
                     limitMinutes = limitMinutes,
                     destinationName = destinationName,
                     onDismissAndNavigateClick = ::stopAlarmAndOpenApp,
@@ -200,17 +194,11 @@ class AlarmRingingActivity : ComponentActivity() {
         Toast.makeText(applicationContext, message, Toast.LENGTH_LONG).show()
     }
 
-    private fun currentDateText(): String =
-        LocalDate.now().format(AlarmDateFormatter)
-
     companion object {
         private val MissionLocationPermissions = arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION,
         )
-        private val AlarmDateFormatter =
-            DateTimeFormatter.ofPattern("yyyy년 M월 d일 EEEE", Locale.KOREAN)
-
         fun intent(context: Context, request: AlarmScheduleRequest): Intent =
             Intent(context, AlarmRingingActivity::class.java).apply {
                 action = AlarmRuntime.ACTION_RING

@@ -12,7 +12,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.joon.ringout.alarm.createIosAlarmRuntime
-import com.joon.ringout.alarm.iosAlarmDateText
 import com.joon.ringout.di.IosAppContainer
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.platform.IosNativeServices
@@ -54,8 +53,6 @@ fun MainViewController(
         val ringingAlarmUiState = ringingAlarm?.let { alarm ->
             AlarmRingingUiState(
                 id = alarm.systemAlarmId,
-                alarmTime = alarm.alarmTime,
-                dateText = iosAlarmDateText(alarm.startedAtEpochMillis),
                 limitMinutes = alarm.limitMinutes,
                 destinationName = alarm.destinationName,
             )

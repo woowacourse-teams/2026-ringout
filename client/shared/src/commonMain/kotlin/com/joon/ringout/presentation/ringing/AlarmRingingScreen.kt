@@ -26,7 +26,7 @@ import com.joon.ringout.presentation.ringing.components.alarmRingingColors
 
 @Composable
 fun AlarmRingingScreen(
-    alarmTime: String,
+    currentTime: String,
     dateText: String,
     limitMinutes: Int,
     destinationName: String,
@@ -60,7 +60,7 @@ fun AlarmRingingScreen(
             ),
         )
         AlarmTimeDetails(
-            alarmTime = formatAlarmDisplayTime(alarmTime),
+            alarmTime = formatAlarmDisplayTime(currentTime),
             limitMinutes = limitMinutes,
             destinationName = destinationName,
         )
@@ -84,7 +84,7 @@ internal fun formatAlarmDisplayTime(value: String): String {
 private fun AlarmRingingScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         AlarmRingingScreen(
-            alarmTime = "07:00",
+            currentTime = "07:00",
             dateText = "2026년 7월 23일 목요일",
             limitMinutes = 10,
             destinationName = "스터디카페",
