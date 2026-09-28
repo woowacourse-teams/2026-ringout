@@ -42,6 +42,7 @@ data class IosAlarmScheduleDto(
     val destinationName: String,
     val limitMinutes: Int,
     val soundName: String,
+    val scheduleVersion: Long = 1,
 )
 
 data class IosAlarmRetryScheduleDto(
@@ -51,6 +52,7 @@ data class IosAlarmRetryScheduleDto(
     val retryAttempt: Int,
     val title: String,
     val delaySeconds: Double = 0.0,
+    val scheduleVersion: Long = 1,
 )
 
 enum class IosScheduledAlarmState {
@@ -65,6 +67,8 @@ enum class IosScheduledAlarmState {
 data class IosScheduledAlarmDto(
     val alarmId: String,
     val state: IosScheduledAlarmState,
+    val occurrenceId: String? = null,
+    val ringingObservedAtEpochMillis: Long? = null,
 )
 
 data class IosScheduledAlarmsResult(
@@ -137,12 +141,13 @@ internal suspend fun IosAlarmScheduler.cancelAwait(alarmId: String) {
     result.requireAlarmKitSuccess("AlarmKit 알람을 해제하지 못했습니다.")
 }
 
-internal suspend fun IosAlarmScheduler.stopAwait(alarmId: String) {
+internal suspend fun IosAlarmScheduler.stopAwait(alarmId: String): Boolean {
     val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
         stop(alarmId, callback)
     }
-    if (result.code == IosAlarmOperationCode.NOT_FOUND) return
+    if (result.code == IosAlarmOperationCode.NOT_FOUND) return false
     result.requireAlarmKitSuccess("AlarmKit 알람을 중지하지 못했습니다.")
+    return true
 }
 
 internal suspend fun IosAlarmScheduler.scheduledAlarmsAwait(): List<IosScheduledAlarmDto> {
@@ -169,6 +174,7 @@ internal fun AlarmScheduleRequest.toIosAlarmScheduleDto(): IosAlarmScheduleDto {
         destinationName = destinationName,
         limitMinutes = limitMinutes,
         soundName = alarmSoundName,
+        scheduleVersion = scheduleVersion,
     )
 }
 

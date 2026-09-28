@@ -2,7 +2,7 @@ package com.joon.ringout.presentation.navigation
 
 import com.joon.ringout.presentation.social.SocialScreen
 import com.joon.ringout.presentation.social.SocialViewModel
-import com.joon.ringout.presentation.records.RecordsScreen
+import com.joon.ringout.presentation.records.RecordsRoute
 import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.domain.auth.AuthSessionState
@@ -63,7 +63,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
         SocialScreen(viewModelScopes.get(AppRoute.Social, SocialViewModel::class).uiState)
     }
     entry<AppRoute.Records>(clazzContentKey = AppRoute::viewModelStoreKey) {
-        RecordsScreen(viewModelScopes.get(AppRoute.Records, RecordsViewModel::class).uiState)
+        RecordsRoute(viewModelScopes.get(AppRoute.Records, RecordsViewModel::class))
     }
 
     entry<AppRoute.NicknameChange>(clazzContentKey = AppRoute::viewModelStoreKey) {

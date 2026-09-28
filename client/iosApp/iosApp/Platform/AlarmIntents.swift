@@ -19,23 +19,29 @@ struct StopAlarmIntent: LiveActivityIntent {
     @Parameter(title: "System Alarm ID")
     var systemAlarmId: String
 
+    @Parameter(title: "Schedule Version")
+    var scheduleVersion: Int
+
     init() {
         alarmId = ""
         occurrenceId = ""
         retryAttempt = 0
         systemAlarmId = ""
+        scheduleVersion = 1
     }
 
     init(
         alarmId: String,
         occurrenceId: String = "",
         retryAttempt: Int = 0,
-        systemAlarmId: String = ""
+        systemAlarmId: String = "",
+        scheduleVersion: Int = 1
     ) {
         self.alarmId = alarmId
         self.occurrenceId = occurrenceId
         self.retryAttempt = retryAttempt
         self.systemAlarmId = systemAlarmId
+        self.scheduleVersion = scheduleVersion
     }
 
     func perform() async throws -> some IntentResult {
@@ -43,7 +49,9 @@ struct StopAlarmIntent: LiveActivityIntent {
             alarmId: alarmId,
             action: .stop,
             occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
-            retryAttempt: retryAttempt
+            retryAttempt: retryAttempt,
+            scheduleVersion: Int64(scheduleVersion),
+            systemAlarmId: systemAlarmId
         )
         return .result()
     }
@@ -66,36 +74,47 @@ struct OpenRingoutIntent: LiveActivityIntent {
     @Parameter(title: "System Alarm ID")
     var systemAlarmId: String
 
+    @Parameter(title: "Schedule Version")
+    var scheduleVersion: Int
+
     init() {
         alarmId = ""
         occurrenceId = ""
         retryAttempt = 0
         systemAlarmId = ""
+        scheduleVersion = 1
     }
 
     init(
         alarmId: String,
         occurrenceId: String = "",
         retryAttempt: Int = 0,
-        systemAlarmId: String = ""
+        systemAlarmId: String = "",
+        scheduleVersion: Int = 1
     ) {
         self.alarmId = alarmId
         self.occurrenceId = occurrenceId
         self.retryAttempt = retryAttempt
         self.systemAlarmId = systemAlarmId
+        self.scheduleVersion = scheduleVersion
     }
 
     func perform() async throws -> some IntentResult {
+        var didStopRinging = false
         if let id = UUID(uuidString: systemAlarmId) {
-            if try AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
+            if try AlarmManager.shared.alarms.contains(where: { $0.id == id && $0.state == .alerting }) {
                 try AlarmManager.shared.stop(id: id)
+                didStopRinging = true
             }
         }
         try RingoutAlarmMissionEventInbox.shared.record(
             alarmId: alarmId,
             action: .open,
             occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
-            retryAttempt: retryAttempt
+            retryAttempt: retryAttempt,
+            scheduleVersion: Int64(scheduleVersion),
+            systemAlarmId: systemAlarmId,
+            didStopRinging: didStopRinging
         )
         return .result()
     }

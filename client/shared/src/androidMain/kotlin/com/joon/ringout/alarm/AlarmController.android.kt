@@ -418,15 +418,16 @@ internal class AndroidAlarmScheduler(
         ensureMigrated()
         request.validateForStorage()
         val previous = dataSource.getById(request.id)
+        val versionedRequest = request.withScheduleVersion(previous?.request)
         val replacement = SavedAlarmSchedule(
-            request = request,
+            request = versionedRequest,
             enabled = true,
         )
         if (previous?.enabled == true) {
             dataSource.replace(previous.copy(enabled = false))
         }
         try {
-            scheduleNext(request, afterMillis = alarmGateway.currentTimeMillis())
+            scheduleNext(versionedRequest, afterMillis = alarmGateway.currentTimeMillis())
             dataSource.replace(replacement)
         } catch (error: Exception) {
             restorePreviousAlarm(previous, request.id, error)
@@ -686,6 +687,7 @@ private class AndroidAlarmManagerGateway(
         val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = AlarmRuntime.ACTION_RING
             putAlarmExtras(request)
+            putExtra(AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS, triggerAtMillis)
         }
         val operation = PendingIntent.getBroadcast(
             context,

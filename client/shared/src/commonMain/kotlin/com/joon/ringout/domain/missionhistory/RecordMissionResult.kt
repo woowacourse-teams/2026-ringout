@@ -7,6 +7,7 @@ class RecordMissionResult(
         result: MissionResult,
         completedAt: MissionDate,
         occurrenceId: String,
+        missionCompletedAtEpochMillis: Long? = null,
     ): Boolean {
         require(occurrenceId.isNotBlank()) { "Mission occurrence ID must not be blank." }
         return repository.record(
@@ -14,6 +15,7 @@ class RecordMissionResult(
                 result = result,
                 completedAt = completedAt,
                 occurrenceId = occurrenceId,
+                missionCompletedAtEpochMillis = missionCompletedAtEpochMillis,
             ),
         )
     }

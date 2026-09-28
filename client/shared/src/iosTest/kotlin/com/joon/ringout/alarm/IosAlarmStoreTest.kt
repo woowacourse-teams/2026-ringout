@@ -22,6 +22,25 @@ import kotlin.test.assertTrue
 
 class IosAlarmStoreTest {
     @Test
+    fun `시간과 요일 수정 버전을 네이티브 예약에 전달하고 같은 설정 재저장과 활성화는 버전을 유지한다`() = runBlocking {
+        val dataSource = FakeAlarmDataSource()
+        val scheduler = FakeIosAlarmScheduler()
+        val store = IosAlarmStore(dataSource, scheduler)
+        val original = request()
+        store.save(original)
+        store.save(original.copy(time = "08:00"))
+        assertEquals(2L, scheduler.scheduledRequests.getValue(original.id).scheduleVersion)
+        assertEquals(2L, dataSource.getById(original.id)!!.request.scheduleVersion)
+        store.save(original.copy(selectedDays = listOf("화")))
+        assertEquals(3L, scheduler.scheduledRequests.getValue(original.id).scheduleVersion)
+        store.save(original.copy(selectedDays = listOf("화"), destinationName = "집"))
+        store.setEnabled(original.id, false)
+        store.setEnabled(original.id, true)
+        assertEquals(3L, dataSource.getById(original.id)!!.request.scheduleVersion)
+        assertEquals(3L, scheduler.scheduledRequests.getValue(original.id).scheduleVersion)
+    }
+
+    @Test
     fun savesNewAlarmAndReactivatesDisabledAlarmWhenReplacingSameId() = runBlocking {
         val dataSource = FakeAlarmDataSource()
         val scheduler = FakeIosAlarmScheduler()

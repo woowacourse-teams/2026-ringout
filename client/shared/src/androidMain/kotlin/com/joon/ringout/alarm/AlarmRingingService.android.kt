@@ -21,6 +21,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
 import com.joon.ringout.analytics.AlarmAnalytics
+import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
 
 class AlarmRingingService : Service() {
     private var mediaPlayer: MediaPlayer? = null
@@ -28,6 +29,7 @@ class AlarmRingingService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var audioFocusRequest: AudioFocusRequest? = null
     private var isActivelyRinging = false
+    private var activeOccurrenceId: String? = null
     private val audioManager by lazy { getSystemService(AudioManager::class.java) }
     private val ringingSessionStore by lazy {
         AlarmRingingSessionStore(applicationContext)
@@ -49,8 +51,8 @@ class AlarmRingingService : Service() {
             if (!ringingSessionStore.clearIfCurrent(occurrenceId)) {
                 return START_NOT_STICKY
             }
+            finishCurrentRinging()
             stopForeground(STOP_FOREGROUND_REMOVE)
-            isActivelyRinging = false
             stopSelf()
             return START_NOT_STICKY
         }
@@ -68,11 +70,12 @@ class AlarmRingingService : Service() {
             }
             return START_NOT_STICKY
         }
+        if (isActivelyRinging && activeOccurrenceId == occurrenceId) return START_NOT_STICKY
         if (!ringingSessionStore.markRinging(occurrenceId)) {
             return START_NOT_STICKY
         }
 
-        stopRingingResources()
+        finishCurrentRinging()
         val notification = createRingingNotification(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
@@ -96,6 +99,14 @@ class AlarmRingingService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        activeOccurrenceId = occurrenceId
+        runCatching {
+            AndroidAlarmActivityRecorder.get(applicationContext).recordRinging(
+                alarmId = intent.getStringExtra(AlarmRuntime.EXTRA_ALARM_ID).orEmpty(),
+                occurrenceId = occurrenceId,
+                scheduleVersion = intent.getLongExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, 1),
+            )
+        }.onFailure { android.util.Log.e("AlarmActivity", "Could not record ringing", it) }
         analytics?.recordAlarmRingingStarted(
             occurrenceId = occurrenceId,
             retryAttempt = intent.getIntExtra(
@@ -117,7 +128,7 @@ class AlarmRingingService : Service() {
     }
 
     override fun onDestroy() {
-        stopRingingResources()
+        finishCurrentRinging()
         stopForeground(STOP_FOREGROUND_REMOVE)
         isActivelyRinging = false
         super.onDestroy()
@@ -237,6 +248,18 @@ class AlarmRingingService : Service() {
             vibrator?.vibrate(
                 VibrationEffect.createWaveform(longArrayOf(0L, 700L, 350L), 0),
             )
+        }
+    }
+
+    private fun finishCurrentRinging() {
+        stopRingingResources()
+        val occurrenceId = activeOccurrenceId
+        activeOccurrenceId = null
+        isActivelyRinging = false
+        if (occurrenceId != null) {
+            runCatching {
+                AndroidAlarmActivityRecorder.get(applicationContext).recordRingingStopped(occurrenceId)
+            }.onFailure { android.util.Log.e("AlarmActivity", "Could not record ringing stop", it) }
         }
     }
 

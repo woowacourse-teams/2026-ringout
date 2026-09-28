@@ -20,8 +20,9 @@ internal class IosAlarmStore(
         IosAlarmStoreMutationMutex.withLock {
             request.validateForStorage()
             val previous = dataSource.getById(request.id)
+            val versionedRequest = request.withScheduleVersion(previous?.request)
             val replacement = SavedAlarmSchedule(
-                request = request,
+                request = versionedRequest,
                 enabled = true,
             )
 
@@ -31,7 +32,7 @@ internal class IosAlarmStore(
                     dataSource.replace(previous.copy(enabled = false))
                     scheduler.cancelAwait(request.id)
                 }
-                scheduler.scheduleAwait(request)
+                scheduler.scheduleAwait(versionedRequest)
             } catch (error: Exception) {
                 withContext(NonCancellable) {
                     scheduler.cancelBestEffort(request.id)

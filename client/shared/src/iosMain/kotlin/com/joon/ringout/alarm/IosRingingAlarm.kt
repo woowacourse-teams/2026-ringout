@@ -15,12 +15,14 @@ internal data class IosRingingAlarm(
     val destinationName: String,
     val limitMinutes: Int,
     val startedAtEpochMillis: Long,
+    val scheduleVersion: Long = 1,
 )
 
 internal suspend fun resolveIosRingingAlarm(
     systemAlarmId: String,
     dataSource: AlarmDataSource,
     deadlineAlarm: IosMissionDeadlineAlarm?,
+    observedOccurrenceId: String? = null,
     startedAtEpochMillis: Long = Clock.System.now().toEpochMilliseconds(),
 ): IosRingingAlarm? {
     val retryRegistration = deadlineAlarm
@@ -36,6 +38,7 @@ internal suspend fun resolveIosRingingAlarm(
             destinationName = retrySeed.destinationName,
             limitMinutes = retrySeed.limitMinutes,
             startedAtEpochMillis = startedAtEpochMillis,
+            scheduleVersion = retrySeed.scheduleVersion,
         )
     }
 
@@ -43,12 +46,13 @@ internal suspend fun resolveIosRingingAlarm(
     return IosRingingAlarm(
         systemAlarmId = systemAlarmId,
         alarmId = savedAlarm.request.id,
-        occurrenceId = null,
+        occurrenceId = observedOccurrenceId,
         retryAttempt = 0,
         alarmTime = savedAlarm.request.time,
         destinationName = savedAlarm.request.destinationName,
         limitMinutes = savedAlarm.request.limitMinutes,
         startedAtEpochMillis = startedAtEpochMillis,
+        scheduleVersion = savedAlarm.request.scheduleVersion,
     )
 }
 
@@ -61,6 +65,7 @@ internal fun ActiveAlarmMission.toIosRingingAlarm(): IosRingingAlarm = IosRingin
     destinationName = destinationName,
     limitMinutes = limitMinutes,
     startedAtEpochMillis = startedAtEpochMillis,
+    scheduleVersion = scheduleVersion,
 )
 
 internal fun iosAlarmDateText(epochMillis: Long): String {

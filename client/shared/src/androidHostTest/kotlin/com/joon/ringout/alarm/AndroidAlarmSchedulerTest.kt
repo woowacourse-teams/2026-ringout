@@ -15,6 +15,25 @@ import kotlin.test.assertTrue
 
 class AndroidAlarmSchedulerTest {
     @Test
+    fun `시간과 요일 수정 버전을 예약과 저장소에 함께 전달하고 활성화만 바꾸면 유지한다`() = runBlocking {
+        val dataSource = FakeAlarmDataSource()
+        val gateway = FakeAndroidAlarmGateway()
+        val scheduler = AndroidAlarmScheduler(dataSource, gateway)
+        val original = request()
+        scheduler.schedule(original)
+        scheduler.schedule(original.copy(time = "08:00"))
+        assertEquals(2L, gateway.scheduled.getValue(original.id).scheduleVersion)
+        assertEquals(2L, dataSource.getById(original.id)!!.request.scheduleVersion)
+        scheduler.schedule(original.copy(selectedDays = listOf("화")))
+        assertEquals(3L, gateway.scheduled.getValue(original.id).scheduleVersion)
+        scheduler.schedule(original.copy(selectedDays = listOf("화"), destinationName = "집"))
+        scheduler.setEnabled(original.id, false)
+        scheduler.setEnabled(original.id, true)
+        assertEquals(3L, dataSource.getById(original.id)!!.request.scheduleVersion)
+        assertEquals(3L, gateway.scheduled.getValue(original.id).scheduleVersion)
+    }
+
+    @Test
     fun `신규 저장은 생성으로 기록하고 이후 성공한 재설정마다 업데이트를 기록한다`() = runBlocking {
         val dataSource = FakeAlarmDataSource()
         val gateway = FakeAndroidAlarmGateway()
@@ -70,7 +89,7 @@ class AndroidAlarmSchedulerTest {
         val scheduler = AndroidAlarmScheduler(
             dataSource = FakeAlarmDataSource(
                 initial = listOf(SavedAlarmSchedule(previous, enabled = true)),
-                replaceFailure = { alarm -> alarm.enabled && alarm.request == latest },
+                replaceFailure = { alarm -> alarm.enabled && alarm.request.time == latest.time },
             ),
             alarmGateway = FakeAndroidAlarmGateway(),
             analytics = analytics,
@@ -101,8 +120,8 @@ class AndroidAlarmSchedulerTest {
 
         val stored = dataSource.getById(latest.id)!!
         assertTrue(stored.enabled)
-        assertEquals(latest, stored.request)
-        assertEquals(latest, gateway.scheduled[latest.id])
+        assertEquals(latest.copy(scheduleVersion = 2), stored.request)
+        assertEquals(latest.copy(scheduleVersion = 2), gateway.scheduled[latest.id])
         assertEquals(listOf("schedule:alarm-1:08:10"), gateway.events)
     }
 
@@ -120,13 +139,13 @@ class AndroidAlarmSchedulerTest {
 
         scheduler.schedule(latest)
 
-        assertEquals(mapOf(latest.id to latest), gateway.scheduled)
-        assertEquals(latest, dataSource.getById(latest.id)!!.request)
+        assertEquals(mapOf(latest.id to latest.copy(scheduleVersion = 2)), gateway.scheduled)
+        assertEquals(latest.copy(scheduleVersion = 2), dataSource.getById(latest.id)!!.request)
         assertTrue(dataSource.getById(latest.id)!!.enabled)
         assertEquals(
             listOf(
                 SavedAlarmSchedule(previous, enabled = false),
-                SavedAlarmSchedule(latest, enabled = true),
+                SavedAlarmSchedule(latest.copy(scheduleVersion = 2), enabled = true),
             ),
             dataSource.replaceHistory,
         )
@@ -189,7 +208,7 @@ class AndroidAlarmSchedulerTest {
         val latest = previous.copy(time = "08:10")
         val dataSource = FakeAlarmDataSource(
             initial = listOf(SavedAlarmSchedule(previous, enabled = true)),
-            replaceFailure = { alarm -> alarm.enabled && alarm.request == latest },
+            replaceFailure = { alarm -> alarm.enabled && alarm.request.time == latest.time },
         )
         val gateway = FakeAndroidAlarmGateway()
         val scheduler = AndroidAlarmScheduler(dataSource, gateway)

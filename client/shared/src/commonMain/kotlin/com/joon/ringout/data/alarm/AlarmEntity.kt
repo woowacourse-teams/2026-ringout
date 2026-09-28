@@ -32,4 +32,6 @@ data class AlarmEntity(
     @ColumnInfo(name = "alarm_sound_uri")
     val alarmSoundUri: String?,
     val enabled: Boolean,
+    @ColumnInfo(name = "schedule_version", defaultValue = "1")
+    val scheduleVersion: Long = 1,
 )

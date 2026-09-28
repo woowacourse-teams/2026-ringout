@@ -25,6 +25,20 @@ import kotlin.test.assertFailsWith
 
 class RoomAlarmDataSourceTest {
     @Test
+    fun `설정 버전은 저장과 재조회와 활성화 변경 후에도 보존된다`() = runBlocking {
+        withDatabase { database ->
+            val source = RoomAlarmDataSource(database.alarmDao())
+            val original = savedAlarm()
+            source.replace(original.copy(request = original.request.copy(scheduleVersion = 4)))
+            source.setEnabled(original.request.id, false)
+
+            val restored = RoomAlarmDataSource(database.alarmDao()).getById(original.request.id)!!
+            assertEquals(4L, restored.request.scheduleVersion)
+            assertFalse(restored.enabled)
+        }
+    }
+
+    @Test
     fun activeCollectorReceivesCreateToggleAndDeleteMutationsInOrder() = runBlocking {
         withDatabase { database ->
             val dataSource = RoomAlarmDataSource(database.alarmDao())

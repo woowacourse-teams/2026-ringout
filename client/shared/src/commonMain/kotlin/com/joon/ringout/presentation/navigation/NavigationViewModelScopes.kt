@@ -14,12 +14,14 @@ import com.joon.ringout.presentation.social.SocialViewModel
 import com.joon.ringout.presentation.records.RecordsViewModel
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
+import com.joon.ringout.domain.missionhistory.GetRecordsHistory
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.mypage.currentMissionYearMonth
+import com.joon.ringout.presentation.records.currentRecordsDate
 import com.joon.ringout.presentation.signup.SignupViewModel
 import kotlinx.serialization.json.Json
 import kotlin.reflect.KClass
@@ -77,7 +79,14 @@ private fun navigationViewModelFactory(container: AppContainer): ViewModelProvid
     viewModelFactory {
         initializer { HomeViewModel() }
         initializer { SocialViewModel() }
-        initializer { RecordsViewModel() }
+        initializer {
+            RecordsViewModel(
+                activityRepository = container.alarmActivityRepository,
+                getRecordsHistory = GetRecordsHistory(container.missionHistoryRepository),
+                initialDate = currentRecordsDate(),
+                currentDate = ::currentRecordsDate,
+            )
+        }
         initializer {
             MyPageViewModel(
                 getMissionSuccessDates = GetMissionSuccessDates(container.missionHistoryRepository),

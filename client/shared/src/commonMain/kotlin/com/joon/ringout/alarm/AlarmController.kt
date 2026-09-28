@@ -18,6 +18,7 @@ data class AlarmScheduleRequest(
     val targetDistanceKm: Double = 1.2,
     val alarmSoundName: String,
     val alarmSoundUri: String?,
+    val scheduleVersion: Long = 1,
 )
 
 class AlarmController(

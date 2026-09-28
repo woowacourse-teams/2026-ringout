@@ -23,6 +23,117 @@ import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTest {
     @Test
+    fun `버전 칠의 실행 시각을 보존하고 예정 시각은 추정하지 않은 채 새 열을 추가한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        createVersionFiveDatabase(path)
+        BundledSQLiteDriver().open(path).use { connection ->
+            connection.execSQL("DELETE FROM alarm_activity_events WHERE type = 'CREATED'")
+            connection.execSQL("""
+                CREATE TABLE alarm_occurrence_times (
+                    occurrence_id TEXT NOT NULL PRIMARY KEY,
+                    ringing_started_at INTEGER, ringing_stopped_at INTEGER, mission_completed_at INTEGER,
+                    ringing_start_observed INTEGER NOT NULL
+                )
+            """.trimIndent())
+            connection.execSQL("INSERT INTO alarm_occurrence_times VALUES ('one', 2000, 3000, 4000, 1)")
+            connection.execSQL("PRAGMA user_version = 7")
+        }
+        val database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val times = assertNotNull(database.alarmActivityDao().getOccurrenceTimes("one"))
+            assertEquals(2_000L, times.ringingStartedAtEpochMillis)
+            assertEquals(3_000L, times.ringingStoppedAtEpochMillis)
+            assertEquals(4_000L, times.missionCompletedAtEpochMillis)
+            kotlin.test.assertNull(times.ringingScheduledAtEpochMillis)
+            database.alarmActivityDao().mergeOccurrenceTimes(times.copy(ringingScheduledAtEpochMillis = 1_000))
+            database.alarmActivityDao().mergeOccurrenceTimes(times.copy(ringingScheduledAtEpochMillis = 9_000))
+            assertEquals(1_000L, database.alarmActivityDao().getOccurrenceTimes("one")?.ringingScheduledAtEpochMillis)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    @Test
+    fun `버전 육의 울림 이벤트에서 시작 시각만 복원하고 없는 종료와 완료 시각은 비워 둔다`() = runBlocking<Unit> {
+        val path = temporaryDatabasePath()
+        createVersionFiveDatabase(path)
+        BundledSQLiteDriver().open(path).use { connection ->
+            connection.execSQL("DELETE FROM alarm_activity_events WHERE type = 'CREATED'")
+            connection.execSQL("UPDATE mission_history SET occurrence_id = 'one', completed_at = '2026-09-28'")
+            connection.execSQL("PRAGMA user_version = 6")
+        }
+        val database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val entry = database.missionHistoryDao().getHistoryWithTimes("2026-09-01", "2026-09-30").single()
+            assertEquals("one", entry.history.occurrenceId)
+            assertEquals(2_000L, entry.ringingStartedAtEpochMillis)
+            kotlin.test.assertNull(entry.ringingStoppedAtEpochMillis)
+            kotlin.test.assertNull(entry.missionCompletedAtEpochMillis)
+            assertEquals(true, entry.isRingingStartObserved)
+            assertEquals(1, database.alarmActivityDao().observeCounts("2026-09-28").first().ringingCount)
+            assertNotNull(database.alarmDao().getById("alarm-v2"))
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    @Test
+    fun `버전 오에서 생성 집계 이벤트만 제거하고 울림과 기존 알람을 보존한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        createVersionFiveDatabase(path)
+        val database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val counts = database.alarmActivityDao().observeCounts("2026-09-28").first()
+            assertEquals(1, counts.ringingCount)
+            assertEquals("2026-09-28", counts.trackingStartDate)
+            assertNotNull(database.alarmDao().getById("alarm-v2"))
+            assertEquals(1, database.missionHistoryDao().getHistory("2026-08-01", "2026-08-31").size)
+            assertEquals("rang:one", database.alarmActivityDao().getObservations().single().eventKey)
+            BundledSQLiteDriver().open(path).use { connection ->
+                connection.prepare("SELECT event_key FROM alarm_activity_events ORDER BY event_key").use { statement ->
+                    val keys = buildList {
+                        while (statement.step()) add(statement.getText(0))
+                    }
+                    assertEquals(listOf("rang:one"), keys)
+                }
+            }
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    @Test
+    fun `버전 사에서 기존 알람과 미션을 보존하고 활동 집계 테이블을 추가한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        createVersionThreeDatabase(path)
+        BundledSQLiteDriver().open(path).use { connection ->
+            connection.execSQL("ALTER TABLE mission_history ADD COLUMN occurrence_id TEXT")
+            connection.execSQL("CREATE UNIQUE INDEX index_mission_history_occurrence_id ON mission_history (occurrence_id)")
+            connection.execSQL("PRAGMA user_version = 4")
+        }
+        val database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            assertNotNull(database.alarmDao().getById("alarm-v2"))
+            assertEquals(1, database.missionHistoryDao().getHistory("2026-08-01", "2026-08-31").size)
+            val counts = database.alarmActivityDao().observeCounts("2026-08-05").first()
+            assertEquals(0, counts.ringingCount)
+            kotlin.test.assertNull(counts.trackingStartDate)
+            database.alarmActivityDao().record(
+                com.joon.ringout.data.alarmactivity.AlarmActivityEntity.rang(
+                    "alarm-v2", "new-ring", com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp(1_000, "2026-09-28"),
+                ),
+            )
+            assertEquals(1, database.alarmActivityDao().observeCounts("2026-09-28").first().ringingCount)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    @Test
     fun migratesVersionOneToCurrentWithoutLosingMissionHistory() = runBlocking {
         val databasePath = temporaryDatabasePath()
         createVersionOneDatabase(databasePath)
@@ -125,6 +236,45 @@ class RingoutDatabaseMigrationTest {
         } finally {
             database.close()
             deleteDatabaseFiles(databasePath)
+        }
+    }
+
+    private fun createVersionFiveDatabase(databasePath: String) {
+        createVersionThreeDatabase(databasePath)
+        BundledSQLiteDriver().open(databasePath).use { connection ->
+            connection.execSQL(
+                "ALTER TABLE mission_history ADD COLUMN occurrence_id TEXT",
+            )
+            connection.execSQL(
+                "CREATE UNIQUE INDEX index_mission_history_occurrence_id ON mission_history (occurrence_id)",
+            )
+            connection.execSQL(
+                "CREATE TABLE IF NOT EXISTS `alarm_activity_events` (`event_key` TEXT NOT NULL, `alarm_id` TEXT NOT NULL, `type` TEXT NOT NULL, `occurred_at_epoch_millis` INTEGER NOT NULL, `local_date` TEXT NOT NULL, PRIMARY KEY(`event_key`))",
+            )
+            connection.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_alarm_activity_events_local_date_type` ON `alarm_activity_events` (`local_date`, `type`)",
+            )
+            connection.execSQL(
+                "CREATE TABLE IF NOT EXISTS `alarm_activity_tracking` (`id` INTEGER NOT NULL, `started_at_epoch_millis` INTEGER NOT NULL, `local_date` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            )
+            connection.execSQL(
+                "CREATE TABLE IF NOT EXISTS `alarm_ringing_observations` (`system_alarm_id` TEXT NOT NULL, `event_key` TEXT NOT NULL, PRIMARY KEY(`system_alarm_id`))",
+            )
+            connection.execSQL(
+                "INSERT INTO alarm_activity_events VALUES ('created:alarm-v2', 'alarm-v2', 'CREATED', 1000, '2026-09-28')",
+            )
+            connection.execSQL(
+                "INSERT INTO alarm_activity_events VALUES ('rang:one', 'alarm-v2', 'RANG', 2000, '2026-09-28')",
+            )
+            connection.execSQL(
+                "INSERT INTO alarm_activity_tracking VALUES (1, 1000, '2026-09-28')",
+            )
+            connection.execSQL(
+                "INSERT INTO alarm_ringing_observations VALUES ('system-alarm', 'rang:one')",
+            )
+            connection.execSQL(
+                "PRAGMA user_version = 5",
+            )
         }
     }
 
