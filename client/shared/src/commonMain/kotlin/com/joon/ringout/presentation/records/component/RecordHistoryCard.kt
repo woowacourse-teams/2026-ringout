@@ -47,10 +47,16 @@ internal fun RecordHistoryCard(
     modifier: Modifier = Modifier,
 ) {
     val colors = recordsColors()
-    val canCollapse = record.entries.last().result == MissionResult.SUCCESS
+    val lastResult = record.entries.last().result
+    val canCollapse = lastResult != null
     val showDetails = expanded || !canCollapse
     val times = record.entries.map { it.recordTimes() }
-    val rowCount = if (showDetails) record.entries.size + record.entries.count { it.result == MissionResult.SUCCESS } else 1
+    val rowCount = if (showDetails) record.entries.size + record.entries.count { it.result != null } else 1
+    val lastRowCenter = when (lastResult) {
+        MissionResult.SUCCESS -> 24.dp
+        MissionResult.FAILURE -> 29.dp
+        null -> 28.dp
+    }
     Column(modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(colors.card)) {
         Row(
             modifier = Modifier.fillMaxWidth()
@@ -71,7 +77,7 @@ internal fun RecordHistoryCard(
                         drawLine(
                             color = colors.secondaryText,
                             start = Offset(19.dp.toPx(), 28.dp.toPx()),
-                            end = Offset(19.dp.toPx(), size.height - (if (canCollapse) 24.dp else 28.dp).toPx()),
+                            end = Offset(19.dp.toPx(), size.height - lastRowCenter.toPx()),
                             strokeWidth = 4.dp.toPx(),
                         )
                     }
@@ -82,13 +88,18 @@ internal fun RecordHistoryCard(
                 record.entries.forEachIndexed { index, entry ->
                     key(entry.key) {
                         RecordRingingRow(times[index])
-                        if (entry.result == MissionResult.SUCCESS) {
-                            RecordArrivalRow(completedTime = times[index].completedTime)
+                        when (entry.result) {
+                            MissionResult.SUCCESS -> RecordArrivalRow(completedTime = times[index].completedTime)
+                            MissionResult.FAILURE -> RecordForceEndRow(completedTime = times[index].completedTime)
+                            null -> Unit
                         }
                     }
                 }
             } else {
-                RecordArrivalRow(completedTime = times.last().completedTime, showTime = false)
+                when (lastResult) {
+                    MissionResult.SUCCESS -> RecordArrivalRow(completedTime = times.last().completedTime, showTime = false)
+                    MissionResult.FAILURE -> RecordForceEndRow(completedTime = times.last().completedTime, showTime = false)
+                }
             }
         }
     }
@@ -154,17 +165,33 @@ private fun RecordHistoryCardRepeatedRingingPreview() {
 @Composable
 private fun RecordHistoryCardRepeatedArrivalPreview() {
     RingoutTheme {
-        RecordHistoryCard(previewRepeatedRinging(arrived = true), expanded = true, onExpandedChange = {})
+        RecordHistoryCard(previewRepeatedRinging(result = MissionResult.SUCCESS), expanded = true, onExpandedChange = {})
     }
 }
 
-private fun previewRepeatedRinging(arrived: Boolean = false): AlarmUsageRecordGroup =
+@Preview(widthDp = 342)
+@Composable
+private fun RecordHistoryCardForceEndPreview() {
+    RingoutTheme {
+        RecordHistoryCard(previewRepeatedRinging(result = MissionResult.FAILURE), expanded = true, onExpandedChange = {})
+    }
+}
+
+@Preview(widthDp = 342)
+@Composable
+private fun RecordHistoryCardForceEndCollapsedPreview() {
+    RingoutTheme {
+        RecordHistoryCard(previewRepeatedRinging(result = MissionResult.FAILURE), expanded = false, onExpandedChange = {})
+    }
+}
+
+private fun previewRepeatedRinging(result: MissionResult? = null): AlarmUsageRecordGroup =
     (0..2).map { index ->
         AlarmUsageRecord(
             key = "preview-$index", date = MissionDate.of(2026, 9, 28), alarmId = "same-alarm",
             ringingStartedAtEpochMillis = 1790546400000L + index * 300_000,
             ringingStoppedAtEpochMillis = 1790546460000L + index * 300_000,
-            result = if (arrived && index == 2) MissionResult.SUCCESS else null,
-            missionCompletedAtEpochMillis = if (arrived && index == 2) 1790547480000L else null,
+            result = if (index == 2) result else null,
+            missionCompletedAtEpochMillis = if (result != null && index == 2) 1790547480000L else null,
         )
     }.groupByAlarm().single()

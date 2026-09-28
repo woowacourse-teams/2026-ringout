@@ -19,6 +19,7 @@ internal data class RecordsColors(
     val successSurface: Color,
     val failure: Color,
     val failureSurface: Color,
+    val forceEnd: Color,
 )
 
 private val DarkRecordsColors = RecordsColors(
@@ -33,6 +34,7 @@ private val DarkRecordsColors = RecordsColors(
     successSurface = Color(0xFF226E29),
     failure = Color(0xFFFF5252),
     failureSurface = Color.Black,
+    forceEnd = Color(0xFFFF0000),
 )
 
 private val LightRecordsColors = RecordsColors(
@@ -47,6 +49,7 @@ private val LightRecordsColors = RecordsColors(
     successSurface = Color(0xFFDCEEDC),
     failure = Color(0xFFB3261E),
     failureSurface = Color(0xFFFCE4E4),
+    forceEnd = Color(0xFFB3261E),
 )
 
 @Composable

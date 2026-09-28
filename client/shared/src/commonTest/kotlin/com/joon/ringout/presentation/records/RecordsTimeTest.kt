@@ -15,6 +15,29 @@ class RecordsTimeTest {
     }
 
     @Test
+    fun `강제 종료 시각은 울림 종료 시각과 구분해서 표시한다`() {
+        val times = AlarmUsageRecord(
+            key = "forced", date = date, result = MissionResult.FAILURE,
+            ringingStartedAtEpochMillis = 1, ringingStoppedAtEpochMillis = 2, missionCompletedAtEpochMillis = 3,
+        ).recordTimes(format)
+
+        assertEquals("9/27 23:58 ~ 00:03", times.ringingRange)
+        assertEquals("00:15", times.completedTime)
+        assertEquals("강제 종료 00:15", times.completedDescription)
+    }
+
+    @Test
+    fun `강제 종료 시각이 없는 과거 기록은 울림 종료 시각으로 대체하지 않는다`() {
+        val times = AlarmUsageRecord(
+            key = "legacy", date = date, result = MissionResult.FAILURE,
+            ringingStartedAtEpochMillis = 1, ringingStoppedAtEpochMillis = 2,
+        ).recordTimes(format)
+
+        kotlin.test.assertNull(times.completedTime)
+        assertEquals("강제 종료 시각 기록 없음", times.completedDescription)
+    }
+
+    @Test
     fun `종료 전에는 울린 시각만 표시하고 도착 시각은 비워 둔다`() {
         val times = AlarmUsageRecord("one", date, ringingStartedAtEpochMillis = 2).recordTimes(format)
 
@@ -44,7 +67,7 @@ class RecordsTimeTest {
         val times = MissionHistoryEntry(MissionResult.FAILURE, date, "one", null, 2, 3).toAlarmUsageRecord().recordTimes(format)
         assertEquals("--:-- ~ 00:03", times.ringingRange)
         assertEquals("울림 시작 시각 기록 없음", times.ringingDescription)
-        assertEquals("미션 종료 00:15", times.completedDescription)
+        assertEquals("강제 종료 00:15", times.completedDescription)
     }
 
     @Test

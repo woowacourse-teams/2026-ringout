@@ -21,7 +21,7 @@ internal fun AlarmUsageRecord.recordTimes(
     val started = ringingStartedAtEpochMillis?.let { format(it, date) }
     val stopped = ringingStoppedAtEpochMillis?.let { format(it, date) }
     val completed = missionCompletedAtEpochMillis?.let { format(it, date) }
-    val completionLabel = if (result == MissionResult.SUCCESS) "미션 완료" else "미션 종료"
+    val completionLabel = if (result == MissionResult.FAILURE) "강제 종료" else "미션 완료"
     return RecordTimesUiState(
         title = started?.let { "${it}에 울린 알람" } ?: "시간 기록 없는 알람",
         ringingRange = if (started != null && stopped == null) started else "${started ?: "--:--"} ~ ${stopped ?: "--:--"}",
@@ -33,6 +33,7 @@ internal fun AlarmUsageRecord.recordTimes(
             else -> "울림 시작 ~ 울림 종료"
         },
         completedTime = completed,
-        completedDescription = completed?.let { "$completionLabel $it" } ?: "완료 시각 기록 없음",
+        completedDescription = completed?.let { "$completionLabel $it" }
+            ?: if (result == MissionResult.FAILURE) "강제 종료 시각 기록 없음" else "완료 시각 기록 없음",
     )
 }
