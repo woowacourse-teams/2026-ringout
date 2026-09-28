@@ -7,10 +7,12 @@ import static org.mockito.Mockito.verify;
 
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
-import com.ringout.api.room.dto.request.RoomCreateRequest;
-import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.domain.ActivityDay;
+import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomUpdateRequest;
+import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomMemberResponse;
+import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.service.RoomService;
 import com.ringout.api.user.domain.Role;
 import java.time.LocalTime;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockMultipartFile;
 
 class RoomControllerTest {
 
@@ -72,6 +75,43 @@ class RoomControllerTest {
             assertThat(response.getBody().getMessage()).isEqualTo("모임 방이 생성되었습니다.");
             assertThat(response.getBody().getResult()).isEqualTo(serviceResponse);
             verify(roomService).createRoom(userId, request);
+        }
+    }
+
+    @Nested
+    class 인증된_방장_모임방_수정_응답 {
+
+        @Test
+        void multipart_수정_성공_응답을_반환한다() {
+            // given
+            Long userId = 1L;
+            Long roomId = 10L;
+            CustomUserDetails userDetails = new CustomUserDetails(userId, Role.USER);
+            MockMultipartFile image = new MockMultipartFile("image", "room.png", "image/png", new byte[]{1});
+            RoomUpdateRequest request = new RoomUpdateRequest("새로운 아침 운동 모임", "", image);
+            RoomUpdateResponse serviceResponse = new RoomUpdateResponse(
+                roomId,
+                "새로운 아침 운동 모임",
+                "",
+                "/images/default-room.png"
+            );
+            given(roomService.updateRoom(userId, roomId, request)).willReturn(serviceResponse);
+
+            // when
+            ResponseEntity<CustomResponse<RoomUpdateResponse>> response = roomController.updateRoom(
+                userDetails,
+                roomId,
+                request
+            );
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getIsSuccess()).isTrue();
+            assertThat(response.getBody().getCode()).isEqualTo("ROOM200");
+            assertThat(response.getBody().getMessage()).isEqualTo("방 정보 수정에 성공했습니다.");
+            assertThat(response.getBody().getResult()).isEqualTo(serviceResponse);
+            verify(roomService).updateRoom(userId, roomId, request);
         }
     }
 }

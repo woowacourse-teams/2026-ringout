@@ -246,10 +246,104 @@ class RoomTest {
         }
     }
 
+    @Nested
+    class 모임방_기본_정보_수정_규칙 {
+
+        @Test
+        void 전달한_이름으로_수정하고_앞뒤_공백을_제거한다() {
+            // given
+            Room room = createRoom(1L);
+
+            // when
+            room.update("  새로운 아침 운동 모임  ", null);
+
+            // then
+            assertThat(room.getName()).isEqualTo("새로운 아침 운동 모임");
+            assertThat(room.getDescription()).isEqualTo("운동을 함께하는 모임입니다.");
+            assertThat(room.getImageId()).isEqualTo(1L);
+        }
+
+        @Test
+        void 전달한_소개로_수정하고_다른_정보는_유지한다() {
+            // given
+            Room room = createRoom(1L);
+
+            // when
+            room.update(null, "매주 아침 함께 운동하는 모임입니다.");
+
+            // then
+            assertThat(room.getName()).isEqualTo("운동 모임");
+            assertThat(room.getDescription()).isEqualTo("매주 아침 함께 운동하는 모임입니다.");
+            assertThat(room.getImageId()).isEqualTo(1L);
+        }
+
+        @Test
+        void 수정할_정보를_하나도_전달하지_않으면_요청_형식_오류를_반환한다() {
+            // given
+            Room room = createRoom(1L);
+
+            // when
+            Throwable thrown = catchThrowable(() -> room.update(null, null));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UPDATE_REQUIRED));
+        }
+
+        @Test
+        void 수정할_이름이_공백만_있으면_이름_형식_오류를_반환한다() {
+            // given
+            Room room = createRoom(1L);
+
+            // when
+            Throwable thrown = catchThrowable(() -> room.update("   ", null));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_NAME_INVALID));
+        }
+
+        @Test
+        void 수정할_소개를_빈_문자열로_변경할_수_있다() {
+            // given
+            Room room = createRoom(1L);
+
+            // when
+            room.update(null, "");
+
+            // then
+            assertThat(room.getDescription()).isEmpty();
+        }
+
+        @Test
+        void 수정할_소개가_300자를_초과하면_소개_형식_오류를_반환한다() {
+            // given
+            Room room = createRoom(1L);
+
+            // when
+            Throwable thrown = catchThrowable(() -> room.update(null, "가".repeat(301)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_DESCRIPTION_INVALID));
+        }
+    }
+
     private Room createRoom(List<ActivityDay> activityDays) {
+        return createRoom(null, activityDays);
+    }
+
+    private Room createRoom(Long imageId) {
+        return createRoom(imageId, List.of(ActivityDay.MONDAY));
+    }
+
+    private Room createRoom(Long imageId, List<ActivityDay> activityDays) {
         return Room.of(
             mock(User.class),
-            null,
+            imageId,
             "운동 모임",
             "운동을 함께하는 모임입니다.",
             activityDays,

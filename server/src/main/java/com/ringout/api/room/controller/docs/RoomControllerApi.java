@@ -4,7 +4,9 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.SwaggerConfig;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -168,5 +170,50 @@ public interface RoomControllerApi {
             )
         )
         RoomCreateRequest request
+    );
+
+    @Operation(
+        summary = "모임 방 수정",
+        description = "방장만 모임 방의 이름, 소개, 대표 이미지를 수정할 수 있습니다. 대표 이미지는 현재 기본 이미지 URL로 응답합니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "모임 방 수정 성공",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": true,
+                      "code": "ROOM200",
+                      "message": "방 정보 수정에 성공했습니다.",
+                      "result": {
+                        "roomId": 1,
+                        "name": "새로운 아침 운동 모임",
+                        "description": "매주 아침 함께 운동하는 모임입니다.",
+                        "imageUrl": "/images/default-room.png"
+                      }
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(responseCode = "400", description = "수정 요청 또는 필드 형식이 올바르지 않음"),
+        @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자"),
+        @ApiResponse(responseCode = "403", description = "모임 방 수정 권한 없음"),
+        @ApiResponse(responseCode = "404", description = "존재하지 않는 모임 방")
+    })
+    ResponseEntity<CustomResponse<RoomUpdateResponse>> updateRoom(
+        @Parameter(hidden = true) CustomUserDetails customUserDetails,
+        @Parameter(description = "수정할 모임 방 식별자", example = "1") Long roomId,
+        @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            description = "변경할 모임 방 정보",
+            content = @Content(
+                mediaType = "multipart/form-data",
+                schema = @Schema(implementation = RoomUpdateRequest.class)
+            )
+        )
+        RoomUpdateRequest request
     );
 }

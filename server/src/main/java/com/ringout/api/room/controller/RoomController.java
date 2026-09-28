@@ -4,12 +4,17 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.room.controller.docs.RoomControllerApi;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.service.RoomService;
 import com.ringout.api.room.status.RoomSuccessStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,5 +36,18 @@ public class RoomController implements RoomControllerApi {
 
         return ResponseEntity.status(RoomSuccessStatus.ROOM_CREATED.getHttpStatus())
             .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_CREATED, response));
+    }
+
+    @Override
+    @PatchMapping(value = "/{roomId}", consumes = "multipart/form-data")
+    public ResponseEntity<CustomResponse<RoomUpdateResponse>> updateRoom(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @PathVariable Long roomId,
+        @ModelAttribute RoomUpdateRequest request
+    ) {
+        RoomUpdateResponse response = roomService.updateRoom(customUserDetails.getUserId(), roomId, request);
+
+        return ResponseEntity.status(RoomSuccessStatus.ROOM_UPDATED.getHttpStatus())
+            .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_UPDATED, response));
     }
 }
