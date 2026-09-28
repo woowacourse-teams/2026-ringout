@@ -18,7 +18,7 @@ class RecordsTimeTest {
         val times = record.recordTimes { millis, _ -> mapOf(1L to "07:00", 2L to "07:01", 3L to "07:02").getValue(millis) }
 
         assertEquals("오전 07:00에 울린 알람", times.title)
-        assertEquals("07:00 ~ 07:02", times.ringingRange)
+        assertEquals("오전 07:00 ~ 오전 07:02", times.ringingRange)
         assertEquals("설정된 울림 시각 ~ 울림 종료", times.ringingDescription)
     }
 
@@ -52,9 +52,9 @@ class RecordsTimeTest {
             ringingStartedAtEpochMillis = 1, ringingStoppedAtEpochMillis = 2, missionCompletedAtEpochMillis = 3,
         ).recordTimes(format)
 
-        assertEquals("9/27 23:58 ~ 00:03", times.ringingRange)
-        assertEquals("00:15", times.completedTime)
-        assertEquals("강제 종료 00:15", times.completedDescription)
+        assertEquals("9/27 오후 11:58 ~ 오전 12:03", times.ringingRange)
+        assertEquals("오전 12:15", times.completedTime)
+        assertEquals("강제 종료 오전 12:15", times.completedDescription)
     }
 
     @Test
@@ -80,9 +80,9 @@ class RecordsTimeTest {
     fun `저장된 시작과 종료와 완료 시각을 카드에 표시한다`() {
         val times = MissionHistoryEntry(MissionResult.SUCCESS, date, "one", 1, 2, 3).toAlarmUsageRecord().recordTimes(format)
         assertEquals("9/27 오후 11:58에 울린 알람", times.title)
-        assertEquals("9/27 23:58 ~ 00:03", times.ringingRange)
+        assertEquals("9/27 오후 11:58 ~ 오전 12:03", times.ringingRange)
         assertEquals("울림 시작 ~ 울림 종료", times.ringingDescription)
-        assertEquals("미션 완료 00:15", times.completedDescription)
+        assertEquals("미션 완료 오전 12:15", times.completedDescription)
     }
 
     @Test
@@ -98,9 +98,9 @@ class RecordsTimeTest {
     fun `확인하지 못한 시작 시각은 비우고 저장된 종료 시각만 표시한다`() {
         val times = MissionHistoryEntry(MissionResult.FAILURE, date, "one", null, 2, 3).toAlarmUsageRecord().recordTimes(format)
         assertEquals("시작 시각 기록 없는 알람", times.title)
-        assertEquals("--:-- ~ 00:03", times.ringingRange)
+        assertEquals("--:-- ~ 오전 12:03", times.ringingRange)
         assertEquals("울림 시작 시각 기록 없음", times.ringingDescription)
-        assertEquals("강제 종료 00:15", times.completedDescription)
+        assertEquals("강제 종료 오전 12:15", times.completedDescription)
     }
 
     @Test

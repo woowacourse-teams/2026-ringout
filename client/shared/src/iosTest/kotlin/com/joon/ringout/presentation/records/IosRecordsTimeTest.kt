@@ -14,7 +14,7 @@ class IosRecordsTimeTest {
         )
         val times = record.recordTimes { millis, _ -> if (millis == 1L) "07:00" else "07:01" }
 
-        assertEquals("07:00 ~ --:--", times.ringingRange)
+        assertEquals("오전 07:00 ~ --:--", times.ringingRange)
         assertEquals("오전 07:00에 울린 알람", times.title)
     }
 
@@ -24,6 +24,6 @@ class IosRecordsTimeTest {
             key = "legacy", date = MissionDate.of(2026, 9, 28), ringingStartedAtEpochMillis = 1,
         )
 
-        assertEquals("07:00 ~ --:--", record.recordTimes { _, _ -> "07:00" }.ringingRange)
+        assertEquals("오전 07:00 ~ --:--", record.recordTimes { _, _ -> "07:00" }.ringingRange)
     }
 }

@@ -73,7 +73,7 @@ internal fun RecordForceEndRow(
 @Preview(widthDp = 313)
 @Composable
 private fun RecordForceEndRowPreview() {
-    RingoutTheme { RecordForceEndRow("06:53", Modifier.background(recordsColors().card)) }
+    RingoutTheme { RecordForceEndRow("오전 06:53", Modifier.background(recordsColors().card)) }
 }
 
 @Preview(widthDp = 313)

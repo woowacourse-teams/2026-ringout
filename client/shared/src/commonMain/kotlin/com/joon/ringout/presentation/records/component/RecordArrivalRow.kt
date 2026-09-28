@@ -75,7 +75,7 @@ internal fun RecordArrivalRow(
 @Composable
 private fun RecordArrivalRowPreview() {
     RingoutTheme {
-        RecordArrivalRow("06:53", Modifier.background(recordsColors().card))
+        RecordArrivalRow("오전 06:53", Modifier.background(recordsColors().card))
     }
 }
 

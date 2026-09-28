@@ -21,12 +21,12 @@ internal data class RecordTimesUiState(
 internal fun AlarmUsageRecord.recordTimes(
     format: (Long, MissionDate) -> String = ::formatRecordsTime,
 ): RecordTimesUiState {
-    val started = (ringingScheduledAtEpochMillis ?: ringingStartedAtEpochMillis)?.let { format(it, date) }
-    val stopped = ringingStoppedAtEpochMillis?.let { format(it, date) }
-    val completed = missionCompletedAtEpochMillis?.let { format(it, date) }
+    val started = (ringingScheduledAtEpochMillis ?: ringingStartedAtEpochMillis)?.let { format(it, date).toRecordTime() }
+    val stopped = ringingStoppedAtEpochMillis?.let { format(it, date).toRecordTime() }
+    val completed = missionCompletedAtEpochMillis?.let { format(it, date).toRecordTime() }
     val completionLabel = if (result == MissionResult.FAILURE) "강제 종료" else "미션 완료"
     return RecordTimesUiState(
-        title = started?.toRecordTitle() ?: if (stopped != null) "시작 시각 기록 없는 알람" else "시간 기록 없는 알람",
+        title = started?.let { "${it}에 울린 알람" } ?: if (stopped != null) "시작 시각 기록 없는 알람" else "시간 기록 없는 알람",
         ringingRange = formatRecordsRingingRange(started, stopped),
         ringingDescription = when {
             started == null && stopped == null -> "울림/종료 시각 기록 없음"
@@ -42,8 +42,8 @@ internal fun AlarmUsageRecord.recordTimes(
     )
 }
 
-private fun String.toRecordTitle(): String {
+private fun String.toRecordTime(): String {
     val display = substringAfterLast(' ').toTwelveHourDisplay()
     val datePrefix = substringBeforeLast(' ', "").let { if (it.isEmpty()) "" else "$it " }
-    return "$datePrefix${display.period} ${display.time}에 울린 알람"
+    return "$datePrefix${display.period} ${display.time}"
 }

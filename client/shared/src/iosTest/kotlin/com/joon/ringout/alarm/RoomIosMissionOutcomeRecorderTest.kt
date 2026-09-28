@@ -70,7 +70,7 @@ class RoomIosMissionOutcomeRecorderTest {
         assertEquals(3, database.alarmActivityDao().observeCounts("2026-09-28").first().ringingCount)
         val displayedRecords = RoomMissionHistoryDataSource(database.missionHistoryDao()).getRecords(MissionYearMonth(2026, 9))
         assertEquals(
-            listOf("07:00 ~ 07:02", "07:07 ~ 07:08", "07:13 ~ 07:14"),
+            listOf("오전 07:00 ~ 오전 07:02", "오전 07:07 ~ 오전 07:08", "오전 07:13 ~ 오전 07:14"),
             displayedRecords.map { it.recordTimes().ringingRange },
         )
     }
