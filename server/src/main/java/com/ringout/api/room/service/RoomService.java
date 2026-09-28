@@ -4,7 +4,9 @@ import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
@@ -47,8 +49,46 @@ public class RoomService {
             .addKeyValue("activityDayCount", savedRoom.getActivityDays().size())
             .log("모임방 생성 성공");
 
-        // TODO: imageURL 어떻게 관리해야하는지 알아야함.
+        // TODO: imageURL 어떻게 관리해야하는지 알아야함. 우선 임시 링크 반환
         return RoomCreateResponse.from(savedRoom, roomUser, DEFAULT_ROOM_IMAGE_URL);
+    }
+
+    @Transactional
+    public RoomUpdateResponse updateRoom(Long userId, Long roomId, RoomUpdateRequest request) {
+        log.atInfo()
+            .addKeyValue("event", "room_update_requested")
+            .addKeyValue("userId", userId)
+            .addKeyValue("roomId", roomId)
+            .addKeyValue("hasName", request != null && request.name() != null)
+            .addKeyValue("descriptionLength", request == null || request.description() == null
+                ? null : request.description().length())
+            .addKeyValue("hasImage", request != null && request.image() != null)
+            .log("모임방 수정 요청 시작");
+
+        User user = findAuthenticatedUser(userId);
+        validateUpdateRequest(request);
+
+        Room room = roomRepository.findById(roomId)
+            .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_NOT_FOUND));
+        if (!room.isHostedBy(user.getId())) {
+            throw new GeneralException(RoomErrorStatus.ROOM_FORBIDDEN);
+        }
+
+        if (request.name() != null || request.description() != null) {
+            room.update(request.name(), request.description());
+        }
+
+        log.atInfo()
+            .addKeyValue("event", "room_update_succeeded")
+            .addKeyValue("userId", userId)
+            .addKeyValue("roomId", room.getId())
+            .addKeyValue("updatedName", request.name() != null)
+            .addKeyValue("updatedDescription", request.description() != null)
+            .addKeyValue("updatedImage", request.image() != null)
+            .log("모임방 수정 성공");
+
+        // TODO: imageURL 어떻게 관리해야하는지 알아야함. 우선 임시 링크 반환
+        return RoomUpdateResponse.from(room, DEFAULT_ROOM_IMAGE_URL);
     }
 
     private User findAuthenticatedUser(Long userId) {
@@ -63,6 +103,16 @@ public class RoomService {
     private void validateRequestExists(RoomCreateRequest request) {
         if (request == null) {
             throw new GeneralException(RoomErrorStatus.ROOM_REQUEST_INVALID);
+        }
+    }
+
+    private void validateUpdateRequest(RoomUpdateRequest request) {
+        if (request == null || request.hasNoUpdateField()) {
+            throw new GeneralException(RoomErrorStatus.ROOM_UPDATE_REQUIRED);
+        }
+
+        if (request.hasInvalidImage()) {
+            throw new GeneralException(RoomErrorStatus.ROOM_IMAGE_INVALID);
         }
     }
 

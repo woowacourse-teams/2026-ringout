@@ -90,6 +90,25 @@ public class Room extends BaseEntity {
         this.activityDays = ActivityDays.from(activityDays);
     }
 
+    public void update(String rawName, String description) {
+        if (rawName == null && description == null) {
+            throw new GeneralException(RoomErrorStatus.ROOM_UPDATE_REQUIRED);
+        }
+
+        if (rawName != null) {
+            this.name = validateName(rawName);
+        }
+
+        if (description != null) {
+            validateDescriptionForUpdate(description);
+            this.description = description;
+        }
+    }
+
+    public boolean isHostedBy(Long userId) {
+        return hostUser != null && hostUser.getId() != null && hostUser.getId().equals(userId);
+    }
+
     public List<ActivityDay> getActivityDays() {
         return activityDays.getDays();
     }
@@ -111,6 +130,12 @@ public class Room extends BaseEntity {
 
     private static void validateDescription(String description) {
         if (description != null && (description.isBlank() || description.length() > 300)) {
+            throw new GeneralException(RoomErrorStatus.ROOM_DESCRIPTION_INVALID);
+        }
+    }
+
+    private static void validateDescriptionForUpdate(String description) {
+        if (description.length() > 300) {
             throw new GeneralException(RoomErrorStatus.ROOM_DESCRIPTION_INVALID);
         }
     }

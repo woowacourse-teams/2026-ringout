@@ -14,7 +14,9 @@ import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
@@ -23,6 +25,7 @@ import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
 import java.time.LocalTime;
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +35,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.mock.web.MockMultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class RoomServiceTest {
@@ -253,6 +257,168 @@ class RoomServiceTest {
         }
     }
 
+    @Nested
+    class 방장_모임방_수정_처리 {
+
+        @Test
+        void 이름과_소개를_수정하고_기본_이미지_URL을_반환한다() {
+            // given
+            Long userId = 1L;
+            User user = userWithId(userId, "가나다");
+            Room room = roomWithHost(userId, 10L);
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+            RoomUpdateRequest request = new RoomUpdateRequest("새로운 아침 운동 모임", "", null);
+
+            // when
+            RoomUpdateResponse response = roomService.updateRoom(userId, 10L, request);
+
+            // then
+            assertThat(response.roomId()).isEqualTo(10L);
+            assertThat(response.name()).isEqualTo("새로운 아침 운동 모임");
+            assertThat(response.description()).isEmpty();
+            assertThat(response.imageUrl()).isEqualTo("/images/default-room.png");
+        }
+
+        @Test
+        void 유효한_이미지만_전달하면_기본_이미지_URL을_반환한다() {
+            // given
+            Long userId = 1L;
+            User user = userWithId(userId, "가나다");
+            Room room = roomWithHost(userId, 10L);
+            MockMultipartFile image = new MockMultipartFile("image", "room.png", "image/png",
+                "image".getBytes(StandardCharsets.UTF_8));
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+            RoomUpdateRequest request = new RoomUpdateRequest(null, null, image);
+
+            // when
+            RoomUpdateResponse response = roomService.updateRoom(userId, 10L, request);
+
+            // then
+            assertThat(response.name()).isEqualTo("아침 운동 모임");
+            assertThat(response.imageUrl()).isEqualTo("/images/default-room.png");
+        }
+    }
+
+    @Nested
+    class 모임방_수정_권한_검증 {
+
+        @Test
+        void 인증되지_않은_사용자는_모임방을_수정할_수_없다() {
+            // given
+            Long userId = null;
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.updateRoom(userId, 10L,
+                new RoomUpdateRequest("새 이름", null, null)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
+            verify(roomRepository, never()).findById(10L);
+        }
+
+        @Test
+        void 존재하지_않는_모임방은_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findById(10L)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.updateRoom(userId, 10L,
+                new RoomUpdateRequest("새 이름", null, null)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_NOT_FOUND));
+        }
+
+        @Test
+        void 방장이_아니면_모임방을_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            User user = userWithId(userId, "가나다");
+            Room room = roomWithHost(2L, 10L);
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.updateRoom(userId, 10L,
+                new RoomUpdateRequest("새 이름", null, null)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_FORBIDDEN));
+        }
+    }
+
+    @Nested
+    class 모임방_수정_요청_유효성_규칙 {
+
+        @Test
+        void 수정할_정보가_없으면_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.updateRoom(userId, 10L,
+                new RoomUpdateRequest(null, null, null)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UPDATE_REQUIRED));
+            verify(roomRepository, never()).findById(10L);
+        }
+
+        @Test
+        void 빈_이미지_파일이면_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            MockMultipartFile image = new MockMultipartFile("image", "room.png", "image/png", new byte[0]);
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.updateRoom(userId, 10L,
+                new RoomUpdateRequest(null, null, image)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_IMAGE_INVALID));
+            verify(roomRepository, never()).findById(10L);
+        }
+
+        @Test
+        void 이미지_형식이_아니면_수정할_수_없다() {
+            // given
+            Long userId = 1L;
+            MockMultipartFile image = new MockMultipartFile("image", "room.txt", "text/plain",
+                "not an image".getBytes(StandardCharsets.UTF_8));
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.updateRoom(userId, 10L,
+                new RoomUpdateRequest(null, null, image)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_IMAGE_INVALID));
+            verify(roomRepository, never()).findById(10L);
+        }
+    }
+
     private RoomCreateRequest validRequest() {
         return new RoomCreateRequest(
             "아침 운동 모임",
@@ -274,5 +440,18 @@ class RoomServiceTest {
     private void givenValidUser() {
         User user = userWithId(1L, "가나다");
         given(userRepository.findById(1L)).willReturn(Optional.of(user));
+    }
+
+    private Room roomWithHost(Long hostUserId, Long roomId) {
+        Room room = Room.of(
+            userWithId(hostUserId, "방장"),
+            null,
+            "아침 운동 모임",
+            "매주 함께 운동하고 인증하는 모임입니다.",
+            List.of(ActivityDay.MONDAY),
+            LocalTime.of(8, 0)
+        );
+        ReflectionTestUtils.setField(room, "id", roomId);
+        return room;
     }
 }
