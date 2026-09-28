@@ -26,6 +26,20 @@ class AlarmUsageRecordsTest {
     private val september = MissionYearMonth(2026, 9)
 
     @Test
+    fun `설정 수정 전후 기록은 분리하고 늦게 도착한 이전 재울림은 기존 카드에 합치며 횟수는 유지한다`() = withDatabase { db ->
+        val dao = db.alarmActivityDao()
+        dao.record(AlarmActivityEntity.rang("alarm", "old", AlarmActivityTimestamp(1_000, "2026-09-28"), 1))
+        dao.record(AlarmActivityEntity.rangConfirmedByStop("alarm", "new", AlarmActivityTimestamp(2_000, "2026-09-28"), 2))
+        dao.record(AlarmActivityEntity.rang("alarm", "old:retry-1", AlarmActivityTimestamp(3_000, "2026-09-28"), 1))
+        dao.record(AlarmActivityEntity.rang("alarm", "new", AlarmActivityTimestamp(1_900, "2026-09-28"), 2))
+
+        val groups = RoomMissionHistoryDataSource(db.missionHistoryDao()).getRecords(september).groupByAlarm()
+        assertEquals(listOf(listOf("old", "old:retry-1"), listOf("new")), groups.map { it.entries.map { entry -> entry.occurrenceId } })
+        assertEquals(listOf(1L, 2L), groups.map { it.entries.first().scheduleVersion })
+        assertEquals(3, dao.observeCounts("2026-09-28").first().ringingCount)
+    }
+
+    @Test
     fun `종료로 확인된 재울림은 각각 집계하되 같은 알람 카드에 시간순으로 합친다`() = withDatabase { db ->
         val activity = db.alarmActivityDao()
         val records = RoomMissionHistoryDataSource(db.missionHistoryDao())

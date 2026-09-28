@@ -139,3 +139,8 @@ internal val RingoutMigration6To7 = Migration(6, 7) { connection ->
 internal val RingoutMigration7To8 = Migration(7, 8) { connection ->
     connection.executeSQL("ALTER TABLE alarm_occurrence_times ADD COLUMN ringing_scheduled_at INTEGER")
 }
+
+internal val RingoutMigration8To9 = Migration(8, 9) { connection ->
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN schedule_version INTEGER NOT NULL DEFAULT 1")
+    connection.executeSQL("ALTER TABLE alarm_activity_events ADD COLUMN schedule_version INTEGER NOT NULL DEFAULT 1")
+}

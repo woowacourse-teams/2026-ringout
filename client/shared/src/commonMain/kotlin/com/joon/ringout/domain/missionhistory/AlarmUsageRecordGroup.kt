@@ -1,6 +1,6 @@
 package com.joon.ringout.domain.missionhistory
 
-/** One alarm's occurrences on one local day, ordered from the first ringing to the last. */
+/** One schedule version's occurrences on one local day, ordered from the first ringing to the last. */
 data class AlarmUsageRecordGroup(
     val key: String,
     val date: MissionDate,
@@ -19,7 +19,7 @@ fun List<AlarmUsageRecord>.groupByAlarm(): List<AlarmUsageRecordGroup> =
             ?: it.missionCompletedAtEpochMillis ?: Long.MIN_VALUE
     }))
         .groupBy { record ->
-            val identity = record.alarmId?.takeIf(String::isNotBlank)?.let { "alarm:$it" }
+            val identity = record.alarmId?.takeIf(String::isNotBlank)?.let { "alarm:$it:version:${record.scheduleVersion}" }
                 ?: "record:${record.key}"
             "${record.date.iso8601}:$identity"
         }

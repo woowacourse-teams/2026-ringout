@@ -13,15 +13,16 @@ data class AlarmActivityEntity(
     val type: String,
     @ColumnInfo(name = "occurred_at_epoch_millis") val occurredAtEpochMillis: Long,
     @ColumnInfo(name = "local_date") val localDate: String,
+    @ColumnInfo(name = "schedule_version", defaultValue = "1") val scheduleVersion: Long = 1,
 ) {
     companion object {
-        fun rang(alarmId: String, occurrenceId: String, timestamp: AlarmActivityTimestamp) = AlarmActivityEntity(
-            "rang:$occurrenceId", alarmId, "RANG", timestamp.epochMillis, timestamp.localDate,
+        fun rang(alarmId: String, occurrenceId: String, timestamp: AlarmActivityTimestamp, scheduleVersion: Long = 1) = AlarmActivityEntity(
+            "rang:$occurrenceId", alarmId, "RANG", timestamp.epochMillis, timestamp.localDate, scheduleVersion,
         )
 
         /** The stop confirms an occurrence, but its timestamp must never stand in for the start. */
-        fun rangConfirmedByStop(alarmId: String, occurrenceId: String, timestamp: AlarmActivityTimestamp) = AlarmActivityEntity(
-            "rang:$occurrenceId", alarmId, "RANG_CONFIRMED_BY_STOP", timestamp.epochMillis, timestamp.localDate,
+        fun rangConfirmedByStop(alarmId: String, occurrenceId: String, timestamp: AlarmActivityTimestamp, scheduleVersion: Long = 1) = AlarmActivityEntity(
+            "rang:$occurrenceId", alarmId, "RANG_CONFIRMED_BY_STOP", timestamp.epochMillis, timestamp.localDate, scheduleVersion,
         )
     }
 }

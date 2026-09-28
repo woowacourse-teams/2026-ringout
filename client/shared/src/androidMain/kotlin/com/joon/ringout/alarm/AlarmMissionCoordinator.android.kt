@@ -717,6 +717,7 @@ class AlarmMissionCoordinator(context: Context) {
             putExtra(AlarmRuntime.EXTRA_RETRY_SOURCE_OCCURRENCE_ID, occurrenceId)
             putExtra(AlarmRuntime.EXTRA_RETRY_ATTEMPT, nextAttempt)
             putExtra(AlarmRuntime.EXTRA_ALARM_TIME, alarmTime)
+            putExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, scheduleVersion)
             putExtra(AlarmRuntime.EXTRA_LIMIT_MINUTES, limitMinutes)
             putExtra(AlarmRuntime.EXTRA_DESTINATION_NAME, destinationName)
             putExtra(AlarmRuntime.EXTRA_DESTINATION_LATITUDE, destinationLatitude)

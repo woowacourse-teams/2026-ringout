@@ -18,17 +18,18 @@ internal class AndroidAlarmActivityRecorder private constructor(context: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val flushMutex = Mutex()
 
-    fun recordRinging(alarmId: String, occurrenceId: String) =
-        enqueue("RANG", occurrenceId, alarmId)
+    fun recordRinging(alarmId: String, occurrenceId: String, scheduleVersion: Long) =
+        enqueue("RANG", occurrenceId, alarmId, scheduleVersion)
 
     fun recordRingingStopped(occurrenceId: String) =
         enqueue("STOPPED", occurrenceId)
 
-    private fun enqueue(type: String, occurrenceId: String, alarmId: String = "") {
+    private fun enqueue(type: String, occurrenceId: String, alarmId: String = "", scheduleVersion: Long = 1) {
         val now = currentAlarmActivityTimestamp()
         val event = JSONObject()
             .put("type", type)
             .put("alarmId", alarmId)
+            .put("scheduleVersion", scheduleVersion)
             .put("occurrenceId", occurrenceId)
             .put("epochMillis", now.epochMillis)
             .put("localDate", now.localDate)
@@ -58,6 +59,7 @@ internal class AndroidAlarmActivityRecorder private constructor(context: Context
                                 alarmId = event.getString("alarmId"),
                                 occurrenceId = occurrenceId,
                                 timestamp = AlarmActivityTimestamp(event.getLong("epochMillis"), event.getString("localDate")),
+                                scheduleVersion = event.optLong("scheduleVersion", 1),
                             ))
                         }
                         pending.edit().remove(key).commit()

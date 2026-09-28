@@ -49,6 +49,7 @@ class ActiveAlarmMissionStore(context: Context) {
                     ?: "$alarmId:$startedAtEpochMillis",
                 retryAttempt = preferences.getInt(KeyRetryAttempt, 0).coerceAtLeast(0),
                 alarmTime = preferences.getString(KeyAlarmTime, null).orEmpty(),
+                scheduleVersion = preferences.getLong(KeyScheduleVersion, 1),
                 startedAtEpochMillis = startedAtEpochMillis,
                 destinationLatitude = preferences.readDouble(
                     key = KeyDestinationLatitude,
@@ -197,6 +198,7 @@ class ActiveAlarmMissionStore(context: Context) {
             .putString(KeyOccurrenceId, mission.occurrenceId)
             .putInt(KeyRetryAttempt, mission.retryAttempt)
             .putString(KeyAlarmTime, mission.alarmTime)
+            .putLong(KeyScheduleVersion, mission.scheduleVersion)
             .putString(KeyDestinationName, mission.destinationName)
             .putInt(KeyLimitMinutes, mission.limitMinutes)
             .putLong(KeyStartedAtEpochMillis, mission.startedAtEpochMillis)
@@ -259,6 +261,7 @@ class ActiveAlarmMissionStore(context: Context) {
                 .getIntExtra(AlarmRuntime.EXTRA_RETRY_ATTEMPT, 0)
                 .coerceAtLeast(0),
             alarmTime = intent.getStringExtra(AlarmRuntime.EXTRA_ALARM_TIME).orEmpty(),
+            scheduleVersion = intent.getLongExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, 1),
             startedAtEpochMillis = nowEpochMillis,
             destinationLatitude = intent.getDoubleExtra(
                 AlarmRuntime.EXTRA_DESTINATION_LATITUDE,
@@ -287,6 +290,7 @@ class ActiveAlarmMissionStore(context: Context) {
             .putString(KeyOccurrenceId, mission.occurrenceId)
             .putInt(KeyRetryAttempt, mission.retryAttempt)
             .putString(KeyAlarmTime, mission.alarmTime)
+            .putLong(KeyScheduleVersion, mission.scheduleVersion)
             .putString(KeyDestinationName, destinationName)
             .putInt(KeyLimitMinutes, limitMinutes)
             .putLong(KeyStartedAtEpochMillis, mission.startedAtEpochMillis)
@@ -377,6 +381,7 @@ class ActiveAlarmMissionStore(context: Context) {
         const val KeyOccurrenceId = "occurrence_id"
         const val KeyRetryAttempt = "retry_attempt"
         const val KeyAlarmTime = "alarm_time"
+        const val KeyScheduleVersion = "schedule_version"
         const val KeyDestinationName = "destination_name"
         const val KeyLimitMinutes = "limit_minutes"
         const val KeyStartedAtEpochMillis = "started_at_epoch_millis"

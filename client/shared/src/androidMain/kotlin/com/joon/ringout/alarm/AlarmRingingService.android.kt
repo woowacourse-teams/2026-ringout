@@ -104,6 +104,7 @@ class AlarmRingingService : Service() {
             AndroidAlarmActivityRecorder.get(applicationContext).recordRinging(
                 alarmId = intent.getStringExtra(AlarmRuntime.EXTRA_ALARM_ID).orEmpty(),
                 occurrenceId = occurrenceId,
+                scheduleVersion = intent.getLongExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, 1),
             )
         }.onFailure { android.util.Log.e("AlarmActivity", "Could not record ringing", it) }
         analytics?.recordAlarmRingingStarted(

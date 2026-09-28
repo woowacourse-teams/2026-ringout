@@ -130,7 +130,8 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
             alarmId: request.sourceAlarmId,
             occurrenceId: request.occurrenceId,
             retryAttempt: Int(request.retryAttempt),
-            systemAlarmId: request.alarmKitId
+            systemAlarmId: request.alarmKitId,
+            scheduleVersion: Int(request.scheduleVersion)
         )
         let fireDate = Date().addingTimeInterval(max(0, request.delaySeconds))
         let configuration = AlarmManager.AlarmConfiguration.alarm(
@@ -272,7 +273,8 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
             attributes: attributes,
             stopIntent: StopAlarmIntent(
                 alarmId: alarmId.uuidString,
-                systemAlarmId: alarmId.uuidString
+                systemAlarmId: alarmId.uuidString,
+                scheduleVersion: Int(request.scheduleVersion)
             ),
             sound: .default
         )

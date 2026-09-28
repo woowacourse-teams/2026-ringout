@@ -42,6 +42,7 @@ data class IosAlarmScheduleDto(
     val destinationName: String,
     val limitMinutes: Int,
     val soundName: String,
+    val scheduleVersion: Long = 1,
 )
 
 data class IosAlarmRetryScheduleDto(
@@ -51,6 +52,7 @@ data class IosAlarmRetryScheduleDto(
     val retryAttempt: Int,
     val title: String,
     val delaySeconds: Double = 0.0,
+    val scheduleVersion: Long = 1,
 )
 
 enum class IosScheduledAlarmState {
@@ -172,6 +174,7 @@ internal fun AlarmScheduleRequest.toIosAlarmScheduleDto(): IosAlarmScheduleDto {
         destinationName = destinationName,
         limitMinutes = limitMinutes,
         soundName = alarmSoundName,
+        scheduleVersion = scheduleVersion,
     )
 }
 

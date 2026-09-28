@@ -20,6 +20,26 @@ import kotlin.test.assertTrue
 
 class IosAlarmLifecycleTest {
     @Test
+    fun `설정 수정 뒤 늦게 전달된 종료도 원래 버전을 미션과 재울림 예약에 전달한다`() = runBlocking {
+        val event = currentStopEvent().copy(scheduleVersion = 4)
+        val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid).let {
+            it.copy(request = it.request.copy(scheduleVersion = 5))
+        }))
+        val store = LifecycleMissionStore()
+        val scheduler = LifecycleScheduler()
+        val coordinator = IosAlarmMissionCoordinator(
+            dataSource = dataSource, inbox = LifecycleInbox(listOf(event)), scheduler = scheduler,
+            outcomeRecorder = LifecycleOutcomeRecorder(), missionStore = store,
+        )
+
+        coordinator.processPendingEvents()
+
+        assertEquals(4L, coordinator.activeMissionFlow.value?.scheduleVersion)
+        assertEquals(4L, store.loadDeadlineAlarm()?.missionSeed?.scheduleVersion)
+        assertEquals(4L, scheduler.retryScheduleRequests.single().scheduleVersion)
+    }
+
+    @Test
     fun `소비된 실행의 종료 시각이 늦게 전달돼도 이미 예약한 재울림 시각을 보완한다`() = runBlocking {
         val store = LifecycleMissionStore()
         val outcomes = LifecycleOutcomeRecorder()
@@ -1541,6 +1561,7 @@ private class LifecycleScheduler(
     var stopCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS
     val events = mutableListOf<String>()
     val retryAlarmKitIds = mutableListOf<String>()
+    val retryScheduleRequests = mutableListOf<IosAlarmRetryScheduleDto>()
 
     fun removeScheduledAlarm(alarmKitId: String) {
         scheduledAlarms.remove(alarmKitId)
@@ -1597,6 +1618,7 @@ private class LifecycleScheduler(
     ) {
         events += "retry:${request.occurrenceId}"
         retryAlarmKitIds += request.alarmKitId
+        retryScheduleRequests += request
         if (remainingRetryScheduleFailures > 0) {
             remainingRetryScheduleFailures -= 1
             callback(IosAlarmOperationResult(IosAlarmOperationCode.SDK_ERROR))
@@ -1688,6 +1710,7 @@ private class LifecycleInbox(
         alarmId: String,
         occurrenceId: String?,
         retryAttempt: Int,
+        scheduleVersion: Long,
         callback: (IosAlarmOperationResult) -> Unit,
     ) {
         events += "stop:$alarmId:${occurrenceId.orEmpty()}:$retryAttempt"
@@ -1703,6 +1726,7 @@ private class LifecycleInbox(
             action = IosAlarmMissionAction.STOP,
             occurredAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
             retryAttempt = retryAttempt,
+            scheduleVersion = scheduleVersion,
         )
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
         listener?.onEventRecorded()
@@ -1712,6 +1736,7 @@ private class LifecycleInbox(
         alarmId: String,
         occurrenceId: String?,
         retryAttempt: Int,
+        scheduleVersion: Long,
         callback: (IosAlarmOperationResult) -> Unit,
     ) {
         events += "open:$alarmId:${occurrenceId.orEmpty()}:$retryAttempt"
@@ -1727,6 +1752,7 @@ private class LifecycleInbox(
             action = IosAlarmMissionAction.OPEN_APP,
             occurredAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
             retryAttempt = retryAttempt,
+            scheduleVersion = scheduleVersion,
         )
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
         listener?.onEventRecorded()

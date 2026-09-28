@@ -8,6 +8,19 @@ class AlarmUsageRecordGroupTest {
     private val today = MissionDate.parse("2026-09-28")
 
     @Test
+    fun `같은 날 같은 알람도 설정 버전이 바뀌면 새 카드이고 이전 실행의 재울림은 원래 카드에 남는다`() {
+        val first = ringing("first", "alarm", 1_000)
+        val changed = ringing("changed", "alarm", 2_000).copy(scheduleVersion = 2)
+        val previousRetry = ringing("retry", "alarm", 3_000)
+        val reverted = ringing("reverted", "alarm", 4_000).copy(scheduleVersion = 3)
+
+        val groups = listOf(first, changed, previousRetry, reverted).groupByAlarm()
+
+        assertEquals(listOf(listOf(first, previousRetry), listOf(changed), listOf(reverted)), groups.map { it.entries })
+        assertEquals(3, groups.map { it.key }.distinct().size)
+    }
+
+    @Test
     fun `예정 시각으로 표시하는 기록은 종료 이벤트 순서와 무관하게 예정 시각순으로 정렬한다`() {
         val first = AlarmUsageRecord("first", today, alarmId = "alarm-a", ringingScheduledAtEpochMillis = 1_000, ringingStoppedAtEpochMillis = 4_000)
         val next = AlarmUsageRecord("next", today, alarmId = "alarm-b", ringingScheduledAtEpochMillis = 2_000, ringingStoppedAtEpochMillis = 3_000)

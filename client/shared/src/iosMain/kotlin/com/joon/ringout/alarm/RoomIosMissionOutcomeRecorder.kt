@@ -36,7 +36,7 @@ internal class RoomIosMissionOutcomeRecorder(
         }
         event.ringingObservedAtEpochMillis?.let { startedAt ->
             activityDao.record(
-                AlarmActivityEntity.rang(event.alarmId, event.occurrenceId, AlarmActivityTimestamp(startedAt, iosMissionDate(startedAt))),
+                AlarmActivityEntity.rang(event.alarmId, event.occurrenceId, AlarmActivityTimestamp(startedAt, iosMissionDate(startedAt)), event.scheduleVersion),
                 isStartObserved = true,
             )
         }
@@ -44,6 +44,7 @@ internal class RoomIosMissionOutcomeRecorder(
             activityDao.record(
                 AlarmActivityEntity.rangConfirmedByStop(
                     event.alarmId, event.occurrenceId, AlarmActivityTimestamp(stoppedAt, iosMissionDate(stoppedAt)),
+                    scheduleVersion = event.scheduleVersion,
                 ),
             )
         }

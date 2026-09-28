@@ -148,6 +148,7 @@ class IosAlarmRuntime(
                         alarmId = ringing.alarmId,
                         occurrenceId = ringing.occurrenceId,
                         retryAttempt = ringing.retryAttempt,
+                        scheduleVersion = ringing.scheduleVersion,
                     )
                 } else {
                     // A late snapshot cannot tell us when the ringing actually stopped.
@@ -155,6 +156,7 @@ class IosAlarmRuntime(
                         alarmId = ringing.alarmId,
                         occurrenceId = ringing.occurrenceId,
                         retryAttempt = ringing.retryAttempt,
+                        scheduleVersion = ringing.scheduleVersion,
                     )
                 }
                 missionCoordinator.processPendingEvents()
@@ -371,6 +373,7 @@ class IosAlarmRuntime(
                         alarmId = alarm.alarmId,
                         occurrenceId = requireNotNull(alarm.occurrenceId),
                         timestamp = AlarmActivityTimestamp(alarm.startedAtEpochMillis, iosMissionDate(alarm.startedAtEpochMillis)),
+                        scheduleVersion = alarm.scheduleVersion,
                     )
                 })
             } catch (error: CancellationException) {
@@ -502,6 +505,7 @@ class IosAlarmRuntime(
             alarmId = ringing.alarmId,
             occurrenceId = ringing.occurrenceId,
             retryAttempt = ringing.retryAttempt,
+            scheduleVersion = ringing.scheduleVersion,
         )
         missionCoordinator.processPendingEvents()
     } catch (error: CancellationException) {

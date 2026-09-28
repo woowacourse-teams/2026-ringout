@@ -8,6 +8,7 @@ struct AlarmMissionEvent: Codable, Equatable {
     let action: AlarmMissionEventAction
     let occurredAtEpochMillis: Int64
     let retryAttempt: Int?
+    let scheduleVersion: Int64?
     let source: AlarmMissionEventSource?
     let ringingObservedAtEpochMillis: Int64?
     let ringingStoppedAtEpochMillis: Int64?
@@ -66,6 +67,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         action: AlarmMissionEventAction,
         occurrenceId requestedOccurrenceId: String? = nil,
         retryAttempt: Int = 0,
+        scheduleVersion: Int64 = 1,
         source: AlarmMissionEventSource = .nativeIntent,
         systemAlarmId: String? = nil,
         didStopRinging: Bool = true,
@@ -92,6 +94,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                     (source == .runtimeFallback && existing.source == .runtimeFallback)
                 return existing.alarmId == alarmId &&
                     existingRetryAttempt == retryAttempt &&
+                    (existing.scheduleVersion ?? 1) == scheduleVersion &&
                     isFallbackDeliveryPair &&
                     elapsedMillis >= 0 &&
                     elapsedMillis <= Self.occurrenceCoalescingWindowMillis
@@ -105,6 +108,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 action: action,
                 occurredAtEpochMillis: occurredAtEpochMillis,
                 retryAttempt: retryAttempt,
+                scheduleVersion: scheduleVersion,
                 source: source,
                 ringingObservedAtEpochMillis: observation?.observedAtEpochMillis,
                 ringingStoppedAtEpochMillis: source == .runtimeFallback || !didStopRinging ? nil : occurredAtEpochMillis,
@@ -121,6 +125,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         alarmId: String,
         occurrenceId: String?,
         retryAttempt: Int32,
+        scheduleVersion: Int64,
         callback: @escaping (IosAlarmOperationResult) -> Void
     ) {
         do {
@@ -129,6 +134,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 action: .open,
                 occurrenceId: occurrenceId,
                 retryAttempt: Int(retryAttempt),
+                scheduleVersion: scheduleVersion,
                 source: .runtimeCustom
             )
             callback(IosAlarmOperationResult(code: .success, message: nil))
@@ -146,6 +152,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         alarmId: String,
         occurrenceId: String?,
         retryAttempt: Int32,
+        scheduleVersion: Int64,
         callback: @escaping (IosAlarmOperationResult) -> Void
     ) {
         do {
@@ -154,6 +161,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 action: .stop,
                 occurrenceId: occurrenceId,
                 retryAttempt: Int(retryAttempt),
+                scheduleVersion: scheduleVersion,
                 source: .runtimeFallback
             )
             callback(IosAlarmOperationResult(code: .success, message: nil))
@@ -180,7 +188,8 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                             occurredAtEpochMillis: event.occurredAtEpochMillis,
                             retryAttempt: Int32(event.retryAttempt ?? 0),
                             ringingObservedAtEpochMillis: event.ringingObservedAtEpochMillis.map { KotlinLong(value: $0) },
-                            ringingStoppedAtEpochMillis: event.ringingStoppedAtEpochMillis.map { KotlinLong(value: $0) }
+                            ringingStoppedAtEpochMillis: event.ringingStoppedAtEpochMillis.map { KotlinLong(value: $0) },
+                            scheduleVersion: event.scheduleVersion ?? 1
                         )
                     },
                     code: .success,

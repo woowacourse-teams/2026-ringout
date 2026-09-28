@@ -27,6 +27,7 @@ internal object AlarmRuntime {
     const val EXTRA_RETRY_SOURCE_OCCURRENCE_ID = "retry_source_occurrence_id"
     const val EXTRA_RETRY_ATTEMPT = "retry_attempt"
     const val EXTRA_ALARM_TIME = "alarm_time"
+    const val EXTRA_SCHEDULE_VERSION = "schedule_version"
     const val EXTRA_LIMIT_MINUTES = "limit_minutes"
     const val EXTRA_TARGET_DISTANCE_KM = "target_distance_km"
     const val EXTRA_DESTINATION_NAME = "destination_name"
@@ -43,6 +44,7 @@ internal fun Intent.putAlarmExtras(request: AlarmScheduleRequest): Intent = appl
     data = Uri.parse("ringout://alarm/${Uri.encode(request.id)}")
     putExtra(AlarmRuntime.EXTRA_ALARM_ID, request.id)
     putExtra(AlarmRuntime.EXTRA_ALARM_TIME, request.time)
+    putExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, request.scheduleVersion)
     putExtra(AlarmRuntime.EXTRA_LIMIT_MINUTES, request.limitMinutes)
     putExtra(AlarmRuntime.EXTRA_TARGET_DISTANCE_KM, request.targetDistanceKm)
     putExtra(AlarmRuntime.EXTRA_DESTINATION_NAME, request.destinationName)
@@ -59,6 +61,8 @@ internal fun AlarmScheduleRequest.scheduleFingerprint(): String {
     val canonical = buildString {
         appendFingerprintPart(id)
         appendFingerprintPart(time)
+        // Keep fingerprints of already scheduled version-1 alarms valid across the app update.
+        if (scheduleVersion > 1) appendFingerprintPart(scheduleVersion.toString())
         val canonicalDays = selectedDays
             .distinct()
             .sortedBy { day -> AlarmDayOrder[day] ?: Int.MAX_VALUE }
