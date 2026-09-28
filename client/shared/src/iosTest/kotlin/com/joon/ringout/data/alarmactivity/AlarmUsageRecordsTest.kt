@@ -26,6 +26,24 @@ class AlarmUsageRecordsTest {
     private val september = MissionYearMonth(2026, 9)
 
     @Test
+    fun `종료로 확인된 재울림은 각각 집계하되 같은 알람 카드에 시간순으로 합친다`() = withDatabase { db ->
+        val activity = db.alarmActivityDao()
+        val records = RoomMissionHistoryDataSource(db.missionHistoryDao())
+        val first = AlarmActivityEntity.rangConfirmedByStop("alarm", "one", AlarmActivityTimestamp(2_000, "2026-09-28"))
+        val retry = AlarmActivityEntity.rangConfirmedByStop("alarm", "one:retry-1", AlarmActivityTimestamp(4_000, "2026-09-28"))
+        listOf(retry, first, first, retry).forEach { activity.record(it) }
+        records.record(MissionHistoryDto("SUCCESS", "2026-09-28", "one:retry-1", missionCompletedAtEpochMillis = 5_000))
+
+        val group = records.getRecords(september).groupByAlarm().single()
+        assertEquals("alarm", group.alarmId)
+        assertEquals(listOf("one", "one:retry-1"), group.entries.map { it.occurrenceId })
+        assertTrue(group.entries.all { it.ringingStartedAtEpochMillis == null })
+        assertEquals(listOf(2_000L, 4_000L), group.entries.map { it.ringingStoppedAtEpochMillis })
+        assertEquals(listOf(null, MissionResult.SUCCESS), group.entries.map { it.result })
+        assertEquals(2, activity.observeCounts("2026-09-28").first().ringingCount)
+    }
+
+    @Test
     fun `미션 결과가 없어도 울린 날에 카드를 조회하고 종료 시각을 연결한다`() = withDatabase { db ->
         val activity = db.alarmActivityDao()
         val records = RoomMissionHistoryDataSource(db.missionHistoryDao())

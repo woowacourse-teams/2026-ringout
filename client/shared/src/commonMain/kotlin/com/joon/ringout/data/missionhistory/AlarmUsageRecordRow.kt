@@ -15,6 +15,7 @@ data class AlarmUsageRecordRow(
     @ColumnInfo(name = "mission_completed_at") val missionCompletedAtEpochMillis: Long?,
     @ColumnInfo(name = "ringing_start_observed") val isRingingStartObserved: Boolean?,
     @ColumnInfo(name = "alarm_id") val alarmId: String?,
+    @ColumnInfo(name = "ringing_scheduled_at") val ringingScheduledAtEpochMillis: Long?,
 )
 
 internal fun AlarmUsageRecordRow.toDomain() = AlarmUsageRecord(
@@ -27,4 +28,5 @@ internal fun AlarmUsageRecordRow.toDomain() = AlarmUsageRecord(
     missionCompletedAtEpochMillis = missionCompletedAtEpochMillis,
     isRingingStartObserved = isRingingStartObserved == true,
     alarmId = alarmId,
+    ringingScheduledAtEpochMillis = ringingScheduledAtEpochMillis,
 )

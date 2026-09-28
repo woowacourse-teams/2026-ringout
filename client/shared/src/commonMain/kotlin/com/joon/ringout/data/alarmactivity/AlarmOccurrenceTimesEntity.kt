@@ -16,6 +16,7 @@ data class AlarmOccurrenceTimesEntity(
     @ColumnInfo(name = "ringing_stopped_at") val ringingStoppedAtEpochMillis: Long? = null,
     @ColumnInfo(name = "mission_completed_at") val missionCompletedAtEpochMillis: Long? = null,
     @ColumnInfo(name = "ringing_start_observed") val isRingingStartObserved: Boolean = false,
+    @ColumnInfo(name = "ringing_scheduled_at") val ringingScheduledAtEpochMillis: Long? = null,
 )
 
 /** Shared by the activity and mission DAOs so result + completion time commit atomically. */
@@ -28,7 +29,8 @@ interface AlarmOccurrenceTimesAccess {
             ringing_start_observed = CASE WHEN ringing_started_at IS NULL AND :startedAt IS NOT NULL THEN :isObserved ELSE ringing_start_observed END,
             ringing_started_at = COALESCE(ringing_started_at, :startedAt),
             ringing_stopped_at = COALESCE(ringing_stopped_at, :stoppedAt),
-            mission_completed_at = COALESCE(mission_completed_at, :completedAt)
+            mission_completed_at = COALESCE(mission_completed_at, :completedAt),
+            ringing_scheduled_at = COALESCE(ringing_scheduled_at, :scheduledAt)
         WHERE occurrence_id = :occurrenceId
     """)
     suspend fun fillMissingOccurrenceTimes(
@@ -37,6 +39,7 @@ interface AlarmOccurrenceTimesAccess {
         stoppedAt: Long?,
         completedAt: Long?,
         isObserved: Boolean,
+        scheduledAt: Long?,
     )
 
     @Query("SELECT * FROM alarm_occurrence_times WHERE occurrence_id = :occurrenceId")
@@ -52,6 +55,7 @@ interface AlarmOccurrenceTimesAccess {
             times.ringingStoppedAtEpochMillis,
             times.missionCompletedAtEpochMillis,
             times.isRingingStartObserved,
+            times.ringingScheduledAtEpochMillis,
         )
     }
 }

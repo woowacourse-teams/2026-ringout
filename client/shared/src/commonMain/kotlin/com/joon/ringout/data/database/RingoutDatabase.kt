@@ -31,7 +31,7 @@ import com.joon.ringout.data.missionhistory.MissionHistoryEntity
         StorageMigrationEntity::class,
         SavedDestinationEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -61,6 +61,7 @@ fun buildRingoutDatabase(
         RingoutMigration4To5,
         RingoutMigration5To6,
         RingoutMigration6To7,
+        RingoutMigration7To8,
     )
     .build()
 

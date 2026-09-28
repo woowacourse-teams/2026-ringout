@@ -363,6 +363,9 @@ class IosAlarmRuntime(
                 )
             }
             try {
+                resolvedAlarms.filter { it.retryAttempt == 0 && it.occurrenceId != null }.forEach { alarm ->
+                    activityDao?.recordInitialRingingSchedule(requireNotNull(alarm.occurrenceId), alarm.alarmTime, alarm.startedAtEpochMillis)
+                }
                 activityDao?.recordObservedRinging(resolvedAlarms.filter { it.occurrenceId != null }.associate { alarm ->
                     alarm.systemAlarmId to AlarmActivityEntity.rang(
                         alarmId = alarm.alarmId,

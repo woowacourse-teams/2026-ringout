@@ -12,9 +12,12 @@ data class AlarmUsageRecordGroup(
     }
 }
 
-/** Earliest first ringing first; unknown legacy alarm IDs stay separate instead of guessing a relation. */
+/** Use the stop or completion time when the start is unknown; keep unknown legacy alarm IDs separate. */
 fun List<AlarmUsageRecord>.groupByAlarm(): List<AlarmUsageRecordGroup> =
-    sortedWith(compareBy({ it.date.iso8601 }, { it.ringingStartedAtEpochMillis ?: Long.MIN_VALUE }))
+    sortedWith(compareBy({ it.date.iso8601 }, {
+        it.ringingScheduledAtEpochMillis ?: it.ringingStartedAtEpochMillis ?: it.ringingStoppedAtEpochMillis
+            ?: it.missionCompletedAtEpochMillis ?: Long.MIN_VALUE
+    }))
         .groupBy { record ->
             val identity = record.alarmId?.takeIf(String::isNotBlank)?.let { "alarm:$it" }
                 ?: "record:${record.key}"

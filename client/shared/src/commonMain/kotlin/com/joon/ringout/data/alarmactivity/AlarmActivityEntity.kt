@@ -18,6 +18,11 @@ data class AlarmActivityEntity(
         fun rang(alarmId: String, occurrenceId: String, timestamp: AlarmActivityTimestamp) = AlarmActivityEntity(
             "rang:$occurrenceId", alarmId, "RANG", timestamp.epochMillis, timestamp.localDate,
         )
+
+        /** The stop confirms an occurrence, but its timestamp must never stand in for the start. */
+        fun rangConfirmedByStop(alarmId: String, occurrenceId: String, timestamp: AlarmActivityTimestamp) = AlarmActivityEntity(
+            "rang:$occurrenceId", alarmId, "RANG_CONFIRMED_BY_STOP", timestamp.epochMillis, timestamp.localDate,
+        )
     }
 }
 

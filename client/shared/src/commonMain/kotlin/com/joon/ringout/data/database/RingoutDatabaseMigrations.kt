@@ -134,3 +134,8 @@ internal val RingoutMigration6To7 = Migration(6, 7) { connection ->
         """.trimIndent(),
     )
 }
+
+/** Scheduled display times are separate from captured starts; old schedules cannot be reconstructed. */
+internal val RingoutMigration7To8 = Migration(7, 8) { connection ->
+    connection.executeSQL("ALTER TABLE alarm_occurrence_times ADD COLUMN ringing_scheduled_at INTEGER")
+}

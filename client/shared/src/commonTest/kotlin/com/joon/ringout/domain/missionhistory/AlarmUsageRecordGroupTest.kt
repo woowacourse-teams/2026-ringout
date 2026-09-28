@@ -8,6 +8,28 @@ class AlarmUsageRecordGroupTest {
     private val today = MissionDate.parse("2026-09-28")
 
     @Test
+    fun `예정 시각으로 표시하는 기록은 종료 이벤트 순서와 무관하게 예정 시각순으로 정렬한다`() {
+        val first = AlarmUsageRecord("first", today, alarmId = "alarm-a", ringingScheduledAtEpochMillis = 1_000, ringingStoppedAtEpochMillis = 4_000)
+        val next = AlarmUsageRecord("next", today, alarmId = "alarm-b", ringingScheduledAtEpochMillis = 2_000, ringingStoppedAtEpochMillis = 3_000)
+
+        assertEquals(listOf("alarm-a", "alarm-b"), listOf(next, first).groupByAlarm().map { it.alarmId })
+    }
+
+    @Test
+    fun `시작 시각이 없는 재울림은 종료 시각으로 정렬해 마지막 기록을 유지한다`() {
+        val first = ringing("first", "alarm-a", 1_000)
+        val other = ringing("other", "alarm-b", 2_000)
+        val retry = AlarmUsageRecord(
+            "retry", today, occurrenceId = "retry", alarmId = "alarm-a", ringingStoppedAtEpochMillis = 3_000,
+        )
+
+        val groups = listOf(retry, other, first).groupByAlarm()
+
+        assertEquals(listOf("alarm-a", "alarm-b"), groups.map { it.alarmId })
+        assertEquals(listOf(first, retry), groups.first().entries)
+    }
+
+    @Test
     fun `같은 알람의 최초 울림과 재울림은 한 카드에서 시간순으로 정렬한다`() {
         val first = ringing("first", "alarm", 1_000)
         val retry = ringing("retry", "alarm", 3_000)

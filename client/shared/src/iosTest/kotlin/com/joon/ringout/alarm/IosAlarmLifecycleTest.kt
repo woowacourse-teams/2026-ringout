@@ -20,6 +20,45 @@ import kotlin.test.assertTrue
 
 class IosAlarmLifecycleTest {
     @Test
+    fun `소비된 실행의 종료 시각이 늦게 전달돼도 이미 예약한 재울림 시각을 보완한다`() = runBlocking {
+        val store = LifecycleMissionStore()
+        val outcomes = LifecycleOutcomeRecorder()
+        val event = currentStopEvent()
+        val scheduler = LifecycleScheduler()
+        val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
+        val coordinator = IosAlarmMissionCoordinator(
+            dataSource = dataSource, inbox = LifecycleInbox(listOf(event)),
+            scheduler = scheduler, outcomeRecorder = outcomes, missionStore = store,
+        )
+        coordinator.processPendingEvents()
+        val retry = assertNotNull(store.loadDeadlineAlarm())
+        outcomes.retrySchedules.clear()
+
+        val restored = IosAlarmMissionCoordinator(
+            dataSource = dataSource,
+            inbox = LifecycleInbox(listOf(event.copy(eventId = "native-stop", ringingStoppedAtEpochMillis = event.occurredAtEpochMillis))),
+            scheduler = scheduler, outcomeRecorder = outcomes, missionStore = store,
+        )
+        restored.processPendingEvents()
+
+        assertEquals(listOf(Triple(retry.retryOccurrenceId, event.occurrenceId, 12)), outcomes.retrySchedules)
+        assertEquals(retry.retryOccurrenceId, store.loadDeadlineAlarm()?.retryOccurrenceId)
+    }
+
+    @Test
+    fun `재울림 예약 시 직전 실행과 미션에 저장된 반복 간격을 기록 저장소에 전달한다`() = runBlocking {
+        val store = LifecycleMissionStore()
+        val outcomes = LifecycleOutcomeRecorder()
+        val event = currentStopEvent()
+        val coordinator = coordinator(event, store, outcomes)
+
+        coordinator.processPendingEvents()
+
+        val retry = assertNotNull(store.loadDeadlineAlarm())
+        assertEquals(listOf(Triple(retry.retryOccurrenceId, event.occurrenceId, 12)), outcomes.retrySchedules)
+    }
+
+    @Test
     fun legacyIdSchedulesUuidBeforeAtomicRoomMigration() = runBlocking {
         val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = "alarm-legacy")))
         val scheduler = LifecycleScheduler()
@@ -1740,6 +1779,10 @@ private class LifecycleMissionStore : IosActiveAlarmMissionStore {
 }
 
 private class LifecycleOutcomeRecorder : IosMissionOutcomeRecorder {
+    val retrySchedules = mutableListOf<Triple<String, String, Int>>()
+    override suspend fun recordRetryRingingSchedule(occurrenceId: String, sourceOccurrenceId: String, intervalMinutes: Int) {
+        retrySchedules += Triple(occurrenceId, sourceOccurrenceId, intervalMinutes)
+    }
     val successes = mutableListOf<String>()
     val failures = mutableListOf<String>()
     val successDates = mutableListOf<String>()

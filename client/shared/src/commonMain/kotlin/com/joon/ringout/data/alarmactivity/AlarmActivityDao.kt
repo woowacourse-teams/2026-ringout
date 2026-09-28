@@ -15,7 +15,7 @@ data class AlarmActivityDailyCounts(val localDate: String?, val ringingCount: In
 interface AlarmActivityDao : AlarmOccurrenceTimesAccess {
     @Query("""
         SELECT
-            (SELECT COUNT(*) FROM alarm_activity_events WHERE local_date = :date AND type = 'RANG') AS ringingCount,
+            (SELECT COUNT(*) FROM alarm_activity_events WHERE local_date = :date AND type IN ('RANG', 'RANG_CONFIRMED_BY_STOP')) AS ringingCount,
             (SELECT local_date FROM alarm_activity_tracking WHERE id = 1) AS trackingStartDate
     """)
     fun observeCounts(date: String): Flow<AlarmActivityCounts>
@@ -25,7 +25,7 @@ interface AlarmActivityDao : AlarmOccurrenceTimesAccess {
             tracking.local_date AS trackingStartDate
         FROM alarm_activity_tracking AS tracking
         LEFT JOIN alarm_activity_events AS events
-            ON events.local_date IN (:dates) AND events.type = 'RANG'
+            ON events.local_date IN (:dates) AND events.type IN ('RANG', 'RANG_CONFIRMED_BY_STOP')
         WHERE tracking.id = 1
         GROUP BY events.local_date
     """)
@@ -33,6 +33,13 @@ interface AlarmActivityDao : AlarmOccurrenceTimesAccess {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEvent(event: AlarmActivityEntity)
+
+    // A late start moves the existing occurrence to its ringing date without adding another count.
+    @Query("""
+        UPDATE alarm_activity_events SET type = 'RANG', occurred_at_epoch_millis = :startedAt, local_date = :localDate
+        WHERE event_key = :eventKey AND type = 'RANG_CONFIRMED_BY_STOP'
+    """)
+    suspend fun resolveRingingStart(eventKey: String, startedAt: Long, localDate: String)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun initializeTracking(tracking: AlarmActivityTrackingEntity)
@@ -55,10 +62,16 @@ interface AlarmActivityDao : AlarmOccurrenceTimesAccess {
         includeEarlierEvent(event.occurredAtEpochMillis, event.localDate)
         insertEvent(event)
         if (event.type == "RANG" && event.eventKey.startsWith("rang:")) {
+            resolveRingingStart(event.eventKey, event.occurredAtEpochMillis, event.localDate)
             mergeOccurrenceTimes(AlarmOccurrenceTimesEntity(
                 occurrenceId = event.eventKey.removePrefix("rang:"),
                 ringingStartedAtEpochMillis = event.occurredAtEpochMillis,
                 isRingingStartObserved = isStartObserved,
+            ))
+        } else if (event.type == "RANG_CONFIRMED_BY_STOP" && event.eventKey.startsWith("rang:")) {
+            mergeOccurrenceTimes(AlarmOccurrenceTimesEntity(
+                occurrenceId = event.eventKey.removePrefix("rang:"),
+                ringingStoppedAtEpochMillis = event.occurredAtEpochMillis,
             ))
         }
     }

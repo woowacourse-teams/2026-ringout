@@ -183,6 +183,17 @@ class IosAlarmMissionCoordinator(
     private suspend fun processEventLocked(event: IosAlarmMissionEventDto): ActiveAlarmMission? {
         // Persist event timestamps before consuming the durable inbox, including duplicate deliveries.
         outcomeRecorder.recordRingingTimes(event)
+        // A fallback delivery can start the mission before the native stop timestamp arrives.
+        // Fill the already scheduled retry before the consumed-occurrence check returns early.
+        missionStore.loadDeadlineAlarm()?.takeIf { registration ->
+            event.occurrenceId == registration.sourceOccurrenceId || event.occurrenceId == registration.retryOccurrenceId
+        }?.let { registration ->
+            val interval = registration.missionSeed?.limitMinutes
+                ?: activeMission.value?.takeIf { it.occurrenceId == registration.sourceOccurrenceId }?.limitMinutes
+            if (interval != null) {
+                outcomeRecorder.recordRetryRingingSchedule(registration.retryOccurrenceId, registration.sourceOccurrenceId, interval)
+            }
+        }
         if (missionStore.isConsumed(event.occurrenceId)) {
             inbox.markConsumedAwait(event.eventId)
             return null
@@ -467,6 +478,7 @@ class IosAlarmMissionCoordinator(
         mission: ActiveAlarmMission,
         registration: IosMissionDeadlineAlarm,
     ) {
+        outcomeRecorder.recordRetryRingingSchedule(registration.retryOccurrenceId, mission.occurrenceId, mission.limitMinutes)
         val remainingMillis = (mission.expiresAtEpochMillis -
             Clock.System.now().toEpochMilliseconds()).coerceAtLeast(0L)
         scheduleRetryAlarmLocked(
@@ -600,6 +612,8 @@ data class IosPendingMissionTerminal(
 
 interface IosMissionOutcomeRecorder {
     suspend fun recordRingingTimes(event: IosAlarmMissionEventDto) = Unit
+
+    suspend fun recordRetryRingingSchedule(occurrenceId: String, sourceOccurrenceId: String, intervalMinutes: Int) = Unit
 
     suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long? = null)
     suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long? = null)

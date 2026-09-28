@@ -8,6 +8,8 @@ import com.joon.ringout.presentation.toTwelveHourDisplay
 /** Include the date for events outside the card's ringing day (e.g. across midnight). */
 internal expect fun formatRecordsTime(epochMillis: Long, completedDate: MissionDate): String
 
+internal expect fun formatRecordsRingingRange(started: String?, stopped: String?): String
+
 internal data class RecordTimesUiState(
     val title: String,
     val ringingRange: String,
@@ -19,16 +21,17 @@ internal data class RecordTimesUiState(
 internal fun AlarmUsageRecord.recordTimes(
     format: (Long, MissionDate) -> String = ::formatRecordsTime,
 ): RecordTimesUiState {
-    val started = ringingStartedAtEpochMillis?.let { format(it, date) }
+    val started = (ringingScheduledAtEpochMillis ?: ringingStartedAtEpochMillis)?.let { format(it, date) }
     val stopped = ringingStoppedAtEpochMillis?.let { format(it, date) }
     val completed = missionCompletedAtEpochMillis?.let { format(it, date) }
     val completionLabel = if (result == MissionResult.FAILURE) "강제 종료" else "미션 완료"
     return RecordTimesUiState(
-        title = started?.toRecordTitle() ?: "시간 기록 없는 알람",
-        ringingRange = if (started != null && stopped == null) started else "${started ?: "--:--"} ~ ${stopped ?: "--:--"}",
+        title = started?.toRecordTitle() ?: if (stopped != null) "시작 시각 기록 없는 알람" else "시간 기록 없는 알람",
+        ringingRange = formatRecordsRingingRange(started, stopped),
         ringingDescription = when {
             started == null && stopped == null -> "울림/종료 시각 기록 없음"
             started == null -> "울림 시작 시각 기록 없음"
+            ringingScheduledAtEpochMillis != null -> if (stopped == null) "설정된 울림 시각 · 종료 시각 기록 없음" else "설정된 울림 시각 ~ 울림 종료"
             stopped == null -> if (isRingingStartObserved) "울림 확인 시각 · 종료 시각 기록 없음" else "울림 종료 시각 기록 없음"
             isRingingStartObserved -> "울림 확인 ~ 울림 종료"
             else -> "울림 시작 ~ 울림 종료"

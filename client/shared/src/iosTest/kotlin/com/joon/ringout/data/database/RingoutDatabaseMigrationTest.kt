@@ -23,6 +23,38 @@ import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTest {
     @Test
+    fun `버전 칠의 실행 시각을 보존하고 예정 시각은 추정하지 않은 채 새 열을 추가한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        createVersionFiveDatabase(path)
+        BundledSQLiteDriver().open(path).use { connection ->
+            connection.execSQL("DELETE FROM alarm_activity_events WHERE type = 'CREATED'")
+            connection.execSQL("""
+                CREATE TABLE alarm_occurrence_times (
+                    occurrence_id TEXT NOT NULL PRIMARY KEY,
+                    ringing_started_at INTEGER, ringing_stopped_at INTEGER, mission_completed_at INTEGER,
+                    ringing_start_observed INTEGER NOT NULL
+                )
+            """.trimIndent())
+            connection.execSQL("INSERT INTO alarm_occurrence_times VALUES ('one', 2000, 3000, 4000, 1)")
+            connection.execSQL("PRAGMA user_version = 7")
+        }
+        val database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val times = assertNotNull(database.alarmActivityDao().getOccurrenceTimes("one"))
+            assertEquals(2_000L, times.ringingStartedAtEpochMillis)
+            assertEquals(3_000L, times.ringingStoppedAtEpochMillis)
+            assertEquals(4_000L, times.missionCompletedAtEpochMillis)
+            kotlin.test.assertNull(times.ringingScheduledAtEpochMillis)
+            database.alarmActivityDao().mergeOccurrenceTimes(times.copy(ringingScheduledAtEpochMillis = 1_000))
+            database.alarmActivityDao().mergeOccurrenceTimes(times.copy(ringingScheduledAtEpochMillis = 9_000))
+            assertEquals(1_000L, database.alarmActivityDao().getOccurrenceTimes("one")?.ringingScheduledAtEpochMillis)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    @Test
     fun `버전 육의 울림 이벤트에서 시작 시각만 복원하고 없는 종료와 완료 시각은 비워 둔다`() = runBlocking<Unit> {
         val path = temporaryDatabasePath()
         createVersionFiveDatabase(path)

@@ -9,6 +9,19 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RecordsTimeTest {
+    @Test
+    fun `예정 시각이 있으면 관찰 시각 대신 카드 제목과 울림 행에 표시한다`() {
+        val record = AlarmUsageRecord(
+            "one", MissionDate.of(2026, 9, 28), ringingScheduledAtEpochMillis = 1,
+            ringingStartedAtEpochMillis = 2, ringingStoppedAtEpochMillis = 3,
+        )
+        val times = record.recordTimes { millis, _ -> mapOf(1L to "07:00", 2L to "07:01", 3L to "07:02").getValue(millis) }
+
+        assertEquals("오전 07:00에 울린 알람", times.title)
+        assertEquals("07:00 ~ 07:02", times.ringingRange)
+        assertEquals("설정된 울림 시각 ~ 울림 종료", times.ringingDescription)
+    }
+
     private val date = MissionDate.of(2026, 9, 28)
     private val format: (Long, MissionDate) -> String = { millis, _ ->
         mapOf(1L to "9/27 23:58", 2L to "00:03", 3L to "00:15").getValue(millis)
@@ -29,7 +42,6 @@ class RecordsTimeTest {
                 .recordTimes { _, _ -> time }
 
             assertEquals(expectedTitle, times.title)
-            assertEquals(time, times.ringingRange)
         }
     }
 
@@ -57,11 +69,10 @@ class RecordsTimeTest {
     }
 
     @Test
-    fun `종료 전에는 울린 시각만 표시하고 도착 시각은 비워 둔다`() {
+    fun `종료 전에도 울림 시각으로 제목을 표시하고 도착 시각은 비워 둔다`() {
         val times = AlarmUsageRecord("one", date, ringingStartedAtEpochMillis = 2).recordTimes(format)
 
         assertEquals("오전 12:03에 울린 알람", times.title)
-        assertEquals("00:03", times.ringingRange)
         kotlin.test.assertNull(times.completedTime)
     }
 
@@ -86,6 +97,7 @@ class RecordsTimeTest {
     @Test
     fun `확인하지 못한 시작 시각은 비우고 저장된 종료 시각만 표시한다`() {
         val times = MissionHistoryEntry(MissionResult.FAILURE, date, "one", null, 2, 3).toAlarmUsageRecord().recordTimes(format)
+        assertEquals("시작 시각 기록 없는 알람", times.title)
         assertEquals("--:-- ~ 00:03", times.ringingRange)
         assertEquals("울림 시작 시각 기록 없음", times.ringingDescription)
         assertEquals("강제 종료 00:15", times.completedDescription)
