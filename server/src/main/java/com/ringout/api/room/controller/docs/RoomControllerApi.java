@@ -1,0 +1,172 @@
+package com.ringout.api.room.controller.docs;
+
+import com.ringout.api.common.response.CustomResponse;
+import com.ringout.api.config.SwaggerConfig;
+import com.ringout.api.config.security.CustomUserDetails;
+import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.response.RoomCreateResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+
+@Tag(name = "모임 방 (Room)", description = "모임 방 API")
+public interface RoomControllerApi {
+
+    @Operation(
+        summary = "모임 방 생성",
+        description = "새로운 모임 방을 생성합니다. 요청한 사용자는 방장(OWNER)으로 자동 가입되며, 생성된 방의 상세 정보를 반환합니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "201",
+            description = "모임 방 생성 성공",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": true,
+                      "code": "ROOM201",
+                      "message": "모임 방이 생성되었습니다.",
+                      "result": {
+                        "roomId": 1,
+                        "name": "아침 운동 모임",
+                        "description": "매주 함께 운동하고 인증하는 모임입니다.",
+                        "imageUrl": "/images/default-room.png",
+                        "activityDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
+                        "activityTime": "08:00",
+                        "memberCount": 1,
+                        "membershipRole": "OWNER",
+                        "createdAt": "2026-09-28T09:00:00",
+                        "members": [
+                          {
+                            "userId": 1,
+                            "nickname": "링아웃",
+                            "profileImageUrl": null
+                          }
+                        ]
+                      }
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "요청 값 검증 또는 JSON 형식 오류",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "invalidName", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "ROOM400",
+                          "message": "모임 방 이름의 형식이 올바르지 않습니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "invalidDescription", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "ROOM400",
+                          "message": "모임 소개의 형식이 올바르지 않습니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "missingActivityDays", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "ROOM400",
+                          "message": "활동 요일을 1개 이상 선택해야 합니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "invalidActivityDay", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "COMMON400",
+                          "message": "잘못된 요청입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "invalidActivityTime", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "COMMON400",
+                          "message": "잘못된 요청입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "malformedJson", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "COMMON400",
+                          "message": "잘못된 요청입니다.",
+                          "result": null
+                        }
+                        """)
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "Authorization Bearer 토큰이 없거나 유효하지 않음, 또는 만료됨",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "unauthorized", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "AUTH401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "expiredAccessToken", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "AUTH401",
+                          "message": "액세스 토큰이 만료되었습니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "authenticatedUserNotFound", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "ROOM401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """)
+                }
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<RoomCreateResponse>> createRoom(
+        @Parameter(hidden = true)
+        CustomUserDetails customUserDetails,
+        @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            description = "생성할 모임 방 정보",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = RoomCreateRequest.class),
+                examples = @ExampleObject(value = """
+                    {
+                      "name": "아침 운동 모임",
+                      "description": "매주 함께 운동하고 인증하는 모임입니다.",
+                      "activityDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
+                      "activityTime": "08:00"
+                    }
+                    """)
+            )
+        )
+        RoomCreateRequest request
+    );
+}
