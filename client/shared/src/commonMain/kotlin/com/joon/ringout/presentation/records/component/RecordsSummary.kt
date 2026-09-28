@@ -38,7 +38,7 @@ internal fun RecordsSummary(
         errorMessage != null -> "—"
         summary.ringingCount != null -> if (summary.observedRingingOnly) "확인된 ${summary.ringingCount}번" else "${summary.ringingCount}번"
         isLoading -> null
-        else -> "집계 정보 없음"
+        else -> "0번"
     }
     Column(modifier = modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -85,7 +85,7 @@ private fun RecordsSummaryPreview() {
 
 @Preview
 @Composable
-private fun RecordsSummaryUnavailablePreview() {
+private fun RecordsSummaryEmptyPreview() {
     RingoutTheme { RecordsSummary(AlarmActivitySummary()) }
 }
 
