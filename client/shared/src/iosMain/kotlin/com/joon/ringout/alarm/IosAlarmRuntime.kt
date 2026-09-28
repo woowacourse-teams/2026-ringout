@@ -4,6 +4,9 @@ import com.joon.ringout.analytics.IosAlarmAnalytics
 import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.data.alarmactivity.AlarmActivityDao
+import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
+import com.joon.ringout.data.alarmactivity.currentAlarmActivityTimestamp
 import com.joon.ringout.platform.IosNativeServices
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
@@ -32,6 +35,7 @@ class IosAlarmRuntime(
     private val locationService: IosMissionLocationService,
     private val ringingHandoffGraceMillis: Long = DefaultRingingHandoffGraceMillis,
     private val runtimeDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    private val activityDao: AlarmActivityDao? = null,
 ) {
     private val startMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + runtimeDispatcher)
@@ -337,25 +341,41 @@ class IosAlarmRuntime(
                         ?.let { current -> listOf(current) + ids.filterNot { it == current } }
                         ?: ids
                 }
-            for (systemAlarmId in alertingAlarmIds) {
-                val resolved = resolveIosRingingAlarm(
+            // Record all observed alerts, even when only one ringing screen can be shown.
+            // AlarmKit exposes current state, not a complete background firing history.
+            val resolvedAlarms = alertingAlarmIds.mapNotNull { systemAlarmId ->
+                resolveIosRingingAlarm(
                     systemAlarmId = systemAlarmId,
                     dataSource = dataSource,
                     deadlineAlarm = missionCoordinator.deadlineAlarmForSystemId(systemAlarmId),
                 )
-                if (resolved != null) {
-                    cancelRingingHandoff()
-                    if (activeMissionFlow.value?.matches(resolved) == true) {
-                        if (ringingAlarm.value?.systemAlarmId == resolved.systemAlarmId) {
-                            ringingAlarm.value = null
-                        }
-                        return@withLock
-                    }
-                    if (ringingAlarm.value?.systemAlarmId != resolved.systemAlarmId) {
-                        ringingAlarm.value = resolved
+            }
+            try {
+                val observedAt = currentAlarmActivityTimestamp()
+                activityDao?.recordObservedRinging(resolvedAlarms.associate { alarm ->
+                    alarm.systemAlarmId to AlarmActivityEntity.rang(
+                        alarmId = alarm.alarmId,
+                        occurrenceId = alarm.occurrenceId ?: "ios:${alarm.systemAlarmId}:${observedAt.epochMillis}",
+                        timestamp = observedAt,
+                    )
+                })
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // History storage must not prevent dismissal or mission tracking.
+            }
+            for (resolved in resolvedAlarms) {
+                cancelRingingHandoff()
+                if (activeMissionFlow.value?.matches(resolved) == true) {
+                    if (ringingAlarm.value?.systemAlarmId == resolved.systemAlarmId) {
+                        ringingAlarm.value = null
                     }
                     return@withLock
                 }
+                if (ringingAlarm.value?.systemAlarmId != resolved.systemAlarmId) {
+                    ringingAlarm.value = resolved
+                }
+                return@withLock
             }
 
             val startedMission = processPendingMissionEventsOrNull()
@@ -677,6 +697,7 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
             presentationMigrationState = UserDefaultsIosAlarmPresentationMigrationState(),
         ),
         locationService = nativeServices.missionLocationService(),
+        activityDao = getRingoutDatabase().alarmActivityDao(),
     )
 }
 

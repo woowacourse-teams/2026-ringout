@@ -21,6 +21,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
 import com.joon.ringout.analytics.AlarmAnalytics
+import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
 
 class AlarmRingingService : Service() {
     private var mediaPlayer: MediaPlayer? = null
@@ -96,6 +97,12 @@ class AlarmRingingService : Service() {
             stopSelf(startId)
             return START_NOT_STICKY
         }
+        runCatching {
+            AndroidAlarmActivityRecorder.get(applicationContext).recordRinging(
+                alarmId = intent.getStringExtra(AlarmRuntime.EXTRA_ALARM_ID).orEmpty(),
+                occurrenceId = occurrenceId,
+            )
+        }.onFailure { android.util.Log.e("AlarmActivity", "Could not record ringing", it) }
         analytics?.recordAlarmRingingStarted(
             occurrenceId = occurrenceId,
             retryAttempt = intent.getIntExtra(

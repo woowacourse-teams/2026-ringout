@@ -19,6 +19,9 @@ class DefaultMissionHistoryRepository(
         return history.map(MissionHistoryDto::toDomain)
     }
 
+    override suspend fun getLocalHistory(month: MissionYearMonth): List<MissionHistoryEntry> =
+        dataSource.getHistory(month).map(MissionHistoryDto::toDomain)
+
     override suspend fun record(entry: MissionHistoryEntry): Boolean {
         require(!entry.occurrenceId.isNullOrBlank()) {
             "Mission occurrence ID must not be blank."

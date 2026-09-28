@@ -1,6 +1,7 @@
 package com.joon.ringout.di
 
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
+import com.joon.ringout.domain.alarmactivity.AlarmActivityRepository
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.destination.DestinationRepository
@@ -16,6 +17,7 @@ interface AppContainer {
     val authRepository: AuthRepository
     val memberRepository: MemberRepository
     val destinationRepository: DestinationRepository
+    val alarmActivityRepository: AlarmActivityRepository
     val missionHistoryRepository: MissionHistoryRepository
     val productAnalyticsRecorder: ProductAnalyticsRecorder
 }

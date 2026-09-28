@@ -1,6 +1,11 @@
 package com.joon.ringout.di
 
 import android.content.Context
+import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import com.joon.ringout.data.alarmactivity.RoomAlarmActivityRepository
 import com.joon.ringout.analytics.createProductAnalyticsRecorder
 import com.joon.ringout.data.auth.DefaultAuthRepository
 import com.joon.ringout.data.auth.local.createSecureTokenStorage
@@ -23,6 +28,10 @@ class AndroidAppContainer(
     private val httpClient = getRingoutHttpClient()
     private val tokenStorage = createSecureTokenStorage(context)
     private val database = getRingoutDatabase(context)
+
+    init {
+        AndroidAlarmActivityRecorder.get(context).flush()
+    }
 
     override val authSession = getAuthSession()
 
@@ -51,6 +60,18 @@ class AndroidAppContainer(
             ),
         )
     // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 KtorDestinationRemoteDataSource를 다시 주입한다.
+
+    override val alarmActivityRepository =
+        RoomAlarmActivityRepository(
+            database.alarmActivityDao(),
+            observedRingingOnly = false,
+        )
+
+    init {
+        CoroutineScope(Dispatchers.Default).launch {
+            runCatching { alarmActivityRepository.initializeTracking() }
+        }
+    }
 
     override val missionHistoryRepository =
         DefaultMissionHistoryRepository(

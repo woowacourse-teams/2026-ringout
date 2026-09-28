@@ -686,6 +686,7 @@ private class AndroidAlarmManagerGateway(
         val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = AlarmRuntime.ACTION_RING
             putAlarmExtras(request)
+            putExtra(AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS, triggerAtMillis)
         }
         val operation = PendingIntent.getBroadcast(
             context,

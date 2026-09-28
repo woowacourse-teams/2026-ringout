@@ -36,6 +36,7 @@ internal object AlarmRuntime {
     const val EXTRA_SOUND_URI = "sound_uri"
     const val EXTRA_HAS_SOUND_URI = "has_sound_uri"
     const val EXTRA_SCHEDULE_FINGERPRINT = "schedule_fingerprint"
+    const val EXTRA_TRIGGER_AT_EPOCH_MILLIS = "trigger_at_epoch_millis"
 }
 
 internal fun Intent.putAlarmExtras(request: AlarmScheduleRequest): Intent = apply {
@@ -113,7 +114,10 @@ class AlarmReceiver : BroadcastReceiver() {
                             putAlarmExtras(request)
                             putExtra(
                                 AlarmRuntime.EXTRA_OCCURRENCE_ID,
-                                "$alarmId:${System.currentTimeMillis()}",
+                                "$alarmId:${sourceIntent.getLongExtra(
+                                    AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS,
+                                    System.currentTimeMillis(),
+                                )}",
                             )
                             putExtra(AlarmRuntime.EXTRA_RETRY_ATTEMPT, 0)
                         }

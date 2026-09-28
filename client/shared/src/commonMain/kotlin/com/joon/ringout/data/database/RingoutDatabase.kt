@@ -5,6 +5,10 @@ import androidx.room3.Database
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.joon.ringout.data.alarmactivity.AlarmActivityDao
+import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
+import com.joon.ringout.data.alarmactivity.AlarmActivityTrackingEntity
+import com.joon.ringout.data.alarmactivity.AlarmRingingObservationEntity
 import com.joon.ringout.data.alarm.AlarmDao
 import com.joon.ringout.data.alarm.AlarmEntity
 import com.joon.ringout.data.alarm.AlarmRepeatDayEntity
@@ -16,17 +20,22 @@ import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 
 @Database(
     entities = [
+        AlarmActivityEntity::class,
+        AlarmActivityTrackingEntity::class,
+        AlarmRingingObservationEntity::class,
         MissionHistoryEntity::class,
         AlarmEntity::class,
         AlarmRepeatDayEntity::class,
         StorageMigrationEntity::class,
         SavedDestinationEntity::class,
     ],
-    version = 4,
+    version = 6,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
 abstract class RingoutDatabase : RoomDatabase() {
+    abstract fun alarmActivityDao(): AlarmActivityDao
+
     abstract fun missionHistoryDao(): MissionHistoryDao
 
     abstract fun alarmDao(): AlarmDao
@@ -47,6 +56,8 @@ fun buildRingoutDatabase(
         RingoutMigration1To2,
         RingoutMigration2To3,
         RingoutMigration3To4,
+        RingoutMigration4To5,
+        RingoutMigration5To6,
     )
     .build()
 
