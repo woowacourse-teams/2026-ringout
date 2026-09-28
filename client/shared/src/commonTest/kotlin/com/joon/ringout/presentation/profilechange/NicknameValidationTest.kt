@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname
+package com.joon.ringout.presentation.profilechange
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

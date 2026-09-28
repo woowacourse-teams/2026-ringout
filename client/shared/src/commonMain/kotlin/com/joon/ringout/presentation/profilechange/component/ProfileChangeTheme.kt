@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname.component
+package com.joon.ringout.presentation.profilechange.component
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -8,7 +8,7 @@ import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.ThemeMode
 
 @Immutable
-internal data class NicknameChangeColors(
+internal data class ProfileChangeColors(
     val background: Color,
     val primaryText: Color,
     val inputSurface: Color,
@@ -22,12 +22,13 @@ internal data class NicknameChangeColors(
     val primaryAction: Color,
     val disabledAction: Color,
     val actionContent: Color,
+    val profileImageBackground: Color,
 )
 
 @Composable
-internal fun nicknameChangeColors(): NicknameChangeColors =
+internal fun profileChangeColors(): ProfileChangeColors =
     if (LocalRingoutThemeMode.current == ThemeMode.Dark) {
-        NicknameChangeColors(
+        ProfileChangeColors(
             background = Color(0xFF0F1012),
             primaryText = Color(0xFFF5F5F6),
             inputSurface = Color.White,
@@ -41,9 +42,10 @@ internal fun nicknameChangeColors(): NicknameChangeColors =
             primaryAction = Color(0xFFFF6D2E),
             disabledAction = Color(0xFFA7A9B0),
             actionContent = Color.White,
+            profileImageBackground = Color(0xFF202127),
         )
     } else {
-        NicknameChangeColors(
+        ProfileChangeColors(
             background = MaterialTheme.colorScheme.background,
             primaryText = MaterialTheme.colorScheme.onBackground,
             inputSurface = MaterialTheme.colorScheme.surface,
@@ -57,5 +59,6 @@ internal fun nicknameChangeColors(): NicknameChangeColors =
             primaryAction = MaterialTheme.colorScheme.primary,
             disabledAction = Color(0xFFA7A9B0),
             actionContent = Color.White,
+            profileImageBackground = Color(0xFFF3F4F6),
         )
     }

@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname
+package com.joon.ringout.presentation.profilechange
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
@@ -12,7 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 @Immutable
-internal data class NicknameChangeUiState(
+internal data class ProfileChangeUiState(
     val nickname: String,
     val validation: NicknameValidation,
     val isSaving: Boolean = false,
@@ -20,19 +20,19 @@ internal data class NicknameChangeUiState(
     val completedNickname: String? = null,
 )
 
-internal class NicknameChangeViewModel(
+internal class ProfileChangeViewModel(
     initialNickname: String,
     private val memberRepository: MemberRepository,
     coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
-    var uiState by mutableStateOf(initialNickname.toNicknameChangeUiState())
+    var uiState by mutableStateOf(initialNickname.toProfileChangeUiState())
         private set
 
     private val scope = coroutineScope ?: viewModelScope
 
     fun onNicknameChange(nickname: String) {
         if (uiState.isSaving) return
-        uiState = nickname.toNicknameChangeUiState()
+        uiState = nickname.toProfileChangeUiState()
     }
 
     fun confirm() {
@@ -63,8 +63,8 @@ internal class NicknameChangeViewModel(
         uiState = uiState.copy(completedNickname = null)
     }
 
-    private fun String.toNicknameChangeUiState(): NicknameChangeUiState =
-        NicknameChangeUiState(
+    private fun String.toProfileChangeUiState(): ProfileChangeUiState =
+        ProfileChangeUiState(
             nickname = this,
             validation = validateNickname(this),
         )

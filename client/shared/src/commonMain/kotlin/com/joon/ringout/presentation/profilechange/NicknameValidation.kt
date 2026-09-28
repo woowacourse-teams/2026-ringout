@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.nickname
+package com.joon.ringout.presentation.profilechange
 
 internal const val NicknameMinLength = 1
 internal const val NicknameMaxLength = 10
