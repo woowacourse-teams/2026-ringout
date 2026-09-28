@@ -29,6 +29,78 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecordsViewModelTest {
     @Test
+    fun `선택한 날짜를 반복해서 누르면 재조회 없이 화면과 실시간 집계 구독을 유지한다`() = runTest {
+        val today = MissionDate.parse("2026-09-28")
+        val repository = RecordsRepository(listOf(entry(today.iso8601)))
+        val summaries = kotlinx.coroutines.flow.MutableStateFlow(AlarmActivitySummary(ringingCount = 2))
+        var summaryObservations = 0
+        val activityRepository = object : AlarmActivityRepository {
+            override fun observeSummary(date: MissionDate) = summaries.also { summaryObservations++ }
+        }
+        val viewModel = RecordsViewModel(GetRecordsHistory(repository), today, activityRepository, coroutineScope = backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        val loadedState = viewModel.uiState.value
+
+        repeat(3) {
+            viewModel.selectDate(today)
+            assertEquals(loadedState, viewModel.uiState.value)
+            runCurrent()
+        }
+
+        assertEquals(1, repository.queries.size)
+        assertEquals(1, summaryObservations)
+        assertEquals(1, summaries.subscriptionCount.value)
+
+        summaries.value = AlarmActivitySummary(ringingCount = 3)
+        runCurrent()
+        assertEquals(3, viewModel.uiState.value.activitySummary.ringingCount)
+    }
+
+    @Test
+    fun `조회 중 같은 날짜를 다시 눌러도 진행 중인 요청을 다시 시작하지 않는다`() = runTest {
+        val today = MissionDate.parse("2026-09-28")
+        val pending = kotlinx.coroutines.CompletableDeferred<List<MissionHistoryEntry>>()
+        val repository = RecordsRepository().apply { loader = { pending.await() } }
+        val viewModel = recordsViewModel(repository, backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isLoading)
+
+        repeat(3) {
+            viewModel.selectDate(today)
+            runCurrent()
+        }
+
+        assertEquals(1, repository.queries.size)
+        pending.complete(listOf(entry(today.iso8601)))
+        runCurrent()
+        assertFalse(viewModel.uiState.value.isLoading)
+        assertEquals(1, viewModel.uiState.value.records.size)
+    }
+
+    @Test
+    fun `월 달력에서 현재 날짜를 다시 선택하면 화면을 재조회하지 않고 달력만 닫는다`() = runTest {
+        val today = MissionDate.parse("2026-09-28")
+        val repository = RecordsRepository(listOf(entry(today.iso8601)))
+        val viewModel = recordsViewModel(repository, backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        viewModel.openCalendar()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isCalendarVisible)
+        val loadedState = viewModel.uiState.value
+        val queryCount = repository.queries.size
+
+        viewModel.selectDate(today)
+
+        assertEquals(loadedState.copy(isCalendarVisible = false), viewModel.uiState.value)
+        runCurrent()
+        assertEquals(queryCount, repository.queries.size)
+        assertEquals(loadedState.copy(isCalendarVisible = false), viewModel.uiState.value)
+    }
+
+    @Test
     fun `재울림이 저장되면 기존 카드에 행을 추가하고 도착 결과도 같은 행에 반영한다`() = runTest {
         val first = AlarmUsageRecord(
             key = "one", date = MissionDate.parse("2026-09-28"), alarmId = "alarm",

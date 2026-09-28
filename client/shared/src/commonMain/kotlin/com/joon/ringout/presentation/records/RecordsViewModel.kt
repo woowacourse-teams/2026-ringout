@@ -44,6 +44,8 @@ class RecordsViewModel(
     fun selectDate(date: MissionDate) {
         val previous = uiState.value
         closeCalendar()
+        if (date == previous.selectedDate) return
+
         mutableUiState.update { state ->
             state.copy(
                 selectedDate = date,
