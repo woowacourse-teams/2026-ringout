@@ -1,6 +1,6 @@
 package com.joon.ringout.presentation.navigation
 
-import com.joon.ringout.presentation.social.SocialScreen
+import com.joon.ringout.presentation.social.SocialRoute
 import com.joon.ringout.presentation.social.SocialViewModel
 import com.joon.ringout.presentation.records.RecordsScreen
 import com.joon.ringout.presentation.records.RecordsViewModel
@@ -60,7 +60,12 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     }
 
     entry<AppRoute.Social>(clazzContentKey = AppRoute::viewModelStoreKey) {
-        SocialScreen(viewModelScopes.get(AppRoute.Social, SocialViewModel::class).uiState)
+        SocialRoute(
+            viewModel = viewModelScopes.get(AppRoute.Social, SocialViewModel::class),
+            authSessionState = authSessionState,
+            onCreateRoom = {},
+            onRoomClick = {},
+        )
     }
     entry<AppRoute.Records>(clazzContentKey = AppRoute::viewModelStoreKey) {
         RecordsScreen(viewModelScopes.get(AppRoute.Records, RecordsViewModel::class).uiState)
