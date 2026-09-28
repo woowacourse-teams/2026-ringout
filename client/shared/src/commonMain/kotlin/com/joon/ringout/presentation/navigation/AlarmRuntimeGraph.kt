@@ -5,7 +5,7 @@ import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.presentation.activemission.ActiveAlarmTrackingScreen
-import com.joon.ringout.presentation.ringing.AlarmRingingScreen
+import com.joon.ringout.presentation.ringing.AlarmRingingRoute
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 
 /** 알람 울림과 진행 중인 미션처럼 앱 실행 상태에서 제공되는 화면을 등록한다. */
@@ -26,9 +26,7 @@ internal fun EntryProviderScope<AppRoute>.alarmRuntimeGraph(
 ) {
     entry<AppRoute.AlarmRinging>(clazzContentKey = AppRoute::viewModelStoreKey) {
         ringingAlarm?.let { alarm ->
-            AlarmRingingScreen(
-                alarmTime = alarm.alarmTime,
-                dateText = alarm.dateText,
+            AlarmRingingRoute(
                 limitMinutes = alarm.limitMinutes,
                 destinationName = alarm.destinationName,
                 onDismissAndNavigateClick = {
