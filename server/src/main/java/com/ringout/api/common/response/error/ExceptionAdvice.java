@@ -8,8 +8,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +23,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.multipart.MultipartHttpServletRequest;
 
 @Slf4j
 @RestControllerAdvice(annotations = {RestController.class})
@@ -29,6 +33,10 @@ public class ExceptionAdvice {
     private static final String UNEXPECTED_EXCEPTION_EVENT = "unexpected_exception_occurred";
     private static final String INTERNAL_SERVER_ERROR_REASON = "INTERNAL_SERVER_ERROR";
     private static final String CLIENT_REQUEST_FAILURE_EVENT = "client_request_failed";
+    private static final String MASKED_VALUE = "[MASKED]";
+    private static final Set<String> SENSITIVE_PARAMETER_NAMES = Set.of(
+        "authorization", "password", "token", "access_token", "refresh_token", "secret"
+    );
 
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<CustomResponse<Void>> handleRequestConstraintViolation(
@@ -91,11 +99,15 @@ public class ExceptionAdvice {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<CustomResponse<String>> exception(Exception e) {
+    public ResponseEntity<CustomResponse<String>> exception(Exception e, HttpServletRequest request) {
         log.atError()
             .addKeyValue("event", UNEXPECTED_EXCEPTION_EVENT)
             .addKeyValue("reason", INTERNAL_SERVER_ERROR_REASON)
             .addKeyValue("exception", e.getClass().getName())
+            .addKeyValue("method", request.getMethod())
+            .addKeyValue("path", request.getRequestURI())
+            .addKeyValue("userId", resolveAuthenticatedUserId())
+            .addKeyValue("requestParameters", resolveRequestParameters(request))
             .setCause(e)
             .log("예상하지 못한 서버 예외 발생");
 
@@ -167,7 +179,37 @@ public class ExceptionAdvice {
             .addKeyValue("method", request.getMethod())
             .addKeyValue("path", request.getRequestURI())
             .addKeyValue("userId", resolveAuthenticatedUserId())
+            .addKeyValue("requestParameters", resolveRequestParameters(request))
             .log("클라이언트 요청 처리 실패");
+    }
+
+    private Map<String, Object> resolveRequestParameters(HttpServletRequest request) {
+        try {
+            Map<String, Object> requestParameters = new LinkedHashMap<>();
+            request.getParameterMap().forEach((name, values) -> requestParameters.put(name,
+                isSensitiveParameter(name) ? MASKED_VALUE : List.of(values)));
+
+            if (request instanceof MultipartHttpServletRequest multipartRequest) {
+                multipartRequest.getMultiFileMap().forEach((name, files) -> requestParameters.put(name,
+                    files.stream().map(this::fileMetadata).toList()));
+            }
+
+            return requestParameters;
+        } catch (RuntimeException exception) {
+            return Map.of("unavailable", exception.getClass().getSimpleName());
+        }
+    }
+
+    private Map<String, Object> fileMetadata(MultipartFile file) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("originalFilename", file.getOriginalFilename());
+        metadata.put("size", file.getSize());
+        metadata.put("contentType", file.getContentType());
+        return metadata;
+    }
+
+    private boolean isSensitiveParameter(String name) {
+        return SENSITIVE_PARAMETER_NAMES.contains(name.toLowerCase());
     }
 
     private Long resolveAuthenticatedUserId() {
