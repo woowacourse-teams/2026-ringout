@@ -7,14 +7,68 @@ import com.joon.ringout.alarm.SavedAlarmSchedule
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.RingoutDatabase
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.missionhistory.weekDates
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AlarmActivityDatabaseTest {
+    @Test
+    fun `주 단위 조회는 날짜별 울림을 집계하고 기록 없는 날짜와 집계 이전 날짜를 구분한다`() = withDatabase { database ->
+        val dao = database.alarmActivityDao()
+        dao.initializeTracking(AlarmActivityTrackingEntity(startedAtEpochMillis = 1_000, localDate = "2026-09-28"))
+        listOf("2026-09-28", "2026-09-28", "2026-09-30", "2026-10-04").forEachIndexed { index, date ->
+            val event = AlarmActivityEntity.rang("alarm", "occurrence-$index", AlarmActivityTimestamp(2_000L + index, date))
+            dao.record(event)
+            dao.record(event)
+        }
+        val dates = MissionDate.parse("2026-09-28").weekDates()
+
+        val summaries = RoomAlarmActivityRepository(dao, observedRingingOnly = true).observeSummaries(dates).first()
+
+        assertEquals(dates.toSet(), summaries.keys)
+        assertEquals(listOf(null, 2, 0, 1, 0, 0, 0), dates.map { summaries.getValue(it).ringingCount })
+        assertTrue(summaries.getValue(MissionDate.parse("2026-09-28")).isTrackingStartDate)
+        assertTrue(summaries.values.all { it.observedRingingOnly })
+    }
+
+    @Test
+    fun `울림이 없는 주도 연도 경계를 넘어 날짜별 집계 상태를 반환한다`() = withDatabase { database ->
+        val dao = database.alarmActivityDao()
+        dao.initializeTracking(AlarmActivityTrackingEntity(startedAtEpochMillis = 1_000, localDate = "2025-12-30"))
+        val dates = MissionDate.parse("2026-01-01").weekDates()
+
+        val summaries = RoomAlarmActivityRepository(dao).observeSummaries(dates).first()
+
+        assertEquals(dates.toSet(), summaries.keys)
+        assertEquals(listOf(null, null, 0, 0, 0, 0, 0), dates.map { summaries.getValue(it).ringingCount })
+        assertEquals(listOf(MissionDate.parse("2025-12-30")), summaries.filterValues { it.isTrackingStartDate }.keys.toList())
+    }
+
+    @Test
+    fun `주 단위 구독 중 저장된 새 울림을 다시 조회하지 않고 전달한다`() = withDatabase { database ->
+        val dao = database.alarmActivityDao()
+        val date = MissionDate.parse("2026-09-28")
+        dao.initializeTracking(AlarmActivityTrackingEntity(startedAtEpochMillis = 1_000, localDate = date.iso8601))
+        val repository = RoomAlarmActivityRepository(dao)
+
+        val updated = withTimeout(5_000) {
+            repository.observeSummaries(date.weekDates()).first { summaries ->
+                if (summaries.getValue(date).ringingCount == 0) {
+                    dao.record(AlarmActivityEntity.rang("alarm", "new", AlarmActivityTimestamp(2_000, date.iso8601)))
+                    false
+                } else {
+                    true
+                }
+            }
+        }
+        assertEquals(1, updated.getValue(date).ringingCount)
+    }
+
     @Test
     fun `울림은 발생한 날짜에 중복 없이 집계하고 알람을 삭제해도 유지한다`() = withDatabase { database ->
         val yesterday = AlarmActivityTimestamp(1_000, "2026-09-27")

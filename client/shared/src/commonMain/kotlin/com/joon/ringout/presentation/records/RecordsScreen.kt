@@ -82,10 +82,15 @@ fun RecordsScreen(
             item {
                 RecordsSummary(
                     summary = uiState.activitySummary,
-                    isLoading = uiState.isSummaryLoading,
-                    errorMessage = uiState.summaryErrorMessage,
+                    isLoading = uiState.isSummaryLoading || uiState.isWeekChanging,
+                    showLoadingIndicator = uiState.showSummaryLoadingIndicator || uiState.showWeekLoadingIndicator,
+                    loadingDescription = if (uiState.isWeekChanging) "주간 기록 불러오는 중" else "알람 울림 횟수 불러오는 중",
+                    errorMessage = uiState.summaryErrorMessage.takeUnless { uiState.isWeekChanging },
                     onRetry = onRetry,
                 )
+            }
+            if (uiState.weekChangeErrorMessage != null) {
+                item { RecordsStateContent(false, uiState.weekChangeErrorMessage, onRetry) }
             }
             if (uiState.isLoading || uiState.errorMessage != null) {
                 item { RecordsStateContent(uiState.isLoading, uiState.errorMessage, onRetry) }
@@ -143,13 +148,30 @@ private fun RecordsScreenEmptyPreview() {
 @Preview(widthDp = 402, heightDp = 941)
 @Composable
 private fun RecordsScreenLoadingPreview() {
-    RingoutTheme { RecordsScreen(previewRecordsState().copy(isLoading = true, records = emptyList(), isSummaryLoading = true)) }
+    RingoutTheme {
+        RecordsScreen(previewRecordsState().copy(
+            isLoading = true, records = emptyList(), activitySummary = AlarmActivitySummary(),
+            isSummaryLoading = true, showSummaryLoadingIndicator = true,
+        ))
+    }
 }
 
 @Preview(widthDp = 402, heightDp = 941)
 @Composable
 private fun RecordsScreenErrorPreview() {
     RingoutTheme { RecordsScreen(previewRecordsState().copy(summaryErrorMessage = "알람 집계를 불러오지 못했어요.")) }
+}
+
+@Preview(widthDp = 402, heightDp = 941)
+@Composable
+private fun RecordsScreenWeekLoadingPreview() {
+    RingoutTheme { RecordsScreen(previewRecordsState().copy(isWeekChanging = true, showWeekLoadingIndicator = true)) }
+}
+
+@Preview(widthDp = 402, heightDp = 941)
+@Composable
+private fun RecordsScreenWeekErrorPreview() {
+    RingoutTheme { RecordsScreen(previewRecordsState().copy(weekChangeErrorMessage = RecordsLoadErrorMessage)) }
 }
 
 private fun previewRecordsState(): RecordsUiState {

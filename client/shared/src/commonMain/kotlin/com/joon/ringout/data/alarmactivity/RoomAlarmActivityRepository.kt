@@ -17,18 +17,21 @@ class RoomAlarmActivityRepository(
         dao.initializeTracking(AlarmActivityTrackingEntity(startedAtEpochMillis = now.epochMillis, localDate = now.localDate))
     }
 
-    override fun observeSummary(date: MissionDate): Flow<AlarmActivitySummary> = flow {
+    override fun observeSummaries(dates: List<MissionDate>): Flow<Map<MissionDate, AlarmActivitySummary>> = flow {
         initializeTracking()
-        emitAll(dao.observeCounts(date.iso8601).map { counts ->
-            val startDate = counts.trackingStartDate
-            // A timezone change can put a later event on a local date before tracking began.
-            val hasEvents = counts.ringingCount > 0
-            val isTracked = startDate != null && (date.iso8601 >= startDate || hasEvents)
-            AlarmActivitySummary(
-                ringingCount = counts.ringingCount.takeIf { isTracked },
-                isTrackingStartDate = isTracked && date.iso8601 <= startDate,
-                observedRingingOnly = observedRingingOnly,
-            )
+        emitAll(dao.observeDailyCounts(dates.map(MissionDate::iso8601)).map { dailyCounts ->
+            val startDate = dailyCounts.firstOrNull()?.trackingStartDate
+            val countsByDate = dailyCounts.associateBy(AlarmActivityDailyCounts::localDate)
+            dates.associateWith { date ->
+                val ringingCount = countsByDate[date.iso8601]?.ringingCount ?: 0
+                // A timezone change can put a later event on a local date before tracking began.
+                val isTracked = startDate != null && (date.iso8601 >= startDate || ringingCount > 0)
+                AlarmActivitySummary(
+                    ringingCount = ringingCount.takeIf { isTracked },
+                    isTrackingStartDate = isTracked && date.iso8601 <= startDate,
+                    observedRingingOnly = observedRingingOnly,
+                )
+            }
         })
     }
 }

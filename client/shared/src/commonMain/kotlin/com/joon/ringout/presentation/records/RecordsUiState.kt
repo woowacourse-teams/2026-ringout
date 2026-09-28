@@ -29,9 +29,13 @@ data class RecordsUiState(
     val records: List<AlarmUsageRecordGroup> = emptyList(),
     val activitySummary: AlarmActivitySummary = AlarmActivitySummary(),
     val isSummaryLoading: Boolean = false,
+    val showSummaryLoadingIndicator: Boolean = false,
     val summaryErrorMessage: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    val isWeekChanging: Boolean = false,
+    val showWeekLoadingIndicator: Boolean = false,
+    val weekChangeErrorMessage: String? = null,
     val calendarMonth: MissionYearMonth = selectedDate.yearMonth,
     val calendarDays: List<RecordsDayUiState?> = calendarMonth.calendarDates().map { date ->
         date?.let { recordsDayUiState(it, today, selectedDate) }

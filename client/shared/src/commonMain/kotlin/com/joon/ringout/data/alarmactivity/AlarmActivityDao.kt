@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.Flow
 
 data class AlarmActivityCounts(val ringingCount: Int, val trackingStartDate: String?)
 
+data class AlarmActivityDailyCounts(val localDate: String?, val ringingCount: Int, val trackingStartDate: String?)
+
 @Dao
 interface AlarmActivityDao : AlarmOccurrenceTimesAccess {
     @Query("""
@@ -17,6 +19,17 @@ interface AlarmActivityDao : AlarmOccurrenceTimesAccess {
             (SELECT local_date FROM alarm_activity_tracking WHERE id = 1) AS trackingStartDate
     """)
     fun observeCounts(date: String): Flow<AlarmActivityCounts>
+
+    @Query("""
+        SELECT events.local_date AS localDate, COUNT(events.event_key) AS ringingCount,
+            tracking.local_date AS trackingStartDate
+        FROM alarm_activity_tracking AS tracking
+        LEFT JOIN alarm_activity_events AS events
+            ON events.local_date IN (:dates) AND events.type = 'RANG'
+        WHERE tracking.id = 1
+        GROUP BY events.local_date
+    """)
+    fun observeDailyCounts(dates: List<String>): Flow<List<AlarmActivityDailyCounts>>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEvent(event: AlarmActivityEntity)

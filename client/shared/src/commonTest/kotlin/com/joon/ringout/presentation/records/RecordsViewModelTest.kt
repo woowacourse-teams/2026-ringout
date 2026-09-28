@@ -11,8 +11,11 @@ import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
 import com.joon.ringout.domain.missionhistory.MissionHistoryRepository
 import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
+import com.joon.ringout.domain.missionhistory.weekDates
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.Continuation
@@ -29,13 +32,239 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecordsViewModelTest {
     @Test
+    fun `같은 주의 날짜를 바꾸면 저장된 카드와 횟수를 로딩 없이 즉시 표시한다`() = runTest {
+        val today = MissionDate.parse("2026-09-30")
+        val yesterday = MissionDate.parse("2026-09-29")
+        val emptyDate = MissionDate.parse("2026-09-28")
+        val unknownDate = MissionDate.parse("2026-09-27")
+        val history = RecordsRepository(listOf(entry(today.iso8601), entry(yesterday.iso8601)))
+        val activity = WeeklyActivityRepository(mapOf(
+            today to AlarmActivitySummary(ringingCount = 5),
+            yesterday to AlarmActivitySummary(ringingCount = 2),
+            emptyDate to AlarmActivitySummary(ringingCount = 0),
+            unknownDate to AlarmActivitySummary(),
+        ))
+        val viewModel = RecordsViewModel(GetRecordsHistory(history), today, activity, coroutineScope = backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+
+        listOf(yesterday, emptyDate, unknownDate, today, yesterday).forEach { date ->
+            viewModel.selectDate(date)
+
+            assertEquals(activity.summaries.value.getValue(date), viewModel.uiState.value.activitySummary)
+            assertEquals(history.entries.count { it.completedAt == date }, viewModel.uiState.value.records.size)
+            assertFalse(viewModel.uiState.value.isLoading)
+            assertFalse(viewModel.uiState.value.isSummaryLoading)
+            assertFalse(viewModel.uiState.value.showSummaryLoadingIndicator)
+            runCurrent()
+        }
+
+        assertEquals(listOf(today.weekDates()), activity.queries)
+        assertEquals(1, history.queries.size)
+        assertEquals(1, activity.summaries.subscriptionCount.value)
+    }
+
+    @Test
+    fun `주 단위 집계 변경은 선택 날짜와 선택하지 않은 날짜의 캐시에 모두 반영한다`() = runTest {
+        val today = MissionDate.parse("2026-09-28")
+        val yesterday = MissionDate.parse("2026-09-27")
+        val activity = WeeklyActivityRepository(mapOf(
+            today to AlarmActivitySummary(ringingCount = 2),
+            yesterday to AlarmActivitySummary(ringingCount = 0),
+        ))
+        val viewModel = RecordsViewModel(GetRecordsHistory(RecordsRepository()), today, activity, coroutineScope = backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        activity.summaries.value = activity.summaries.value + (yesterday to AlarmActivitySummary(ringingCount = 1))
+        runCurrent()
+        assertEquals(2, viewModel.uiState.value.activitySummary.ringingCount)
+
+        viewModel.selectDate(yesterday)
+        assertEquals(1, viewModel.uiState.value.activitySummary.ringingCount)
+        activity.summaries.value = activity.summaries.value + mapOf(
+            yesterday to AlarmActivitySummary(ringingCount = 3),
+            today to AlarmActivitySummary(ringingCount = 4),
+        )
+        runCurrent()
+        assertEquals(3, viewModel.uiState.value.activitySummary.ringingCount)
+
+        viewModel.selectDate(today)
+        assertEquals(4, viewModel.uiState.value.activitySummary.ringingCount)
+        assertFalse(viewModel.uiState.value.isSummaryLoading)
+        assertEquals(listOf(today.weekDates()), activity.queries)
+    }
+
+    @Test
+    fun `같은 주를 조회하는 도중 날짜를 바꿔도 조회와 로딩 타이머를 다시 시작하지 않는다`() = runTest {
+        val today = MissionDate.parse("2026-09-28")
+        val yesterday = MissionDate.parse("2026-09-27")
+        val pendingHistory = kotlinx.coroutines.CompletableDeferred<List<MissionHistoryEntry>>()
+        val pendingSummaries = kotlinx.coroutines.CompletableDeferred<Map<MissionDate, AlarmActivitySummary>>()
+        val history = RecordsRepository().apply { loader = { pendingHistory.await() } }
+        var summaryObservations = 0
+        val activity = object : AlarmActivityRepository {
+            override fun observeSummaries(dates: List<MissionDate>) = kotlinx.coroutines.flow.flow {
+                summaryObservations++
+                emit(pendingSummaries.await())
+            }
+        }
+        val viewModel = RecordsViewModel(GetRecordsHistory(history), today, activity, coroutineScope = backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        advanceTimeBy(400)
+        viewModel.selectDate(yesterday)
+        runCurrent()
+        advanceTimeBy(100)
+        runCurrent()
+
+        assertEquals(1, summaryObservations)
+        assertEquals(1, history.queries.size)
+        assertTrue(viewModel.uiState.value.showSummaryLoadingIndicator)
+        pendingSummaries.complete(today.weekDates().associateWith { date ->
+            AlarmActivitySummary(ringingCount = if (date == yesterday) 1 else 5)
+        })
+        pendingHistory.complete(listOf(entry(yesterday.iso8601)))
+        runCurrent()
+
+        assertEquals(yesterday, viewModel.uiState.value.selectedDate)
+        assertEquals(1, viewModel.uiState.value.activitySummary.ringingCount)
+        assertEquals(yesterday, viewModel.uiState.value.records.single().entries.single().date)
+        assertFalse(viewModel.uiState.value.isSummaryLoading)
+        assertFalse(viewModel.uiState.value.showSummaryLoadingIndicator)
+        assertFalse(viewModel.uiState.value.isLoading)
+    }
+
+    @Test
+    fun `집계 조회가 오백 밀리초 안에 끝나면 로딩 표시를 띄우지 않는다`() = runTest {
+        val pending = kotlinx.coroutines.CompletableDeferred<AlarmActivitySummary>()
+        val activity = object : AlarmActivityRepository {
+            override fun observeSummaries(dates: List<MissionDate>) = kotlinx.coroutines.flow.flow {
+                val summary = pending.await()
+                emit(dates.associateWith { summary })
+            }
+        }
+        val viewModel = RecordsViewModel(GetRecordsHistory(RecordsRepository()), MissionDate.parse("2026-09-28"), activity, coroutineScope = backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isSummaryLoading)
+        assertFalse(viewModel.uiState.value.showSummaryLoadingIndicator)
+
+        advanceTimeBy(100)
+        pending.complete(AlarmActivitySummary(ringingCount = 2))
+        runCurrent()
+        advanceTimeBy(500)
+        runCurrent()
+
+        assertEquals(2, viewModel.uiState.value.activitySummary.ringingCount)
+        assertFalse(viewModel.uiState.value.isSummaryLoading)
+        assertFalse(viewModel.uiState.value.showSummaryLoadingIndicator)
+    }
+
+    @Test
+    fun `느린 집계 조회는 오백 밀리초부터 로딩 표시를 보이고 결과가 오면 즉시 숨긴다`() = runTest {
+        val pending = kotlinx.coroutines.CompletableDeferred<AlarmActivitySummary>()
+        val activity = object : AlarmActivityRepository {
+            override fun observeSummaries(dates: List<MissionDate>) = kotlinx.coroutines.flow.flow {
+                val summary = pending.await()
+                emit(dates.associateWith { summary })
+            }
+        }
+        val viewModel = RecordsViewModel(GetRecordsHistory(RecordsRepository()), MissionDate.parse("2026-09-28"), activity, coroutineScope = backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        advanceTimeBy(499)
+        runCurrent()
+        assertFalse(viewModel.uiState.value.showSummaryLoadingIndicator)
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.showSummaryLoadingIndicator)
+        pending.complete(AlarmActivitySummary(ringingCount = 0))
+        runCurrent()
+
+        assertEquals(0, viewModel.uiState.value.activitySummary.ringingCount)
+        assertFalse(viewModel.uiState.value.isSummaryLoading)
+        assertFalse(viewModel.uiState.value.showSummaryLoadingIndicator)
+    }
+
+    @Test
+    fun `주를 빠르게 바꾸면 이전 조회의 로딩 타이머와 결과를 표시하지 않는다`() = runTest {
+        val today = MissionDate.parse("2026-09-28")
+        val lastWeek = MissionDate.parse("2026-09-21")
+        val pending = mapOf(
+            today.weekDates() to kotlinx.coroutines.CompletableDeferred<AlarmActivitySummary>(),
+            lastWeek.weekDates() to kotlinx.coroutines.CompletableDeferred<AlarmActivitySummary>(),
+        )
+        val activity = object : AlarmActivityRepository {
+            override fun observeSummaries(dates: List<MissionDate>) = kotlinx.coroutines.flow.flow {
+                val summary = pending.getValue(dates).await()
+                emit(dates.associateWith { summary })
+            }
+        }
+        val viewModel = RecordsViewModel(
+            GetRecordsHistory(RecordsRepository()), today, activity,
+            coroutineScope = backgroundScope, timeSource = testScheduler.timeSource,
+        )
+        viewModel.refresh()
+        runCurrent()
+        advanceTimeBy(400)
+        viewModel.selectDate(lastWeek)
+        runCurrent()
+        pending.getValue(today.weekDates()).complete(AlarmActivitySummary(ringingCount = 9))
+        advanceTimeBy(100)
+        runCurrent()
+
+        assertFalse(viewModel.uiState.value.showWeekLoadingIndicator)
+        assertNull(viewModel.uiState.value.activitySummary.ringingCount)
+
+        advanceTimeBy(400)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.showWeekLoadingIndicator)
+        pending.getValue(lastWeek.weekDates()).complete(AlarmActivitySummary(ringingCount = 1))
+        runCurrent()
+
+        assertEquals(1, viewModel.uiState.value.activitySummary.ringingCount)
+        assertFalse(viewModel.uiState.value.showWeekLoadingIndicator)
+    }
+
+    @Test
+    fun `같은 날짜를 새로고침하면 기존 횟수를 유지하고 새 결과로 갱신한다`() = runTest {
+        val summaries = kotlinx.coroutines.flow.MutableSharedFlow<AlarmActivitySummary>()
+        val activity = object : AlarmActivityRepository {
+            override fun observeSummaries(dates: List<MissionDate>) = summaries.map { summary -> dates.associateWith { summary } }
+        }
+        val viewModel = RecordsViewModel(GetRecordsHistory(RecordsRepository()), MissionDate.parse("2026-09-28"), activity, coroutineScope = backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        summaries.emit(AlarmActivitySummary(ringingCount = 5))
+        runCurrent()
+
+        viewModel.refresh()
+        assertEquals(5, viewModel.uiState.value.activitySummary.ringingCount)
+        assertFalse(viewModel.uiState.value.showSummaryLoadingIndicator)
+        runCurrent()
+        advanceTimeBy(500)
+        runCurrent()
+        assertEquals(5, viewModel.uiState.value.activitySummary.ringingCount)
+        assertTrue(viewModel.uiState.value.showSummaryLoadingIndicator)
+
+        summaries.emit(AlarmActivitySummary(ringingCount = 6))
+        runCurrent()
+
+        assertEquals(6, viewModel.uiState.value.activitySummary.ringingCount)
+        assertFalse(viewModel.uiState.value.isSummaryLoading)
+        assertFalse(viewModel.uiState.value.showSummaryLoadingIndicator)
+    }
+
+    @Test
     fun `선택한 날짜를 반복해서 누르면 재조회 없이 화면과 실시간 집계 구독을 유지한다`() = runTest {
         val today = MissionDate.parse("2026-09-28")
         val repository = RecordsRepository(listOf(entry(today.iso8601)))
         val summaries = kotlinx.coroutines.flow.MutableStateFlow(AlarmActivitySummary(ringingCount = 2))
         var summaryObservations = 0
         val activityRepository = object : AlarmActivityRepository {
-            override fun observeSummary(date: MissionDate) = summaries.also { summaryObservations++ }
+            override fun observeSummaries(dates: List<MissionDate>) = summaries
+                .also { summaryObservations++ }.map { summary -> dates.associateWith { summary } }
         }
         val viewModel = RecordsViewModel(GetRecordsHistory(repository), today, activityRepository, coroutineScope = backgroundScope)
         viewModel.refresh()
@@ -190,7 +419,7 @@ class RecordsViewModelTest {
             AlarmActivitySummary(ringingCount = 0),
         )
         val activityRepository = object : AlarmActivityRepository {
-            override fun observeSummary(date: MissionDate) = summaries
+            override fun observeSummaries(dates: List<MissionDate>) = summaries.map { summary -> dates.associateWith { summary } }
         }
         val viewModel = RecordsViewModel(
             GetRecordsHistory(RecordsRepository()),
@@ -210,37 +439,38 @@ class RecordsViewModelTest {
     }
 
     @Test
-    fun `날짜를 바꾸면 이전 날짜의 집계 구독을 해제한다`() = runTest {
+    fun `주를 바꾸면 이전 주의 집계 구독을 해제한다`() = runTest {
         val today = MissionDate.parse("2026-09-28")
-        val yesterday = MissionDate.parse("2026-09-27")
+        val lastWeek = MissionDate.parse("2026-09-21")
         val streams = mapOf(
-            today to kotlinx.coroutines.flow.MutableStateFlow(AlarmActivitySummary(ringingCount = 5)),
-            yesterday to kotlinx.coroutines.flow.MutableStateFlow(AlarmActivitySummary(ringingCount = 1)),
+            today.weekDates() to kotlinx.coroutines.flow.MutableStateFlow(AlarmActivitySummary(ringingCount = 5)),
+            lastWeek.weekDates() to kotlinx.coroutines.flow.MutableStateFlow(AlarmActivitySummary(ringingCount = 1)),
         )
         val activityRepository = object : AlarmActivityRepository {
-            override fun observeSummary(date: MissionDate) = streams.getValue(date)
+            override fun observeSummaries(dates: List<MissionDate>) = streams.getValue(dates)
+                .map { summary -> dates.associateWith { summary } }
         }
         val viewModel = RecordsViewModel(GetRecordsHistory(RecordsRepository()), today, activityRepository, coroutineScope = backgroundScope)
         viewModel.refresh()
         runCurrent()
-        viewModel.selectDate(yesterday)
-        assertTrue(viewModel.uiState.value.isSummaryLoading)
-        assertNull(viewModel.uiState.value.activitySummary.ringingCount)
+        viewModel.selectDate(lastWeek)
+        assertTrue(viewModel.uiState.value.isWeekChanging)
+        assertEquals(5, viewModel.uiState.value.activitySummary.ringingCount)
         runCurrent()
-        streams.getValue(today).value = AlarmActivitySummary(ringingCount = 9)
+        streams.getValue(today.weekDates()).value = AlarmActivitySummary(ringingCount = 9)
         runCurrent()
 
         assertEquals(1, viewModel.uiState.value.activitySummary.ringingCount)
-        assertEquals(0, streams.getValue(today).subscriptionCount.value)
+        assertEquals(0, streams.getValue(today.weekDates()).subscriptionCount.value)
     }
 
     @Test
     fun `집계 조회 실패를 재시도해도 미션 기록은 유지한다`() = runTest {
         var shouldFail = true
         val activityRepository = object : AlarmActivityRepository {
-            override fun observeSummary(date: MissionDate) = kotlinx.coroutines.flow.flow {
+            override fun observeSummaries(dates: List<MissionDate>) = kotlinx.coroutines.flow.flow {
                 if (shouldFail) error("storage unavailable")
-                emit(AlarmActivitySummary(ringingCount = 2))
+                emit(dates.associateWith { AlarmActivitySummary(ringingCount = 2) })
             }
         }
         val viewModel = RecordsViewModel(
@@ -251,6 +481,9 @@ class RecordsViewModelTest {
         runCurrent()
         assertNotNull(viewModel.uiState.value.summaryErrorMessage)
         assertEquals(1, viewModel.uiState.value.records.size)
+        advanceTimeBy(500)
+        runCurrent()
+        assertFalse(viewModel.uiState.value.showSummaryLoadingIndicator)
         shouldFail = false
         viewModel.retry()
         runCurrent()
@@ -515,7 +748,16 @@ private fun entry(
 ): MissionHistoryEntry = MissionHistoryEntry(result, MissionDate.parse(date), occurrenceId)
 
 private object EmptyActivityRepository : AlarmActivityRepository {
-    override fun observeSummary(date: MissionDate) = kotlinx.coroutines.flow.flowOf(
-        AlarmActivitySummary(),
+    override fun observeSummaries(dates: List<MissionDate>) = kotlinx.coroutines.flow.flowOf(
+        dates.associateWith { AlarmActivitySummary() },
     )
+}
+
+private class WeeklyActivityRepository(initialSummaries: Map<MissionDate, AlarmActivitySummary>) : AlarmActivityRepository {
+    val summaries = kotlinx.coroutines.flow.MutableStateFlow(initialSummaries)
+    val queries = mutableListOf<List<MissionDate>>()
+
+    override fun observeSummaries(dates: List<MissionDate>) = summaries
+        .also { queries += dates }
+        .map { byDate -> dates.associateWith { byDate[it] ?: AlarmActivitySummary() } }
 }
