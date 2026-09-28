@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -39,7 +40,6 @@ import com.joon.ringout.presentation.records.recordsColors
 import com.joon.ringout.presentation.records.recordTimes
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.mypage_mission_stamp
 import ringout.shared.generated.resources.records_chevron
 import ringout.shared.generated.resources.records_failure
 import ringout.shared.generated.resources.records_ringing
@@ -47,7 +47,6 @@ import ringout.shared.generated.resources.records_ringing
 @Composable
 internal fun RecordHistoryCard(
     record: MissionHistoryEntry,
-    number: Int,
     expanded: Boolean,
     onExpandedChange: () -> Unit,
     modifier: Modifier = Modifier,
@@ -63,7 +62,7 @@ internal fun RecordHistoryCard(
                 .heightIn(min = 44.dp).padding(horizontal = 20.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("알람 사용 기록 $number", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.text)
+            Text(times.title, modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.text)
             Icon(painterResource(Res.drawable.records_chevron), null, Modifier.size(20.dp).rotate(if (expanded) -90f else 90f), tint = colors.text)
         }
         Column(
@@ -95,30 +94,38 @@ internal fun RecordHistoryCard(
                             modifier = Modifier.size(26.dp).clip(RoundedCornerShape(0.dp)), contentScale = ContentScale.Crop,
                         )
                     }
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(times.ringingRange, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = colors.text)
-                        Text(times.ringingDescription, style = MaterialTheme.typography.bodySmall, color = colors.secondaryText)
-                    }
+                    Text(
+                        text = times.ringingRange,
+                        modifier = Modifier.weight(1f).semantics {
+                            contentDescription = "${times.ringingDescription}: ${times.ringingRange}"
+                        },
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = colors.text,
+                    )
                 }
             }
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Box(
-                    Modifier.size(38.dp).clip(CircleShape).background(if (success) colors.successSurface else colors.failureSurface),
-                    contentAlignment = Alignment.Center,
+            if (success) {
+                RecordArrivalRow(completedTime = times.completedTime, showTime = expanded)
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (success) Image(painterResource(Res.drawable.mypage_mission_stamp), null, Modifier.size(30.dp))
-                    else Icon(painterResource(Res.drawable.records_failure), null, Modifier.size(30.dp), tint = colors.failure)
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        if (success) "목적지 도착 완료!" else "미션 실패",
-                        fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (success) colors.success else colors.failure,
-                    )
-                    if (expanded) Text(times.completedDescription, style = MaterialTheme.typography.bodySmall, color = colors.secondaryText)
+                    Box(
+                        Modifier.size(38.dp).clip(CircleShape).background(colors.failureSurface),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(painterResource(Res.drawable.records_failure), null, Modifier.size(30.dp), tint = colors.failure)
+                    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "미션 실패",
+                            fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.failure,
+                        )
+                        if (expanded) Text(times.completedDescription, style = MaterialTheme.typography.bodySmall, color = colors.secondaryText)
+                    }
                 }
             }
         }
@@ -136,7 +143,8 @@ private fun RecordHistoryCardPreview() {
                 ringingStoppedAtEpochMillis = 1790546700000L,
                 missionCompletedAtEpochMillis = 1790547480000L,
             ),
-            1, true, {},
+            expanded = true,
+            onExpandedChange = {},
         )
     }
 }
@@ -144,5 +152,5 @@ private fun RecordHistoryCardPreview() {
 @Preview
 @Composable
 private fun RecordHistoryCardFailurePreview() {
-    RingoutTheme { RecordHistoryCard(MissionHistoryEntry(MissionResult.FAILURE, MissionDate.of(2026, 9, 28)), 2, false, {}) }
+    RingoutTheme { RecordHistoryCard(MissionHistoryEntry(MissionResult.FAILURE, MissionDate.of(2026, 9, 28)), false, {}) }
 }

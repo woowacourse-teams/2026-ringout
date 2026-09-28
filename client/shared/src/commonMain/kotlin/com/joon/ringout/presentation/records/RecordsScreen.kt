@@ -1,7 +1,5 @@
 package com.joon.ringout.presentation.records
 
-import com.joon.ringout.domain.alarmactivity.AlarmActivitySummary
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +22,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.domain.alarmactivity.AlarmActivitySummary
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
 import com.joon.ringout.domain.missionhistory.MissionResult
@@ -48,14 +47,17 @@ fun RecordsScreen(
     onRetry: () -> Unit = {},
     onCalendarRetry: () -> Unit = {},
 ) {
-    // Legacy rows have no occurrence ID. A reverse index remains stable when a new result is appended.
+    // Legacy rows have no occurrence ID. A reverse index stays stable as results are appended.
     val recordKeys = uiState.records.mapIndexed { index, record ->
         record.occurrenceId ?: "${record.completedAt.iso8601}-legacy-${uiState.records.lastIndex - index}"
     }
-    var expandedRecordKeys by rememberSaveable(uiState.selectedDate.iso8601) { mutableStateOf<List<String>?>(null) }
+    var expandedRecordKeys by rememberSaveable(uiState.selectedDate.iso8601) {
+        mutableStateOf<List<String>?>(null)
+    }
     val expandedRecords = expandedRecordKeys ?: recordKeys.take(1)
     val listState = rememberLazyListState()
     LaunchedEffect(uiState.selectedDate) { listState.scrollToItem(0) }
+
     Column(
         modifier = modifier.fillMaxSize().background(recordsColors().background)
             .statusBarsPadding().navigationBarsPadding(),
@@ -89,15 +91,17 @@ fun RecordsScreen(
             if (uiState.isLoading || uiState.errorMessage != null) {
                 item { RecordsStateContent(uiState.isLoading, uiState.errorMessage, onRetry) }
             } else {
-                if (uiState.records.isEmpty()) item { RecordsStateContent(false, null, onRetry) }
                 itemsIndexed(uiState.records, key = { index, _ -> recordKeys[index] }) { index, record ->
                     RecordHistoryCard(
                         record = record,
-                        number = index + 1,
                         expanded = recordKeys[index] in expandedRecords,
                         onExpandedChange = {
                             val key = recordKeys[index]
-                            expandedRecordKeys = if (key in expandedRecords) expandedRecords - key else expandedRecords + key
+                            expandedRecordKeys = if (key in expandedRecords) {
+                                expandedRecords - key
+                            } else {
+                                expandedRecords + key
+                            }
                         },
                     )
                 }
@@ -146,7 +150,7 @@ private fun RecordsScreenLoadingPreview() {
 @Preview(widthDp = 402, heightDp = 941)
 @Composable
 private fun RecordsScreenErrorPreview() {
-    RingoutTheme { RecordsScreen(previewRecordsState().copy(errorMessage = "기록을 불러오지 못했어요")) }
+    RingoutTheme { RecordsScreen(previewRecordsState().copy(summaryErrorMessage = "알람 집계를 불러오지 못했어요.")) }
 }
 
 private fun previewRecordsState(): RecordsUiState {

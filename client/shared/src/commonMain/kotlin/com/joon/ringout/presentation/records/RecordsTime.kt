@@ -8,8 +8,10 @@ import com.joon.ringout.domain.missionhistory.MissionResult
 internal expect fun formatRecordsTime(epochMillis: Long, completedDate: MissionDate): String
 
 internal data class RecordTimesUiState(
+    val title: String,
     val ringingRange: String,
     val ringingDescription: String,
+    val completedTime: String?,
     val completedDescription: String,
 )
 
@@ -21,6 +23,7 @@ internal fun MissionHistoryEntry.recordTimes(
     val completed = missionCompletedAtEpochMillis?.let { format(it, completedAt) }
     val completionLabel = if (result == MissionResult.SUCCESS) "미션 완료" else "미션 종료"
     return RecordTimesUiState(
+        title = started?.let { "${it}에 울린 알람" } ?: "시간 기록 없는 알람",
         ringingRange = "${started ?: "--:--"} ~ ${stopped ?: "--:--"}",
         ringingDescription = when {
             started == null && stopped == null -> "울림·종료 시각 기록 없음"
@@ -29,6 +32,7 @@ internal fun MissionHistoryEntry.recordTimes(
             isRingingStartObserved -> "울림 확인 ~ 울림 종료"
             else -> "울림 시작 ~ 울림 종료"
         },
+        completedTime = completed,
         completedDescription = completed?.let { "$completionLabel $it" } ?: "완료 시각 기록 없음",
     )
 }
