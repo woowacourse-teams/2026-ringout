@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 data class AlarmActivityCounts(val ringingCount: Int, val trackingStartDate: String?)
 
 @Dao
-interface AlarmActivityDao {
+interface AlarmActivityDao : AlarmOccurrenceTimesAccess {
     @Query("""
         SELECT
             (SELECT COUNT(*) FROM alarm_activity_events WHERE local_date = :date AND type = 'RANG') AS ringingCount,
@@ -37,10 +37,17 @@ interface AlarmActivityDao {
     suspend fun deleteObservation(systemAlarmId: String)
 
     @Transaction
-    suspend fun record(event: AlarmActivityEntity) {
+    suspend fun record(event: AlarmActivityEntity, isStartObserved: Boolean = false) {
         initializeTracking(AlarmActivityTrackingEntity(startedAtEpochMillis = event.occurredAtEpochMillis, localDate = event.localDate))
         includeEarlierEvent(event.occurredAtEpochMillis, event.localDate)
         insertEvent(event)
+        if (event.type == "RANG" && event.eventKey.startsWith("rang:")) {
+            mergeOccurrenceTimes(AlarmOccurrenceTimesEntity(
+                occurrenceId = event.eventKey.removePrefix("rang:"),
+                ringingStartedAtEpochMillis = event.occurredAtEpochMillis,
+                isRingingStartObserved = isStartObserved,
+            ))
+        }
     }
 
     @Transaction
@@ -48,8 +55,10 @@ interface AlarmActivityDao {
         val previous = getObservations().associateBy { it.systemAlarmId }
         previous.keys.filterNot { it in eventsBySystemId }.forEach { deleteObservation(it) }
         eventsBySystemId.forEach { (systemId, event) ->
-            if (systemId !in previous) {
-                record(event)
+            if (previous[systemId]?.eventKey != event.eventKey) {
+                // A repeating AlarmKit alarm reuses its system ID for a new occurrence.
+                if (systemId in previous) deleteObservation(systemId)
+                record(event, isStartObserved = true)
                 insertObservation(AlarmRingingObservationEntity(systemId, event.eventKey))
             }
         }

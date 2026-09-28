@@ -193,7 +193,9 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
 
         Task {
             do {
-                guard try AlarmManager.shared.alarms.contains(where: { $0.id == alarmId }) else {
+                guard try AlarmManager.shared.alarms.contains(where: {
+                    $0.id == alarmId && $0.state == .alerting
+                }) else {
                     callback(IosAlarmOperationResult(code: .notFound, message: nil))
                     return
                 }
@@ -214,7 +216,7 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
         do {
             callback(
                 IosScheduledAlarmsResult(
-                    alarms: try AlarmManager.shared.alarms.map(makeScheduledAlarmDto),
+                    alarms: makeScheduledAlarmDtos(try AlarmManager.shared.alarms),
                     code: .success,
                     message: nil
                 )
@@ -357,17 +359,23 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
         }
     }
 
-    private func makeScheduledAlarmDto(_ alarm: Alarm) -> IosScheduledAlarmDto {
-        IosScheduledAlarmDto(
-            alarmId: alarm.id.uuidString,
-            state: mapAlarmState(alarm.state)
-        )
+    private func makeScheduledAlarmDtos(_ alarms: [Alarm]) -> [IosScheduledAlarmDto] {
+        let alertingIds = Set(alarms.filter { $0.state == .alerting }.map { $0.id.uuidString })
+        let observations = (try? AlarmRingingOccurrenceStore.shared.observe(alertingIds: alertingIds)) ?? [:]
+        return alarms.map { alarm in
+            let observation = observations[alarm.id.uuidString]
+            return IosScheduledAlarmDto(
+                alarmId: alarm.id.uuidString,
+                state: mapAlarmState(alarm.state),
+                occurrenceId: observation?.occurrenceId,
+                ringingObservedAtEpochMillis: observation.map { KotlinLong(value: $0.observedAtEpochMillis) }
+            )
+        }
     }
 
     private func publishAlarmSnapshot(_ alarms: [Alarm]) {
-        stateListener?.onAlarmsChanged(
-            alarms: alarms.map(makeScheduledAlarmDto)
-        )
+        let snapshot = makeScheduledAlarmDtos(alarms)
+        stateListener?.onAlarmsChanged(alarms: snapshot)
     }
 
     private func mapScheduleError(_ error: Error) -> IosAlarmOperationResult {

@@ -43,7 +43,8 @@ struct StopAlarmIntent: LiveActivityIntent {
             alarmId: alarmId,
             action: .stop,
             occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
-            retryAttempt: retryAttempt
+            retryAttempt: retryAttempt,
+            systemAlarmId: systemAlarmId
         )
         return .result()
     }
@@ -86,16 +87,20 @@ struct OpenRingoutIntent: LiveActivityIntent {
     }
 
     func perform() async throws -> some IntentResult {
+        var didStopRinging = false
         if let id = UUID(uuidString: systemAlarmId) {
-            if try AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
+            if try AlarmManager.shared.alarms.contains(where: { $0.id == id && $0.state == .alerting }) {
                 try AlarmManager.shared.stop(id: id)
+                didStopRinging = true
             }
         }
         try RingoutAlarmMissionEventInbox.shared.record(
             alarmId: alarmId,
             action: .open,
             occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
-            retryAttempt: retryAttempt
+            retryAttempt: retryAttempt,
+            systemAlarmId: systemAlarmId,
+            didStopRinging: didStopRinging
         )
         return .result()
     }

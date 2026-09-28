@@ -160,7 +160,12 @@ private fun previewRecordsState(): RecordsUiState {
             RecordsDayUiState(MissionDate.of(2026, 9, it), it == 28, it == 28, it > 28, if (it <= 28) MissionResult.SUCCESS else null, if (it <= 28) 2 else 0)
         } + (1..3).map { RecordsDayUiState(MissionDate.of(2026, 10, it), false, false, true, null, 0) },
         records = listOf(
-            MissionHistoryEntry(MissionResult.SUCCESS, date, "preview-success"),
+            MissionHistoryEntry(
+                MissionResult.SUCCESS, date, "preview-success",
+                ringingStartedAtEpochMillis = 1790546400000L,
+                ringingStoppedAtEpochMillis = 1790546700000L,
+                missionCompletedAtEpochMillis = 1790547480000L,
+            ),
             MissionHistoryEntry(MissionResult.FAILURE, date, "preview-failure"),
         ),
     )

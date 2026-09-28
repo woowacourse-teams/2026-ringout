@@ -6,7 +6,7 @@ import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.data.alarmactivity.AlarmActivityDao
 import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
-import com.joon.ringout.data.alarmactivity.currentAlarmActivityTimestamp
+import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
 import com.joon.ringout.platform.IosNativeServices
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
@@ -143,12 +143,20 @@ class IosAlarmRuntime(
 
             isDismissingRingingAlarm = true
             try {
-                scheduler.stopAwait(ringing.systemAlarmId)
-                eventInbox.recordOpenEventAwait(
-                    alarmId = ringing.alarmId,
-                    occurrenceId = ringing.occurrenceId,
-                    retryAttempt = ringing.retryAttempt,
-                )
+                if (scheduler.stopAwait(ringing.systemAlarmId)) {
+                    eventInbox.recordOpenEventAwait(
+                        alarmId = ringing.alarmId,
+                        occurrenceId = ringing.occurrenceId,
+                        retryAttempt = ringing.retryAttempt,
+                    )
+                } else {
+                    // A late snapshot cannot tell us when the ringing actually stopped.
+                    eventInbox.recordStopEventAwait(
+                        alarmId = ringing.alarmId,
+                        occurrenceId = ringing.occurrenceId,
+                        retryAttempt = ringing.retryAttempt,
+                    )
+                }
                 missionCoordinator.processPendingEvents()
                 if (ringingAlarm.value?.systemAlarmId == expectedSystemAlarmId) {
                     cancelRingingHandoff()
@@ -344,19 +352,22 @@ class IosAlarmRuntime(
             // Record all observed alerts, even when only one ringing screen can be shown.
             // AlarmKit exposes current state, not a complete background firing history.
             val resolvedAlarms = alertingAlarmIds.mapNotNull { systemAlarmId ->
+                val snapshot = alarms.first { it.alarmId == systemAlarmId }
                 resolveIosRingingAlarm(
                     systemAlarmId = systemAlarmId,
                     dataSource = dataSource,
                     deadlineAlarm = missionCoordinator.deadlineAlarmForSystemId(systemAlarmId),
+                    observedOccurrenceId = snapshot.occurrenceId,
+                    startedAtEpochMillis = snapshot.ringingObservedAtEpochMillis
+                        ?: Clock.System.now().toEpochMilliseconds(),
                 )
             }
             try {
-                val observedAt = currentAlarmActivityTimestamp()
-                activityDao?.recordObservedRinging(resolvedAlarms.associate { alarm ->
+                activityDao?.recordObservedRinging(resolvedAlarms.filter { it.occurrenceId != null }.associate { alarm ->
                     alarm.systemAlarmId to AlarmActivityEntity.rang(
                         alarmId = alarm.alarmId,
-                        occurrenceId = alarm.occurrenceId ?: "ios:${alarm.systemAlarmId}:${observedAt.epochMillis}",
-                        timestamp = observedAt,
+                        occurrenceId = requireNotNull(alarm.occurrenceId),
+                        timestamp = AlarmActivityTimestamp(alarm.startedAtEpochMillis, iosMissionDate(alarm.startedAtEpochMillis)),
                     )
                 })
             } catch (error: CancellationException) {
@@ -372,7 +383,9 @@ class IosAlarmRuntime(
                     }
                     return@withLock
                 }
-                if (ringingAlarm.value?.systemAlarmId != resolved.systemAlarmId) {
+                if (ringingAlarm.value?.systemAlarmId != resolved.systemAlarmId ||
+                    ringingAlarm.value?.occurrenceId != resolved.occurrenceId
+                ) {
                     ringingAlarm.value = resolved
                 }
                 return@withLock

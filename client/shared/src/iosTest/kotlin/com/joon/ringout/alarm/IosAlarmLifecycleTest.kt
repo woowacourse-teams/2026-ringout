@@ -1288,6 +1288,22 @@ class IosAlarmLifecycleTest {
         assertNull(fixture.runtime.activeMissionFlow.value)
     }
 
+    @Test
+    fun `이미 멈춘 알람을 닫으면 종료 시각을 추정하지 않는 이벤트로 미션을 시작한다`() = runBlocking {
+        val fixture = ringingRuntimeFixture()
+        fixture.presentRingingAlarm()
+        fixture.scheduler.stopCode = IosAlarmOperationCode.NOT_FOUND
+
+        assertTrue(fixture.runtime.dismissRingingAlarm(CanonicalUuid))
+
+        assertTrue(fixture.inbox.events.none { it.startsWith("open:") })
+        assertEquals(1, fixture.inbox.events.count { it.startsWith("stop:$CanonicalUuid:") })
+        val mission = assertNotNull(fixture.runtime.activeMissionFlow.value)
+        assertEquals(CanonicalUuid, mission.alarmId)
+        assertNull(fixture.runtime.ringingAlarmFlow.value)
+        fixture.runtime.forceEndActiveMission(mission.occurrenceId)
+    }
+
     private fun ringingRuntimeFixture(
         alarmIds: List<String> = listOf(CanonicalUuid),
         recordStopCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
@@ -1483,6 +1499,7 @@ private class LifecycleScheduler(
     private var stateListener: IosAlarmStateListener? = null
     private var nextStopSnapshot: List<IosScheduledAlarmDto>? = null
     private var pendingStopCompletion: (() -> Unit)? = null
+    var stopCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS
     val events = mutableListOf<String>()
     val retryAlarmKitIds = mutableListOf<String>()
 
@@ -1562,6 +1579,10 @@ private class LifecycleScheduler(
     }
     override fun stop(alarmId: String, callback: (IosAlarmOperationResult) -> Unit) {
         events += "stop:$alarmId"
+        if (stopCode != IosAlarmOperationCode.SUCCESS) {
+            callback(IosAlarmOperationResult(stopCode))
+            return
+        }
         scheduledAlarms.remove(alarmId)
         nextStopSnapshot?.let { snapshot ->
             nextStopSnapshot = null
@@ -1723,11 +1744,11 @@ private class LifecycleOutcomeRecorder : IosMissionOutcomeRecorder {
     val failures = mutableListOf<String>()
     val successDates = mutableListOf<String>()
     val failureDates = mutableListOf<String>()
-    override suspend fun recordSuccess(occurrenceId: String, completedAt: String) {
+    override suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) {
         successes += occurrenceId
         successDates += completedAt
     }
-    override suspend fun recordFailure(occurrenceId: String, completedAt: String) {
+    override suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) {
         failures += occurrenceId
         failureDates += completedAt
     }
@@ -1737,9 +1758,9 @@ private class FailOnceLifecycleOutcomeRecorder : IosMissionOutcomeRecorder {
     private var shouldFail = true
     val recordedFailures = mutableListOf<String>()
 
-    override suspend fun recordSuccess(occurrenceId: String, completedAt: String) = Unit
+    override suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) = Unit
 
-    override suspend fun recordFailure(occurrenceId: String, completedAt: String) {
+    override suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) {
         if (shouldFail) {
             shouldFail = false
             error("simulated process interruption")

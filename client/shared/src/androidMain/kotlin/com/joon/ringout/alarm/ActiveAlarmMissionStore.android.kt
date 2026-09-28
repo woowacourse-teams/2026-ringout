@@ -74,6 +74,8 @@ class ActiveAlarmMissionStore(context: Context) {
                 ?: AlarmMissionPhase.Tracking,
             terminalCompletedAt = preferences.getString(KeyTerminalCompletedAt, null)
                 ?.takeIf(String::isNotBlank),
+            terminalCompletedAtEpochMillis = preferences.getLong(KeyTerminalCompletedAtEpochMillis, 0L)
+                .takeIf { it > 0L },
         )
     }
 
@@ -126,6 +128,7 @@ class ActiveAlarmMissionStore(context: Context) {
         occurrenceId: String,
         phase: AlarmMissionPhase,
         terminalCompletedAt: String? = null,
+        terminalCompletedAtEpochMillis: Long? = null,
     ): ActiveAlarmMission? = synchronized(ActiveAlarmMissionStoreLock) {
         if (phase == AlarmMissionPhase.Tracking) return@synchronized null
         require(
@@ -144,12 +147,18 @@ class ActiveAlarmMissionStore(context: Context) {
         } else {
             editor.putString(KeyTerminalCompletedAt, terminalCompletedAt)
         }
+        if (terminalCompletedAtEpochMillis == null) {
+            editor.remove(KeyTerminalCompletedAtEpochMillis)
+        } else {
+            editor.putLong(KeyTerminalCompletedAtEpochMillis, terminalCompletedAtEpochMillis)
+        }
         val committed = editor
             .commit()
         if (!committed) {
             preferences.edit()
                 .putString(KeyPhase, AlarmMissionPhase.Tracking.storageValue)
                 .remove(KeyTerminalCompletedAt)
+                .remove(KeyTerminalCompletedAtEpochMillis)
                 .apply()
             return@synchronized null
         }
@@ -197,6 +206,7 @@ class ActiveAlarmMissionStore(context: Context) {
             .putDouble(KeyArrivalRadiusMeters, mission.arrivalRadiusMeters)
             .putBoolean(KeyHasAlarmSoundUri, mission.hasAlarmSoundUri)
             .apply {
+                storedMission.terminalCompletedAtEpochMillis?.let { putLong(KeyTerminalCompletedAtEpochMillis, it) }
                 storedMission.terminalCompletedAt?.let { completedAt ->
                     putString(KeyTerminalCompletedAt, completedAt)
                 }
@@ -362,6 +372,7 @@ class ActiveAlarmMissionStore(context: Context) {
         const val PreferencesName = "ringout_active_alarm_mission"
         const val KeyPhase = "phase"
         const val KeyTerminalCompletedAt = "terminal_completed_at"
+        const val KeyTerminalCompletedAtEpochMillis = "terminal_completed_at_epoch_millis"
         const val KeyAlarmId = "alarm_id"
         const val KeyOccurrenceId = "occurrence_id"
         const val KeyRetryAttempt = "retry_attempt"
@@ -402,6 +413,7 @@ internal data class StoredAlarmMission(
     val mission: ActiveAlarmMission,
     val phase: AlarmMissionPhase,
     val terminalCompletedAt: String?,
+    val terminalCompletedAtEpochMillis: Long? = null,
 )
 
 internal data class ForcedMissionClear(

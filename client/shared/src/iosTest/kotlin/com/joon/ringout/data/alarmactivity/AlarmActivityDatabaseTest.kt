@@ -76,15 +76,32 @@ class AlarmActivityDatabaseTest {
         val dao = database.alarmActivityDao()
         val first = AlarmActivityEntity.rang("alarm", "observed-1", AlarmActivityTimestamp(1_000, "2026-09-28"))
         dao.recordObservedRinging(mapOf("system-alarm" to first))
-        val next = AlarmActivityEntity.rang("alarm", "observed-2", AlarmActivityTimestamp(2_000, "2026-09-29"))
-        // A new DAO caller represents a runtime restarted with no in-memory session.
-        database.alarmActivityDao().recordObservedRinging(mapOf("system-alarm" to next))
+        val repeated = AlarmActivityEntity.rang("alarm", "observed-1", AlarmActivityTimestamp(2_000, "2026-09-29"))
+        // The native store restores the same occurrence ID after a runtime restart.
+        database.alarmActivityDao().recordObservedRinging(mapOf("system-alarm" to repeated))
         assertEquals(1, dao.observeCounts("2026-09-28").first().ringingCount)
         assertEquals(0, dao.observeCounts("2026-09-29").first().ringingCount)
 
         dao.recordObservedRinging(emptyMap())
+        val next = AlarmActivityEntity.rang("alarm", "observed-2", AlarmActivityTimestamp(2_000, "2026-09-29"))
         dao.recordObservedRinging(mapOf("system-alarm" to next))
         assertEquals(1, dao.observeCounts("2026-09-29").first().ringingCount)
+    }
+
+    @Test
+    fun `중간 스냅샷을 놓쳐도 같은 시스템 알람의 새 실행을 별도로 보존한다`() = withDatabase { database ->
+        val dao = database.alarmActivityDao()
+        dao.recordObservedRinging(mapOf("system-alarm" to AlarmActivityEntity.rang(
+            "alarm", "observed-1", AlarmActivityTimestamp(1_000, "2026-09-28"),
+        )))
+        dao.recordObservedRinging(mapOf("system-alarm" to AlarmActivityEntity.rang(
+            "alarm", "observed-2", AlarmActivityTimestamp(2_000, "2026-09-29"),
+        )))
+
+        assertEquals(1, dao.observeCounts("2026-09-28").first().ringingCount)
+        assertEquals(1, dao.observeCounts("2026-09-29").first().ringingCount)
+        assertEquals(1_000L, dao.getOccurrenceTimes("observed-1")?.ringingStartedAtEpochMillis)
+        assertEquals(2_000L, dao.getOccurrenceTimes("observed-2")?.ringingStartedAtEpochMillis)
     }
 
     @Test

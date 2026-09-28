@@ -1,5 +1,7 @@
 package com.joon.ringout.data.missionhistory
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
 import com.joon.ringout.domain.missionhistory.MissionHistoryRepository
 import com.joon.ringout.domain.missionhistory.MissionResult
@@ -21,6 +23,9 @@ class DefaultMissionHistoryRepository(
 
     override suspend fun getLocalHistory(month: MissionYearMonth): List<MissionHistoryEntry> =
         dataSource.getHistory(month).map(MissionHistoryDto::toDomain)
+
+    override fun observeLocalHistory(month: MissionYearMonth): Flow<List<MissionHistoryEntry>> =
+        dataSource.observeHistory(month).map { history -> history.map(MissionHistoryDto::toDomain) }
 
     override suspend fun record(entry: MissionHistoryEntry): Boolean {
         require(!entry.occurrenceId.isNullOrBlank()) {

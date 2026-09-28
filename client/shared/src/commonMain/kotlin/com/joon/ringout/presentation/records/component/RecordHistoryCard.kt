@@ -36,6 +36,7 @@ import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
 import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.presentation.records.recordsColors
+import com.joon.ringout.presentation.records.recordTimes
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
 import ringout.shared.generated.resources.mypage_mission_stamp
@@ -53,6 +54,7 @@ internal fun RecordHistoryCard(
 ) {
     val colors = recordsColors()
     val success = record.result == MissionResult.SUCCESS
+    val times = record.recordTimes()
     Column(modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(colors.card)) {
         Row(
             modifier = Modifier.fillMaxWidth()
@@ -94,8 +96,8 @@ internal fun RecordHistoryCard(
                         )
                     }
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("--:-- ~ --:--", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = colors.text)
-                        Text("울림·종료 시각 기록 없음", style = MaterialTheme.typography.bodySmall, color = colors.secondaryText)
+                        Text(times.ringingRange, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = colors.text)
+                        Text(times.ringingDescription, style = MaterialTheme.typography.bodySmall, color = colors.secondaryText)
                     }
                 }
             }
@@ -116,7 +118,7 @@ internal fun RecordHistoryCard(
                         if (success) "목적지 도착 완료!" else "미션 실패",
                         fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (success) colors.success else colors.failure,
                     )
-                    if (expanded) Text("완료 시각 기록 없음", style = MaterialTheme.typography.bodySmall, color = colors.secondaryText)
+                    if (expanded) Text(times.completedDescription, style = MaterialTheme.typography.bodySmall, color = colors.secondaryText)
                 }
             }
         }
@@ -126,7 +128,17 @@ internal fun RecordHistoryCard(
 @Preview
 @Composable
 private fun RecordHistoryCardPreview() {
-    RingoutTheme { RecordHistoryCard(MissionHistoryEntry(MissionResult.SUCCESS, MissionDate.of(2026, 9, 28)), 1, true, {}) }
+    RingoutTheme {
+        RecordHistoryCard(
+            MissionHistoryEntry(
+                MissionResult.SUCCESS, MissionDate.of(2026, 9, 28), "preview",
+                ringingStartedAtEpochMillis = 1790546400000L,
+                ringingStoppedAtEpochMillis = 1790546700000L,
+                missionCompletedAtEpochMillis = 1790547480000L,
+            ),
+            1, true, {},
+        )
+    }
 }
 
 @Preview

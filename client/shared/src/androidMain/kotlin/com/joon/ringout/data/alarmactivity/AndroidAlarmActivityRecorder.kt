@@ -18,15 +18,25 @@ internal class AndroidAlarmActivityRecorder private constructor(context: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val flushMutex = Mutex()
 
-    fun recordRinging(alarmId: String, occurrenceId: String) {
+    fun recordRinging(alarmId: String, occurrenceId: String) =
+        enqueue("RANG", occurrenceId, alarmId)
+
+    fun recordRingingStopped(occurrenceId: String) =
+        enqueue("STOPPED", occurrenceId)
+
+    private fun enqueue(type: String, occurrenceId: String, alarmId: String = "") {
         val now = currentAlarmActivityTimestamp()
         val event = JSONObject()
+            .put("type", type)
             .put("alarmId", alarmId)
             .put("occurrenceId", occurrenceId)
             .put("epochMillis", now.epochMillis)
             .put("localDate", now.localDate)
-        if (!pending.edit().putString(occurrenceId, event.toString()).commit()) {
-            Log.e("AlarmActivity", "Could not persist pending ringing event")
+        val key = "$type:$occurrenceId"
+        synchronized(pending) {
+            if (!pending.contains(key) && !pending.edit().putString(key, event.toString()).commit()) {
+                Log.e("AlarmActivity", "Could not persist pending ringing event")
+            }
         }
         flush()
     }
@@ -37,11 +47,19 @@ internal class AndroidAlarmActivityRecorder private constructor(context: Context
                 pending.all.forEach { (key, value) ->
                     runCatching {
                         val event = JSONObject(value as String)
-                        dao.record(AlarmActivityEntity.rang(
-                            alarmId = event.getString("alarmId"),
-                            occurrenceId = event.getString("occurrenceId"),
-                            timestamp = AlarmActivityTimestamp(event.getLong("epochMillis"), event.getString("localDate")),
-                        ))
+                        val occurrenceId = event.getString("occurrenceId")
+                        if (event.optString("type", "RANG") == "STOPPED") {
+                            dao.mergeOccurrenceTimes(AlarmOccurrenceTimesEntity(
+                                occurrenceId = occurrenceId,
+                                ringingStoppedAtEpochMillis = event.getLong("epochMillis"),
+                            ))
+                        } else {
+                            dao.record(AlarmActivityEntity.rang(
+                                alarmId = event.getString("alarmId"),
+                                occurrenceId = occurrenceId,
+                                timestamp = AlarmActivityTimestamp(event.getLong("epochMillis"), event.getString("localDate")),
+                            ))
+                        }
                         pending.edit().remove(key).commit()
                     }.onFailure { Log.e("AlarmActivity", "Could not store ringing event; retained for retry", it) }
                 }

@@ -109,3 +109,28 @@ internal val RingoutMigration4To5 = Migration(4, 5) { connection ->
 internal val RingoutMigration5To6 = Migration(5, 6) { connection ->
     connection.executeSQL("DELETE FROM alarm_activity_events WHERE type = 'CREATED'")
 }
+
+internal val RingoutMigration6To7 = Migration(6, 7) { connection ->
+    connection.executeSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `alarm_occurrence_times` (
+            `occurrence_id` TEXT NOT NULL PRIMARY KEY,
+            `ringing_started_at` INTEGER,
+            `ringing_stopped_at` INTEGER,
+            `mission_completed_at` INTEGER,
+            `ringing_start_observed` INTEGER NOT NULL
+        )
+        """.trimIndent(),
+    )
+    // Old activity rows have a real captured timestamp, but no source/precision metadata.
+    // Never backfill stop/completion times from a date or from the scheduled alarm time.
+    connection.executeSQL(
+        """
+        INSERT OR IGNORE INTO alarm_occurrence_times
+            (occurrence_id, ringing_started_at, ringing_start_observed)
+        SELECT SUBSTR(event_key, 6), occurred_at_epoch_millis, 1
+        FROM alarm_activity_events
+        WHERE type = 'RANG' AND event_key LIKE 'rang:%'
+        """.trimIndent(),
+    )
+}

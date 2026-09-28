@@ -146,10 +146,11 @@ class RecordsViewModel(
         }
         weekLoadJob = scope.launch {
             try {
-                val history = getRecordsHistory(dates, state.today)
-                if (requestId != weekRequestId) return@launch
-                weekHistory = history
-                showWeekHistory(history)
+                getRecordsHistory.observe(dates, state.today).collect { history ->
+                    if (requestId != weekRequestId) return@collect
+                    weekHistory = history
+                    showWeekHistory(history)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {

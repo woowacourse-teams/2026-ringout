@@ -5,6 +5,7 @@ import androidx.room3.Database
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.joon.ringout.data.alarmactivity.AlarmOccurrenceTimesEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityDao
 import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTrackingEntity
@@ -20,6 +21,7 @@ import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 
 @Database(
     entities = [
+        AlarmOccurrenceTimesEntity::class,
         AlarmActivityEntity::class,
         AlarmActivityTrackingEntity::class,
         AlarmRingingObservationEntity::class,
@@ -29,7 +31,7 @@ import com.joon.ringout.data.missionhistory.MissionHistoryEntity
         StorageMigrationEntity::class,
         SavedDestinationEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -58,6 +60,7 @@ fun buildRingoutDatabase(
         RingoutMigration3To4,
         RingoutMigration4To5,
         RingoutMigration5To6,
+        RingoutMigration6To7,
     )
     .build()
 

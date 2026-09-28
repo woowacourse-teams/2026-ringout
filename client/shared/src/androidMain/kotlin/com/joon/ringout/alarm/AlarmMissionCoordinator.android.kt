@@ -16,7 +16,7 @@ import android.util.Log
 import com.joon.ringout.analytics.AlarmAnalytics
 import com.joon.ringout.analytics.ForceEndHoldAnalyticsAttempt
 import com.joon.ringout.analytics.ForceEndHoldAnalyticsAttemptStore
-import java.time.LocalDate
+import com.joon.ringout.data.alarmactivity.currentAlarmActivityTimestamp
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -106,10 +106,12 @@ class AlarmMissionCoordinator(context: Context) {
 
     fun forceEnd(expectedOccurrenceId: String): Boolean =
         synchronized(AlarmMissionSideEffectLock) {
+            val completedAt = currentAlarmActivityTimestamp()
             val pendingMission = store.beginTerminalTransition(
                 occurrenceId = expectedOccurrenceId,
                 phase = AlarmMissionPhase.FailurePendingPersistence,
-                terminalCompletedAt = currentMissionCompletedDate(),
+                terminalCompletedAt = completedAt.localDate,
+                terminalCompletedAtEpochMillis = completedAt.epochMillis,
             )
                 ?: return@synchronized false
             analytics?.recordMissionForceEnded(
@@ -486,10 +488,12 @@ class AlarmMissionCoordinator(context: Context) {
         mission: ActiveAlarmMission,
         onOutcomeFinished: (() -> Unit)? = null,
     ): Boolean {
+        val completedAt = currentAlarmActivityTimestamp()
         val pendingMission = store.beginTerminalTransition(
             occurrenceId = mission.occurrenceId,
             phase = AlarmMissionPhase.SuccessPendingNotification,
-            terminalCompletedAt = currentMissionCompletedDate(),
+            terminalCompletedAt = completedAt.localDate,
+            terminalCompletedAtEpochMillis = completedAt.epochMillis,
         ) ?: return false
         analytics?.recordMissionCompleted(
             occurrenceId = pendingMission.occurrenceId,
@@ -833,7 +837,6 @@ private val AlarmMissionSideEffectLock = Any()
 private val MissionOutcomePersistenceScope =
     CoroutineScope(SupervisorJob() + Dispatchers.IO)
 private val PendingOutcomeCallbacks = mutableMapOf<String, MutableList<() -> Unit>>()
-private fun currentMissionCompletedDate(): String = LocalDate.now().toString()
 private const val MissionOutcomeLogTag = "RingoutMissionHistory"
 private const val MissionTrackingLogTag = "RingoutMissionLocation"
 private const val MissionAnalyticsLogTag = "RingoutAnalytics"

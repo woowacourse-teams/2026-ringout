@@ -27,6 +27,26 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecordsViewModelTest {
     @Test
+    fun `화면에 있는 기록에 종료 시각이 추가되면 새로고침 없이 갱신한다`() = runTest {
+        val original = entry("2026-09-28", occurrenceId = "one")
+        val history = kotlinx.coroutines.flow.MutableStateFlow(listOf(original))
+        val repository = object : MissionHistoryRepository {
+            override suspend fun getHistory(month: MissionYearMonth) = history.value
+            override fun observeLocalHistory(month: MissionYearMonth) = history
+            override suspend fun record(entry: MissionHistoryEntry) = error("Not used")
+        }
+        val viewModel = recordsViewModel(repository, backgroundScope)
+        viewModel.refresh()
+        runCurrent()
+        assertNull(viewModel.uiState.value.records.single().ringingStoppedAtEpochMillis)
+
+        history.value = listOf(original.copy(ringingStoppedAtEpochMillis = 2_000))
+        runCurrent()
+
+        assertEquals(2_000L, viewModel.uiState.value.records.single().ringingStoppedAtEpochMillis)
+    }
+
+    @Test
     fun `미션 완료 기록이 없어도 울림 집계는 실시간으로 갱신된다`() = runTest {
         val summaries = kotlinx.coroutines.flow.MutableStateFlow(
             AlarmActivitySummary(ringingCount = 0),

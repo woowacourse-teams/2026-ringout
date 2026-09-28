@@ -21,6 +21,7 @@ internal suspend fun resolveIosRingingAlarm(
     systemAlarmId: String,
     dataSource: AlarmDataSource,
     deadlineAlarm: IosMissionDeadlineAlarm?,
+    observedOccurrenceId: String? = null,
     startedAtEpochMillis: Long = Clock.System.now().toEpochMilliseconds(),
 ): IosRingingAlarm? {
     val retryRegistration = deadlineAlarm
@@ -43,7 +44,7 @@ internal suspend fun resolveIosRingingAlarm(
     return IosRingingAlarm(
         systemAlarmId = systemAlarmId,
         alarmId = savedAlarm.request.id,
-        occurrenceId = null,
+        occurrenceId = observedOccurrenceId,
         retryAttempt = 0,
         alarmTime = savedAlarm.request.time,
         destinationName = savedAlarm.request.destinationName,

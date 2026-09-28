@@ -40,6 +40,7 @@ internal class MissionOutcomeRecorder(context: Context) {
             result = result,
             completedAt = completedAt,
             occurrenceId = storedMission.mission.occurrenceId,
+            missionCompletedAtEpochMillis = storedMission.terminalCompletedAtEpochMillis,
         )
     }
 }

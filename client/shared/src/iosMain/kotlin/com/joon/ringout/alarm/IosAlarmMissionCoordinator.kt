@@ -23,6 +23,8 @@ data class IosAlarmMissionEventDto(
     val action: IosAlarmMissionAction,
     val occurredAtEpochMillis: Long,
     val retryAttempt: Int = 0,
+    val ringingObservedAtEpochMillis: Long? = null,
+    val ringingStoppedAtEpochMillis: Long? = null,
 )
 
 data class IosAlarmMissionEventsResult(
@@ -179,6 +181,8 @@ class IosAlarmMissionCoordinator(
     }
 
     private suspend fun processEventLocked(event: IosAlarmMissionEventDto): ActiveAlarmMission? {
+        // Persist event timestamps before consuming the durable inbox, including duplicate deliveries.
+        outcomeRecorder.recordRingingTimes(event)
         if (missionStore.isConsumed(event.occurrenceId)) {
             inbox.markConsumedAwait(event.eventId)
             return null
@@ -546,12 +550,14 @@ class IosAlarmMissionCoordinator(
                 outcomeRecorder.recordSuccess(
                     pending.occurrenceId,
                     pending.completedAt,
+                    pending.completedAtEpochMillis,
                 )
 
             IosPendingMissionOutcome.FAILURE ->
                 outcomeRecorder.recordFailure(
                     pending.occurrenceId,
                     pending.completedAt,
+                    pending.completedAtEpochMillis,
                 )
         }
         missionStore.clearPendingTerminal()
@@ -593,8 +599,10 @@ data class IosPendingMissionTerminal(
 )
 
 interface IosMissionOutcomeRecorder {
-    suspend fun recordSuccess(occurrenceId: String, completedAt: String)
-    suspend fun recordFailure(occurrenceId: String, completedAt: String)
+    suspend fun recordRingingTimes(event: IosAlarmMissionEventDto) = Unit
+
+    suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long? = null)
+    suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long? = null)
 }
 
 interface IosActiveAlarmMissionStore {

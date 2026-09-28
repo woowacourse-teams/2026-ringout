@@ -9,6 +9,8 @@ struct AlarmMissionEvent: Codable, Equatable {
     let occurredAtEpochMillis: Int64
     let retryAttempt: Int?
     let source: AlarmMissionEventSource?
+    let ringingObservedAtEpochMillis: Int64?
+    let ringingStoppedAtEpochMillis: Int64?
     var consumedAtEpochMillis: Int64?
 
     var isConsumed: Bool {
@@ -65,6 +67,8 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         occurrenceId requestedOccurrenceId: String? = nil,
         retryAttempt: Int = 0,
         source: AlarmMissionEventSource = .nativeIntent,
+        systemAlarmId: String? = nil,
+        didStopRinging: Bool = true,
         now: Date = Date()
     ) throws -> AlarmMissionEvent {
         guard let alarmUUID = UUID(uuidString: rawAlarmId) else {
@@ -74,6 +78,11 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         let alarmId = alarmUUID.uuidString
         let occurredAtEpochMillis = Int64(now.timeIntervalSince1970 * 1_000)
         let event = try mutateEvents { events in
+            let observation = try? AlarmRingingOccurrenceStore.shared.consume(
+                systemAlarmId: systemAlarmId.flatMap { UUID(uuidString: $0)?.uuidString } ?? alarmId,
+                requestedOccurrenceId: requestedOccurrenceId,
+                now: now
+            )
             let recentOccurrenceId = events.reversed().first { existing in
                 let existingRetryAttempt = existing.retryAttempt ?? 0
                 let elapsedMillis = occurredAtEpochMillis - existing.occurredAtEpochMillis
@@ -87,7 +96,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                     elapsedMillis >= 0 &&
                     elapsedMillis <= Self.occurrenceCoalescingWindowMillis
             }?.occurrenceId
-            let occurrenceId = requestedOccurrenceId ?? recentOccurrenceId ??
+            let occurrenceId = requestedOccurrenceId ?? recentOccurrenceId ?? observation?.occurrenceId ??
                 "\(alarmId):\(UUID().uuidString)"
             let event = AlarmMissionEvent(
                 eventId: UUID().uuidString,
@@ -97,6 +106,8 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 occurredAtEpochMillis: occurredAtEpochMillis,
                 retryAttempt: retryAttempt,
                 source: source,
+                ringingObservedAtEpochMillis: observation?.observedAtEpochMillis,
+                ringingStoppedAtEpochMillis: source == .runtimeFallback || !didStopRinging ? nil : occurredAtEpochMillis,
                 consumedAtEpochMillis: nil
             )
             events.append(event)
@@ -167,7 +178,9 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                             occurrenceId: event.occurrenceId,
                             action: event.action.iosAction,
                             occurredAtEpochMillis: event.occurredAtEpochMillis,
-                            retryAttempt: Int32(event.retryAttempt ?? 0)
+                            retryAttempt: Int32(event.retryAttempt ?? 0),
+                            ringingObservedAtEpochMillis: event.ringingObservedAtEpochMillis.map { KotlinLong(value: $0) },
+                            ringingStoppedAtEpochMillis: event.ringingStoppedAtEpochMillis.map { KotlinLong(value: $0) }
                         )
                     },
                     code: .success,
@@ -226,11 +239,11 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
     }
 
     private func mutateEvents<Result>(
-        _ mutation: (inout [AlarmMissionEvent]) -> Result
+        _ mutation: (inout [AlarmMissionEvent]) throws -> Result
     ) throws -> Result {
         try lock.withLock {
             var events = try readEventsUnlocked()
-            let result = mutation(&events)
+            let result = try mutation(&events)
             try writeEventsUnlocked(events)
             return result
         }

@@ -23,6 +23,31 @@ import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTest {
     @Test
+    fun `버전 육의 울림 이벤트에서 시작 시각만 복원하고 없는 종료와 완료 시각은 비워 둔다`() = runBlocking<Unit> {
+        val path = temporaryDatabasePath()
+        createVersionFiveDatabase(path)
+        BundledSQLiteDriver().open(path).use { connection ->
+            connection.execSQL("DELETE FROM alarm_activity_events WHERE type = 'CREATED'")
+            connection.execSQL("UPDATE mission_history SET occurrence_id = 'one', completed_at = '2026-09-28'")
+            connection.execSQL("PRAGMA user_version = 6")
+        }
+        val database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val entry = database.missionHistoryDao().getHistoryWithTimes("2026-09-01", "2026-09-30").single()
+            assertEquals("one", entry.history.occurrenceId)
+            assertEquals(2_000L, entry.ringingStartedAtEpochMillis)
+            kotlin.test.assertNull(entry.ringingStoppedAtEpochMillis)
+            kotlin.test.assertNull(entry.missionCompletedAtEpochMillis)
+            assertEquals(true, entry.isRingingStartObserved)
+            assertEquals(1, database.alarmActivityDao().observeCounts("2026-09-28").first().ringingCount)
+            assertNotNull(database.alarmDao().getById("alarm-v2"))
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    @Test
     fun `버전 오에서 생성 집계 이벤트만 제거하고 울림과 기존 알람을 보존한다`() = runBlocking {
         val path = temporaryDatabasePath()
         createVersionFiveDatabase(path)
