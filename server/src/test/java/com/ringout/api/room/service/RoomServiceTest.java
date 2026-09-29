@@ -431,22 +431,25 @@ class RoomServiceTest {
     class 방장_모임방_삭제_처리 {
 
         @Test
-        void 모임방을_soft_delete하고_블랙리스트를_제거한다() {
+        void 모임방과_블랙리스트를_soft_delete한다() {
             // given
             Long userId = 1L;
             Long roomId = 10L;
             User user = userWithId(userId, "가나다");
             Room room = roomWithHost(userId, roomId);
+            RoomBlackList roomBlackList = RoomBlackList.of(room, userWithId(2L, "추방회원"));
             given(userRepository.findById(userId)).willReturn(Optional.of(user));
             given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomBlackListRepository.findActiveByRoom(room)).willReturn(List.of(roomBlackList));
 
             // when
             roomService.deleteRoom(userId, roomId);
 
             // then
             assertThat(room.getDeletedAt()).isNotNull();
-            verify(roomBlackListRepository).deleteAllByRoom(room);
+            assertThat(roomBlackList.getDeletedAt()).isNotNull();
             verify(roomRepository, never()).delete(room);
+            verify(roomBlackListRepository, never()).delete(any(RoomBlackList.class));
         }
     }
 
@@ -467,7 +470,7 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
             verify(roomRepository, never()).findActiveById(any());
-            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+            verify(roomBlackListRepository, never()).findActiveByRoom(any());
         }
 
         @Test
@@ -485,7 +488,7 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
             verify(roomRepository, never()).findActiveById(any());
-            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+            verify(roomBlackListRepository, never()).findActiveByRoom(any());
         }
 
         @Test
@@ -504,7 +507,7 @@ class RoomServiceTest {
             assertThat(thrown)
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_NOT_FOUND));
-            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+            verify(roomBlackListRepository, never()).findActiveByRoom(any());
         }
 
         @Test
@@ -528,7 +531,7 @@ class RoomServiceTest {
                     assertThat(exception.getErrorReasonHttpStatus().code()).isEqualTo("ROOM403");
                     assertThat(exception.getErrorReasonHttpStatus().message()).isEqualTo("모임 방을 삭제할 권한이 없습니다.");
                 });
-            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+            verify(roomBlackListRepository, never()).findActiveByRoom(any());
         }
     }
 

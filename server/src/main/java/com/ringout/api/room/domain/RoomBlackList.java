@@ -47,4 +47,8 @@ public class RoomBlackList extends BaseEntity {
     public static RoomBlackList of(Room room, User user) {
         return new RoomBlackList(room, user);
     }
+
+    public void softDelete() {
+        markDeleted();
+    }
 }

@@ -2,8 +2,10 @@ package com.ringout.api.room.service;
 
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.room.domain.Room;
+import com.ringout.api.room.domain.RoomBlackList;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
@@ -13,6 +15,7 @@ import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
+import com.ringout.api.user.status.UserErrorStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -108,15 +111,49 @@ public class RoomService {
         }
 
         room.softDelete();
-        
-        // TODO: 아직 추방 기능이 구현되지 않았기 때문에 hard deleted로 구현했습니다.
-        roomBlackListRepository.deleteAllByRoom(room);
+        roomBlackListRepository.findActiveByRoom(room)
+            .forEach(RoomBlackList::softDelete);
 
         log.atInfo()
             .addKeyValue("event", "room_deletion_succeeded")
             .addKeyValue("userId", userId)
             .addKeyValue("roomId", room.getId())
             .log("모임방 삭제 성공");
+    }
+
+    @Transactional
+    public void kickMember(Long hostUserId, Long roomId, RoomKickRequest request) {
+        Long targetUserId = request == null ? null : request.userId();
+        log.atInfo()
+            .addKeyValue("event", "room_member_kick_requested")
+            .addKeyValue("hostUserId", hostUserId)
+            .addKeyValue("roomId", roomId)
+            .addKeyValue("targetUserId", targetUserId)
+            .log("모임 회원 추방 요청 시작");
+
+        User host = findAuthenticatedUser(hostUserId);
+        Room room = findActiveRoom(roomId);
+        if (!room.isHostedBy(host.getId())) {
+            throw new GeneralException(RoomErrorStatus.ROOM_KICK_FORBIDDEN);
+        }
+        if (host.getId().equals(targetUserId)) {
+            throw new GeneralException(RoomErrorStatus.ROOM_HOST_KICK_FORBIDDEN);
+        }
+
+        User target = userRepository.findById(targetUserId)
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
+        RoomUser roomUser = roomUserRepository.findActiveByRoomIdAndUserId(roomId, target.getId())
+            .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_MEMBER_NOT_FOUND));
+
+        roomUser.softDelete();
+        roomBlackListRepository.save(RoomBlackList.of(room, target));
+
+        log.atInfo()
+            .addKeyValue("event", "room_member_kick_succeeded")
+            .addKeyValue("hostUserId", hostUserId)
+            .addKeyValue("roomId", roomId)
+            .addKeyValue("targetUserId", targetUserId)
+            .log("모임 회원 추방 성공");
     }
 
     private User findAuthenticatedUser(Long userId) {

@@ -12,7 +12,8 @@ public enum RoomSuccessStatus implements BaseCode {
 
     ROOM_CREATED(HttpStatus.CREATED, "ROOM201", "모임 방이 생성되었습니다."),
     ROOM_UPDATED(HttpStatus.OK, "ROOM200", "방 정보 수정에 성공했습니다."),
-    ROOM_DELETED(HttpStatus.OK, "ROOM200", "방 삭제에 성공했습니다.");
+    ROOM_DELETED(HttpStatus.OK, "ROOM200", "방 삭제에 성공했습니다."),
+    ROOM_MEMBER_KICKED(HttpStatus.OK, "ROOM200", "회원 추방에 성공했습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;
