@@ -12,6 +12,7 @@ data class MyPageUiState(
     val errorMessage: String? = null,
     val accountStatus: MyPageAccountStatus = MyPageAccountStatus.Loading,
     val accountAction: MyPageAccountActionState = MyPageAccountActionState.Idle,
+    val dataActionNotice: MyPageDataAction? = null,
 )
 
 @Immutable

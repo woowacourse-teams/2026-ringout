@@ -21,6 +21,7 @@ import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
+import com.joon.ringout.presentation.mypage.model.MyPageDataAction
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,74 @@ import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MyPageViewModelTest {
+    @Test
+    fun `데이터 작업 확인은 준비 중 안내만 표시하고 계정과 기록을 변경하지 않는다`() = runTest {
+        val memberRepository = FakeMemberRepository()
+        val authRepository = FakeAuthRepository()
+        val viewModel = createViewModel(
+            memberRepository = memberRepository,
+            authRepository = authRepository,
+            coroutineScope = this,
+        )
+        viewModel.onAuthenticated()
+        runCurrent()
+        val initialState = viewModel.uiState
+
+        for (action in MyPageDataAction.entries) {
+            viewModel.confirmDataAction(action)
+            assertEquals(initialState.copy(dataActionNotice = action), viewModel.uiState)
+
+            viewModel.dismissDataActionNotice()
+            assertEquals(initialState, viewModel.uiState)
+        }
+        assertEquals(0, authRepository.logoutRequestCount)
+        assertEquals(0, memberRepository.withdrawRequestCount)
+    }
+
+    @Test
+    fun `로그인 전이거나 세션이 종료되면 데이터 작업 안내를 표시하지 않는다`() = runTest {
+        val viewModel = createViewModel(coroutineScope = this)
+        viewModel.confirmDataAction(MyPageDataAction.Save)
+        assertNull(viewModel.uiState.dataActionNotice)
+
+        viewModel.onAuthenticated()
+        runCurrent()
+        viewModel.confirmDataAction(MyPageDataAction.Save)
+        viewModel.onSessionRestoring()
+        assertNull(viewModel.uiState.dataActionNotice)
+
+        viewModel.onAuthenticated()
+        runCurrent()
+        viewModel.confirmDataAction(MyPageDataAction.Load)
+        viewModel.onLoggedOut()
+        viewModel.confirmDataAction(MyPageDataAction.Load)
+        assertNull(viewModel.uiState.dataActionNotice)
+    }
+
+    @Test
+    fun `로그아웃 처리 중에는 데이터 작업 안내가 겹치지 않는다`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = createViewModel(
+            authRepository = FakeAuthRepository().apply { logoutGate = gate },
+            coroutineScope = this,
+        )
+        viewModel.onAuthenticated()
+        runCurrent()
+        viewModel.confirmDataAction(MyPageDataAction.Save)
+
+        viewModel.logout()
+        runCurrent()
+        viewModel.confirmDataAction(MyPageDataAction.Load)
+
+        assertNull(viewModel.uiState.dataActionNotice)
+        assertEquals(
+            MyPageAccountActionState.InProgress(MyPageAccountAction.Logout),
+            viewModel.uiState.accountAction,
+        )
+        gate.complete(Unit)
+        runCurrent()
+    }
+
     @Test
     fun `화면에 진입할 때마다 달력을 다시 불러오고 한 번만 기록한다`() =
         withViewModel { viewModel, repository, analytics ->
