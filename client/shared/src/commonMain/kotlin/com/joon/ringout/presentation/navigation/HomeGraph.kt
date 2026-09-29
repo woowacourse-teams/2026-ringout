@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.navigation
 
 import com.joon.ringout.presentation.roomlist.RoomListRoute
 import com.joon.ringout.presentation.roomlist.RoomListViewModel
+import com.joon.ringout.presentation.roomlist.roomdetail.RoomDetailRoute
 import com.joon.ringout.presentation.records.RecordsRoute
 import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.navigation3.runtime.EntryProviderScope
@@ -34,6 +35,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     onEditAlarm: (AlarmScheduleRequest) -> Unit,
     onActiveAlarmMissionClick: () -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
+    onJoinRoom: (String) -> Unit,
 ) {
     entry<AppRoute.Home>(clazzContentKey = AppRoute::viewModelStoreKey) {
         HomeRoute(
@@ -64,7 +66,22 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             viewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class),
             authSessionState = authSessionState,
             onCreateRoom = {},
-            onRoomClick = {},
+            onRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomDetail(roomId)) },
+        )
+    }
+    entry<AppRoute.RoomDetail>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        val roomListViewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
+        val roomListUiState = roomListViewModel.uiState
+        RoomDetailRoute(
+            room = roomListUiState.allRooms.firstOrNull { it.id == route.roomId },
+            isLoading = roomListViewModel.isRoomListUninitialized || roomListUiState.isLoadingAllRooms,
+            errorMessage = roomListUiState.allRoomsErrorMessage,
+            authSessionState = authSessionState,
+            onRouteVisible = roomListViewModel::onRouteVisible,
+            onBackClick = { navigationState.popBackStack(route) },
+            onLoginClick = { navigationState.navigate(AppRoute.Login) },
+            onJoinRoom = onJoinRoom,
+            onRetryRooms = roomListViewModel::onRetryRooms,
         )
     }
     entry<AppRoute.Records>(clazzContentKey = AppRoute::viewModelStoreKey) {

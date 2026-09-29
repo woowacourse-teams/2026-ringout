@@ -40,6 +40,7 @@ fun ConfirmationDialog(
     description: String,
     confirmLabel: String,
     confirmColor: Color,
+    cancelLabel: String = "취소",
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
@@ -120,7 +121,7 @@ fun ConfirmationDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ConfirmationDialogButton(
-                        text = "취소",
+                        text = cancelLabel,
                         containerColor = colors.cancel,
                         onClick = onDismiss,
                         modifier = Modifier.weight(CancelButtonWeight),

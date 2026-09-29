@@ -26,6 +26,10 @@ internal sealed interface AppRoute : NavKey {
     data object Social : AppRoute
 
     @Serializable
+    @SerialName("room_detail")
+    data class RoomDetail(val roomId: String) : AppRoute
+
+    @Serializable
     @SerialName("records")
     data object Records : AppRoute
 

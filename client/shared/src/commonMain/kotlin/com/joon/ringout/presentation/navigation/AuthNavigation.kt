@@ -51,7 +51,7 @@ internal class AuthNavigation(
     fun onAuthenticated(displayedRoute: AppRoute): Boolean {
         if (!isActive(AppRoute.Login, displayedRoute)) return false
         signupViewModel.resetSignup()
-        navigationState.navigate(AppRoute.Home)
+        navigationState.completeAuthenticationFlow()
         return true
     }
 
@@ -68,7 +68,7 @@ internal class AuthNavigation(
 
     fun onSignupCompleted(displayedRoute: AppRoute): Boolean {
         if (!isActive(AppRoute.TermsAgreement, displayedRoute)) return false
-        navigationState.navigate(AppRoute.Home)
+        navigationState.completeAuthenticationFlow()
         return true
     }
 
