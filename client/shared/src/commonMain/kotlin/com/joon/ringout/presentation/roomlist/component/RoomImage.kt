@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.social.component
+package com.joon.ringout.presentation.roomlist.component
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -11,11 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.joon.ringout.RingoutTheme
-import com.joon.ringout.presentation.social.model.RoomUiModel
+import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
 import ringout.shared.generated.resources.social_room_default
@@ -25,6 +26,7 @@ import ringout.shared.generated.resources.social_room_default
 internal fun RoomImage(
     room: RoomUiModel,
     modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(20.dp),
 ) {
     val defaultPainter = painterResource(Res.drawable.social_room_default)
     val representativeImage = room.representativeImage
@@ -34,7 +36,7 @@ internal fun RoomImage(
             painter = defaultPainter,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = modifier.clip(RoundedCornerShape(20.dp)),
+            modifier = modifier.clip(shape),
         )
     } else {
         AsyncImage(
@@ -43,7 +45,7 @@ internal fun RoomImage(
             contentScale = ContentScale.Crop,
             placeholder = defaultPainter,
             error = defaultPainter,
-            modifier = modifier.clip(RoundedCornerShape(20.dp)),
+            modifier = modifier.clip(shape),
         )
     }
 }
@@ -62,6 +64,8 @@ private fun RoomImageDefaultPreview() {
                     id = "preview-room",
                     representativeImage = null,
                     name = "미리보기 모임",
+                    description = "모임 소개 문구 미리보기입니다.",
+                    createdAt = "2026-09-15T09:00:00",
                     activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
                     activityTimeText = "오전 8:00",
                     participantCount = 1,

@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.social
+package com.joon.ringout.presentation.roomlist
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -6,14 +6,14 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.joon.ringout.domain.auth.AuthSessionState
-import com.joon.ringout.presentation.social.model.RoomUiModel
-import com.joon.ringout.presentation.social.model.SocialUiState
+import com.joon.ringout.presentation.roomlist.model.RoomUiModel
+import com.joon.ringout.presentation.roomlist.model.RoomListUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-class SocialViewModel(
+class RoomListViewModel(
     private val loadRooms: suspend () -> Result<List<RoomUiModel>> = {
         Result.success(emptyList())
     },
@@ -21,12 +21,15 @@ class SocialViewModel(
 ) : ViewModel() {
     private val scope = coroutineScope ?: viewModelScope
 
-    var uiState by mutableStateOf(SocialUiState())
+    var uiState by mutableStateOf(RoomListUiState())
         private set
 
     private var lastAuthSessionState: AuthSessionState? = null
     private var roomsRequestId = 0L
     private var roomsJob: Job? = null
+
+    internal val isRoomListUninitialized: Boolean
+        get() = lastAuthSessionState == null
 
     internal fun onRouteVisible(authSessionState: AuthSessionState) {
         if (lastAuthSessionState == authSessionState) return

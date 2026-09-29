@@ -10,7 +10,7 @@ import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.joon.ringout.presentation.social.SocialViewModel
+import com.joon.ringout.presentation.roomlist.RoomListViewModel
 import com.joon.ringout.presentation.records.RecordsViewModel
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
@@ -78,7 +78,7 @@ internal class NavigationViewModelScopes(
 private fun navigationViewModelFactory(container: AppContainer): ViewModelProvider.Factory =
     viewModelFactory {
         initializer { HomeViewModel() }
-        initializer { SocialViewModel() }
+        initializer { RoomListViewModel() }
         initializer {
             RecordsViewModel(
                 activityRepository = container.alarmActivityRepository,

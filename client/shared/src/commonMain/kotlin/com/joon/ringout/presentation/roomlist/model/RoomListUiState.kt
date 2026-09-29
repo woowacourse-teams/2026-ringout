@@ -1,6 +1,8 @@
-package com.joon.ringout.presentation.social.model
+package com.joon.ringout.presentation.roomlist.model
 
-data class SocialUiState(
+import com.joon.ringout.presentation.roomlist.model.RoomUiModel
+
+data class RoomListUiState(
     val allRooms: List<RoomUiModel> = emptyList(),
     val joinedRooms: List<RoomUiModel> = emptyList(),
     val isLoadingAllRooms: Boolean = false,

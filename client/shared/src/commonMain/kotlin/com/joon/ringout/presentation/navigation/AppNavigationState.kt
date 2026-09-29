@@ -54,13 +54,16 @@ internal class AppNavigationState(
             AppRoute.Home -> listOf(AppRoute.Home)
             AppRoute.MyPage -> listOf(AppRoute.Home, AppRoute.MyPage)
             AppRoute.Social -> listOf(AppRoute.Home, AppRoute.Social)
+            is AppRoute.RoomDetail -> listOf(AppRoute.Home, AppRoute.Social, route)
             AppRoute.Records -> listOf(AppRoute.Home, AppRoute.Records)
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)
-            // 로그아웃이나 재인증 후에도 로그인 화면에서 뒤로 가면 마이페이지로 돌아간다.
-            AppRoute.Login -> listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
-            AppRoute.TermsAgreement ->
-                listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
+            // 모임 소개에서 시작한 인증은 상세 경로를 유지하고, 일반 로그인은 마이페이지로 돌아간다.
+            AppRoute.Login -> roomDetailReturnStack()?.plus(AppRoute.Login)
+                ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
+            AppRoute.TermsAgreement -> roomDetailReturnStack()?.let { roomDetailStack ->
+                roomDetailStack + AppRoute.Login + AppRoute.TermsAgreement
+            } ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
             AppRoute.AddAlarm -> listOf(AppRoute.Home, AppRoute.AddAlarm)
             is AppRoute.EditAlarm -> listOf(AppRoute.Home, route)
             is AppRoute.Destination,
@@ -78,10 +81,12 @@ internal class AppNavigationState(
         // 동일 경로 요청은 현재 항목과 화면 상태를 그대로 사용한다.
         if (routes.toList() == destinationStack) return
 
-        // 나머지 이동은 공통 백스택 항목과 상태를 유지하고 달라진 뒷부분만 교체한다.
-        val sharedSize = routes.zip(destinationStack).takeWhile { (a, b) -> a == b }.size
-        routes.subList(sharedSize, routes.size).clear()
-        routes.addAll(destinationStack.drop(sharedSize))
+        replaceBackStack(destinationStack)
+    }
+
+    /** 상세 화면에서 시작한 인증은 완료 후 기존 모임 소개 화면으로 돌아간다. */
+    fun completeAuthenticationFlow() {
+        replaceBackStack(roomDetailReturnStack() ?: listOf(AppRoute.Home))
     }
 
     fun popBackStack(from: AppRoute = routes.last()) {
@@ -92,6 +97,27 @@ internal class AppNavigationState(
     }
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
+
+    private fun roomDetailReturnStack(): List<AppRoute>? {
+        // 알람 등 다른 화면에서 요청한 로그인까지 이전 상세 경로로 연결하지 않는다.
+        if (
+            routes.last() !is AppRoute.RoomDetail &&
+            routes.last() != AppRoute.Login &&
+            routes.last() != AppRoute.TermsAgreement
+        ) {
+            return null
+        }
+        val detailIndex = routes.indexOfLast { it is AppRoute.RoomDetail }
+        if (detailIndex < 1 || routes[detailIndex - 1] != AppRoute.Social) return null
+        return routes.take(detailIndex + 1)
+    }
+
+    private fun replaceBackStack(destinationStack: List<AppRoute>) {
+        // 공통 백스택 항목과 화면 상태는 유지하고 달라진 뒷부분만 교체한다.
+        val sharedSize = routes.zip(destinationStack).takeWhile { (a, b) -> a == b }.size
+        routes.subList(sharedSize, routes.size).clear()
+        routes.addAll(destinationStack.drop(sharedSize))
+    }
 
     /** 아직 제공하지 않는 닉네임 수정 화면은 마이페이지로 되돌린다. */
     internal fun normalizeForGuestMode() {

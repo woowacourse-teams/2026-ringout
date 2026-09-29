@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.social
+package com.joon.ringout.presentation.roomlist
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -6,8 +6,8 @@ import androidx.compose.ui.Modifier
 import com.joon.ringout.domain.auth.AuthSessionState
 
 @Composable
-internal fun SocialRoute(
-    viewModel: SocialViewModel,
+internal fun RoomListRoute(
+    viewModel: RoomListViewModel,
     authSessionState: AuthSessionState,
     onCreateRoom: () -> Unit,
     onRoomClick: (String) -> Unit,
@@ -17,7 +17,7 @@ internal fun SocialRoute(
         viewModel.onRouteVisible(authSessionState)
     }
 
-    SocialScreen(
+    RoomListScreen(
         uiState = viewModel.uiState,
         onCreateRoom = onCreateRoom,
         onRoomClick = onRoomClick,

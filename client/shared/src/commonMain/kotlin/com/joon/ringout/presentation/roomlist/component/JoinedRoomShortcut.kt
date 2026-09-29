@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.social.component
+package com.joon.ringout.presentation.roomlist.component
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
@@ -17,7 +17,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
-import com.joon.ringout.presentation.social.model.RoomUiModel
+import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 
 @Composable
 fun JoinedRoomShortcut(
@@ -53,6 +53,8 @@ private fun JoinedRoomShortcutPreview() {
             room = RoomUiModel(
                 id = "preview-room",
                 name = "아침 러닝가는 사람들",
+                description = "모임 소개 문구 미리보기입니다.",
+                createdAt = "2026-09-15T09:00:00",
                 activityDays = listOf("토", "일"),
                 activityTimeText = "오전 8:00",
                 participantCount = 8,

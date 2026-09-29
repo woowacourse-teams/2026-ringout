@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.social.component
+package com.joon.ringout.presentation.roomlist.component
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,11 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
-import com.joon.ringout.presentation.social.model.SocialUiState
+import com.joon.ringout.presentation.roomlist.model.RoomListUiState
 
 @Composable
 internal fun RoomSection(
-    uiState: SocialUiState,
+    uiState: RoomListUiState,
     onRoomClick: (String) -> Unit,
     onRetryRooms: () -> Unit,
     modifier: Modifier = Modifier,
@@ -65,7 +65,7 @@ internal fun RoomSection(
 private fun RoomSectionPreview() {
     RingoutTheme {
         RoomSection(
-            uiState = SocialUiState(allRooms = SocialPreviewData().allRooms),
+            uiState = RoomListUiState(allRooms = RoomListPreviewData().allRooms),
             onRoomClick = {},
             onRetryRooms = {},
             modifier = Modifier

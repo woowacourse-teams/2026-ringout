@@ -283,6 +283,8 @@ private fun RingoutAppContent(
                     }
                 },
                 onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+                // 모임 가입 요청 API는 현재 화면 계획 범위에 포함되지 않는다.
+                onJoinRoom = {},
             )
             alarmRuntimeGraph(
                 navigationState = navigationState,

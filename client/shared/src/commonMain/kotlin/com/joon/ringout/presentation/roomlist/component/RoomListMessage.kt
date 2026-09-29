@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.social.component
+package com.joon.ringout.presentation.roomlist.component
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background

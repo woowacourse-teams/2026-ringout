@@ -1,7 +1,7 @@
-package com.joon.ringout.presentation.social
+package com.joon.ringout.presentation.roomlist
 
 import com.joon.ringout.domain.auth.AuthSessionState
-import com.joon.ringout.presentation.social.model.RoomUiModel
+import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -14,12 +14,12 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class SocialViewModelTest {
+class RoomListViewModelTest {
     @Test
     fun `전체 목록 한 번으로 참여 목록을 분리하고 전체 목록에도 같은 방을 유지한다`() = runTest {
         var roomsCalls = 0
         val notJoinedRoom = previewRoom.copy(id = "room-2", isJoined = false)
-        val viewModel = SocialViewModel(
+        val viewModel = RoomListViewModel(
             loadRooms = {
                 roomsCalls += 1
                 Result.success(listOf(previewRoom, notJoinedRoom))
@@ -43,7 +43,7 @@ class SocialViewModelTest {
         val lateResponse = CompletableDeferred<Result<List<RoomUiModel>>>()
         var roomsCalls = 0
         val notJoinedRoom = previewRoom.copy(id = "room-2", isJoined = false)
-        val viewModel = SocialViewModel(
+        val viewModel = RoomListViewModel(
             loadRooms = {
                 roomsCalls += 1
                 if (roomsCalls == 1) {
@@ -77,7 +77,7 @@ class SocialViewModelTest {
     @Test
     fun `전체 목록 조회 오류는 재시도 후 목록 상태로 회복한다`() = runTest {
         var calls = 0
-        val viewModel = SocialViewModel(
+        val viewModel = RoomListViewModel(
             loadRooms = {
                 calls += 1
                 if (calls == 1) Result.failure(IllegalStateException("조회 실패"))
@@ -101,10 +101,36 @@ class SocialViewModelTest {
         assertEquals(null, viewModel.uiState.allRoomsErrorMessage)
     }
 
+    @Test
+    fun `모임 상세에서 로그인하면 인증 상태와 가입 여부를 다시 조회한다`() = runTest {
+        var roomsCalls = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                roomsCalls += 1
+                Result.success(listOf(previewRoom.copy(isJoined = roomsCalls > 1)))
+            },
+            coroutineScope = this,
+        )
+
+        viewModel.onRouteVisible(AuthSessionState.Unauthenticated)
+        runCurrent()
+        assertFalse(viewModel.uiState.allRooms.single().isJoined)
+
+        viewModel.onRouteVisible(AuthSessionState.Authenticated)
+        runCurrent()
+
+        assertEquals(2, roomsCalls)
+        assertTrue(viewModel.uiState.isAuthenticated)
+        assertTrue(viewModel.uiState.allRooms.single().isJoined)
+        assertEquals(viewModel.uiState.allRooms, viewModel.uiState.joinedRooms)
+    }
+
     private companion object {
         val previewRoom = RoomUiModel(
             id = "room-1",
             name = "퇴근 후 한강 러닝",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "수", "금"),
             activityTimeText = "오후 7:30",
             participantCount = 12,

@@ -1,12 +1,14 @@
-package com.joon.ringout.presentation.social.component
+package com.joon.ringout.presentation.roomlist.component
 
-import com.joon.ringout.presentation.social.model.RoomUiModel
+import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 
-internal class SocialPreviewData {
+internal class RoomListPreviewData {
     val allRooms = listOf(
         RoomUiModel(
             id = "preview-room-1",
             name = "아침 러닝가는 사람들",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
             activityTimeText = "오전 06:00",
             participantCount = 6,
@@ -15,6 +17,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-2",
             name = "저녁 헬스장 ㅋㅋ",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "수", "금"),
             activityTimeText = "오후 08:30",
             participantCount = 12,
@@ -23,6 +27,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-3",
             name = "주말에는 러닝이지",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("토", "일"),
             activityTimeText = "오후 5:00",
             participantCount = 3,
@@ -31,6 +37,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-4",
             name = "재수생들 모여라",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
             activityTimeText = "오전 07:00",
             participantCount = 32,
@@ -39,6 +47,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-5",
             name = "아침 러닝가는 사람들",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
             activityTimeText = "오전 06:00",
             participantCount = 6,
@@ -47,6 +57,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-6",
             name = "저녁 헬스장 ㅋㅋ",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "수", "금"),
             activityTimeText = "오후 08:30",
             participantCount = 12,
@@ -55,6 +67,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-7",
             name = "주말에는 러닝이지",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("토", "일"),
             activityTimeText = "오후 5:00",
             participantCount = 3,
@@ -63,6 +77,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-8",
             name = "재수생들 모여라",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
             activityTimeText = "오전 07:00",
             participantCount = 32,
@@ -71,6 +87,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-9",
             name = "아침 러닝가는 사람들",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
             activityTimeText = "오전 06:00",
             participantCount = 6,
@@ -79,6 +97,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-10",
             name = "저녁 헬스장 ㅋㅋ",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "수", "금"),
             activityTimeText = "오후 08:30",
             participantCount = 12,
@@ -87,6 +107,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-11",
             name = "주말에는 러닝이지",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("토", "일"),
             activityTimeText = "오후 5:00",
             participantCount = 3,
@@ -95,6 +117,8 @@ internal class SocialPreviewData {
         RoomUiModel(
             id = "preview-room-12",
             name = "재수생들 모여라",
+            description = "모임 소개 문구 미리보기입니다.",
+            createdAt = "2026-09-15T09:00:00",
             activityDays = listOf("월", "화", "수", "목", "금", "토", "일"),
             activityTimeText = "오전 07:00",
             participantCount = 32,

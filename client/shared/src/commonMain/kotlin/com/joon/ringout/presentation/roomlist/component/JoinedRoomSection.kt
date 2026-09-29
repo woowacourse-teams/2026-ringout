@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.social.component
+package com.joon.ringout.presentation.roomlist.component
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
@@ -11,11 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
-import com.joon.ringout.presentation.social.model.SocialUiState
+import com.joon.ringout.presentation.roomlist.model.RoomListUiState
 
 @Composable
 internal fun JoinedRoomSection(
-    uiState: SocialUiState,
+    uiState: RoomListUiState,
     onRoomClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -39,10 +39,10 @@ internal fun JoinedRoomSection(
 @Preview(name = "가입 모임 목록", widthDp = 402, heightDp = 220, showBackground = false)
 @Composable
 private fun JoinedRoomSectionPreview() {
-    val mockData = SocialPreviewData()
+    val mockData = RoomListPreviewData()
     RingoutTheme {
         JoinedRoomSection(
-            uiState = SocialUiState(
+            uiState = RoomListUiState(
                 allRooms = mockData.allRooms,
                 joinedRooms = mockData.allRooms.filter { it.isJoined },
                 isAuthenticated = true,
