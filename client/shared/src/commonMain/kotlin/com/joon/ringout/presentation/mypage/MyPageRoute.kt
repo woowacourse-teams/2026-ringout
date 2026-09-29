@@ -5,6 +5,9 @@ import androidx.compose.runtime.LaunchedEffect
 import com.joon.ringout.presentation.mypage.component.MyPageAccountActionErrorDialog
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
+import com.joon.ringout.presentation.mypage.model.MyPageDataAction
+import com.joon.ringout.presentation.common.component.AppMessageHost
+import com.joon.ringout.presentation.common.component.AppMessageHostState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import com.joon.ringout.ThemeMode
@@ -32,6 +35,7 @@ internal fun MyPageRoute(
         accountStatus = viewModel.uiState.accountStatus,
         onAccountRetry = viewModel::retryAccount,
         isAccountActionInProgress = accountAction is MyPageAccountActionState.InProgress,
+        onConfirmDataAction = viewModel::confirmDataAction,
         onConfirmAccountAction = { action ->
             when (action) {
                 MyPageAccountAction.Logout -> viewModel.logout()
@@ -60,4 +64,20 @@ internal fun MyPageRoute(
             onDismiss = viewModel::clearAccountActionError,
         )
     }
+
+    AppMessageHost(
+        state = viewModel.uiState.dataActionNotice?.let { action ->
+            AppMessageHostState(
+                title = when (action) {
+                    MyPageDataAction.Save -> "데이터 저장하기"
+                    MyPageDataAction.Load -> "데이터 불러오기"
+                },
+                message = when (action) {
+                    MyPageDataAction.Save -> "데이터 저장 기능을 준비하고 있어요."
+                    MyPageDataAction.Load -> "데이터 불러오기 기능을 준비하고 있어요."
+                },
+            )
+        },
+        onDismiss = viewModel::dismissDataActionNotice,
+    )
 }

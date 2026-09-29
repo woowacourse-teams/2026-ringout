@@ -19,7 +19,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.joon.ringout.presentation.mypage.component.MyPageAccountActionDialog
 import com.joon.ringout.presentation.mypage.component.MyPageAccountManagementSection
+import com.joon.ringout.presentation.mypage.component.MyPageDataActionDialog
+import com.joon.ringout.presentation.mypage.component.MyPageDataSection
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
+import com.joon.ringout.presentation.mypage.model.MyPageDataAction
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -50,6 +53,7 @@ internal fun MyPageScreen(
     onEditProfileClick: () -> Unit = {},
     isAccountActionInProgress: Boolean = false,
     onConfirmAccountAction: (MyPageAccountAction) -> Unit = {},
+    onConfirmDataAction: (MyPageDataAction) -> Unit = {},
 ) {
     MyPageScreenContent(
         themeMode = themeMode,
@@ -64,6 +68,7 @@ internal fun MyPageScreen(
         onEditProfileClick = onEditProfileClick,
         isAccountActionInProgress = isAccountActionInProgress,
         onConfirmAccountAction = onConfirmAccountAction,
+        onConfirmDataAction = onConfirmDataAction,
         modifier = modifier,
     )
 }
@@ -83,6 +88,7 @@ fun MyPageScreenContent(
     onEditProfileClick: () -> Unit = {},
     isAccountActionInProgress: Boolean = false,
     onConfirmAccountAction: (MyPageAccountAction) -> Unit = {},
+    onConfirmDataAction: (MyPageDataAction) -> Unit = {},
 ) {
     val colors = myPageColors()
     var pendingActionName by rememberSaveable(accountStatus is AccountStatus.LoggedIn) {
@@ -122,6 +128,27 @@ fun MyPageScreenContent(
                 onThemeModeChange = onThemeModeChange,
             )
         }
+        item { Spacer(Modifier.height(10.dp)) }
+        item {
+            MyPageDataSection(
+                enabled = !isAccountActionInProgress &&
+                    (accountStatus is AccountStatus.LoggedIn || accountStatus == AccountStatus.LoggedOut),
+                onSaveClick = {
+                    if (accountStatus is AccountStatus.LoggedIn) {
+                        pendingActionName = MyPageConfirmation.SaveData.name
+                    } else if (accountStatus == AccountStatus.LoggedOut) {
+                        onLoginClick()
+                    }
+                },
+                onLoadClick = {
+                    if (accountStatus is AccountStatus.LoggedIn) {
+                        pendingActionName = MyPageConfirmation.LoadData.name
+                    } else if (accountStatus == AccountStatus.LoggedOut) {
+                        onLoginClick()
+                    }
+                },
+            )
+        }
         if (policies.isNotEmpty()) {
             item { Spacer(Modifier.height(10.dp)) }
             item {
@@ -136,8 +163,8 @@ fun MyPageScreenContent(
             item {
                 MyPageAccountManagementSection(
                     enabled = !isAccountActionInProgress,
-                    onLogoutClick = { pendingActionName = MyPageAccountAction.Logout.name },
-                    onWithdrawClick = { pendingActionName = MyPageAccountAction.Withdraw.name },
+                    onLogoutClick = { pendingActionName = MyPageConfirmation.Logout.name },
+                    onWithdrawClick = { pendingActionName = MyPageConfirmation.Withdraw.name },
                 )
             }
         }
@@ -147,20 +174,45 @@ fun MyPageScreenContent(
     if (isAccountActionInProgress) {
         LoadingOverlay(message = "계정 처리 중")
     }
-    if (accountStatus is AccountStatus.LoggedIn) {
+    if (accountStatus is AccountStatus.LoggedIn && !isAccountActionInProgress) {
         pendingActionName?.let { actionName ->
-            MyPageAccountActionDialog(
-                action = MyPageAccountAction.valueOf(actionName),
-                onDismiss = { pendingActionName = null },
-                onConfirm = {
-                    pendingActionName = null
-                    if (!isAccountActionInProgress) {
-                        onConfirmAccountAction(MyPageAccountAction.valueOf(actionName))
-                    }
-                },
-            )
+            val action = MyPageConfirmation.valueOf(actionName)
+            action.accountAction?.let { accountAction ->
+                MyPageAccountActionDialog(
+                    action = accountAction,
+                    onDismiss = { pendingActionName = null },
+                    onConfirm = {
+                        if (pendingActionName == actionName) {
+                            pendingActionName = null
+                            onConfirmAccountAction(accountAction)
+                        }
+                    },
+                )
+            }
+            action.dataAction?.let { dataAction ->
+                MyPageDataActionDialog(
+                    action = dataAction,
+                    onDismiss = { pendingActionName = null },
+                    onConfirm = {
+                        if (pendingActionName == actionName) {
+                            pendingActionName = null
+                            onConfirmDataAction(dataAction)
+                        }
+                    },
+                )
+            }
         }
     }
+}
+
+private enum class MyPageConfirmation(
+    val accountAction: MyPageAccountAction? = null,
+    val dataAction: MyPageDataAction? = null,
+) {
+    Logout(accountAction = MyPageAccountAction.Logout),
+    Withdraw(accountAction = MyPageAccountAction.Withdraw),
+    SaveData(dataAction = MyPageDataAction.Save),
+    LoadData(dataAction = MyPageDataAction.Load),
 }
 
 @Preview(name = "Dark My Page", widthDp = 402, heightDp = 800)

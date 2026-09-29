@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,12 +28,24 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ringoutColors
+
+@Immutable
+data class ConfirmationDialogLayout(
+    val maxWidth: Dp = 335.dp,
+    val screenPadding: Dp = 24.dp,
+    val actionRowMaxWidth: Dp = 272.dp,
+    val cancelButtonWeight: Float = 99f,
+    val actionAlignment: Alignment.Horizontal = Alignment.End,
+    val titleMaxLines: Int = 1,
+    val descriptionMaxLines: Int = 2,
+)
 
 @Composable
 fun ConfirmationDialog(
@@ -43,6 +56,7 @@ fun ConfirmationDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
+    layout: ConfirmationDialogLayout = ConfirmationDialogLayout(),
 ) {
     val colors = MaterialTheme.ringoutColors.dialog
     val shape = RoundedCornerShape(DialogCornerRadius)
@@ -57,12 +71,12 @@ fun ConfirmationDialog(
     ) {
         Box(
             modifier = modifier
-                .padding(horizontal = DialogScreenPadding),
+                .padding(horizontal = layout.screenPadding),
             contentAlignment = Alignment.Center,
         ) {
             Column(
                 modifier = Modifier
-                    .widthIn(max = DialogMaxWidth)
+                    .widthIn(max = layout.maxWidth)
                     .fillMaxWidth()
                     .shadow(
                         elevation = DialogShadowElevation,
@@ -89,7 +103,7 @@ fun ConfirmationDialog(
                             .fillMaxWidth()
                             .semantics { heading() },
                         color = colors.title,
-                        maxLines = 1,
+                        maxLines = layout.titleMaxLines,
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontSize = 20.sp,
@@ -101,7 +115,7 @@ fun ConfirmationDialog(
                         text = description,
                         modifier = Modifier.fillMaxWidth(),
                         color = colors.description,
-                        maxLines = 2,
+                        maxLines = layout.descriptionMaxLines,
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = 16.sp,
@@ -112,8 +126,8 @@ fun ConfirmationDialog(
                 }
                 Row(
                     modifier = Modifier
-                        .align(Alignment.End)
-                        .widthIn(max = ActionRowMaxWidth)
+                        .align(layout.actionAlignment)
+                        .widthIn(max = layout.actionRowMaxWidth)
                         .fillMaxWidth()
                         .height(ActionTouchHeight),
                     horizontalArrangement = Arrangement.spacedBy(ActionButtonSpacing),
@@ -123,7 +137,7 @@ fun ConfirmationDialog(
                         text = "취소",
                         containerColor = colors.cancel,
                         onClick = onDismiss,
-                        modifier = Modifier.weight(CancelButtonWeight),
+                        modifier = Modifier.weight(layout.cancelButtonWeight),
                     )
                     ConfirmationDialogButton(
                         text = confirmLabel,
@@ -185,20 +199,16 @@ private fun ConfirmationDialogButton(
     }
 }
 
-private val DialogMaxWidth = 335.dp
-private val DialogScreenPadding = 24.dp
 private val DialogContentPadding = 24.dp
 private val DialogContentSpacing = 20.dp
 private val DialogInfoSpacing = 12.dp
 private val DialogCornerRadius = 16.dp
 private val DialogShadowElevation = 12.dp
-private val ActionRowMaxWidth = 272.dp
 private val ActionTouchHeight = 48.dp
 private val ActionVisualHeight = 40.dp
 private val ActionButtonSpacing = 10.dp
 private val ActionCornerRadius = 12.dp
 private val ActionShadowElevation = 1.5.dp
-private const val CancelButtonWeight = 99f
 private const val ConfirmButtonWeight = 162f
 
 @Preview
