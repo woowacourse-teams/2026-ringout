@@ -41,17 +41,17 @@ class AlarmMovementControllerTest {
     private JwtProvider jwtProvider;
 
     @Test
-    void 인증된_사용자의_이동_시작_요청에_STARTED_상태를_반환한다() throws Exception {
+    void 인증된_사용자의_이동_시작_요청에_MOVEMENT_STARTED_상태를_반환한다() throws Exception {
         // given
-        AlarmMovementRequest request = new AlarmMovementRequest(135L, MovementAction.START);
+        AlarmMovementRequest request = new AlarmMovementRequest(135L, MovementAction.START_MOVEMENT);
         given(alarmMovementService.changeMovement(1L, 10L, request))
-            .willReturn(new AlarmMovementResponse(MovementStatus.STARTED));
+            .willReturn(new AlarmMovementResponse(MovementStatus.MOVEMENT_STARTED));
 
         // when
         var result = mockMvc.perform(post("/api/v1/rooms/10/movements")
             .with(user(new CustomUserDetails(1L, Role.USER)))
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"alarmId\":135,\"action\":\"START\"}"));
+            .content("{\"alarmId\":135,\"action\":\"START_MOVEMENT\"}"));
 
         // then
         result.andExpectAll(
@@ -59,7 +59,7 @@ class AlarmMovementControllerTest {
             jsonPath("$.isSuccess").value(true),
             jsonPath("$.code").value("MOVEMENT200"),
             jsonPath("$.message").value("이동 상태 변경에 성공했습니다."),
-            jsonPath("$.result.status").value("STARTED")
+            jsonPath("$.result.status").value("MOVEMENT_STARTED")
         );
         verify(alarmMovementService).changeMovement(1L, 10L, request);
     }

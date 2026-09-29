@@ -39,7 +39,7 @@ class AlarmMovementTest {
             MovementStatus status = alarmMovement.getMovementStatus(ACTION_AT.plusMinutes(1));
 
             // then
-            assertThat(status).isEqualTo(MovementStatus.STARTED);
+            assertThat(status).isEqualTo(MovementStatus.MOVEMENT_STARTED);
         }
 
         @Test
@@ -99,8 +99,8 @@ class AlarmMovementTest {
     }
 
     private AlarmMovement alarmMovementWith(
-        LocalDateTime startedAt, LocalDateTime gaveUpAt, LocalDateTime arrivedAt
+        LocalDateTime movementStartedAt, LocalDateTime gaveUpAt, LocalDateTime arrivedAt
     ) {
-        return AlarmMovement.of(mock(ActiveAlarm.class), startedAt, gaveUpAt, arrivedAt);
+        return AlarmMovement.of(mock(ActiveAlarm.class), movementStartedAt, gaveUpAt, arrivedAt);
     }
 }

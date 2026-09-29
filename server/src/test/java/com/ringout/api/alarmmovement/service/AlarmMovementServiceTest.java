@@ -15,6 +15,7 @@ import com.ringout.api.alarmmovement.domain.MovementStatus;
 import com.ringout.api.alarmmovement.dto.request.AlarmMovementRequest;
 import com.ringout.api.alarmmovement.dto.response.AlarmMovementResponse;
 import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
+import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.room.domain.ActivityDay;
@@ -75,7 +76,7 @@ class AlarmMovementServiceTest {
     class 모임_회원_알람_이동_행동_처리 {
 
         @ParameterizedTest
-        @CsvSource({"START, STARTED", "GIVE_UP, GAVE_UP", "ARRIVE, ARRIVED"})
+        @CsvSource({"START_MOVEMENT, MOVEMENT_STARTED", "GIVE_UP, GAVE_UP", "ARRIVE, ARRIVED"})
         void 활성_알람에_연결된_이동_상태를_변경하고_반환한다(MovementAction action, MovementStatus expectedStatus) {
             // given
             givenCurrentMember();
@@ -104,7 +105,7 @@ class AlarmMovementServiceTest {
             // given
             given(roomRepository.findActiveById(ROOM_ID)).willReturn(Optional.of(roomWithId(ROOM_ID)));
             given(roomUserRepository.findActiveByRoomIdAndUserId(ROOM_ID, USER_ID)).willReturn(Optional.empty());
-            AlarmMovementRequest request = new AlarmMovementRequest(ACTIVE_ALARM_ID, MovementAction.START);
+            AlarmMovementRequest request = new AlarmMovementRequest(ACTIVE_ALARM_ID, MovementAction.START_MOVEMENT);
 
             // when
             Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
@@ -123,7 +124,7 @@ class AlarmMovementServiceTest {
             // given
             givenCurrentMember();
             given(activeAlarmRepository.findActiveById(ACTIVE_ALARM_ID)).willReturn(Optional.empty());
-            AlarmMovementRequest request = new AlarmMovementRequest(ACTIVE_ALARM_ID, MovementAction.START);
+            AlarmMovementRequest request = new AlarmMovementRequest(ACTIVE_ALARM_ID, MovementAction.START_MOVEMENT);
 
             // when
             Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
@@ -131,6 +132,89 @@ class AlarmMovementServiceTest {
             // then
             assertError(thrown, 404, "ALARM404", "존재하지 않는 알람 입니다.");
             verifyNoInteractions(alarmMovementRepository);
+        }
+
+        @Test
+        void 활성_알람에_연결된_이동_상태가_없으면_내부_정합성_오류를_반환한다() {
+            // given
+            givenCurrentMember();
+            ActiveAlarm activeAlarm = mock(ActiveAlarm.class);
+            given(activeAlarmRepository.findActiveById(ACTIVE_ALARM_ID)).willReturn(Optional.of(activeAlarm));
+            given(alarmMovementRepository.findByActiveAlarm(activeAlarm)).willReturn(Optional.empty());
+            AlarmMovementRequest request = new AlarmMovementRequest(ACTIVE_ALARM_ID, MovementAction.START_MOVEMENT);
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
+
+            // then
+            assertError(thrown, 500, "MOVEMENT500", "이동 상태를 처리할 수 없습니다.");
+            assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
+                exception -> assertThat(exception.getCode())
+                    .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_RECORD_MISSING));
+        }
+    }
+
+    @Nested
+    class 이동_요청_형식_검증 {
+
+        @Test
+        void 요청_본문이_없으면_요청_본문_누락_오류를_반환한다() {
+            // given
+            AlarmMovementRequest request = null;
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
+
+            // then
+            assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
+                exception -> assertThat(exception.getCode())
+                    .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_REQUEST_EMPTY));
+            verifyNoInteractions(roomRepository, roomUserRepository, activeAlarmRepository, alarmMovementRepository);
+        }
+
+        @Test
+        void 활성_알람_ID가_없으면_활성_알람_ID_누락_오류를_반환한다() {
+            // given
+            AlarmMovementRequest request = new AlarmMovementRequest(null, MovementAction.START_MOVEMENT);
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
+
+            // then
+            assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
+                exception -> assertThat(exception.getCode())
+                    .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_ACTIVE_ALARM_ID_REQUIRED));
+            verifyNoInteractions(roomRepository, roomUserRepository, activeAlarmRepository, alarmMovementRepository);
+        }
+
+        @Test
+        void 활성_알람_ID가_양수가_아니면_활성_알람_ID_형식_오류를_반환한다() {
+            // given
+            AlarmMovementRequest request = new AlarmMovementRequest(0L, MovementAction.START_MOVEMENT);
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
+
+            // then
+            assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
+                exception -> assertThat(exception.getCode())
+                    .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_ACTIVE_ALARM_ID_INVALID));
+            verifyNoInteractions(roomRepository, roomUserRepository, activeAlarmRepository, alarmMovementRepository);
+        }
+
+        @Test
+        void 이동_행동이_없으면_이동_행동_누락_오류를_반환한다() {
+            // given
+            AlarmMovementRequest request = new AlarmMovementRequest(ACTIVE_ALARM_ID, null);
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
+
+            // then
+            assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
+                exception -> assertThat(exception.getCode())
+                    .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_ACTION_REQUIRED));
+            verifyNoInteractions(roomRepository, roomUserRepository, activeAlarmRepository, alarmMovementRepository);
         }
     }
 

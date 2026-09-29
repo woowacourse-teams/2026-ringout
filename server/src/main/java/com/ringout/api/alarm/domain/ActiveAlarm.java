@@ -38,6 +38,8 @@ public class ActiveAlarm extends BaseEntity {
     }
 
     public static ActiveAlarm of(Alarm alarm, LocalDateTime activeDatetime) {
+        // TODO: 활성 알람을 저장하는 애플리케이션 서비스는 같은 트랜잭션에서 AlarmMovement를 반드시 생성해야 한다.
+        // ActiveAlarm만 존재하고 AlarmMovement가 없는 상태는 데이터 정합성 위반이다.
         return new ActiveAlarm(alarm, activeDatetime);
     }
 }
