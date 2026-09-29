@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.social.component
+package com.joon.ringout.presentation.roomlist.component
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,7 +25,7 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.ringoutColors
-import com.joon.ringout.presentation.social.model.RoomUiModel
+import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 
 @Composable
 fun RoomCard(
@@ -95,6 +95,8 @@ private fun RoomCardPreview() {
             room = RoomUiModel(
                 id = "preview-room",
                 name = "퇴근 후 한강 러닝 모임",
+                description = "모임 소개 문구 미리보기입니다.",
+                createdAt = "2026-09-15T09:00:00",
                 activityDays = listOf("월", "수", "금"),
                 activityTimeText = "오후 7:30",
                 participantCount = 12,

@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.social
+package com.joon.ringout.presentation.roomlist
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -17,15 +17,15 @@ import androidx.compose.ui.unit.dp
 import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.social.component.JoinedRoomSection
-import com.joon.ringout.presentation.social.component.RoomListHeader
-import com.joon.ringout.presentation.social.component.RoomSection
-import com.joon.ringout.presentation.social.component.SocialPreviewData
-import com.joon.ringout.presentation.social.model.SocialUiState
+import com.joon.ringout.presentation.roomlist.component.JoinedRoomSection
+import com.joon.ringout.presentation.roomlist.component.RoomListHeader
+import com.joon.ringout.presentation.roomlist.component.RoomSection
+import com.joon.ringout.presentation.roomlist.component.RoomListPreviewData
+import com.joon.ringout.presentation.roomlist.model.RoomListUiState
 
 @Composable
-fun SocialScreen(
-    uiState: SocialUiState,
+fun RoomListScreen(
+    uiState: RoomListUiState,
     modifier: Modifier = Modifier,
     onCreateRoom: () -> Unit,
     onRoomClick: (String) -> Unit,
@@ -72,7 +72,7 @@ fun SocialScreen(
     }
 }
 
-private enum class SocialPreviewScenario {
+private enum class RoomListPreviewScenario {
     JoinedRooms,
     WithoutJoinedRooms,
     EmptyRooms,
@@ -81,37 +81,37 @@ private enum class SocialPreviewScenario {
 }
 
 @Composable
-private fun SocialScreenPreviewContent(
+private fun RoomListScreenPreviewContent(
     themeMode: ThemeMode,
-    scenario: SocialPreviewScenario,
+    scenario: RoomListPreviewScenario,
 ) {
-    val mockData = SocialPreviewData()
+    val mockData = RoomListPreviewData()
     val uiState = when (scenario) {
-        SocialPreviewScenario.JoinedRooms -> SocialUiState(
+        RoomListPreviewScenario.JoinedRooms -> RoomListUiState(
             allRooms = mockData.allRooms,
             joinedRooms = mockData.allRooms.filter { it.isJoined },
             isAuthenticated = true,
         )
 
-        SocialPreviewScenario.WithoutJoinedRooms -> SocialUiState(
+        RoomListPreviewScenario.WithoutJoinedRooms -> RoomListUiState(
             allRooms = mockData.allRooms.map { it.copy(isJoined = false) },
         )
 
-        SocialPreviewScenario.EmptyRooms -> SocialUiState()
+        RoomListPreviewScenario.EmptyRooms -> RoomListUiState()
 
-        SocialPreviewScenario.AllRoomsLoading -> SocialUiState(
+        RoomListPreviewScenario.AllRoomsLoading -> RoomListUiState(
             isAuthenticated = true,
             isLoadingAllRooms = true,
         )
 
-        SocialPreviewScenario.AllRoomsError -> SocialUiState(
+        RoomListPreviewScenario.AllRoomsError -> RoomListUiState(
             allRoomsErrorMessage = RoomListLoadErrorMessage,
             isAuthenticated = true,
         )
     }
 
     RingoutTheme(themeMode = themeMode) {
-        SocialScreen(
+        RoomListScreen(
             uiState = uiState,
             onCreateRoom = {},
             onRoomClick = {},
@@ -122,60 +122,60 @@ private fun SocialScreenPreviewContent(
 
 @Preview(name = "라이트 · 가입 모임 있음", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialWithJoinedRoomsLightPreview() {
-    SocialScreenPreviewContent(ThemeMode.Light, SocialPreviewScenario.JoinedRooms)
+private fun RoomListWithJoinedRoomsLightPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Light, RoomListPreviewScenario.JoinedRooms)
 }
 
 @Preview(name = "다크 · 가입 모임 있음", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialWithJoinedRoomsDarkPreview() {
-    SocialScreenPreviewContent(ThemeMode.Dark, SocialPreviewScenario.JoinedRooms)
+private fun RoomListWithJoinedRoomsDarkPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Dark, RoomListPreviewScenario.JoinedRooms)
 }
 
 @Preview(name = "라이트 · 가입 모임 없음", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialWithoutJoinedRoomsLightPreview() {
-    SocialScreenPreviewContent(ThemeMode.Light, SocialPreviewScenario.WithoutJoinedRooms)
+private fun RoomListWithoutJoinedRoomsLightPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Light, RoomListPreviewScenario.WithoutJoinedRooms)
 }
 
 @Preview(name = "다크 · 가입 모임 없음", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialWithoutJoinedRoomsDarkPreview() {
-    SocialScreenPreviewContent(ThemeMode.Dark, SocialPreviewScenario.WithoutJoinedRooms)
+private fun RoomListWithoutJoinedRoomsDarkPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Dark, RoomListPreviewScenario.WithoutJoinedRooms)
 }
 
 @Preview(name = "라이트 · 빈 모임 목록", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialEmptyRoomsLightPreview() {
-    SocialScreenPreviewContent(ThemeMode.Light, SocialPreviewScenario.EmptyRooms)
+private fun RoomListEmptyRoomsLightPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Light, RoomListPreviewScenario.EmptyRooms)
 }
 
 @Preview(name = "다크 · 빈 모임 목록", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialEmptyRoomsDarkPreview() {
-    SocialScreenPreviewContent(ThemeMode.Dark, SocialPreviewScenario.EmptyRooms)
+private fun RoomListEmptyRoomsDarkPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Dark, RoomListPreviewScenario.EmptyRooms)
 }
 
 @Preview(name = "라이트 · 모임 목록 로딩", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialAllRoomsLoadingLightPreview() {
-    SocialScreenPreviewContent(ThemeMode.Light, SocialPreviewScenario.AllRoomsLoading)
+private fun RoomListAllRoomsLoadingLightPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Light, RoomListPreviewScenario.AllRoomsLoading)
 }
 
 @Preview(name = "다크 · 모임 목록 로딩", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialAllRoomsLoadingDarkPreview() {
-    SocialScreenPreviewContent(ThemeMode.Dark, SocialPreviewScenario.AllRoomsLoading)
+private fun RoomListAllRoomsLoadingDarkPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Dark, RoomListPreviewScenario.AllRoomsLoading)
 }
 
 @Preview(name = "라이트 · 모임 목록 오류", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialAllRoomsErrorLightPreview() {
-    SocialScreenPreviewContent(ThemeMode.Light, SocialPreviewScenario.AllRoomsError)
+private fun RoomListAllRoomsErrorLightPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Light, RoomListPreviewScenario.AllRoomsError)
 }
 
 @Preview(name = "다크 · 모임 목록 오류", widthDp = 402, heightDp = 941, showBackground = true)
 @Composable
-private fun SocialAllRoomsErrorDarkPreview() {
-    SocialScreenPreviewContent(ThemeMode.Dark, SocialPreviewScenario.AllRoomsError)
+private fun RoomListAllRoomsErrorDarkPreview() {
+    RoomListScreenPreviewContent(ThemeMode.Dark, RoomListPreviewScenario.AllRoomsError)
 }

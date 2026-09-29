@@ -1,7 +1,7 @@
 package com.joon.ringout.presentation.navigation
 
-import com.joon.ringout.presentation.social.SocialRoute
-import com.joon.ringout.presentation.social.SocialViewModel
+import com.joon.ringout.presentation.roomlist.RoomListRoute
+import com.joon.ringout.presentation.roomlist.RoomListViewModel
 import com.joon.ringout.presentation.records.RecordsRoute
 import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.navigation3.runtime.EntryProviderScope
@@ -60,8 +60,8 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     }
 
     entry<AppRoute.Social>(clazzContentKey = AppRoute::viewModelStoreKey) {
-        SocialRoute(
-            viewModel = viewModelScopes.get(AppRoute.Social, SocialViewModel::class),
+        RoomListRoute(
+            viewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class),
             authSessionState = authSessionState,
             onCreateRoom = {},
             onRoomClick = {},
