@@ -3,6 +3,7 @@ package com.ringout.api.room.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
@@ -11,9 +12,11 @@ import static org.mockito.Mockito.verify;
 
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.room.domain.Room;
+import com.ringout.api.room.domain.RoomBlackList;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
@@ -428,22 +431,25 @@ class RoomServiceTest {
     class 방장_모임방_삭제_처리 {
 
         @Test
-        void 모임방을_soft_delete하고_블랙리스트를_제거한다() {
+        void 모임방과_블랙리스트를_soft_delete한다() {
             // given
             Long userId = 1L;
             Long roomId = 10L;
             User user = userWithId(userId, "가나다");
             Room room = roomWithHost(userId, roomId);
+            RoomBlackList roomBlackList = RoomBlackList.of(room, userWithId(2L, "추방회원"));
             given(userRepository.findById(userId)).willReturn(Optional.of(user));
             given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomBlackListRepository.findActiveByRoom(room)).willReturn(List.of(roomBlackList));
 
             // when
             roomService.deleteRoom(userId, roomId);
 
             // then
             assertThat(room.getDeletedAt()).isNotNull();
-            verify(roomBlackListRepository).deleteAllByRoom(room);
+            assertThat(roomBlackList.getDeletedAt()).isNotNull();
             verify(roomRepository, never()).delete(room);
+            verify(roomBlackListRepository, never()).delete(any(RoomBlackList.class));
         }
     }
 
@@ -464,7 +470,7 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
             verify(roomRepository, never()).findActiveById(any());
-            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+            verify(roomBlackListRepository, never()).findActiveByRoom(any());
         }
 
         @Test
@@ -482,7 +488,7 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
             verify(roomRepository, never()).findActiveById(any());
-            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+            verify(roomBlackListRepository, never()).findActiveByRoom(any());
         }
 
         @Test
@@ -501,7 +507,7 @@ class RoomServiceTest {
             assertThat(thrown)
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_NOT_FOUND));
-            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+            verify(roomBlackListRepository, never()).findActiveByRoom(any());
         }
 
         @Test
@@ -525,7 +531,169 @@ class RoomServiceTest {
                     assertThat(exception.getErrorReasonHttpStatus().code()).isEqualTo("ROOM403");
                     assertThat(exception.getErrorReasonHttpStatus().message()).isEqualTo("모임 방을 삭제할 권한이 없습니다.");
                 });
-            verify(roomBlackListRepository, never()).deleteAllByRoom(any());
+            verify(roomBlackListRepository, never()).findActiveByRoom(any());
+        }
+    }
+
+    @Nested
+    class 방장_회원_추방_처리 {
+
+        @Test
+        void 참여_중인_일반_회원을_soft_delete하고_블랙리스트에_등록한다() {
+            // given
+            Long hostUserId = 1L;
+            Long roomId = 10L;
+            Long targetUserId = 2L;
+            User host = userWithId(hostUserId, "방장");
+            User target = userWithId(targetUserId, "참여자");
+            Room room = roomWithHost(hostUserId, roomId);
+            RoomUser roomUser = RoomUser.of(target, room);
+            given(userRepository.findById(hostUserId)).willReturn(Optional.of(host));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(userRepository.findById(targetUserId)).willReturn(Optional.of(target));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, targetUserId))
+                .willReturn(Optional.of(roomUser));
+
+            // when
+            roomService.kickMember(hostUserId, roomId, new RoomKickRequest(targetUserId));
+
+            // then
+            assertThat(roomUser.getDeletedAt()).isNotNull();
+            verify(roomBlackListRepository).save(argThat(blackList ->
+                blackList.getRoom().equals(room) && blackList.getUser().equals(target)));
+            verify(roomUserRepository, never()).delete(roomUser);
+        }
+    }
+
+    @Nested
+    class 모임방_회원_추방_권한_및_상태_검증 {
+
+        @Test
+        void 인증되지_않은_사용자는_회원을_추방할_수_없다() {
+            // given
+            Long roomId = 10L;
+            Long targetUserId = 2L;
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.kickMember(null, roomId,
+                new RoomKickRequest(targetUserId)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
+            verify(roomRepository, never()).findActiveById(any());
+            verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
+        }
+
+        @Test
+        void 존재하지_않거나_삭제된_모임방에서는_회원을_추방할_수_없다() {
+            // given
+            Long hostUserId = 1L;
+            Long roomId = 10L;
+            User host = userWithId(hostUserId, "방장");
+            given(userRepository.findById(hostUserId)).willReturn(Optional.of(host));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.kickMember(hostUserId, roomId,
+                new RoomKickRequest(2L)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_NOT_FOUND));
+            verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
+        }
+
+        @Test
+        void 방장이_아니면_회원을_추방할_수_없다() {
+            // given
+            Long requesterUserId = 1L;
+            Long roomId = 10L;
+            User requester = userWithId(requesterUserId, "참여자");
+            Room room = roomWithHost(2L, roomId);
+            given(userRepository.findById(requesterUserId)).willReturn(Optional.of(requester));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.kickMember(requesterUserId, roomId,
+                new RoomKickRequest(3L)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_KICK_FORBIDDEN));
+            verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
+        }
+
+        @Test
+        void 존재하지_않는_사용자는_추방할_수_없다() {
+            // given
+            Long hostUserId = 1L;
+            Long roomId = 10L;
+            Long targetUserId = 2L;
+            User host = userWithId(hostUserId, "방장");
+            Room room = roomWithHost(hostUserId, roomId);
+            given(userRepository.findById(hostUserId)).willReturn(Optional.of(host));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(userRepository.findById(targetUserId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.kickMember(hostUserId, roomId,
+                new RoomKickRequest(targetUserId)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(com.ringout.api.user.status.UserErrorStatus.USER_NOT_FOUND));
+            verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
+        }
+
+        @Test
+        void 모임에_참여하고_있지_않은_사용자는_추방할_수_없다() {
+            // given
+            Long hostUserId = 1L;
+            Long roomId = 10L;
+            Long targetUserId = 2L;
+            User host = userWithId(hostUserId, "방장");
+            User target = userWithId(targetUserId, "참여자");
+            Room room = roomWithHost(hostUserId, roomId);
+            given(userRepository.findById(hostUserId)).willReturn(Optional.of(host));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(userRepository.findById(targetUserId)).willReturn(Optional.of(target));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, targetUserId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.kickMember(hostUserId, roomId,
+                new RoomKickRequest(targetUserId)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_MEMBER_NOT_FOUND));
+            verify(roomBlackListRepository, never()).save(any(RoomBlackList.class));
+        }
+
+        @Test
+        void 방장은_자신을_추방할_수_없다() {
+            // given
+            Long hostUserId = 1L;
+            Long roomId = 10L;
+            User host = userWithId(hostUserId, "방장");
+            Room room = roomWithHost(hostUserId, roomId);
+            given(userRepository.findById(hostUserId)).willReturn(Optional.of(host));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.kickMember(hostUserId, roomId,
+                new RoomKickRequest(hostUserId)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_HOST_KICK_FORBIDDEN));
+            verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
         }
     }
 

@@ -4,6 +4,7 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.SwaggerConfig;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
@@ -219,7 +220,7 @@ public interface RoomControllerApi {
 
     @Operation(
         summary = "모임 방 삭제",
-        description = "방장만 모임 방을 삭제할 수 있습니다. 삭제된 방은 조회 대상에서 제외되며, 해당 방의 블랙리스트는 함께 제거됩니다.",
+        description = "방장만 모임 방을 삭제할 수 있습니다. 삭제된 방과 해당 방의 블랙리스트는 조회 대상에서 제외됩니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
@@ -287,5 +288,126 @@ public interface RoomControllerApi {
     ResponseEntity<CustomResponse<Void>> deleteRoom(
         @Parameter(hidden = true) CustomUserDetails customUserDetails,
         @Parameter(description = "삭제할 모임 방 식별자", required = true, example = "1") Long roomId
+    );
+
+    @Operation(
+        summary = "모임 회원 추방",
+        description = "방장이 참여 중인 일반 회원을 추방합니다. 추방된 회원은 블랙리스트에 등록되어 해당 모임에 다시 가입할 수 없습니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "회원 추방 성공",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": true,
+                      "code": "ROOM200",
+                      "message": "회원 추방에 성공했습니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "추방 대상이 모임 회원이 아니거나 방장 자신을 추방하려는 요청",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "notRoomMember", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "ROOM400",
+                          "message": "해당 사용자는 모임에 참여하고 있지 않습니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "hostSelfKick", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "ROOM400",
+                          "message": "방장은 자신을 추방할 수 없습니다.",
+                          "result": null
+                        }
+                        """)
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "ROOM401",
+                      "message": "인증되지 않은 사용자입니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "회원 추방 권한 없음",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "ROOM403",
+                      "message": "회원을 추방할 권한이 없습니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "모임 방 또는 추방 대상 사용자를 찾을 수 없음",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "roomNotFound", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "ROOM404",
+                          "message": "존재하지 않는 모임 방입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "userNotFound", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "USER404",
+                          "message": "존재하지 않는 사용자입니다.",
+                          "result": null
+                        }
+                        """)
+                }
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<Void>> kickMember(
+        @Parameter(hidden = true) CustomUserDetails customUserDetails,
+        @Parameter(description = "회원을 추방할 모임 방 식별자", required = true, example = "1") Long roomId,
+        @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            description = "추방할 회원 정보",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = RoomKickRequest.class),
+                examples = @ExampleObject(value = """
+                    {
+                      "userId": 10
+                    }
+                    """)
+            )
+        )
+        RoomKickRequest request
     );
 }

@@ -47,4 +47,8 @@ public class RoomUser extends BaseEntity {
     public static RoomUser of(User user, Room room) {
         return new RoomUser(user, room);
     }
+
+    public void softDelete() {
+        markDeleted();
+    }
 }

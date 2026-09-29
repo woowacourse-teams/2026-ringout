@@ -9,6 +9,7 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomMemberResponse;
@@ -136,6 +137,31 @@ class RoomControllerTest {
             assertThat(response.getBody().getMessage()).isEqualTo("방 삭제에 성공했습니다.");
             assertThat(response.getBody().getResult()).isNull();
             verify(roomService).deleteRoom(userId, roomId);
+        }
+    }
+
+    @Nested
+    class 인증된_방장_회원_추방_응답 {
+
+        @Test
+        void 회원_추방_성공_응답을_반환한다() {
+            // given
+            Long hostUserId = 1L;
+            Long roomId = 10L;
+            RoomKickRequest request = new RoomKickRequest(2L);
+            CustomUserDetails userDetails = new CustomUserDetails(hostUserId, Role.USER);
+
+            // when
+            ResponseEntity<CustomResponse<Void>> response = roomController.kickMember(userDetails, roomId, request);
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getIsSuccess()).isTrue();
+            assertThat(response.getBody().getCode()).isEqualTo("ROOM200");
+            assertThat(response.getBody().getMessage()).isEqualTo("회원 추방에 성공했습니다.");
+            assertThat(response.getBody().getResult()).isNull();
+            verify(roomService).kickMember(hostUserId, roomId, request);
         }
     }
 }

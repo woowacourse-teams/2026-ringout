@@ -4,11 +4,13 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.room.controller.docs.RoomControllerApi;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
+import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.service.RoomService;
 import com.ringout.api.room.status.RoomSuccessStatus;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -62,5 +64,18 @@ public class RoomController implements RoomControllerApi {
 
         return ResponseEntity.status(RoomSuccessStatus.ROOM_DELETED.getHttpStatus())
             .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_DELETED, null));
+    }
+
+    @Override
+    @PostMapping("/{roomId}/kick")
+    public ResponseEntity<CustomResponse<Void>> kickMember(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @PathVariable Long roomId,
+        @Valid @RequestBody RoomKickRequest request
+    ) {
+        roomService.kickMember(customUserDetails.getUserId(), roomId, request);
+
+        return ResponseEntity.status(RoomSuccessStatus.ROOM_MEMBER_KICKED.getHttpStatus())
+            .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_MEMBER_KICKED, null));
     }
 }
