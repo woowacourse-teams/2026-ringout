@@ -14,7 +14,8 @@ public enum TermsErrorStatus implements BaseErrorCode {
     TERMS_NOT_AGREED(HttpStatus.BAD_REQUEST, "TERMS400", "필수 약관에 모두 동의해야 합니다."),
     TERMS_NOT_EFFECTIVE(HttpStatus.BAD_REQUEST, "TERMS400", "현재 시행 중인 약관이 아닙니다."),
     TERMS_AGREED_AT_INVALID(HttpStatus.BAD_REQUEST, "TERMS400", "동의 시각이 올바르지 않습니다."),
-    TERMS_ALREADY_AGREED(HttpStatus.CONFLICT, "TERMS409", "이미 동의한 약관입니다.");
+    TERMS_ALREADY_AGREED(HttpStatus.CONFLICT, "TERMS409", "이미 동의한 약관입니다."),
+    EFFECTIVE_TERMS_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "TERMS500", "시행 중인 약관이 등록되어 있지 않습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;
