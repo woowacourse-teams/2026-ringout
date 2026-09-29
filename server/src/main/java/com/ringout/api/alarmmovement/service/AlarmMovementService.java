@@ -4,6 +4,7 @@ import com.ringout.api.alarm.domain.ActiveAlarm;
 import com.ringout.api.alarm.repository.ActiveAlarmRepository;
 import com.ringout.api.alarmmovement.domain.AlarmMovement;
 import com.ringout.api.alarmmovement.domain.MovementAction;
+import com.ringout.api.alarmmovement.domain.MovementStatus;
 import com.ringout.api.alarmmovement.dto.request.AlarmMovementRequest;
 import com.ringout.api.alarmmovement.dto.response.AlarmMovementResponse;
 import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
@@ -40,7 +41,10 @@ public class AlarmMovementService {
             .orElseThrow(() -> new GeneralException(AlarmMovementErrorStatus.ALARM_NOT_FOUND));
         AlarmMovement alarmMovement = findAlarmMovement(activeAlarm, request.alarmId());
 
-        return new AlarmMovementResponse(alarmMovement.change(request.action(), LocalDateTime.now(clock)));
+        MovementStatus movementStatus = alarmMovement.change(request.action(), LocalDateTime.now(clock));
+        logMovementStatusChanged(userId, roomId, request.alarmId(), request.action(), movementStatus);
+
+        return new AlarmMovementResponse(movementStatus);
     }
 
     private void validateCurrentRoomMember(Long userId, Long roomId) {
@@ -57,6 +61,18 @@ public class AlarmMovementService {
                 log.error("AlarmMovement record is missing. activeAlarmId={}", activeAlarmId);
                 return new GeneralException(AlarmMovementErrorStatus.MOVEMENT_RECORD_MISSING);
             });
+    }
+
+    private void logMovementStatusChanged(Long userId, Long roomId, Long activeAlarmId, MovementAction action,
+        MovementStatus movementStatus) {
+        log.atInfo()
+            .addKeyValue("event", "movement_status_changed")
+            .addKeyValue("userId", userId)
+            .addKeyValue("roomId", roomId)
+            .addKeyValue("activeAlarmId", activeAlarmId)
+            .addKeyValue("action", action)
+            .addKeyValue("movementStatus", movementStatus)
+            .log("모임 회원 이동 상태 변경");
     }
 
     private void validateRequest(AlarmMovementRequest request) {
