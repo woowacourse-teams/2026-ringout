@@ -1,10 +1,12 @@
 package com.ringout.api.terms.controller.docs;
 
 import com.ringout.api.common.response.CustomResponse;
+import com.ringout.api.config.SwaggerConfig;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
+import com.ringout.api.terms.dto.response.TermsAgreementsResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -12,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -148,6 +151,79 @@ public interface TermsControllerApi {
           )
       )
       TermsAgreeRequest termsAgreeRequest
+  );
+
+  @Operation(
+      summary = "최신 약관 동의 여부 조회",
+      description = """
+          로그인 사용자가 동의한 약관 버전을 각 약관의 최신 시행 버전과 비교해서, 약관별 재동의 필요 여부와 전체 동의 완료 여부를 반환합니다.
+
+          - 모든 약관 타입(`SERVICE`, `PRIVACY`)을 항상 포함합니다. 동의 기록이 없으면 `agreedVersion`, `agreedAt`은 `null`입니다.
+          - 최신 시행 버전은 시행일이 오늘보다 이후가 아닌 것 중 가장 최신 버전입니다.
+          """,
+      security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+  )
+  @ApiResponses({
+      @ApiResponse(
+          responseCode = "200",
+          description = "약관 동의 여부 조회 성공",
+          content = @Content(
+              mediaType = MediaType.APPLICATION_JSON_VALUE,
+              examples = @ExampleObject(
+                  name = "재동의가 필요한 약관이 있음",
+                  value = """
+                      {
+                        "isSuccess": true,
+                        "code": "COMMON200",
+                        "message": "약관 동의 조회 요청에 성공했습니다.",
+                        "result": {
+                          "allAgreed": false,
+                          "agreements": [
+                            {
+                              "type": "SERVICE",
+                              "termsId": 3,
+                              "latestVersion": "2026-09-01",
+                              "agreedVersion": "2026-08-01",
+                              "agreedAt": "2026-08-10T14:32:11+09:00",
+                              "needsReagreement": true
+                            },
+                            {
+                              "type": "PRIVACY",
+                              "termsId": 2,
+                              "latestVersion": "2026-08-01",
+                              "agreedVersion": null,
+                              "agreedAt": null,
+                              "needsReagreement": true
+                            }
+                          ]
+                        }
+                      }
+                      """
+              )
+          )
+      ),
+      @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자"),
+      @ApiResponse(
+          responseCode = "500",
+          description = "시행 중인 약관이 등록되어 있지 않음 (서버 데이터 오류)",
+          content = @Content(
+              mediaType = MediaType.APPLICATION_JSON_VALUE,
+              examples = @ExampleObject(
+                  name = "시행 중인 약관 없음",
+                  value = """
+                      {
+                        "isSuccess": false,
+                        "code": "TERMS500",
+                        "message": "시행 중인 약관이 등록되어 있지 않습니다."
+                      }
+                      """
+              )
+          )
+      )
+  })
+  ResponseEntity<CustomResponse<TermsAgreementsResponse>> getTermsAgreements(
+      @Parameter(hidden = true)
+      CustomUserDetails customUserDetails
   );
 
   @Operation(
