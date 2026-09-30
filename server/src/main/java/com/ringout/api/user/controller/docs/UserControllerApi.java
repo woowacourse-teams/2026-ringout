@@ -422,4 +422,49 @@ public interface UserControllerApi {
     ResponseEntity<CustomResponse<ProfileImageResponse>> getProfileImage(
         @Parameter(hidden = true) CustomUserDetails userDetails
     );
+
+    @Operation(
+        summary = "프로필 이미지 삭제",
+        description = "로그인한 사용자의 프로필 이미지를 삭제합니다. 이미지가 없어도 성공합니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "204",
+            description = "프로필 이미지 삭제 성공"
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "COMMON401",
+                      "message": "인증되지 않은 사용자입니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "존재하지 않는 사용자",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "USER404",
+                      "message": "존재하지 않는 사용자입니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<Void>> deleteProfileImage(
+        @Parameter(hidden = true) CustomUserDetails userDetails
+    );
 }
