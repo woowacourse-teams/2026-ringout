@@ -292,6 +292,8 @@ private fun RingoutAppContent(
                 onJoinRoom = {},
                 // 실제 모임 생성 API는 이 화면 계획 범위에 포함되지 않는다.
                 onRoomCreateDraft = {},
+                // 모임 수정 초안은 후속 서버 연동 전까지 로컬 콜백 경계로 유지한다.
+                onRoomEditDraft = { _, _ -> },
             )
             alarmRuntimeGraph(
                 navigationState = navigationState,

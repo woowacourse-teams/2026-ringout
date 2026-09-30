@@ -20,6 +20,10 @@ import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.roomcreate.RoomCreateRoute
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
 import com.joon.ringout.presentation.roomcreate.model.RoomCreateDraft
+import com.joon.ringout.presentation.roomedit.RoomEditRoute
+import com.joon.ringout.presentation.roomedit.RoomEditViewModel
+import com.joon.ringout.presentation.roomedit.model.RoomEditDraft
+import androidx.compose.ui.graphics.ImageBitmap
 
 // 홈과 마이페이지는 각 백스택 항목의 저장소를 사용한다.
 internal fun EntryProviderScope<AppRoute>.homeGraph(
@@ -40,6 +44,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     onActiveAlarmMissionExpired: () -> Unit,
     onJoinRoom: (String) -> Unit,
     onRoomCreateDraft: (RoomCreateDraft) -> Unit,
+    onRoomEditDraft: (RoomEditDraft, ImageBitmap?) -> Unit,
 ) {
     entry<AppRoute.Home>(clazzContentKey = AppRoute::viewModelStoreKey) {
         HomeRoute(
@@ -94,6 +99,21 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onJoinRoom = onJoinRoom,
             onRetryRooms = roomListViewModel::onRetryRooms,
+        )
+    }
+    entry<AppRoute.RoomEdit>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        val roomListViewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
+        val roomListUiState = roomListViewModel.uiState
+        RoomEditRoute(
+            roomId = route.roomId,
+            originalRoom = roomListUiState.allRooms.firstOrNull { it.id == route.roomId },
+            isLoading = roomListViewModel.isRoomListUninitialized || roomListUiState.isLoadingAllRooms,
+            loadError = roomListUiState.allRoomsErrorMessage,
+            viewModel = viewModelScopes.get(route, RoomEditViewModel::class),
+            onRouteVisible = { roomListViewModel.onRouteVisible(authSessionState) },
+            onRetry = roomListViewModel::onRetryRooms,
+            onBackClick = { navigationState.popBackStack(route) },
+            onDraft = onRoomEditDraft,
         )
     }
     entry<AppRoute.Records>(clazzContentKey = AppRoute::viewModelStoreKey) {
