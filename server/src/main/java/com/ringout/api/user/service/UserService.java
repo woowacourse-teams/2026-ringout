@@ -14,6 +14,7 @@ import com.ringout.api.user.status.UserErrorStatus;
 import java.net.URI;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,10 +23,11 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class UserService {
 
-    private static final String PROFILE_IMAGE_DIRECTORY = "images/profiles";
-
     private final UserRepository userRepository;
     private final ImageFileService imageFileService;
+
+    @Value("${app.file.image.profile-directory}")
+    private String profileImageDirectory;
 
     @Transactional(readOnly = true)
     public UserResponse getUser(Long userId) {
@@ -79,7 +81,7 @@ public class UserService {
             .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
         ImageFile previousImage = user.getImage();
 
-        ImageFile uploadedImage = imageFileService.upload(image, PROFILE_IMAGE_DIRECTORY);
+        ImageFile uploadedImage = imageFileService.upload(image, profileImageDirectory);
         URI profileImageUri = imageFileService.createReadUri(uploadedImage);
         user.changeProfileImage(uploadedImage);
 
