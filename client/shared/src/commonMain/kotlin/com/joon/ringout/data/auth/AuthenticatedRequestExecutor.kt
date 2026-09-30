@@ -342,7 +342,7 @@ internal suspend fun SecureTokenStorage.replaceAuthTokens(
             if (lastRefreshTransition?.tokenStorage === this@replaceAuthTokens) {
                 lastRefreshTransition = null
             }
-            authSession.markAuthenticated()
+            authSession.startNewSession()
         }
     }
 }

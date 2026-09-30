@@ -2,6 +2,7 @@ package com.joon.ringout.data.member
 
 import com.joon.ringout.data.network.ApiException
 import com.joon.ringout.data.network.configureRingoutHttpClient
+import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthTokens
 import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.member.MemberProfile
@@ -45,7 +46,9 @@ class DefaultMemberRepositoryTest {
         }) {
             configureRingoutHttpClient()
         }
-        val repository = DefaultMemberRepository(client, FakeTokenStorage())
+        val repository = DefaultMemberRepository(
+            client, FakeTokenStorage(), AuthSession().apply { markAuthenticated() }, backgroundScope,
+        )
 
         val profile = repository.getProfile()
 
@@ -80,7 +83,9 @@ class DefaultMemberRepositoryTest {
         }) {
             configureRingoutHttpClient()
         }
-        val repository = DefaultMemberRepository(client, FakeTokenStorage())
+        val repository = DefaultMemberRepository(
+            client, FakeTokenStorage(), AuthSession().apply { markAuthenticated() }, backgroundScope,
+        )
 
         repository.withdraw()
 
@@ -109,7 +114,9 @@ class DefaultMemberRepositoryTest {
         }) {
             configureRingoutHttpClient()
         }
-        val repository = DefaultMemberRepository(client, FakeTokenStorage())
+        val repository = DefaultMemberRepository(
+            client, FakeTokenStorage(), AuthSession().apply { markAuthenticated() }, backgroundScope,
+        )
 
         val nickname = repository.updateNickname("새닉네임")
 
@@ -134,7 +141,9 @@ class DefaultMemberRepositoryTest {
         }) {
             configureRingoutHttpClient()
         }
-        val repository = DefaultMemberRepository(client, FakeTokenStorage())
+        val repository = DefaultMemberRepository(
+            client, FakeTokenStorage(), AuthSession().apply { markAuthenticated() }, backgroundScope,
+        )
 
         val exception = assertFailsWith<ApiException> {
             repository.updateNickname("새닉네임")

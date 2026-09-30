@@ -48,6 +48,7 @@ class IosAppContainer(
         DefaultMemberRepository(
             httpClient = httpClient,
             tokenStorage = tokenStorage,
+            authSession = authSession,
         )
 
     override val destinationRepository =
