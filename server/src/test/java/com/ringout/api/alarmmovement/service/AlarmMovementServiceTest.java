@@ -8,12 +8,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.ringout.api.alarm.domain.ActiveAlarm;
+import com.ringout.api.alarm.domain.Alarm;
 import com.ringout.api.alarm.repository.ActiveAlarmRepository;
 import com.ringout.api.alarmmovement.domain.AlarmMovement;
 import com.ringout.api.alarmmovement.domain.MovementAction;
 import com.ringout.api.alarmmovement.domain.MovementStatus;
 import com.ringout.api.alarmmovement.dto.request.AlarmMovementRequest;
 import com.ringout.api.alarmmovement.dto.response.AlarmMovementResponse;
+import com.ringout.api.alarmmovement.dto.response.MemberMovementResponse;
+import com.ringout.api.alarmmovement.dto.response.MemberMovementsResponse;
 import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
 import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
 import com.ringout.api.auth.social.SocialProvider;
@@ -94,6 +97,190 @@ class AlarmMovementServiceTest {
             assertThat(alarmMovement.getMovementStatus(NOW)).isEqualTo(expectedStatus);
             verify(activeAlarmRepository).findActiveById(ACTIVE_ALARM_ID);
             verify(alarmMovementRepository).findByActiveAlarm(activeAlarm);
+        }
+    }
+
+    @Nested
+    class 모임_회원_이동_상태_조회 {
+
+        @Test
+        void 현재_회원의_상태를_한글_영어_기타_문자_순으로_반환한다() {
+            // given
+            Room room = roomWithId(ROOM_ID);
+            User requester = userWithId(USER_ID, "요청자");
+            User idleMember = userWithId(2L, "가나다");
+            User gaveUpMember = userWithId(3L, "나비");
+            User triggeredMember = userWithId(4L, "Alpha");
+            User startedMember = userWithId(5L, "Bravo");
+            User movingMember = userWithId(6L, "charlie");
+            User arrivedMember = userWithId(7L, "123");
+            List<ActiveAlarm> activeAlarms = List.of(
+                activeAlarmWith(arrivedMember, 11L),
+                activeAlarmWith(movingMember, 12L),
+                activeAlarmWith(startedMember, 13L),
+                activeAlarmWith(triggeredMember, 14L),
+                activeAlarmWith(gaveUpMember, 15L)
+            );
+            givenCurrentMember();
+            given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(
+                RoomUser.of(arrivedMember, room),
+                RoomUser.of(movingMember, room),
+                RoomUser.of(startedMember, room),
+                RoomUser.of(triggeredMember, room),
+                RoomUser.of(gaveUpMember, room),
+                RoomUser.of(idleMember, room)
+            ));
+            List<AlarmMovement> alarmMovements = List.of(
+                movementOf(activeAlarms.get(0), MovementStatus.ARRIVED),
+                movementOf(activeAlarms.get(1), MovementStatus.MOVING),
+                movementOf(activeAlarms.get(2), MovementStatus.MOVEMENT_STARTED),
+                movementOf(activeAlarms.get(3), MovementStatus.ALARM_TRIGGERED),
+                movementOf(activeAlarms.get(4), MovementStatus.GAVE_UP)
+            );
+            given(activeAlarmRepository.findActiveByRoomIdOrderByIdDesc(ROOM_ID)).willReturn(activeAlarms);
+            given(alarmMovementRepository.findActiveByActiveAlarmIn(activeAlarms)).willReturn(alarmMovements);
+
+            // when
+            MemberMovementsResponse response = alarmMovementService.getMemberMovements(USER_ID, ROOM_ID);
+
+            // then
+            assertThat(response.members()).extracting(MemberMovementResponse::userId)
+                .containsExactly(2L, 3L, 4L, 5L, 6L, 7L);
+            assertThat(response.members()).extracting(MemberMovementResponse::nickname)
+                .containsExactly("가나다", "나비", "Alpha", "Bravo", "charlie", "123");
+            assertThat(response.members()).extracting(MemberMovementResponse::status)
+                .containsExactly(
+                    MovementStatus.IDLE,
+                    MovementStatus.GAVE_UP,
+                    MovementStatus.ALARM_TRIGGERED,
+                    MovementStatus.MOVEMENT_STARTED,
+                    MovementStatus.MOVING,
+                    MovementStatus.ARRIVED
+                );
+            verify(roomUserRepository).findActiveByRoomId(ROOM_ID);
+            verify(activeAlarmRepository).findActiveByRoomIdOrderByIdDesc(ROOM_ID);
+            verify(alarmMovementRepository).findActiveByActiveAlarmIn(activeAlarms);
+        }
+
+        @Test
+        void 한_회원에게_활성_알람이_여러_개면_ID가_가장_큰_알람의_상태를_반환한다() {
+            // given
+            Room room = roomWithId(ROOM_ID);
+            User requester = userWithId(USER_ID, "요청자");
+            ActiveAlarm firstActiveAlarm = activeAlarmWith(requester, 11L);
+            ActiveAlarm laterActiveAlarm = activeAlarmWith(requester, 12L);
+            AlarmMovement laterMovement = movementOf(laterActiveAlarm, MovementStatus.ARRIVED);
+            givenCurrentMember();
+            given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
+            given(activeAlarmRepository.findActiveByRoomIdOrderByIdDesc(ROOM_ID))
+                .willReturn(List.of(laterActiveAlarm, firstActiveAlarm));
+            given(alarmMovementRepository.findActiveByActiveAlarmIn(List.of(laterActiveAlarm)))
+                .willReturn(List.of(laterMovement));
+
+            // when
+            MemberMovementsResponse response = alarmMovementService.getMemberMovements(USER_ID, ROOM_ID);
+
+            // then
+            assertThat(response.members()).extracting(MemberMovementResponse::status)
+                .containsExactly(MovementStatus.ARRIVED);
+            verify(alarmMovementRepository).findActiveByActiveAlarmIn(List.of(laterActiveAlarm));
+        }
+    }
+
+    @Nested
+    class 모임_회원_이동_상태_조회_권한 {
+
+        @Test
+        void 인증된_사용자가_아니면_조회할_수_없다() {
+            // given
+            Long userId = null;
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.getMemberMovements(userId, ROOM_ID));
+
+            // then
+            assertError(thrown, 401, "ROOM401", "인증되지 않은 사용자입니다.");
+            verifyNoInteractions(roomRepository, roomUserRepository, activeAlarmRepository, alarmMovementRepository);
+        }
+
+        @Test
+        void 존재하지_않거나_삭제된_모임방은_조회할_수_없다() {
+            // given
+            given(roomRepository.findActiveById(ROOM_ID)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.getMemberMovements(USER_ID, ROOM_ID));
+
+            // then
+            assertError(thrown, 404, "ROOM404", "존재하지 않는 모임 방입니다.");
+            verifyNoInteractions(activeAlarmRepository, alarmMovementRepository);
+        }
+
+        @Test
+        void 모임방_ID가_양수가_아니면_조회할_수_없다() {
+            // given
+            Long roomId = 0L;
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.getMemberMovements(USER_ID, roomId));
+
+            // then
+            assertError(thrown, 400, "ROOM400", "모임 방 ID는 양수여야 합니다.");
+            verifyNoInteractions(roomRepository, roomUserRepository, activeAlarmRepository, alarmMovementRepository);
+        }
+
+        @Test
+        void 현재_모임_회원이_아니면_조회할_수_없다() {
+            // given
+            given(roomRepository.findActiveById(ROOM_ID)).willReturn(Optional.of(roomWithId(ROOM_ID)));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(ROOM_ID, USER_ID)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.getMemberMovements(USER_ID, ROOM_ID));
+
+            // then
+            assertError(thrown, 403, "ROOM403", "모임 회원 상태를 조회할 권한이 없습니다.");
+            verifyNoInteractions(activeAlarmRepository, alarmMovementRepository);
+        }
+
+        @Test
+        void 활성_알람에_이동_기록이_없으면_내부_정합성_오류를_반환한다() {
+            // given
+            Room room = roomWithId(ROOM_ID);
+            User requester = userWithId(USER_ID, "요청자");
+            ActiveAlarm activeAlarm = activeAlarmWith(requester, 11L);
+            givenCurrentMember();
+            given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
+            given(activeAlarmRepository.findActiveByRoomIdOrderByIdDesc(ROOM_ID)).willReturn(List.of(activeAlarm));
+            given(alarmMovementRepository.findActiveByActiveAlarmIn(List.of(activeAlarm))).willReturn(List.of());
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.getMemberMovements(USER_ID, ROOM_ID));
+
+            // then
+            assertError(thrown, 500, "MOVEMENT500", "이동 상태를 처리할 수 없습니다.");
+        }
+
+        @Test
+        void 포기와_도착_시각이_함께_존재하면_내부_정합성_오류를_반환한다() {
+            // given
+            Room room = roomWithId(ROOM_ID);
+            User requester = userWithId(USER_ID, "요청자");
+            ActiveAlarm activeAlarm = activeAlarmWith(requester, 11L);
+            AlarmMovement alarmMovement = mock(AlarmMovement.class);
+            givenCurrentMember();
+            given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
+            given(activeAlarmRepository.findActiveByRoomIdOrderByIdDesc(ROOM_ID)).willReturn(List.of(activeAlarm));
+            given(alarmMovementRepository.findActiveByActiveAlarmIn(List.of(activeAlarm))).willReturn(List.of(alarmMovement));
+            given(alarmMovement.getActiveAlarm()).willReturn(activeAlarm);
+            given(alarmMovement.getGaveUpAt()).willReturn(NOW.minusMinutes(1));
+            given(alarmMovement.getArrivedAt()).willReturn(NOW);
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.getMemberMovements(USER_ID, ROOM_ID));
+
+            // then
+            assertError(thrown, 500, "MOVEMENT500", "이동 상태를 조회할 수 없습니다.");
         }
     }
 
@@ -236,6 +423,26 @@ class AlarmMovementServiceTest {
         User user = User.register(SocialProvider.KAKAO, "user-" + userId, null, NOW.minusDays(1));
         ReflectionTestUtils.setField(user, "id", userId);
         return user;
+    }
+
+    private User userWithId(Long userId, String nickname) {
+        User user = userWithId(userId);
+        user.changeNickname(nickname);
+        return user;
+    }
+
+    private ActiveAlarm activeAlarmWith(User user, Long activeAlarmId) {
+        Alarm alarm = Alarm.of(user, null, null, LocalTime.of(8, 0), 1L, 1, true);
+        ActiveAlarm activeAlarm = ActiveAlarm.of(alarm, NOW);
+        ReflectionTestUtils.setField(activeAlarm, "id", activeAlarmId);
+        return activeAlarm;
+    }
+
+    private AlarmMovement movementOf(ActiveAlarm activeAlarm, MovementStatus status) {
+        AlarmMovement alarmMovement = mock(AlarmMovement.class);
+        given(alarmMovement.getActiveAlarm()).willReturn(activeAlarm);
+        given(alarmMovement.getMovementStatus(NOW)).willReturn(status);
+        return alarmMovement;
     }
 
     private void assertError(Throwable thrown, int status, String code, String message) {

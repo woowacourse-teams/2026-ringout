@@ -45,7 +45,7 @@ class JwtAuthenticationEntryPointTest {
   }
 
   @Test
-  void Authorization_헤더가_없으면_COMMON401을_응답한다() throws Exception {
+  void Authorization_헤더가_없으면_AUTH401을_응답한다() throws Exception {
     // given
     MockHttpServletRequest request = new MockHttpServletRequest();
     MockHttpServletResponse response = new MockHttpServletResponse();
@@ -55,14 +55,14 @@ class JwtAuthenticationEntryPointTest {
 
     // then
     assertThat(response.getStatus()).isEqualTo(401);
-    assertThat(response.getContentAsString()).contains("\"code\":\"COMMON401\"");
+    assertThat(response.getContentAsString()).contains("\"code\":\"AUTH401\"");
     assertThat(response.getContentAsString()).contains("\"message\":\"인증되지 않은 사용자입니다.\"");
     assertThat(response.getContentAsString()).contains("\"result\":null");
     verify(jwtProvider, never()).isExpiredToken(org.mockito.ArgumentMatchers.any());
   }
 
   @Test
-  void 토큰이_있지만_만료가_아니면_COMMON401을_응답한다() throws Exception {
+  void 토큰이_있지만_만료가_아니면_AUTH401을_응답한다() throws Exception {
     // given
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.addHeader("Authorization", "Bearer tampered-token");
@@ -74,6 +74,6 @@ class JwtAuthenticationEntryPointTest {
 
     // then
     assertThat(response.getStatus()).isEqualTo(401);
-    assertThat(response.getContentAsString()).contains("\"code\":\"COMMON401\"");
+    assertThat(response.getContentAsString()).contains("\"code\":\"AUTH401\"");
   }
 }
