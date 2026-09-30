@@ -1,4 +1,8 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 10MB
   flyway:
     enabled: true
     baseline-version: 1
@@ -48,6 +52,11 @@ springdoc:
   packages-to-scan: com.ringout.api
 
 app:
+  aws:
+    s3:
+      bucket: ${AWS_S3_BUCKET:}
+      region: ${AWS_REGION:ap-northeast-2}
+      presigned-url-expiration: ${AWS_S3_PRESIGNED_URL_EXPIRATION:10m}
   test-login:
     enabled: ${IS_TEST_LOGIN_ENABLED:false}
     secret: ${TEST_LOGIN_SECRET:}
