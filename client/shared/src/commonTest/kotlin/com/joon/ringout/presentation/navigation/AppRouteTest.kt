@@ -13,6 +13,7 @@ class AppRouteTest {
             AppRoute.Onboarding,
             AppRoute.Home,
             AppRoute.Social,
+            AppRoute.RoomCreate,
             AppRoute.Records,
             AppRoute.AddAlarm,
             AppRoute.EditAlarm(alarmId = "alarm/서울?time=07:30&label=\"출근\""),

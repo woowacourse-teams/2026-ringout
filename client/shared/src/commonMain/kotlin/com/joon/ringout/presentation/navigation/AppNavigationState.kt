@@ -54,6 +54,7 @@ internal class AppNavigationState(
             AppRoute.Home -> listOf(AppRoute.Home)
             AppRoute.MyPage -> listOf(AppRoute.Home, AppRoute.MyPage)
             AppRoute.Social -> listOf(AppRoute.Home, AppRoute.Social)
+            AppRoute.RoomCreate -> listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomCreate)
             is AppRoute.RoomDetail -> listOf(AppRoute.Home, AppRoute.Social, route)
             AppRoute.Records -> listOf(AppRoute.Home, AppRoute.Records)
             AppRoute.NicknameChange ->
