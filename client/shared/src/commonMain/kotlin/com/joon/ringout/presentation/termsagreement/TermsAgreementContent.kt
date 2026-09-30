@@ -10,6 +10,8 @@ data class TermAgreementItem(
     val title: String,
     val isRequired: Boolean,
     val isAgreed: Boolean = false,
+    val isReadOnly: Boolean = false,
+    val version: String? = null,
 )
 
 val defaultTerms = currentTerms.map { definition ->

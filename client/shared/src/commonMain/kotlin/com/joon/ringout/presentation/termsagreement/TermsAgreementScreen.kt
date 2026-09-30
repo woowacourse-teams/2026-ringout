@@ -3,6 +3,7 @@ package com.joon.ringout.presentation.termsagreement
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -41,6 +42,7 @@ internal fun TermsAgreementScreen(
     modifier: Modifier = Modifier,
     startEnabled: Boolean = true,
     errorMessage: String? = null,
+    secondaryAction: @Composable ColumnScope.() -> Unit = {},
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -68,7 +70,7 @@ internal fun TermsAgreementScreen(
                 ) {
                     item {
                         Text(
-                            text = "서비스 이용을 위해 약관에 동의해주세요",
+                            text = uiState.title,
                             color = MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontWeight = FontWeight.Bold,
@@ -78,26 +80,31 @@ internal fun TermsAgreementScreen(
                     item {
                         Spacer(modifier = Modifier.height(36.dp))
                     }
-                    item {
-                        AllTermsAgreementRow(
-                            checked = uiState.isAllAgreed,
-                            onCheckedChange = onAllAgreementChange,
-                        )
-                    }
-                    item {
-                        Spacer(modifier = Modifier.height(12.dp))
-                    }
-                    items(
-                        items = uiState.terms,
-                        key = { term -> term.id.value },
-                    ) { term ->
-                        TermAgreementRow(
-                            term = term,
-                            onAgreedChange = { agreed ->
-                                onTermAgreementChange(term.id, agreed)
-                            },
-                            onDetailClick = { onTermDetailClick(term.id) },
-                        )
+                    when (uiState.contentState) {
+                        TermsAgreementContentState.Agreement -> {
+                            if (uiState.terms.any { !it.isReadOnly }) {
+                                item {
+                                    AllTermsAgreementRow(
+                                        checked = uiState.isAllAgreed,
+                                        onCheckedChange = onAllAgreementChange,
+                                        enabled = startEnabled,
+                                    )
+                                }
+                                item { Spacer(modifier = Modifier.height(12.dp)) }
+                            }
+                            items(
+                                items = uiState.terms,
+                                key = { term -> term.id.value },
+                            ) { term ->
+                                TermAgreementRow(
+                                    term = term,
+                                    onAgreedChange = { agreed -> onTermAgreementChange(term.id, agreed) },
+                                    onDetailClick = { onTermDetailClick(term.id) },
+                                    enabled = startEnabled,
+                                )
+                            }
+                        }
+                        TermsAgreementContentState.Error -> Unit
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
@@ -112,10 +119,13 @@ internal fun TermsAgreementScreen(
                     )
                 }
                 TermsStartButton(
-                    enabled = uiState.canStart && startEnabled,
+                    enabled = startEnabled && (
+                        uiState.contentState == TermsAgreementContentState.Error || uiState.canStart
+                    ),
                     onClick = onStartClick,
-                    label = "시작하기",
+                    label = uiState.actionLabel,
                 )
+                secondaryAction()
             }
         }
     }
@@ -227,6 +237,43 @@ private fun TermsAgreementScreenPreview(
             onTermAgreementChange = { _, _ -> },
             onTermDetailClick = {},
             onStartClick = {},
+        )
+    }
+}
+
+@Preview(name = "재동의 일부 완료", widthDp = 360, heightDp = 800)
+@Composable
+private fun TermsAgreementReagreementPreview() {
+    TermsAgreementScreenPreview(
+        themeMode = ThemeMode.Light,
+        uiState = TermsAgreementUiState(
+            terms = listOf(
+                TermAgreementItem(TermId.Service, "서비스 이용약관", true, version = "2026-09-30"),
+                TermAgreementItem(TermId.Privacy, "개인정보 처리방침", true,
+                    isAgreed = true, isReadOnly = true, version = "2026-08-13"),
+            ),
+            title = "최신 약관에 동의해 주세요",
+            actionLabel = "동의하고 계속하기",
+        ),
+    )
+}
+
+@Preview(name = "약관 조회 오류", widthDp = 360, heightDp = 640)
+@Composable
+private fun TermsAgreementErrorPreview() {
+    RingoutTheme {
+        TermsAgreementScreen(
+            uiState = TermsAgreementUiState(
+                terms = emptyList(),
+                title = "최신 약관에 동의해 주세요",
+                actionLabel = "다시 확인하기",
+                contentState = TermsAgreementContentState.Error,
+            ),
+            onAllAgreementChange = {},
+            onTermAgreementChange = { _, _ -> },
+            onTermDetailClick = {},
+            onStartClick = {},
+            errorMessage = "약관 동의 상태를 확인하지 못했어요. 다시 시도해 주세요.",
         )
     }
 }

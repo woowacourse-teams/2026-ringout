@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.termsagreement.component
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -29,6 +30,7 @@ fun TermAgreementRow(
     onAgreedChange: (Boolean) -> Unit,
     onDetailClick: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = modifier
@@ -36,32 +38,57 @@ fun TermAgreementRow(
             .heightIn(min = 64.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AgreementCheckbox(
-            checked = term.isAgreed,
-            onCheckedChange = onAgreedChange,
-        )
-        Row(
+        if (!term.isReadOnly) {
+            AgreementCheckbox(
+                checked = term.isAgreed,
+                onCheckedChange = onAgreedChange,
+                enabled = enabled,
+            )
+        }
+        Column(
             modifier = Modifier
                 .weight(1f)
                 .heightIn(min = 48.dp)
-                .clickable { onAgreedChange(!term.isAgreed) },
-            verticalAlignment = Alignment.CenterVertically,
+                .then(
+                    if (term.isReadOnly) Modifier else Modifier.clickable(enabled = enabled) {
+                        onAgreedChange(!term.isAgreed)
+                    },
+                )
+                .padding(vertical = 12.dp),
         ) {
-            Text(
-                text = term.title,
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = if (term.isRequired) "(필수)" else "(선택)",
-                color = if (term.isRequired) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = term.title,
+                    modifier = Modifier.weight(1f, fill = false),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (term.isRequired) "(필수)" else "(선택)",
+                    color = if (term.isRequired) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            if (term.isReadOnly && term.isAgreed) {
+                Text(
+                    text = "동의 완료" + (term.version?.let { " · $it" } ?: ""),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                term.version?.let { version ->
+                    Text(
+                        text = "최신 버전 $version",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
         IconButton(
             onClick = onDetailClick,

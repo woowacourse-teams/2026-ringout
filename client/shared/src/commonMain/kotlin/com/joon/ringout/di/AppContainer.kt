@@ -11,6 +11,8 @@ import com.joon.ringout.domain.preferences.AppPreferencesRepository
 import com.joon.ringout.domain.preferences.SystemThemeModeReader
 
 interface AppContainer {
+    val termsRepository: com.joon.ringout.domain.terms.TermsRepository
+    val networkMonitor: com.joon.ringout.domain.connectivity.NetworkMonitor
     val appPreferencesRepository: AppPreferencesRepository
     val systemThemeModeReader: SystemThemeModeReader
     val authSession: AuthSession

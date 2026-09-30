@@ -24,6 +24,7 @@ fun AllTermsAgreementRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = modifier
@@ -39,6 +40,7 @@ fun AllTermsAgreementRow(
         AgreementCheckbox(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            enabled = enabled,
         )
         Text(
             text = "전체 동의",
@@ -47,6 +49,7 @@ fun AllTermsAgreementRow(
                 .heightIn(min = 48.dp)
                 .toggleable(
                     value = checked,
+                    enabled = enabled,
                     role = Role.Checkbox,
                     onValueChange = onCheckedChange,
                 )
