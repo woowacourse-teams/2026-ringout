@@ -12,6 +12,7 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomMemberResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
@@ -118,6 +119,43 @@ class RoomControllerTest {
             assertThat(response.getBody()).isNotNull();
             assertThat(response.getBody().getResult()).isEqualTo(serviceResponse);
             verify(roomService).getRooms(null);
+        }
+    }
+
+    @Nested
+    class 인증된_참여자_모임방_상세_조회_응답 {
+
+        @Test
+        void 상세_조회_성공_응답을_반환한다() {
+            // given
+            Long userId = 1L;
+            Long roomId = 10L;
+            CustomUserDetails userDetails = new CustomUserDetails(userId, Role.USER);
+            RoomDetailResponse serviceResponse = new RoomDetailResponse(
+                roomId,
+                "아침 운동 모임",
+                "매주 함께 운동하고 인증하는 모임입니다.",
+                "/images/default-room.png",
+                List.of("MONDAY", "WEDNESDAY", "FRIDAY"),
+                "08:00",
+                1,
+                "OWNER",
+                null,
+                List.of(new RoomMemberResponse(userId, "가나다", null))
+            );
+            given(roomService.getRoom(userId, roomId)).willReturn(serviceResponse);
+
+            // when
+            ResponseEntity<CustomResponse<RoomDetailResponse>> response = roomController.getRoom(userDetails, roomId);
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getIsSuccess()).isTrue();
+            assertThat(response.getBody().getCode()).isEqualTo("ROOM200");
+            assertThat(response.getBody().getMessage()).isEqualTo("방 상세 정보 조회에 성공했습니다.");
+            assertThat(response.getBody().getResult()).isEqualTo(serviceResponse);
+            verify(roomService).getRoom(userId, roomId);
         }
     }
 
