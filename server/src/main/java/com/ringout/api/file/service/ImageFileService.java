@@ -6,6 +6,7 @@ import com.ringout.api.file.repository.ImageFileRepository;
 import com.ringout.api.file.status.FileErrorStatus;
 import com.ringout.api.file.storage.ImageStorage;
 import java.net.URI;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +60,11 @@ public class ImageFileService {
         }
         imageFileRepository.delete(imageFile);
         deleteStorageAfterCommit(imageFile.getUrl());
+    }
+
+    @Transactional
+    public void deleteAllByIds(List<Long> imageFileIds) {
+        imageFileRepository.findAllById(imageFileIds).forEach(this::delete);
     }
 
     private boolean registerRollbackCleanup(String objectKey) {

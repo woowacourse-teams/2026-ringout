@@ -10,6 +10,7 @@ import com.ringout.api.user.dto.response.ProfileImageResponse;
 import com.ringout.api.user.dto.response.UpdateNicknameResponse;
 import com.ringout.api.user.dto.response.UserResponse;
 import com.ringout.api.user.repository.UserRepository;
+import com.ringout.api.user.repository.UserWithdrawalRepository;
 import com.ringout.api.user.status.UserErrorStatus;
 import java.net.URI;
 import java.time.LocalDateTime;
@@ -24,6 +25,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final UserWithdrawalRepository userWithdrawalRepository;
     private final ImageFileService imageFileService;
 
     @Value("${app.file.image.profile-directory}")
@@ -69,10 +71,17 @@ public class UserService {
 
     @Transactional
     public void withdraw(Long userId) {
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdForUpdate(userId)
             .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
 
-        userRepository.delete(user);
+        if (!user.getId().equals(userId)) {
+            throw new GeneralException(UserErrorStatus.USER_NOT_FOUND);
+        }
+
+        var imageFileIds = userWithdrawalRepository.findOwnedImageFileIds(userId);
+        userWithdrawalRepository.deleteAllByUserId(userId);
+        var orphanedImageFileIds = userWithdrawalRepository.findOrphanedImageFileIds(imageFileIds);
+        imageFileService.deleteAllByIds(orphanedImageFileIds);
     }
 
     @Transactional

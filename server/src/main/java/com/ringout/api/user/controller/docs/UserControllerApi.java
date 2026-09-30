@@ -196,7 +196,7 @@ public interface UserControllerApi {
 
     @Operation(
         summary = "회원 탈퇴",
-        description = "로그인한 회원의 정보를 삭제하고 탈퇴 처리합니다.",
+        description = "액세스 토큰으로 본인 여부를 확인한 뒤 로그인한 회원과 회원이 생성한 모든 데이터를 영구 삭제합니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
@@ -209,8 +209,8 @@ public interface UserControllerApi {
                     value = """
                         {
                           "isSuccess": true,
-                          "code": "COMMON200",
-                          "message": "성공입니다.",
+                          "code": "USER200",
+                          "message": "회원 탈퇴에 성공했습니다.",
                           "result": null
                         }
                         """
