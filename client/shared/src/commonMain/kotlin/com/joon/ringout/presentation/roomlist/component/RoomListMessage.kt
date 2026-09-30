@@ -76,7 +76,7 @@ internal fun RoomListMessage(
                         onClick = onRetry,
                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
                     ) {
-                        Text("다시 시도")
+                        Text("다시 시도", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }

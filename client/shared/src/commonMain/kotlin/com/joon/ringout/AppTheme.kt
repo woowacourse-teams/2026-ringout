@@ -34,6 +34,7 @@ data class RingoutExtendedColors(
     val elevatedSurface: Color,
     val profileIconLoggedInBackground: Color,
     val profileIconLoggedOutBackground: Color,
+    val roomCardBackground: Color,
 )
 
 @Immutable
@@ -66,6 +67,7 @@ private val RingoutLightExtendedColors = RingoutExtendedColors(
     elevatedSurface = Color(0xFFF5F5F6),
     profileIconLoggedInBackground = Color(0xFFF95E25),
     profileIconLoggedOutBackground = Color(0xFF888787),
+    roomCardBackground = Color(0xFFF5F5F6),
 )
 
 private val RingoutDarkExtendedColors = RingoutExtendedColors(
@@ -76,6 +78,7 @@ private val RingoutDarkExtendedColors = RingoutExtendedColors(
     elevatedSurface = Color(0xFF22242A),
     profileIconLoggedInBackground = Color(0xFFF95E25),
     profileIconLoggedOutBackground = Color(0xFF888787),
+    roomCardBackground = Color(0xFF171717)
 )
 
 private val LocalRingoutExtendedColors = staticCompositionLocalOf {
