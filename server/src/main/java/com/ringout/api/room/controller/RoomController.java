@@ -70,6 +70,16 @@ public class RoomController implements RoomControllerApi {
     }
 
     @Override
+    @DeleteMapping("/{roomId}/members")
+    public ResponseEntity<CustomResponse<Void>> leaveRoom(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails, @PathVariable Long roomId) {
+        roomService.leaveRoom(customUserDetails.getUserId(), roomId);
+
+        return ResponseEntity.status(RoomSuccessStatus.ROOM_MEMBER_LEFT.getHttpStatus())
+            .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_MEMBER_LEFT, null));
+    }
+
+    @Override
     @PostMapping
     public ResponseEntity<CustomResponse<RoomCreateResponse>> createRoom(
         @AuthenticationPrincipal CustomUserDetails customUserDetails, @RequestBody RoomCreateRequest request

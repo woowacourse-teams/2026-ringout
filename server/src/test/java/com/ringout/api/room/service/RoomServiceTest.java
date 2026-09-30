@@ -884,6 +884,33 @@ class RoomServiceTest {
         }
 
         @Test
+        void 탈퇴한_사용자는_기존_참여_관계를_복구하여_다시_참여할_수_있다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User host = userWithId(1L, "방장");
+            User requester = userWithId(userId, "참여자");
+            Room room = roomWithHost(1L, roomId);
+            RoomUser leftRoomUser = RoomUser.of(requester, room);
+            leftRoomUser.softDelete();
+            given(userRepository.findById(userId)).willReturn(Optional.of(requester));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId)).willReturn(Optional.empty());
+            given(roomBlackListRepository.existsActiveByRoomIdAndUserId(roomId, userId)).willReturn(false);
+            given(roomUserRepository.findByRoomIdAndUserId(roomId, userId)).willReturn(Optional.of(leftRoomUser));
+            given(roomUserRepository.findActiveByRoomId(roomId)).willReturn(List.of(
+                RoomUser.of(host, room), leftRoomUser
+            ));
+
+            // when
+            roomService.joinRoom(userId, roomId);
+
+            // then
+            assertThat(leftRoomUser.getDeletedAt()).isNull();
+            verify(roomUserRepository, never()).save(any(RoomUser.class));
+        }
+
+        @Test
         void 추방된_사용자는_다시_참여할_수_없다() {
             // given
             Long userId = 2L;
@@ -903,6 +930,115 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_JOIN_FORBIDDEN));
             verify(roomUserRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    class 인증된_참여자_모임방_탈퇴_처리 {
+
+        @Test
+        void MEMBER는_자신의_활성_참여_관계를_삭제하고_모임방에서_탈퇴한다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User member = userWithId(userId, "참여자");
+            Room room = roomWithHost(1L, roomId);
+            RoomUser roomUser = RoomUser.of(member, room);
+            given(userRepository.findById(userId)).willReturn(Optional.of(member));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId)).willReturn(Optional.of(roomUser));
+
+            // when
+            roomService.leaveRoom(userId, roomId);
+
+            // then
+            assertThat(roomUser.getDeletedAt()).isNotNull();
+            verify(roomUserRepository, never()).delete(roomUser);
+            verify(roomBlackListRepository, never()).save(any(RoomBlackList.class));
+        }
+
+        @Test
+        void 인증되지_않은_사용자는_모임방에서_탈퇴할_수_없다() {
+            // given
+            Long roomId = 10L;
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.leaveRoom(null, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getErrorReasonHttpStatus())
+                        .extracting("httpStatus", "code", "message")
+                        .containsExactly(HttpStatus.UNAUTHORIZED, "ROOM401", "인증되지 않은 사용자입니다."));
+            verify(roomRepository, never()).findActiveById(any());
+            verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
+        }
+
+        @Test
+        void 존재하지_않거나_삭제된_모임방에서는_탈퇴할_수_없다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User member = userWithId(userId, "참여자");
+            given(userRepository.findById(userId)).willReturn(Optional.of(member));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.leaveRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getErrorReasonHttpStatus())
+                        .extracting("httpStatus", "code", "message")
+                        .containsExactly(HttpStatus.NOT_FOUND, "ROOM404", "존재하지 않는 모임 방입니다."));
+            verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
+        }
+
+        @Test
+        void 참여하고_있지_않은_사용자는_모임방에서_탈퇴할_수_없다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User member = userWithId(userId, "참여자");
+            Room room = roomWithHost(1L, roomId);
+            given(userRepository.findById(userId)).willReturn(Optional.of(member));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.leaveRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getErrorReasonHttpStatus())
+                        .extracting("httpStatus", "code", "message")
+                        .containsExactly(HttpStatus.CONFLICT, "ROOM409", "참여 중인 모임이 아닙니다."));
+            verify(roomBlackListRepository, never()).save(any(RoomBlackList.class));
+        }
+
+        @Test
+        void OWNER는_모임방에서_탈퇴할_수_없다() {
+            // given
+            Long ownerUserId = 1L;
+            Long roomId = 10L;
+            User owner = userWithId(ownerUserId, "방장");
+            Room room = roomWithHost(ownerUserId, roomId);
+            given(userRepository.findById(ownerUserId)).willReturn(Optional.of(owner));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.leaveRoom(ownerUserId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getErrorReasonHttpStatus())
+                        .extracting("httpStatus", "code", "message")
+                        .containsExactly(HttpStatus.FORBIDDEN, "ROOM403", "방장은 모임에서 탈퇴할 수 없습니다."));
+            verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
         }
     }
 
