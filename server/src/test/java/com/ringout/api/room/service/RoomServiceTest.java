@@ -5,20 +5,22 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.file.domain.ImageFile;
+import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomBlackList;
 import com.ringout.api.room.domain.RoomUser;
-import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
 import com.ringout.api.room.repository.RoomRepository;
@@ -27,9 +29,9 @@ import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.user.domain.Nickname;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
-import java.time.LocalTime;
-import java.time.LocalDateTime;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,8 +41,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class RoomServiceTest {
@@ -100,6 +102,98 @@ class RoomServiceTest {
             assertThat(response.members().get(0).profileImageUrl()).isNull();
             verify(roomRepository).save(any(Room.class));
             verify(roomUserRepository).save(any(RoomUser.class));
+        }
+    }
+
+    @Nested
+    class 모임방_최신_활동_정렬_처리 {
+
+        @Test
+        void 방_수정과_회원의_알람_기록_및_상태_변경_중_가장_최근_활동순으로_목록을_반환한다() {
+            // given
+            Long userId = 1L;
+            Room roomUpdated = roomWithDetails(
+                10L,
+                "아침 운동 모임",
+                "매주 함께 운동하고 인증하는 모임입니다.",
+                List.of(ActivityDay.FRIDAY, ActivityDay.MONDAY),
+                LocalTime.of(8, 0),
+                "https://example.com/images/room-1.png",
+                LocalDateTime.of(2026, 9, 20, 10, 30)
+            );
+            Room roomWithAlarmOccurrence = roomWithDetails(
+                20L,
+                "퇴근 후 러닝",
+                null,
+                List.of(ActivityDay.THURSDAY, ActivityDay.TUESDAY),
+                LocalTime.of(19, 30),
+                null,
+                LocalDateTime.of(2026, 9, 18, 14, 20)
+            );
+            Room roomWithMovementStatus = roomWithDetails(
+                30L,
+                "점심 산책",
+                null,
+                List.of(ActivityDay.WEDNESDAY),
+                LocalTime.of(12, 30),
+                null,
+                LocalDateTime.of(2026, 9, 17, 14, 20)
+            );
+            given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(
+                roomWithAlarmOccurrence, roomWithMovementStatus, roomUpdated
+            ));
+            given(roomUserRepository.countActiveByRoomId(10L)).willReturn(12);
+            given(roomUserRepository.countActiveByRoomId(20L)).willReturn(5);
+            given(roomUserRepository.countActiveByRoomId(30L)).willReturn(3);
+            given(roomUserRepository.existsActiveByRoomIdAndUserId(10L, userId)).willReturn(true);
+            given(roomUserRepository.existsActiveByRoomIdAndUserId(20L, userId)).willReturn(false);
+            given(roomUserRepository.existsActiveByRoomIdAndUserId(30L, userId)).willReturn(false);
+
+            // when
+            RoomListResponse response = roomService.getRooms(userId);
+
+            // then
+            assertThat(response.rooms()).extracting("roomId").containsExactly(20L, 30L, 10L);
+            assertThat(response.rooms().get(0).isJoined()).isFalse();
+            assertThat(response.rooms().get(1).memberCount()).isEqualTo(3);
+            assertThat(response.rooms().get(2).isJoined()).isTrue();
+            verify(roomRepository).findAllActiveOrderByLatestActivityAtDescIdAsc();
+        }
+
+        @Test
+        void 비로그인_사용자는_참여_여부를_false로_반환한다() {
+            // given
+            Room room = roomWithDetails(
+                10L,
+                "아침 운동 모임",
+                null,
+                List.of(ActivityDay.MONDAY),
+                LocalTime.of(8, 0),
+                null,
+                LocalDateTime.of(2026, 9, 20, 10, 30)
+            );
+            given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(room));
+            given(roomUserRepository.countActiveByRoomId(10L)).willReturn(1);
+
+            // when
+            RoomListResponse response = roomService.getRooms(null);
+
+            // then
+            assertThat(response.rooms()).singleElement().extracting("isJoined").isEqualTo(false);
+            verify(roomUserRepository, never()).existsActiveByRoomIdAndUserId(any(), any());
+        }
+
+        @Test
+        void 조회할_모임방이_없으면_빈_목록을_반환한다() {
+            // given
+            given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of());
+
+            // when
+            RoomListResponse response = roomService.getRooms(null);
+
+            // then
+            assertThat(response.rooms()).isEmpty();
+            verify(roomUserRepository, never()).countActiveByRoomId(any());
         }
     }
 
@@ -646,7 +740,8 @@ class RoomServiceTest {
             // then
             assertThat(thrown)
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(com.ringout.api.user.status.UserErrorStatus.USER_NOT_FOUND));
+                    assertThat(exception.getCode()).isEqualTo(
+                        com.ringout.api.user.status.UserErrorStatus.USER_NOT_FOUND));
             verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
         }
 
@@ -730,6 +825,26 @@ class RoomServiceTest {
             LocalTime.of(8, 0)
         );
         ReflectionTestUtils.setField(room, "id", roomId);
+        return room;
+    }
+
+    private Room roomWithDetails(
+        Long roomId,
+        String name,
+        String description,
+        List<ActivityDay> activityDays,
+        LocalTime activityTime,
+        String imageUrl,
+        LocalDateTime createdAt
+    ) {
+        Room room = Room.of(userWithId(1L, "방장"), null, name, description, activityDays, activityTime);
+        ReflectionTestUtils.setField(room, "id", roomId);
+        ReflectionTestUtils.setField(room, "created_at", createdAt);
+        if (imageUrl != null) {
+            ImageFile image = mock(ImageFile.class);
+            given(image.getUrl()).willReturn(imageUrl);
+            ReflectionTestUtils.setField(room, "image", image);
+        }
         return room;
     }
 }

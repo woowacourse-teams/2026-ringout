@@ -25,6 +25,7 @@ import com.ringout.api.alarmoccurrence.repository.AlarmRingingRepository;
 import com.ringout.api.alarmoccurrence.status.AlarmOccurrenceErrorStatus;
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.room.service.RoomActivityService;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
 import java.time.Clock;
@@ -68,12 +69,15 @@ class AlarmOccurrenceServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private RoomActivityService roomActivityService;
+
     private AlarmOccurrenceService alarmOccurrenceService;
 
     @BeforeEach
     void setUp() {
         alarmOccurrenceService = new AlarmOccurrenceService(
-            alarmOccurrenceRepository, alarmRingingRepository, userRepository, CLOCK);
+            alarmOccurrenceRepository, alarmRingingRepository, userRepository, roomActivityService, CLOCK);
     }
 
     @Nested
@@ -202,6 +206,7 @@ class AlarmOccurrenceServiceTest {
             assertThat(captor.getValue().getClientAlarmId()).isEqualTo("alarm-1");
             assertThat(captor.getValue().getScheduledAt()).isEqualTo(LocalDateTime.of(2026, 9, 23, 7, 0));
             assertThat(captor.getValue().getAlarmTime()).isEqualTo(LocalTime.of(7, 0));
+            verify(roomActivityService).recordMemberAlarmActivity(USER_ID, NOW);
         }
 
         @Test
@@ -312,6 +317,7 @@ class AlarmOccurrenceServiceTest {
                 OffsetDateTime.parse("2026-09-23T07:00:40+09:00")));
             assertThat(response.ringings().get(0).dismissedAt()).isNull();
             assertThat(occurrence.getRingings()).hasSize(2);
+            verify(roomActivityService).recordMemberAlarmActivity(USER_ID, NOW);
         }
 
         @Test
