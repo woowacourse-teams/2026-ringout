@@ -128,6 +128,7 @@ internal fun RoomDetailStatusScreen(
                         else -> "모임을 찾을 수 없어요."
                     },
                     color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyMedium,
                 )
                 if (!isLoading && errorMessage != null) {
                     Spacer(Modifier.height(12.dp))
@@ -135,6 +136,7 @@ internal fun RoomDetailStatusScreen(
                         text = "다시 시도",
                         modifier = Modifier.clickable(role = Role.Button, onClick = onRetry),
                         color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge,
                     )
                 }
             }
