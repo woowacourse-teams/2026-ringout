@@ -20,7 +20,8 @@ public record RoomCreateRequest(
     @Schema(
         description = "모임 소개. 생략할 수 있지만, 제공하면 공백만으로 구성될 수 없고 최대 300자입니다.",
         example = "매주 함께 운동하고 인증하는 모임입니다.",
-        maxLength = 300
+        maxLength = 300,
+        nullable = true
     )
     String description,
 
