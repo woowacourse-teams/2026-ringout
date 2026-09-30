@@ -4,6 +4,7 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.user.controller.docs.UserControllerApi;
 import com.ringout.api.user.dto.request.UpdateNicknameRequest;
+import com.ringout.api.user.dto.response.ProfileImageResponse;
 import com.ringout.api.user.dto.response.UpdateNicknameResponse;
 import com.ringout.api.user.dto.response.UserResponse;
 import com.ringout.api.user.service.UserService;
@@ -11,23 +12,25 @@ import com.ringout.api.user.status.UserSuccessStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/users")
 public class UserController implements UserControllerApi {
 
     private final UserService userService;
 
     @Override
-    @GetMapping("/me")
+    @GetMapping("/users/me")
     public ResponseEntity<CustomResponse<UserResponse>> getUser(
         @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
@@ -38,7 +41,7 @@ public class UserController implements UserControllerApi {
     }
 
     @Override
-    @PatchMapping("/me/nickname")
+    @PatchMapping("/users/me/nickname")
     public ResponseEntity<CustomResponse<UpdateNicknameResponse>> updateNickname(
         @AuthenticationPrincipal CustomUserDetails userDetails,
         @Valid @RequestBody UpdateNicknameRequest request
@@ -53,7 +56,7 @@ public class UserController implements UserControllerApi {
     }
 
     @Override
-    @DeleteMapping("/me")
+    @DeleteMapping("/users/me")
     public ResponseEntity<CustomResponse<Void>> withdraw(
         @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
@@ -61,5 +64,17 @@ public class UserController implements UserControllerApi {
 
         return ResponseEntity.status(UserSuccessStatus.USER_WITHDRAWN.getHttpStatus())
             .body(CustomResponse.onSuccess(UserSuccessStatus.USER_WITHDRAWN, null));
+    }
+
+    @Override
+    @PostMapping(value = "/user/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<CustomResponse<ProfileImageResponse>> uploadProfileImage(
+        @AuthenticationPrincipal CustomUserDetails userDetails,
+        @RequestPart("image") MultipartFile image
+    ) {
+        ProfileImageResponse response = userService.uploadProfileImage(userDetails.getUserId(), image);
+
+        return ResponseEntity.status(UserSuccessStatus.USER_PROFILE_IMAGE_UPLOADED.getHttpStatus())
+            .body(CustomResponse.onSuccess(UserSuccessStatus.USER_PROFILE_IMAGE_UPLOADED, response));
     }
 }

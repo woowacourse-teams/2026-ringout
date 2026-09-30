@@ -25,6 +25,9 @@ public class ImageFile extends BaseEntity {
     private String url;
 
     private ImageFile(String url) {
+        if (url == null || url.isBlank()) {
+            throw new IllegalArgumentException("이미지 객체 key는 비어 있을 수 없습니다.");
+        }
         this.url = url;
     }
 
