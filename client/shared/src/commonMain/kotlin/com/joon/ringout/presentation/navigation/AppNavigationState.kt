@@ -59,11 +59,11 @@ internal class AppNavigationState(
             AppRoute.Records -> listOf(AppRoute.Home, AppRoute.Records)
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)
-            // 모임 소개에서 시작한 인증은 상세 경로를 유지하고, 일반 로그인은 마이페이지로 돌아간다.
-            AppRoute.Login -> roomDetailReturnStack()?.plus(AppRoute.Login)
+            // 소셜에서 시작한 인증은 출처를 유지하고, 일반 로그인은 마이페이지로 돌아간다.
+            AppRoute.Login -> socialReturnStack()?.plus(AppRoute.Login)
                 ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
-            AppRoute.TermsAgreement -> roomDetailReturnStack()?.let { roomDetailStack ->
-                roomDetailStack + AppRoute.Login + AppRoute.TermsAgreement
+            AppRoute.TermsAgreement -> socialReturnStack()?.let { socialStack ->
+                socialStack + AppRoute.Login + AppRoute.TermsAgreement
             } ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
             AppRoute.AddAlarm -> listOf(AppRoute.Home, AppRoute.AddAlarm)
             is AppRoute.EditAlarm -> listOf(AppRoute.Home, route)
@@ -85,9 +85,9 @@ internal class AppNavigationState(
         replaceBackStack(destinationStack)
     }
 
-    /** 상세 화면에서 시작한 인증은 완료 후 기존 모임 소개 화면으로 돌아간다. */
+    /** 소셜에서 시작한 인증은 완료 후 기존 소셜 또는 모임 소개 화면으로 돌아간다. */
     fun completeAuthenticationFlow() {
-        replaceBackStack(roomDetailReturnStack() ?: listOf(AppRoute.Home))
+        replaceBackStack(socialReturnStack() ?: listOf(AppRoute.Home))
     }
 
     fun popBackStack(from: AppRoute = routes.last()) {
@@ -99,18 +99,28 @@ internal class AppNavigationState(
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
 
-    private fun roomDetailReturnStack(): List<AppRoute>? {
-        // 알람 등 다른 화면에서 요청한 로그인까지 이전 상세 경로로 연결하지 않는다.
-        if (
-            routes.last() !is AppRoute.RoomDetail &&
-            routes.last() != AppRoute.Login &&
-            routes.last() != AppRoute.TermsAgreement
-        ) {
-            return null
+    private fun socialReturnStack(): List<AppRoute>? {
+        val currentRoute = routes.lastOrNull() ?: return null
+        if (currentRoute == AppRoute.Social) {
+            return routes.take(routes.lastIndex + 1)
         }
-        val detailIndex = routes.indexOfLast { it is AppRoute.RoomDetail }
-        if (detailIndex < 1 || routes[detailIndex - 1] != AppRoute.Social) return null
-        return routes.take(detailIndex + 1)
+
+        val returnRouteIndex = when (currentRoute) {
+            is AppRoute.RoomDetail -> routes.lastIndex
+            AppRoute.Login -> routes.lastIndex - 1
+            AppRoute.TermsAgreement -> routes.indexOfLast { it == AppRoute.Login } - 1
+            else -> return null
+        }
+        if (returnRouteIndex < 1) return null
+
+        return when (val returnRoute = routes[returnRouteIndex]) {
+            AppRoute.Social -> routes.take(returnRouteIndex + 1)
+            is AppRoute.RoomDetail -> {
+                if (routes.getOrNull(returnRouteIndex - 1) != AppRoute.Social) return null
+                routes.take(returnRouteIndex + 1)
+            }
+            else -> null
+        }
     }
 
     private fun replaceBackStack(destinationStack: List<AppRoute>) {

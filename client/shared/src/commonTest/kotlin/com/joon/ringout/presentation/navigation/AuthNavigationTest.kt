@@ -36,6 +36,47 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthNavigationTest {
     @Test
+    fun `소셜에서 로그인한 기존 회원은 인증 완료 후 소셜로 돌아온다`() = runTest {
+        val fixture = AuthNavigationFixture(backgroundScope)
+        fixture.state.navigate(AppRoute.Social)
+        fixture.state.navigate(AppRoute.Login)
+        fixture.login.beginGoogleSignIn()
+        fixture.login.handleGoogleAccessTokenResult(GoogleAccessTokenResult.Success("access-token"))
+        runCurrent()
+
+        assertTrue(fixture.navigation.onAuthenticated(AppRoute.Login))
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), fixture.state.backStack.toList())
+        assertFalse(fixture.signup.uiState.hasPendingSignup)
+    }
+
+    @Test
+    fun `소셜에서 시작한 회원가입 완료 후 소셜로 돌아온다`() = runTest {
+        val fixture = AuthNavigationFixture(backgroundScope)
+        fixture.state.navigate(AppRoute.Social)
+        fixture.state.navigate(AppRoute.Login)
+        fixture.authRepository.loginOutcome = SocialLoginOutcome.SignupRequired("signup-token")
+        fixture.login.beginGoogleSignIn()
+        fixture.login.handleGoogleAccessTokenResult(GoogleAccessTokenResult.Success("access-token"))
+        runCurrent()
+        val completion = assertIs<LoginCompletion.SignupRequired>(fixture.login.uiState.completion)
+
+        assertTrue(
+            fixture.navigation.onSignupRequired(
+                displayedRoute = AppRoute.Login,
+                signupToken = completion.signupToken,
+                provider = completion.provider,
+            ),
+        )
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
+        runCurrent()
+
+        assertTrue(fixture.navigation.onSignupCompleted(AppRoute.TermsAgreement))
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), fixture.state.backStack.toList())
+    }
+
+    @Test
     fun `모임 상세에서 로그인 완료 후 같은 모임 소개 화면으로 돌아온다`() = runTest {
         val fixture = AuthNavigationFixture(backgroundScope)
         val roomDetail = AppRoute.RoomDetail("room-42")
