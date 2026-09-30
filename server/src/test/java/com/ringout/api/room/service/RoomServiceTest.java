@@ -884,6 +884,33 @@ class RoomServiceTest {
         }
 
         @Test
+        void 탈퇴한_사용자는_기존_참여_관계를_복구하여_다시_참여할_수_있다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User host = userWithId(1L, "방장");
+            User requester = userWithId(userId, "참여자");
+            Room room = roomWithHost(1L, roomId);
+            RoomUser leftRoomUser = RoomUser.of(requester, room);
+            leftRoomUser.softDelete();
+            given(userRepository.findById(userId)).willReturn(Optional.of(requester));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId)).willReturn(Optional.empty());
+            given(roomBlackListRepository.existsActiveByRoomIdAndUserId(roomId, userId)).willReturn(false);
+            given(roomUserRepository.findByRoomIdAndUserId(roomId, userId)).willReturn(Optional.of(leftRoomUser));
+            given(roomUserRepository.findActiveByRoomId(roomId)).willReturn(List.of(
+                RoomUser.of(host, room), leftRoomUser
+            ));
+
+            // when
+            roomService.joinRoom(userId, roomId);
+
+            // then
+            assertThat(leftRoomUser.getDeletedAt()).isNull();
+            verify(roomUserRepository, never()).save(any(RoomUser.class));
+        }
+
+        @Test
         void 추방된_사용자는_다시_참여할_수_없다() {
             // given
             Long userId = 2L;

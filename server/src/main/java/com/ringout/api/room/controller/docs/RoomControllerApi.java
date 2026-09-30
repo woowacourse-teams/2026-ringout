@@ -237,6 +237,36 @@ public interface RoomControllerApi {
     );
 
     @Operation(
+        summary = "모임 방 탈퇴",
+        description = "인증된 현재 참여자가 본인의 참여 관계를 삭제하고 모임 방에서 탈퇴합니다. 방장은 탈퇴할 수 없으며, 탈퇴한 MEMBER는 다시 참여할 수 있습니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "모임 방 탈퇴 성공", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": true, "code": "ROOM200", "message": "모임 방 탈퇴에 성공했습니다.", "result": null}
+            """))),
+        @ApiResponse(responseCode = "400", description = "roomId를 Long으로 변환할 수 없음", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "COMMON400", "message": "잘못된 요청입니다.", "result": null}
+            """))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "AUTH401", "message": "인증되지 않은 사용자입니다.", "result": null}
+            """))),
+        @ApiResponse(responseCode = "403", description = "방장의 탈퇴 요청", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "ROOM403", "message": "방장은 모임에서 탈퇴할 수 없습니다.", "result": null}
+            """))),
+        @ApiResponse(responseCode = "404", description = "존재하지 않거나 삭제된 모임 방", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "ROOM404", "message": "존재하지 않는 모임 방입니다.", "result": null}
+            """))),
+        @ApiResponse(responseCode = "409", description = "현재 참여하지 않은 사용자", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "ROOM409", "message": "참여 중인 모임이 아닙니다.", "result": null}
+            """)))
+    })
+    ResponseEntity<CustomResponse<Void>> leaveRoom(
+        @Parameter(hidden = true) CustomUserDetails customUserDetails,
+        @Parameter(description = "탈퇴할 모임 방 식별자", required = true, example = "1") Long roomId
+    );
+
+    @Operation(
         summary = "모임 방 생성",
         description = "새로운 모임 방을 생성합니다. 요청한 사용자는 방장(OWNER)으로 자동 가입되며, 생성된 방의 상세 정보를 반환합니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)

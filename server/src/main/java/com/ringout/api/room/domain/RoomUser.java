@@ -51,4 +51,8 @@ public class RoomUser extends BaseEntity {
     public void softDelete() {
         markDeleted();
     }
+
+    public void restore() {
+        super.restore();
+    }
 }

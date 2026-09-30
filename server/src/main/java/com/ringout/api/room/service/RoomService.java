@@ -96,7 +96,8 @@ public class RoomService {
 
         validateJoinRoom(roomId, user);
 
-        roomUserRepository.save(RoomUser.of(user, room));
+        roomUserRepository.findByRoomIdAndUserId(roomId, user.getId())
+            .ifPresentOrElse(RoomUser::restore, () -> roomUserRepository.save(RoomUser.of(user, room)));
         List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
 
         log.atInfo()
@@ -205,6 +206,31 @@ public class RoomService {
             .addKeyValue("roomId", roomId)
             .addKeyValue("targetUserId", targetUserId)
             .log("모임 회원 추방 성공");
+    }
+
+    @Transactional
+    public void leaveRoom(Long userId, Long roomId) {
+        log.atInfo()
+            .addKeyValue("event", "room_member_leave_requested")
+            .addKeyValue("userId", userId)
+            .addKeyValue("roomId", roomId)
+            .log("모임방 탈퇴 요청 시작");
+
+        User user = findAuthenticatedUser(userId);
+        Room room = findActiveRoom(roomId);
+        if (room.isHostedBy(user.getId())) {
+            throw new GeneralException(RoomErrorStatus.ROOM_HOST_LEAVE_FORBIDDEN);
+        }
+
+        RoomUser roomUser = roomUserRepository.findActiveByRoomIdAndUserId(roomId, user.getId())
+            .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_MEMBER_NOT_JOINED));
+        roomUser.softDelete();
+
+        log.atInfo()
+            .addKeyValue("event", "room_member_leave_succeeded")
+            .addKeyValue("userId", userId)
+            .addKeyValue("roomId", roomId)
+            .log("모임방 탈퇴 성공");
     }
 
     private User findAuthenticatedUser(Long userId) {

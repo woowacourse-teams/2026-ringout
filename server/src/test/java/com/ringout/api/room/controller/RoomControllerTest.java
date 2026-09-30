@@ -252,6 +252,30 @@ class RoomControllerTest {
     }
 
     @Nested
+    class 인증된_참여자_모임방_탈퇴_응답 {
+
+        @Test
+        void 탈퇴_성공_응답을_반환한다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            CustomUserDetails userDetails = new CustomUserDetails(userId, Role.USER);
+
+            // when
+            ResponseEntity<CustomResponse<Void>> response = roomController.leaveRoom(userDetails, roomId);
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getIsSuccess()).isTrue();
+            assertThat(response.getBody().getCode()).isEqualTo("ROOM200");
+            assertThat(response.getBody().getMessage()).isEqualTo("모임 방 탈퇴에 성공했습니다.");
+            assertThat(response.getBody().getResult()).isNull();
+            verify(roomService).leaveRoom(userId, roomId);
+        }
+    }
+
+    @Nested
     class 인증된_방장_회원_추방_응답 {
 
         @Test

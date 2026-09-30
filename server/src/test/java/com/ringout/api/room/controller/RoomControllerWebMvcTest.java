@@ -2,6 +2,8 @@ package com.ringout.api.room.controller;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -86,5 +88,23 @@ class RoomControllerWebMvcTest {
             jsonPath("$.message").value("인증되지 않은 사용자입니다."),
             jsonPath("$.result").doesNotExist()
         );
+    }
+
+    @Test
+    void 비로그인_사용자는_모임방에서_탈퇴할_수_없다() throws Exception {
+        // given
+
+        // when
+        var result = mockMvc.perform(delete("/api/v1/rooms/1/members"));
+
+        // then
+        result.andExpectAll(
+            status().isUnauthorized(),
+            jsonPath("$.isSuccess").value(false),
+            jsonPath("$.code").value("AUTH401"),
+            jsonPath("$.message").value("인증되지 않은 사용자입니다."),
+            jsonPath("$.result").doesNotExist()
+        );
+        verifyNoInteractions(roomService);
     }
 }

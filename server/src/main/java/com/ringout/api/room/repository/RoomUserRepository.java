@@ -19,6 +19,8 @@ public interface RoomUserRepository extends JpaRepository<RoomUser, Long> {
         """)
     Optional<RoomUser> findActiveByRoomIdAndUserId(@Param("roomId") Long roomId, @Param("userId") Long userId);
 
+    Optional<RoomUser> findByRoomIdAndUserId(Long roomId, Long userId);
+
     @Query("""
         select roomUser
         from RoomUser roomUser
