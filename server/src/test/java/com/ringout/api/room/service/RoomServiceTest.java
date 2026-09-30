@@ -106,13 +106,13 @@ class RoomServiceTest {
     }
 
     @Nested
-    class 모임방_목록_조회_처리 {
+    class 모임방_최신_활동_정렬_처리 {
 
         @Test
-        void 최신_활동순_모임방_목록과_로그인_사용자의_참여_여부를_반환한다() {
+        void 방_수정과_회원의_알람_기록_및_상태_변경_중_가장_최근_활동순으로_목록을_반환한다() {
             // given
             Long userId = 1L;
-            Room firstRoom = roomWithDetails(
+            Room roomUpdated = roomWithDetails(
                 10L,
                 "아침 운동 모임",
                 "매주 함께 운동하고 인증하는 모임입니다.",
@@ -121,7 +121,7 @@ class RoomServiceTest {
                 "https://example.com/images/room-1.png",
                 LocalDateTime.of(2026, 9, 20, 10, 30)
             );
-            Room secondRoom = roomWithDetails(
+            Room roomWithAlarmOccurrence = roomWithDetails(
                 20L,
                 "퇴근 후 러닝",
                 null,
@@ -130,47 +130,34 @@ class RoomServiceTest {
                 null,
                 LocalDateTime.of(2026, 9, 18, 14, 20)
             );
-
-            given(roomRepository.findAllActiveOrderByLatestActivity()).willReturn(List.of(firstRoom, secondRoom));
+            Room roomWithMovementStatus = roomWithDetails(
+                30L,
+                "점심 산책",
+                null,
+                List.of(ActivityDay.WEDNESDAY),
+                LocalTime.of(12, 30),
+                null,
+                LocalDateTime.of(2026, 9, 17, 14, 20)
+            );
+            given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(
+                roomWithAlarmOccurrence, roomWithMovementStatus, roomUpdated
+            ));
             given(roomUserRepository.countActiveByRoomId(10L)).willReturn(12);
             given(roomUserRepository.countActiveByRoomId(20L)).willReturn(5);
+            given(roomUserRepository.countActiveByRoomId(30L)).willReturn(3);
             given(roomUserRepository.existsActiveByRoomIdAndUserId(10L, userId)).willReturn(true);
             given(roomUserRepository.existsActiveByRoomIdAndUserId(20L, userId)).willReturn(false);
+            given(roomUserRepository.existsActiveByRoomIdAndUserId(30L, userId)).willReturn(false);
 
             // when
-            RoomListResponse response = roomService.findRooms(userId);
+            RoomListResponse response = roomService.getRooms(userId);
 
             // then
-            assertThat(response.rooms()).hasSize(2);
-            assertThat(response.rooms().get(0))
-                .extracting("roomId", "name", "description", "imageUrl", "activityDays", "activityTime", "memberCount",
-                    "isJoined", "createdAt")
-                .containsExactly(
-                    10L,
-                    "아침 운동 모임",
-                    "매주 함께 운동하고 인증하는 모임입니다.",
-                    "https://example.com/images/room-1.png",
-                    List.of("MONDAY", "FRIDAY"),
-                    "08:00",
-                    12,
-                    true,
-                    LocalDateTime.of(2026, 9, 20, 10, 30)
-                );
-            assertThat(response.rooms().get(1))
-                .extracting("roomId", "description", "imageUrl", "activityDays", "activityTime", "memberCount",
-                    "isJoined",
-                    "createdAt")
-                .containsExactly(
-                    20L,
-                    null,
-                    "/images/default-room.png",
-                    List.of("TUESDAY", "THURSDAY"),
-                    "19:30",
-                    5,
-                    false,
-                    LocalDateTime.of(2026, 9, 18, 14, 20)
-                );
-            verify(roomRepository).findAllActiveOrderByLatestActivity();
+            assertThat(response.rooms()).extracting("roomId").containsExactly(20L, 30L, 10L);
+            assertThat(response.rooms().get(0).isJoined()).isFalse();
+            assertThat(response.rooms().get(1).memberCount()).isEqualTo(3);
+            assertThat(response.rooms().get(2).isJoined()).isTrue();
+            verify(roomRepository).findAllActiveOrderByLatestActivityAtDescIdAsc();
         }
 
         @Test
@@ -185,11 +172,11 @@ class RoomServiceTest {
                 null,
                 LocalDateTime.of(2026, 9, 20, 10, 30)
             );
-            given(roomRepository.findAllActiveOrderByLatestActivity()).willReturn(List.of(room));
+            given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(room));
             given(roomUserRepository.countActiveByRoomId(10L)).willReturn(1);
 
             // when
-            RoomListResponse response = roomService.findRooms(null);
+            RoomListResponse response = roomService.getRooms(null);
 
             // then
             assertThat(response.rooms()).singleElement().extracting("isJoined").isEqualTo(false);
@@ -199,10 +186,10 @@ class RoomServiceTest {
         @Test
         void 조회할_모임방이_없으면_빈_목록을_반환한다() {
             // given
-            given(roomRepository.findAllActiveOrderByLatestActivity()).willReturn(List.of());
+            given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of());
 
             // when
-            RoomListResponse response = roomService.findRooms(null);
+            RoomListResponse response = roomService.getRooms(null);
 
             // then
             assertThat(response.rooms()).isEmpty();

@@ -13,9 +13,11 @@ import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
 import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.room.domain.RoomUser;
+import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
+import com.ringout.api.room.service.RoomActivityService;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -36,19 +38,21 @@ public class AlarmMovementService {
     private final RoomUserRepository roomUserRepository;
     private final ActiveAlarmRepository activeAlarmRepository;
     private final AlarmMovementRepository alarmMovementRepository;
+    private final RoomActivityService roomActivityService;
 
     private final Clock clock;
 
     @Transactional
     public AlarmMovementResponse changeMovement(Long userId, Long roomId, AlarmMovementRequest request) {
         validateRequest(request);
-        validateCurrentRoomMember(userId, roomId);
+        Room room = findActiveRoomForCurrentMember(userId, roomId);
 
         ActiveAlarm activeAlarm = activeAlarmRepository.findActiveById(request.alarmId())
             .orElseThrow(() -> new GeneralException(AlarmMovementErrorStatus.ALARM_NOT_FOUND));
         AlarmMovement alarmMovement = findAlarmMovement(activeAlarm, request.alarmId());
 
         MovementStatus movementStatus = alarmMovement.change(request.action(), LocalDateTime.now(clock));
+        roomActivityService.recordMovementActivity(room, LocalDateTime.now(clock));
         logMovementStatusChanged(userId, roomId, request.alarmId(), request.action(), movementStatus);
 
         return new AlarmMovementResponse(movementStatus);
@@ -74,12 +78,13 @@ public class AlarmMovementService {
         return new MemberMovementsResponse(members);
     }
 
-    private void validateCurrentRoomMember(Long userId, Long roomId) {
-        roomRepository.findActiveById(roomId)
+    private Room findActiveRoomForCurrentMember(Long userId, Long roomId) {
+        Room room = roomRepository.findActiveById(roomId)
             .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_NOT_FOUND));
         if (roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId).isEmpty()) {
             throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_FORBIDDEN);
         }
+        return room;
     }
 
     private void validateCurrentRoomMemberForMovementStatus(Long userId, Long roomId) {

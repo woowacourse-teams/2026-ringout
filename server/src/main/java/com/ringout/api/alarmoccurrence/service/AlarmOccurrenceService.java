@@ -14,6 +14,7 @@ import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.alarmoccurrence.repository.AlarmRingingRepository;
 import com.ringout.api.alarmoccurrence.status.AlarmOccurrenceErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.room.service.RoomActivityService;
 import com.ringout.api.user.repository.UserRepository;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -39,6 +40,7 @@ public class AlarmOccurrenceService {
     private final AlarmOccurrenceRepository alarmOccurrenceRepository;
     private final AlarmRingingRepository alarmRingingRepository;
     private final UserRepository userRepository;
+    private final RoomActivityService roomActivityService;
 
     private final Clock clock;
 
@@ -84,6 +86,7 @@ public class AlarmOccurrenceService {
         }
 
         applyEvent(alarmOccurrence, request);
+        roomActivityService.recordMemberAlarmActivity(userId, LocalDateTime.now(clock));
         logAlarmOccurrenceEventRecorded(userId, alarmOccurrenceId, request);
 
         return toDetailResponse(alarmOccurrence);
@@ -98,12 +101,15 @@ public class AlarmOccurrenceService {
             scheduledAt.toLocalTime().truncatedTo(ChronoUnit.MINUTES),
             LocalDateTime.now(clock)
         ));
+
         log.atInfo()
             .addKeyValue("event", "alarm_occurrence_started")
             .addKeyValue("userId", userId)
             .addKeyValue("alarmId", request.alarmId())
             .addKeyValue("alarmOccurrenceId", alarmOccurrence.getOccurrenceUuid())
             .log("알람 실행 시작");
+
+        roomActivityService.recordMemberAlarmActivity(userId, LocalDateTime.now(clock));
 
         return new AlarmOccurrenceStartResult(toDetailResponse(alarmOccurrence), true);
     }

@@ -7,6 +7,7 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.service.RoomService;
 import com.ringout.api.room.status.RoomSuccessStatus;
@@ -15,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,6 +31,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class RoomController implements RoomControllerApi {
 
     private final RoomService roomService;
+
+    @Override
+    @GetMapping
+    public ResponseEntity<CustomResponse<RoomListResponse>> getRooms(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails
+    ) {
+        Long userId = customUserDetails == null ? null : customUserDetails.getUserId();
+        RoomListResponse response = roomService.getRooms(userId);
+
+        return ResponseEntity.status(RoomSuccessStatus.ROOM_LIST_FOUND.getHttpStatus())
+            .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_LIST_FOUND, response));
+    }
 
     @Override
     @PostMapping

@@ -8,6 +8,8 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomListResponse;
+import com.ringout.api.room.dto.response.RoomSummaryResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
 import com.ringout.api.room.repository.RoomRepository;
@@ -16,6 +18,7 @@ import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
 import com.ringout.api.user.status.UserErrorStatus;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -58,6 +61,20 @@ public class RoomService {
         return RoomCreateResponse.from(savedRoom, roomUser, DEFAULT_ROOM_IMAGE_URL);
     }
 
+    @Transactional(readOnly = true)
+    public RoomListResponse getRooms(Long userId) {
+        List<RoomSummaryResponse> rooms = roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc().stream()
+            .map(room -> RoomSummaryResponse.from(
+                room,
+                DEFAULT_ROOM_IMAGE_URL,
+                roomUserRepository.countActiveByRoomId(room.getId()),
+                userId != null && roomUserRepository.existsActiveByRoomIdAndUserId(room.getId(), userId)
+            ))
+            .toList();
+
+        return new RoomListResponse(rooms);
+    }
+
     @Transactional
     public RoomUpdateResponse updateRoom(Long userId, Long roomId, RoomUpdateRequest request) {
         log.atInfo()
@@ -81,6 +98,7 @@ public class RoomService {
 
         if (request.name() != null || request.description() != null) {
             room.update(request.name(), request.description());
+            room.recordActivityAt(java.time.LocalDateTime.now());
         }
 
         log.atInfo()

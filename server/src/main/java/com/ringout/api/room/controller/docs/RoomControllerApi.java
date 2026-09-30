@@ -7,20 +7,83 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 
 @Tag(name = "모임 방 (Room)", description = "모임 방 API")
 public interface RoomControllerApi {
+
+    @Operation(
+        summary = "모임 방 목록 조회",
+        description = "삭제되지 않은 전체 모임 방을 최신 활동 순으로 조회합니다. 최신 활동은 방 정보 수정, 활성 회원의 알람 기록, 활성 회원의 이동 상태 변경 중 가장 최근 시각입니다. 유효한 Access Token을 전달하면 자신의 참여 여부를 반환하며, 토큰이 없거나 만료·위조된 경우에는 비로그인 사용자와 동일하게 반환합니다.",
+        parameters = @Parameter(
+            name = "Authorization",
+            in = ParameterIn.HEADER,
+            required = false,
+            description = "선택적 Access Token. 유효한 토큰일 때만 모임 참여 여부를 함께 반환하며, 유효하지 않은 토큰은 비로그인 요청으로 처리합니다.",
+            schema = @Schema(type = "string", example = "Bearer {accessToken}")
+        )
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "모임 방 목록 조회 성공",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": true,
+                      "code": "ROOM200",
+                      "message": "방 목록 조회에 성공했습니다.",
+                      "result": {
+                        "rooms": [
+                          {
+                            "roomId": 1,
+                            "name": "아침 운동 모임",
+                            "description": "매주 함께 운동하고 인증하는 모임입니다.",
+                            "imageUrl": "https://example.com/images/room-1.png",
+                            "activityDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
+                            "activityTime": "08:00",
+                            "memberCount": 12,
+                            "isJoined": true,
+                            "createdAt": "2026-09-20T10:30:00"
+                          }
+                        ]
+                      }
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "500",
+            description = "예상하지 못한 서버 오류",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "COMMON500",
+                      "message": "서버 에러, 관리자에게 문의 바랍니다.",
+                      "result": "예외 메시지"
+                    }
+                    """)
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<RoomListResponse>> getRooms(
+        @Parameter(hidden = true) CustomUserDetails customUserDetails
+    );
 
     @Operation(
         summary = "모임 방 생성",

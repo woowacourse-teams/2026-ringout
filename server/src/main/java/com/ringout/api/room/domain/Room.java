@@ -7,6 +7,7 @@ import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.user.domain.User;
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import lombok.AccessLevel;
@@ -53,6 +54,10 @@ public class Room extends BaseEntity {
     @Getter
     private LocalTime activityTime;
 
+    @Column(name = "latest_activity_at", nullable = false)
+    @Getter
+    private LocalDateTime latestActivityAt;
+
     private Room(User hostUser, ImageFile image, String name, String description, List<ActivityDay> activityDays,
         LocalTime activityTime) {
         this.hostUser = hostUser;
@@ -61,6 +66,7 @@ public class Room extends BaseEntity {
         this.description = description;
         this.activityDays = ActivityDays.from(activityDays);
         this.activityTime = activityTime;
+        this.latestActivityAt = LocalDateTime.now();
     }
 
     public static Room of(User hostUser, ImageFile image, String rawName, String description, List<ActivityDay> activityDays,
@@ -96,6 +102,12 @@ public class Room extends BaseEntity {
         if (description != null) {
             validateDescriptionForUpdate(description);
             this.description = description;
+        }
+    }
+
+    public void recordActivityAt(LocalDateTime activityAt) {
+        if (activityAt.isAfter(latestActivityAt)) {
+            latestActivityAt = activityAt;
         }
     }
 

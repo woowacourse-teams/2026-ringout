@@ -3,6 +3,8 @@ package com.ringout.api.alarmmovement.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -26,6 +28,7 @@ import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
+import com.ringout.api.room.service.RoomActivityService;
 import com.ringout.api.user.domain.User;
 import java.time.Clock;
 import java.time.Instant;
@@ -66,12 +69,15 @@ class AlarmMovementServiceTest {
     @Mock
     private AlarmMovementRepository alarmMovementRepository;
 
+    @Mock
+    private RoomActivityService roomActivityService;
+
     private AlarmMovementService alarmMovementService;
 
     @BeforeEach
     void setUp() {
         alarmMovementService = new AlarmMovementService(
-            roomRepository, roomUserRepository, activeAlarmRepository, alarmMovementRepository, CLOCK
+            roomRepository, roomUserRepository, activeAlarmRepository, alarmMovementRepository, roomActivityService, CLOCK
         );
     }
 
@@ -97,6 +103,7 @@ class AlarmMovementServiceTest {
             assertThat(alarmMovement.getMovementStatus(NOW)).isEqualTo(expectedStatus);
             verify(activeAlarmRepository).findActiveById(ACTIVE_ALARM_ID);
             verify(alarmMovementRepository).findByActiveAlarm(activeAlarm);
+            verify(roomActivityService).recordMovementActivity(any(Room.class), eq(NOW));
         }
     }
 
