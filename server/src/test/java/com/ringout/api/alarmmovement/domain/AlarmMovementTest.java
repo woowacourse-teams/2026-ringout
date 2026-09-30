@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.mock;
 
-import com.ringout.api.alarm.domain.ActiveAlarm;
+import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import java.time.LocalDateTime;
@@ -97,10 +97,10 @@ class AlarmMovementTest {
         @Test
         void 포기_시각과_도착_시각이_함께_존재하면_생성할_수_없다() {
             // given
-            ActiveAlarm activeAlarm = mock(ActiveAlarm.class);
+            AlarmOccurrence alarmOccurrence = mock(AlarmOccurrence.class);
 
             // when
-            Throwable thrown = catchThrowable(() -> AlarmMovement.of(activeAlarm, null, ACTION_AT, ACTION_AT));
+            Throwable thrown = catchThrowable(() -> AlarmMovement.of(alarmOccurrence, null, ACTION_AT, ACTION_AT));
 
             // then
             assertThat(thrown)
@@ -113,6 +113,6 @@ class AlarmMovementTest {
     private AlarmMovement alarmMovementWith(
         LocalDateTime movementStartedAt, LocalDateTime gaveUpAt, LocalDateTime arrivedAt
     ) {
-        return AlarmMovement.of(mock(ActiveAlarm.class), movementStartedAt, gaveUpAt, arrivedAt);
+        return AlarmMovement.of(mock(AlarmOccurrence.class), movementStartedAt, gaveUpAt, arrivedAt);
     }
 }

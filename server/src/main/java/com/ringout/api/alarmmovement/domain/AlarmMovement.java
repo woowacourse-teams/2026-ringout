@@ -1,6 +1,6 @@
 package com.ringout.api.alarmmovement.domain;
 
-import com.ringout.api.alarm.domain.ActiveAlarm;
+import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.common.BaseEntity;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
@@ -24,8 +24,8 @@ import lombok.NoArgsConstructor;
 @Table(
     name = "alarm_movement",
     uniqueConstraints = @UniqueConstraint(
-        name = "uk_alarm_movement_active_alarm",
-        columnNames = "active_alarm_id"
+        name = "uk_alarm_movement_alarm_occurrence",
+        columnNames = "alarm_occurrence_id"
     )
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -36,8 +36,8 @@ public class AlarmMovement extends BaseEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "active_alarm_id", nullable = false)
-    private ActiveAlarm activeAlarm;
+    @JoinColumn(name = "alarm_occurrence_id", nullable = false)
+    private AlarmOccurrence alarmOccurrence;
 
     @Column(name = "movement_started_at")
     private LocalDateTime movementStartedAt;
@@ -48,18 +48,19 @@ public class AlarmMovement extends BaseEntity {
     @Column(name = "arrived_at")
     private LocalDateTime arrivedAt;
 
-    private AlarmMovement(ActiveAlarm activeAlarm, LocalDateTime movementStartedAt, LocalDateTime gaveUpAt,
+    private AlarmMovement(AlarmOccurrence alarmOccurrence, LocalDateTime movementStartedAt, LocalDateTime gaveUpAt,
         LocalDateTime arrivedAt) {
         validateTerminalActionTimes(gaveUpAt, arrivedAt);
-        this.activeAlarm = activeAlarm;
+        this.alarmOccurrence = alarmOccurrence;
         this.movementStartedAt = movementStartedAt;
         this.gaveUpAt = gaveUpAt;
         this.arrivedAt = arrivedAt;
     }
 
-    public static AlarmMovement of(ActiveAlarm activeAlarm, LocalDateTime movementStartedAt, LocalDateTime gaveUpAt,
+    public static AlarmMovement of(AlarmOccurrence alarmOccurrence, LocalDateTime movementStartedAt,
+        LocalDateTime gaveUpAt,
         LocalDateTime arrivedAt) {
-        return new AlarmMovement(activeAlarm, movementStartedAt, gaveUpAt, arrivedAt);
+        return new AlarmMovement(alarmOccurrence, movementStartedAt, gaveUpAt, arrivedAt);
     }
 
     public MovementStatus change(MovementAction action, LocalDateTime actionAt) {

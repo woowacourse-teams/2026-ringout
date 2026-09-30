@@ -25,8 +25,8 @@ public interface AlarmMovementControllerApi {
     @Operation(
         summary = "이동 행동 처리",
         description = """
-            path roomId의 활성 모임에 현재 참여 중인 인증 사용자가 활성 알람의 이동 행동을 처리합니다.
-            alarmId는 ActiveAlarm 식별자이며 action은 START_MOVEMENT, GIVE_UP, ARRIVE 중 하나입니다.
+            path roomId의 활성 모임에 현재 참여 중인 인증 사용자가 알람 실행의 이동 행동을 처리합니다.
+            alarmId는 AlarmOccurrence 식별자이며 action은 START_MOVEMENT, GIVE_UP, ARRIVE 중 하나입니다.
             응답 status는 요청 처리 후 MOVEMENT_STARTED, GAVE_UP, ARRIVED 중 해당 상태입니다.
             """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
@@ -52,10 +52,10 @@ public interface AlarmMovementControllerApi {
             description = "필수 입력 누락 또는 값 검증 실패; 본문 누락·잘못된 JSON·enum·Long 변환 오류는 COMMON400",
             content = @Content(mediaType = "application/json", examples = {
                 @ExampleObject(name = "alarmIdRequired", value = """
-                    {"isSuccess": false, "code": "MOVEMENT400", "message": "활성 알람 ID가 필요합니다.", "result": null}
+                    {"isSuccess": false, "code": "MOVEMENT400", "message": "알람 실행 ID가 필요합니다.", "result": null}
                     """),
                 @ExampleObject(name = "alarmIdMustBePositive", value = """
-                    {"isSuccess": false, "code": "MOVEMENT400", "message": "활성 알람 ID가 올바르지 않습니다.", "result": null}
+                    {"isSuccess": false, "code": "MOVEMENT400", "message": "알람 실행 ID가 올바르지 않습니다.", "result": null}
                     """),
                 @ExampleObject(name = "actionRequired", value = """
                     {"isSuccess": false, "code": "MOVEMENT400", "message": "이동 행동이 필요합니다.", "result": null}
@@ -86,12 +86,12 @@ public interface AlarmMovementControllerApi {
         ),
         @ApiResponse(
             responseCode = "404",
-            description = "활성 모임 방 또는 활성 알람이 없음",
+            description = "활성 모임 방 또는 알람 실행이 없음",
             content = @Content(mediaType = "application/json", examples = {
                 @ExampleObject(name = "roomNotFound", value = """
                     {"isSuccess": false, "code": "ROOM404", "message": "존재하지 않는 모임 방입니다.", "result": null}
                     """),
-                @ExampleObject(name = "activeAlarmNotFound", value = """
+                @ExampleObject(name = "alarmOccurrenceNotFound", value = """
                     {"isSuccess": false, "code": "ALARM404", "message": "존재하지 않는 알람 입니다.", "result": null}
                     """)
             })
@@ -130,7 +130,7 @@ public interface AlarmMovementControllerApi {
         @PathVariable Long roomId,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
-            description = "활성 알람 ID와 수행할 이동 행동",
+            description = "알람 실행 ID와 수행할 이동 행동",
             content = @Content(
                 mediaType = "application/json",
                 schema = @Schema(implementation = AlarmMovementRequest.class),
@@ -146,7 +146,7 @@ public interface AlarmMovementControllerApi {
         summary = "모임 회원 이동 상태 조회",
         description = """
             인증된 현재 모임 참여자의 상태를 조회합니다. 목록은 탈퇴·추방되지 않은 활성 참여자만 포함하며 닉네임 첫 글자 기준 한글(가–힣), 영문(A–Z, a–z), 그 외 문자 순으로 정렬하고 각 그룹은 문자열 오름차순으로 정렬합니다. 영문 대소문자는 구분합니다.
-            각 회원은 자신의 가장 최근 활성 알람 기준 상태를 반환합니다. 활성 알람이 없으면 IDLE, 알람은 있으나 이동 시작 전이면 ALARM_TRIGGERED입니다. 이동 시작 후 2분 미만이면 MOVEMENT_STARTED, 2분 이상이면 MOVING이며 종료 상태는 GAVE_UP 또는 ARRIVED입니다. 필요한 이동 상태 레코드가 없거나 종료 시각 데이터가 서로 충돌하면 500 오류를 반환합니다.
+            각 회원은 자신의 가장 최근 알람 실행 기준 상태를 반환합니다. 알람 실행이 없으면 IDLE, 알람 실행은 있으나 이동 시작 전이면 ALARM_TRIGGERED입니다. 이동 시작 후 2분 미만이면 MOVEMENT_STARTED, 2분 이상이면 MOVING이며 종료 상태는 GAVE_UP 또는 ARRIVED입니다. 필요한 이동 상태 레코드가 없거나 종료 시각 데이터가 서로 충돌하면 500 오류를 반환합니다.
             """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
@@ -209,7 +209,7 @@ public interface AlarmMovementControllerApi {
         ),
         @ApiResponse(
             responseCode = "500",
-            description = "활성 알람의 이동 상태 레코드가 누락·불일치하거나 예상하지 못한 서버 오류",
+            description = "알람 실행의 이동 상태 레코드가 누락·불일치하거나 예상하지 못한 서버 오류",
             content = @Content(mediaType = "application/json", examples = {
                 @ExampleObject(name = "movementRecordMissing", value = """
                     {"isSuccess": false, "code": "MOVEMENT500", "message": "이동 상태를 처리할 수 없습니다.", "result": null}
