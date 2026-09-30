@@ -15,6 +15,7 @@ import com.ringout.api.config.jwt.JwtProvider;
 import com.ringout.api.config.security.JwtAuthenticationEntryPoint;
 import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.service.RoomService;
+import com.ringout.api.room.service.RoomRecordService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,9 @@ class RoomControllerWebMvcTest {
 
     @MockitoBean
     private RoomService roomService;
+
+    @MockitoBean
+    private RoomRecordService roomRecordService;
 
     @MockitoBean
     private JwtProvider jwtProvider;

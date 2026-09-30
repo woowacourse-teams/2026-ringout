@@ -9,6 +9,7 @@ import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
+import com.ringout.api.room.dto.response.RoomRecordsResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -168,6 +169,39 @@ public interface RoomControllerApi {
     ResponseEntity<CustomResponse<RoomDetailResponse>> getRoom(
         @Parameter(hidden = true) CustomUserDetails customUserDetails,
         @Parameter(description = "조회할 모임 방 식별자", required = true, example = "1") Long roomId
+    );
+
+    @Operation(
+        summary = "모임 회원 활동 기록 조회",
+        description = "인증된 현재 참여자가 활동 날짜의 모임 회원별 알람 및 이동 기록을 조회합니다. 기록이 없는 회원도 records가 빈 배열인 상태로 반환합니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "모임 회원 기록 조회 성공", content = @Content(
+            mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess":true,"code":"RECORD200","message":"모임 회원 기록 조회에 성공했습니다.","result":{"memberRecords":[{"userId":1,"nickname":"아이아티스트님","profileImageUrl":null,"records":[]}]}}
+                """))),
+        @ApiResponse(responseCode = "400", description = "date 누락 또는 형식 오류", content = @Content(
+            mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess":false,"code":"RECORD400","message":"조회 날짜의 형식이 올바르지 않습니다.","result":null}
+                """))),
+        @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자", content = @Content(
+            mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess":false,"code":"AUTH401","message":"인증되지 않은 사용자입니다.","result":null}
+                """))),
+        @ApiResponse(responseCode = "403", description = "현재 모임 회원이 아님", content = @Content(
+            mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess":false,"code":"RECORD403","message":"해당 모임의 회원이 아닙니다.","result":null}
+                """))),
+        @ApiResponse(responseCode = "404", description = "존재하지 않거나 삭제된 모임 방", content = @Content(
+            mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess":false,"code":"ROOM404","message":"존재하지 않는 모임 방입니다.","result":null}
+                """)))
+    })
+    ResponseEntity<CustomResponse<RoomRecordsResponse>> getRoomRecords(
+        @Parameter(hidden = true) CustomUserDetails customUserDetails,
+        @Parameter(description = "조회할 모임 방 식별자", required = true, example = "1") Long roomId,
+        @Parameter(description = "활동 날짜", required = true, example = "2026-09-16") String date
     );
 
     @Operation(
