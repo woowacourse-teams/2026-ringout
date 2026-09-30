@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -58,6 +59,7 @@ fun ConfirmationDialog(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     layout: ConfirmationDialogLayout = ConfirmationDialogLayout(),
+    annotatedDescription: AnnotatedString? = null,
 ) {
     val colors = MaterialTheme.ringoutColors.dialog
     val shape = RoundedCornerShape(DialogCornerRadius)
@@ -113,7 +115,7 @@ fun ConfirmationDialog(
                         ),
                     )
                     Text(
-                        text = description,
+                        text = annotatedDescription ?: AnnotatedString(description),
                         modifier = Modifier.fillMaxWidth(),
                         color = colors.description,
                         maxLines = layout.descriptionMaxLines,
