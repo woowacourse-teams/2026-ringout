@@ -23,7 +23,8 @@ public enum AlarmMovementErrorStatus implements BaseErrorCode {
     MOVEMENT_ALREADY_GAVE_UP(HttpStatus.CONFLICT, "MOVEMENT409", "이미 이동을 포기한 알람입니다."),
     MOVEMENT_ALREADY_ARRIVED(HttpStatus.CONFLICT, "MOVEMENT409", "이미 목적지에 도착한 알람입니다."),
     MOVEMENT_TERMINAL_STATE_CONFLICT(HttpStatus.CONFLICT, "MOVEMENT409", "이동 포기 시각과 도착 시각은 동시에 존재할 수 없습니다."),
-    MOVEMENT_RECORD_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "MOVEMENT500", "이동 상태를 처리할 수 없습니다.");
+    MOVEMENT_RECORD_MISSING(HttpStatus.INTERNAL_SERVER_ERROR, "MOVEMENT500", "이동 상태를 처리할 수 없습니다."),
+    MOVEMENT_TERMINAL_STATE_INCONSISTENT(HttpStatus.INTERNAL_SERVER_ERROR, "MOVEMENT500", "이동 상태를 조회할 수 없습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

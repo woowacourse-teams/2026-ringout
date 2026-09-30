@@ -3,13 +3,16 @@ package com.ringout.api.alarmmovement.controller;
 import com.ringout.api.alarmmovement.controller.docs.AlarmMovementControllerApi;
 import com.ringout.api.alarmmovement.dto.request.AlarmMovementRequest;
 import com.ringout.api.alarmmovement.dto.response.AlarmMovementResponse;
+import com.ringout.api.alarmmovement.dto.response.MemberMovementsResponse;
 import com.ringout.api.alarmmovement.service.AlarmMovementService;
 import com.ringout.api.alarmmovement.status.AlarmMovementSuccessStatus;
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
+import com.ringout.api.room.status.RoomSuccessStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,5 +36,17 @@ public class AlarmMovementController implements AlarmMovementControllerApi {
 
         return ResponseEntity.status(AlarmMovementSuccessStatus.MOVEMENT_CHANGED.getHttpStatus())
             .body(CustomResponse.onSuccess(AlarmMovementSuccessStatus.MOVEMENT_CHANGED, response));
+    }
+
+    @Override
+    @GetMapping("/{roomId}/members/movements")
+    public ResponseEntity<CustomResponse<MemberMovementsResponse>> getMemberMovements(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails, @PathVariable Long roomId) {
+
+        MemberMovementsResponse response = alarmMovementService.getMemberMovements(customUserDetails.getUserId(),
+            roomId);
+
+        return ResponseEntity.status(RoomSuccessStatus.ROOM_MEMBER_MOVEMENTS_FOUND.getHttpStatus())
+            .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_MEMBER_MOVEMENTS_FOUND, response));
     }
 }

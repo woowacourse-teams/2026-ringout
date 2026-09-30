@@ -2,6 +2,7 @@ package com.ringout.api.room.repository;
 
 import com.ringout.api.room.domain.RoomUser;
 import java.util.Optional;
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,4 +17,13 @@ public interface RoomUserRepository extends JpaRepository<RoomUser, Long> {
           and roomUser.deletedAt is null
         """)
     Optional<RoomUser> findActiveByRoomIdAndUserId(@Param("roomId") Long roomId, @Param("userId") Long userId);
+
+    @Query("""
+        select roomUser
+        from RoomUser roomUser
+        join fetch roomUser.user
+        where roomUser.room.id = :roomId
+          and roomUser.deletedAt is null
+        """)
+    List<RoomUser> findActiveByRoomId(@Param("roomId") Long roomId);
 }
