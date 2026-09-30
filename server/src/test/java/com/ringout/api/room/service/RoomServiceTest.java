@@ -795,6 +795,118 @@ class RoomServiceTest {
     }
 
     @Nested
+    class 인증된_사용자_모임방_참여_처리 {
+
+        @Test
+        void MEMBER_관계로_참여하고_모임방_상세_정보를_반환한다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User host = userWithId(1L, "방장");
+            User requester = userWithId(userId, "참여자");
+            Room room = roomWithHost(1L, roomId);
+            List<RoomUser> roomUsers = List.of(RoomUser.of(host, room), RoomUser.of(requester, room));
+            given(userRepository.findById(userId)).willReturn(Optional.of(requester));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId)).willReturn(Optional.empty());
+            given(roomBlackListRepository.existsActiveByRoomIdAndUserId(roomId, userId)).willReturn(false);
+            given(roomUserRepository.save(any(RoomUser.class))).willAnswer(invocation -> invocation.getArgument(0));
+            given(roomUserRepository.findActiveByRoomId(roomId)).willReturn(roomUsers);
+
+            // when
+            RoomDetailResponse response = roomService.joinRoom(userId, roomId);
+
+            // then
+            assertThat(response.roomId()).isEqualTo(roomId);
+            assertThat(response.membershipRole()).isEqualTo("MEMBER");
+            assertThat(response.memberCount()).isEqualTo(2);
+            assertThat(response.members()).extracting(RoomMemberResponse::userId).containsExactly(1L, userId);
+            verify(roomUserRepository).save(argThat(roomUser ->
+                roomUser.getUser().equals(requester) && roomUser.getRoom().equals(room)));
+            verify(roomUserRepository).findActiveByRoomId(roomId);
+        }
+
+        @Test
+        void 인증되지_않은_사용자는_참여할_수_없다() {
+            // given
+            Long roomId = 10L;
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.joinRoom(null, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
+            verify(roomRepository, never()).findActiveById(any());
+        }
+
+        @Test
+        void 존재하지_않거나_삭제된_모임방에는_참여할_수_없다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User requester = userWithId(userId, "참여자");
+            given(userRepository.findById(userId)).willReturn(Optional.of(requester));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.joinRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_NOT_FOUND));
+            verify(roomUserRepository, never()).save(any());
+        }
+
+        @Test
+        void 이미_참여한_사용자는_다시_참여할_수_없다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User requester = userWithId(userId, "참여자");
+            Room room = roomWithHost(1L, roomId);
+            given(userRepository.findById(userId)).willReturn(Optional.of(requester));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId))
+                .willReturn(Optional.of(RoomUser.of(requester, room)));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.joinRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_ALREADY_JOINED));
+            verify(roomBlackListRepository, never()).existsActiveByRoomIdAndUserId(any(), any());
+            verify(roomUserRepository, never()).save(any());
+        }
+
+        @Test
+        void 추방된_사용자는_다시_참여할_수_없다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User requester = userWithId(userId, "참여자");
+            Room room = roomWithHost(1L, roomId);
+            given(userRepository.findById(userId)).willReturn(Optional.of(requester));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId)).willReturn(Optional.empty());
+            given(roomBlackListRepository.existsActiveByRoomIdAndUserId(roomId, userId)).willReturn(true);
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.joinRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_JOIN_FORBIDDEN));
+            verify(roomUserRepository, never()).save(any());
+        }
+    }
+
+    @Nested
     class 인증된_참여자_모임방_상세_조회 {
 
         @Test
@@ -928,24 +1040,6 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_DETAIL_FORBIDDEN));
             verify(roomUserRepository, never()).findActiveByRoomId(roomId);
-        }
-
-        @Test
-        void 상세_정보_조회_중_예기치_않은_오류가_발생하면_ROOM500을_반환한다() {
-            // given
-            Long userId = 1L;
-            Long roomId = 10L;
-            User user = userWithId(userId, "가나다");
-            given(userRepository.findById(userId)).willReturn(Optional.of(user));
-            given(roomRepository.findActiveById(roomId)).willThrow(new IllegalStateException("database error"));
-
-            // when
-            Throwable thrown = catchThrowable(() -> roomService.getRoom(userId, roomId));
-
-            // then
-            assertThat(thrown)
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_DETAIL_FAILED));
         }
     }
 

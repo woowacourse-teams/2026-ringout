@@ -90,13 +90,7 @@ public interface RoomControllerApi {
         summary = "모임 방 상세 정보 조회",
         description = """
             인증된 현재 참여자만 삭제되지 않은 모임 방의 상세 정보를 조회할 수 있습니다.
-            membershipRole은 방장이면 OWNER, 일반 참여자이면 MEMBER입니다. 미참여자는 OUTSIDER 성공 응답 대신 403을 반환합니다.
-            members는 방장을 포함한 현재 참여자 목록이며 탈퇴·추방된 관계를 제외하고 userId 기준 중복을 제거합니다.
-            memberCount는 중복 제거 후 members의 크기와 같습니다.
-            닉네임 첫 글자 기준 한글 완성형(가–힣), 영문(A–Z, a–z), 그 외 문자 순으로 정렬하고 각 그룹은 문자열 오름차순으로 정렬합니다. 영문 대소문자는 구분합니다.
-            activityDays는 중복 없이 월요일부터 일요일 순으로 반환합니다. activityTime은 모든 활동 요일에 공통 적용되며 HH:mm 형식입니다.
-            대표 이미지가 없으면 /images/default-room.png를 반환합니다. description과 members[].profileImageUrl은 값이 없으면 null입니다.
-            createdAt은 최초 생성 일시이며 ISO 8601 형식입니다. 조회 과정에서 방 설정, 참여 관계, 알람 정보를 변경하지 않습니다.
+            membershipRole은 방장이면 OWNER, 일반 참여자이면 MEMBER입니다.
             """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
@@ -174,6 +168,72 @@ public interface RoomControllerApi {
     ResponseEntity<CustomResponse<RoomDetailResponse>> getRoom(
         @Parameter(hidden = true) CustomUserDetails customUserDetails,
         @Parameter(description = "조회할 모임 방 식별자", required = true, example = "1") Long roomId
+    );
+
+    @Operation(
+        summary = "모임 방 참여",
+        description = "인증된 사용자를 모임 방의 MEMBER로 참여시키고, 방 상세 정보와 동일한 형식의 응답을 반환합니다. 요청 본문과 쿼리 파라미터는 없습니다. 활성 참여 관계가 이미 있으면 409, 해당 방의 활성 블랙리스트에 있으면 403을 반환합니다. 성공 응답의 members는 활성 참여자만 포함하며, 닉네임은 한글·영문·그 외 문자 그룹 순으로 정렬됩니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "201",
+            description = "모임 방 참여 성공",
+            content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+                {
+                  "isSuccess": true,
+                  "code": "ROOM201",
+                  "message": "모임 방 참여에 성공했습니다.",
+                  "result": {
+                    "roomId": 1,
+                    "name": "아침 운동 모임",
+                    "description": "매주 함께 운동하고 인증하는 모임입니다.",
+                    "imageUrl": "https://example.com/images/room-1.png",
+                    "activityDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
+                    "activityTime": "08:00",
+                    "memberCount": 4,
+                    "membershipRole": "MEMBER",
+                    "createdAt": "2026-09-20T10:30:00",
+                    "members": [
+                      {"userId": 1, "nickname": "가나다", "profileImageUrl": "https://example.com/profiles/1.png"},
+                      {"userId": 2, "nickname": "성열", "profileImageUrl": null},
+                      {"userId": 3, "nickname": "Alice", "profileImageUrl": "https://example.com/profiles/3.png"},
+                      {"userId": 4, "nickname": "@runner", "profileImageUrl": null}
+                    ]
+                  }
+                }
+                """))
+        ),
+        @ApiResponse(responseCode = "400", description = "roomId를 Long으로 변환할 수 없음", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "COMMON400", "message": "잘못된 요청입니다.", "result": null}
+            """))),
+        @ApiResponse(responseCode = "401", description = "보안 필터 인증 실패 또는 인증된 사용자 삭제", content = @Content(mediaType = "application/json", examples = {
+            @ExampleObject(name = "unauthorized", value = """
+                {"isSuccess": false, "code": "AUTH401", "message": "인증되지 않은 사용자입니다.", "result": null}
+                """),
+            @ExampleObject(name = "expiredAccessToken", value = """
+                {"isSuccess": false, "code": "AUTH401", "message": "액세스 토큰이 만료되었습니다.", "result": null}
+                """),
+            @ExampleObject(name = "authenticatedUserNotFound", value = """
+                {"isSuccess": false, "code": "ROOM401", "message": "인증되지 않은 사용자입니다.", "result": null}
+                """)
+        })),
+        @ApiResponse(responseCode = "403", description = "해당 모임에서 추방된 사용자", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "ROOM403", "message": "해당 모임에 참여할 수 없는 사용자입니다.", "result": null}
+            """))),
+        @ApiResponse(responseCode = "404", description = "존재하지 않거나 삭제된 모임 방", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "ROOM404", "message": "존재하지 않는 모임 방입니다.", "result": null}
+            """))),
+        @ApiResponse(responseCode = "409", description = "이미 참여 중인 사용자", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "ROOM409", "message": "이미 참여 중인 모임입니다.", "result": null}
+            """))),
+        @ApiResponse(responseCode = "500", description = "예기치 않은 서버 오류", content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+            {"isSuccess": false, "code": "COMMON500", "message": "서버 에러, 관리자에게 문의 바랍니다.", "result": "예외 메시지"}
+            """)))
+    })
+    ResponseEntity<CustomResponse<RoomDetailResponse>> joinRoom(
+        @Parameter(hidden = true) CustomUserDetails customUserDetails,
+        @Parameter(description = "참여할 모임 방 식별자", required = true, example = "1") Long roomId
     );
 
     @Operation(

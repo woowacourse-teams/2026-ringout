@@ -160,6 +160,37 @@ class RoomControllerTest {
     }
 
     @Nested
+    class 인증된_사용자_모임방_참여_응답 {
+
+        @Test
+        void 참여_성공_시_세부_정보_형식의_CREATED_응답을_반환한다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            CustomUserDetails userDetails = new CustomUserDetails(userId, Role.USER);
+            RoomDetailResponse serviceResponse = new RoomDetailResponse(
+                roomId, "아침 운동 모임", "매주 함께 운동하고 인증하는 모임입니다.",
+                "/images/default-room.png", List.of("MONDAY", "WEDNESDAY", "FRIDAY"), "08:00", 2,
+                "MEMBER", null,
+                List.of(new RoomMemberResponse(1L, "방장", null), new RoomMemberResponse(userId, "참여자", null))
+            );
+            given(roomService.joinRoom(userId, roomId)).willReturn(serviceResponse);
+
+            // when
+            ResponseEntity<CustomResponse<RoomDetailResponse>> response = roomController.joinRoom(userDetails, roomId);
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getIsSuccess()).isTrue();
+            assertThat(response.getBody().getCode()).isEqualTo("ROOM201");
+            assertThat(response.getBody().getMessage()).isEqualTo("모임 방 참여에 성공했습니다.");
+            assertThat(response.getBody().getResult()).isEqualTo(serviceResponse);
+            verify(roomService).joinRoom(userId, roomId);
+        }
+    }
+
+    @Nested
     class 인증된_방장_모임방_수정_응답 {
 
         @Test
