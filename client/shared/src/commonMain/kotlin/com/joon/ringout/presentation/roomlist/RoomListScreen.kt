@@ -11,10 +11,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.roomlist.component.JoinedRoomSection
@@ -36,13 +34,7 @@ fun RoomListScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                if (LocalRingoutThemeMode.current == ThemeMode.Dark) {
-                    Color(0xFF101113)
-                } else {
-                    MaterialTheme.colorScheme.background
-                },
-            )
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
             .padding(top = 28.dp),

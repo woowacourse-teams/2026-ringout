@@ -17,13 +17,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
-import com.joon.ringout.LocalRingoutThemeMode
-import com.joon.ringout.ThemeMode
 import com.joon.ringout.ringoutColors
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 
@@ -33,11 +32,7 @@ fun RoomCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val roomCardColor = if (LocalRingoutThemeMode.current == ThemeMode.Dark) {
-        Color(0xFF191A1C)
-    } else {
-        MaterialTheme.ringoutColors.elevatedSurface
-    }
+    val roomCardColor = MaterialTheme.ringoutColors.roomCardBackground
     val metadataColor = MaterialTheme.ringoutColors.navigationInactiveContent
 
     Card(
@@ -62,7 +57,11 @@ fun RoomCard(
             ) {
                 Text(
                     text = room.name,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 16.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

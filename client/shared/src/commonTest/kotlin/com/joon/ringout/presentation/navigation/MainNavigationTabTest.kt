@@ -30,7 +30,7 @@ class MainNavigationTabTest {
         listOf(
             AppRoute.AddAlarm, AppRoute.EditAlarm("alarm"), AppRoute.Destination(1),
             AppRoute.AlarmSound, AppRoute.Onboarding, AppRoute.AlarmRinging("alarm"),
-            AppRoute.ActiveAlarmTracking("mission"),
+            AppRoute.ActiveAlarmTracking("mission"), AppRoute.RoomCreate,
         ).forEach { assertNull(it.mainNavigationTab()) }
     }
 }

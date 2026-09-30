@@ -2,7 +2,7 @@ package com.joon.ringout.presentation.alarmsetup.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,7 +39,7 @@ fun TimePickerCard(
 ) {
     val colors = alarmSetupColors()
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .height(259.dp)
@@ -47,13 +47,17 @@ fun TimePickerCard(
             .background(colors.timeCard),
         contentAlignment = Alignment.Center,
     ) {
+        val compact = maxWidth < 336.dp
+        val selectedTimeFontSize = if (compact) 50.sp else 72.sp
+        val unselectedTimeFontSize = if (compact) 42.sp else 62.sp
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(247.dp)
-                .padding(horizontal = 10.dp),
+                .padding(horizontal = if (compact) 8.dp else 10.dp),
             horizontalArrangement = Arrangement.spacedBy(
-                space = 8.dp,
+                space = if (compact) 4.dp else 8.dp,
                 alignment = Alignment.CenterHorizontally,
             ),
             verticalAlignment = Alignment.CenterVertically,
@@ -66,16 +70,16 @@ fun TimePickerCard(
                 accessibilityLabel = "오전 오후",
                 selectedColor = colors.accent,
                 unselectedColor = colors.supportingText,
-                selectedFontSize = 24.sp,
-                unselectedFontSize = 18.sp,
+                selectedFontSize = if (compact) 18.sp else 24.sp,
+                unselectedFontSize = if (compact) 14.sp else 18.sp,
                 fontWeight = FontWeight.Medium,
                 isLooping = false,
                 hapticFeedbackType = HapticFeedbackType.SegmentTick,
-                modifier = Modifier.width(68.dp),
+                modifier = Modifier.width(if (compact) 54.dp else 68.dp),
             )
 
             Row(
-                modifier = Modifier.width(240.dp),
+                modifier = if (compact) Modifier.weight(1f) else Modifier.width(240.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TimePickerWheel(
@@ -86,8 +90,8 @@ fun TimePickerCard(
                     accessibilityLabel = "시",
                     selectedColor = colors.accent,
                     unselectedColor = colors.secondaryText,
-                    selectedFontSize = 72.sp,
-                    unselectedFontSize = 62.sp,
+                    selectedFontSize = selectedTimeFontSize,
+                    unselectedFontSize = unselectedTimeFontSize,
                     fontWeight = FontWeight.Bold,
                     isLooping = true,
                     hapticFeedbackType = HapticFeedbackType.SegmentFrequentTick,
@@ -98,8 +102,8 @@ fun TimePickerCard(
                     color = colors.accent,
                     maxLines = 1,
                     style = MaterialTheme.typography.displayLarge.copy(
-                        fontSize = 72.sp,
-                        lineHeight = 70.sp,
+                        fontSize = selectedTimeFontSize,
+                        lineHeight = selectedTimeFontSize,
                         fontWeight = FontWeight.Bold,
                     ),
                 )
@@ -111,8 +115,8 @@ fun TimePickerCard(
                     accessibilityLabel = "분",
                     selectedColor = colors.accent,
                     unselectedColor = colors.secondaryText,
-                    selectedFontSize = 72.sp,
-                    unselectedFontSize = 62.sp,
+                    selectedFontSize = selectedTimeFontSize,
+                    unselectedFontSize = unselectedTimeFontSize,
                     fontWeight = FontWeight.Bold,
                     isLooping = true,
                     hapticFeedbackType = HapticFeedbackType.SegmentFrequentTick,

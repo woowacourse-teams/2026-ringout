@@ -33,7 +33,7 @@ internal fun RoomDetailJoinButton(
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.ringoutColors.primaryActionContent,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            disabledContainerColor = MaterialTheme.ringoutColors.elevatedSurface,
             disabledContentColor = MaterialTheme.ringoutColors.navigationInactiveContent,
         ),
     ) {

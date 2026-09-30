@@ -29,6 +29,7 @@ import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.navigation.authGraph
 import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.mypage.MyPageViewModel
+import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
 import com.joon.ringout.presentation.onboarding.OnboardingRoute
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.navigation.AppRoute
@@ -247,6 +248,9 @@ private fun RingoutAppContent(
                 is AppRoute.Destination,
                 AppRoute.AlarmSound,
                 -> alarmEditorNavigation?.onBack(route, displayedRoute)
+                AppRoute.RoomCreate -> viewModelScopes
+                    .get(route, RoomCreateViewModel::class)
+                    .onBack { navigationState.popBackStack(route) }
                 is AppRoute.ActiveAlarmTracking -> navigationState.navigate(AppRoute.Home)
                 is AppRoute.AlarmRinging -> Unit
                 else -> navigationState.popBackStack(route)
@@ -285,6 +289,8 @@ private fun RingoutAppContent(
                 onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
                 // 모임 가입 요청 API는 현재 화면 계획 범위에 포함되지 않는다.
                 onJoinRoom = {},
+                // 실제 모임 생성 API는 이 화면 계획 범위에 포함되지 않는다.
+                onRoomCreateDraft = {},
             )
             alarmRuntimeGraph(
                 navigationState = navigationState,

@@ -213,6 +213,41 @@ class AppNavigationStateTest {
     }
 
     @Test
+    fun `소셜에서 시작한 로그인과 회원가입은 취소하면 소셜로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+
+        state.navigate(AppRoute.Login)
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.Login),
+            state.backStack.toList(),
+        )
+        state.navigate(AppRoute.TermsAgreement)
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.Login, AppRoute.TermsAgreement),
+            state.backStack.toList(),
+        )
+        state.popBackStack(AppRoute.TermsAgreement)
+        state.popBackStack(AppRoute.Login)
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), state.backStack.toList())
+        assertEquals(AppRoute.Social, state.requestedRoute)
+    }
+
+    @Test
+    fun `소셜에서 시작한 인증 완료는 생성 화면으로 바로 진입하지 않는다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.Login)
+        state.navigate(AppRoute.TermsAgreement)
+
+        state.completeAuthenticationFlow()
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), state.backStack.toList())
+        assertEquals(AppRoute.Social, state.requestedRoute)
+    }
+
+    @Test
     fun `모임 상세에서 시작한 로그인은 로그인 취소 시 같은 모임으로 돌아온다`() {
         val state = AppNavigationState()
         val roomDetail = AppRoute.RoomDetail("room-42")

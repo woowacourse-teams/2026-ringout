@@ -17,6 +17,9 @@ import com.joon.ringout.presentation.home.HomeRoute
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.mypage.MyPageRoute
 import com.joon.ringout.presentation.mypage.MyPageViewModel
+import com.joon.ringout.presentation.roomcreate.RoomCreateRoute
+import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
+import com.joon.ringout.presentation.roomcreate.model.RoomCreateDraft
 
 // 홈과 마이페이지는 각 백스택 항목의 저장소를 사용한다.
 internal fun EntryProviderScope<AppRoute>.homeGraph(
@@ -36,6 +39,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     onActiveAlarmMissionClick: () -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     onJoinRoom: (String) -> Unit,
+    onRoomCreateDraft: (RoomCreateDraft) -> Unit,
 ) {
     entry<AppRoute.Home>(clazzContentKey = AppRoute::viewModelStoreKey) {
         HomeRoute(
@@ -65,8 +69,17 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
         RoomListRoute(
             viewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class),
             authSessionState = authSessionState,
-            onCreateRoom = {},
+            onCreateRoom = { navigationState.navigate(AppRoute.RoomCreate) },
+            onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomDetail(roomId)) },
+        )
+    }
+    entry<AppRoute.RoomCreate>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        val viewModel = viewModelScopes.get(route, RoomCreateViewModel::class)
+        RoomCreateRoute(
+            viewModel = viewModel,
+            onBackClick = { navigationState.popBackStack(route) },
+            onCreateDraft = onRoomCreateDraft,
         )
     }
     entry<AppRoute.RoomDetail>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
