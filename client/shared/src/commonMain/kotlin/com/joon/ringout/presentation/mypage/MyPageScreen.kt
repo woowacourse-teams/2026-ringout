@@ -33,7 +33,6 @@ import com.joon.ringout.presentation.mypage.component.MyPageLoggedInAccountStatu
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus as AccountStatus
 import com.joon.ringout.presentation.mypage.component.MyPageAccountStatus
 import com.joon.ringout.presentation.mypage.component.MyPageAppVersionRow
-import com.joon.ringout.presentation.mypage.component.MyPageHeader
 import com.joon.ringout.presentation.mypage.component.MyPagePolicySection
 import com.joon.ringout.presentation.mypage.component.MyPageThemeCard
 import com.joon.ringout.presentation.mypage.component.myPageColors
@@ -44,7 +43,6 @@ internal fun MyPageScreen(
     appVersion: String,
     policies: List<PolicyInfo>,
     onThemeModeChange: (ThemeMode) -> Unit,
-    onBackClick: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
     onLoginClick: () -> Unit = {},
@@ -60,7 +58,6 @@ internal fun MyPageScreen(
         appVersion = appVersion,
         policies = policies,
         onThemeModeChange = onThemeModeChange,
-        onBackClick = onBackClick,
         onPolicyClick = onPolicyClick,
         onLoginClick = onLoginClick,
         accountStatus = accountStatus,
@@ -79,7 +76,6 @@ fun MyPageScreenContent(
     appVersion: String,
     policies: List<PolicyInfo>,
     onThemeModeChange: (ThemeMode) -> Unit,
-    onBackClick: () -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
     onLoginClick: () -> Unit = {},
@@ -101,10 +97,8 @@ fun MyPageScreenContent(
             .background(colors.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(horizontal = 20.dp),
-        contentPadding = PaddingValues(bottom = MyPageBottomContentPadding),
+        contentPadding = PaddingValues(top = 16.dp, bottom = MyPageBottomContentPadding),
     ) {
-        item { MyPageHeader(onBackClick = onBackClick) }
-        item { Spacer(Modifier.height(16.dp)) }
         item {
             when (accountStatus) {
                 AccountStatus.Loading -> Text(
@@ -239,7 +233,6 @@ private fun MyPagePreview(
             policies = DefaultMyPagePolicies,
             accountStatus = accountStatus,
             onThemeModeChange = {},
-            onBackClick = {},
             onPolicyClick = {},
         )
     }

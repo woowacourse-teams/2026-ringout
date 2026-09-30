@@ -18,7 +18,6 @@ internal fun MyPageRoute(
     themeMode: ThemeMode,
     appVersion: String,
     onThemeModeChange: (ThemeMode) -> Unit,
-    onBackClick: () -> Unit,
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
     onEditProfileClick: () -> Unit = {},
@@ -46,7 +45,6 @@ internal fun MyPageRoute(
         appVersion = appVersion,
         policies = DefaultMyPagePolicies,
         onThemeModeChange = onThemeModeChange,
-        onBackClick = onBackClick,
         onLoginClick = onLoginClick,
         onEditProfileClick = onEditProfileClick,
         onPolicyClick = { policyId ->
