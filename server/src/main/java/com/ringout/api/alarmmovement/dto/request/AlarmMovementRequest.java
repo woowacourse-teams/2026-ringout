@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 public record AlarmMovementRequest(
     @Schema(
-        description = "이동 상태 변경 대상 활성 알람의 식별자. 양수여야 합니다.",
+        description = "이동 상태 변경 대상 알람 실행의 식별자. 양수여야 합니다.",
         example = "135",
         requiredMode = Schema.RequiredMode.REQUIRED,
         minimum = "1"
