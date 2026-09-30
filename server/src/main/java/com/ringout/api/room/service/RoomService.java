@@ -78,25 +78,34 @@ public class RoomService {
 
     @Transactional(readOnly = true)
     public RoomDetailResponse getRoom(Long userId, Long roomId) {
-        try {
-            User user = findAuthenticatedUser(userId);
-            Room room = findActiveRoom(roomId);
-            roomUserRepository.findActiveByRoomIdAndUserId(roomId, user.getId())
-                .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_DETAIL_FORBIDDEN));
-            List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
+        User user = findAuthenticatedUser(userId);
+        Room room = findActiveRoom(roomId);
 
-            return RoomDetailResponse.from(room, user.getId(), roomUsers);
-        } catch (GeneralException exception) {
-            throw exception;
-        } catch (RuntimeException exception) {
-            log.atError()
-                .addKeyValue("event", "room_detail_lookup_failed")
-                .addKeyValue("userId", userId)
-                .addKeyValue("roomId", roomId)
-                .setCause(exception)
-                .log("모임방 상세 조회 실패");
-            throw new GeneralException(RoomErrorStatus.ROOM_DETAIL_FAILED);
-        }
+        roomUserRepository.findActiveByRoomIdAndUserId(roomId, user.getId())
+            .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_DETAIL_FORBIDDEN));
+
+        List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
+
+        return RoomDetailResponse.from(room, user.getId(), roomUsers);
+    }
+
+    @Transactional
+    public RoomDetailResponse joinRoom(Long userId, Long roomId) {
+        User user = findAuthenticatedUser(userId);
+        Room room = findActiveRoom(roomId);
+
+        validateJoinRoom(roomId, user);
+
+        roomUserRepository.save(RoomUser.of(user, room));
+        List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
+
+        log.atInfo()
+            .addKeyValue("event", "room_member_join_succeeded")
+            .addKeyValue("userId", userId)
+            .addKeyValue("roomId", roomId)
+            .log("모임방 참여 성공");
+
+        return RoomDetailResponse.from(room, user.getId(), roomUsers);
     }
 
     @Transactional
@@ -226,6 +235,16 @@ public class RoomService {
         if (request.hasInvalidImage()) {
             throw new GeneralException(RoomErrorStatus.ROOM_IMAGE_INVALID);
         }
+    }
+
+    private void validateJoinRoom(Long roomId, User user) {
+        if (roomUserRepository.findActiveByRoomIdAndUserId(roomId, user.getId()).isPresent()) {
+            throw new GeneralException(RoomErrorStatus.ROOM_ALREADY_JOINED);
+        }
+        if (roomBlackListRepository.existsActiveByRoomIdAndUserId(roomId, user.getId())) {
+            throw new GeneralException(RoomErrorStatus.ROOM_JOIN_FORBIDDEN);
+        }
+
     }
 
 }

@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 public enum RoomSuccessStatus implements BaseCode {
 
     ROOM_CREATED(HttpStatus.CREATED, "ROOM201", "모임 방이 생성되었습니다."),
+    ROOM_MEMBER_JOINED(HttpStatus.CREATED, "ROOM201", "모임 방 참여에 성공했습니다."),
     ROOM_UPDATED(HttpStatus.OK, "ROOM200", "방 정보 수정에 성공했습니다."),
     ROOM_LIST_FOUND(HttpStatus.OK, "ROOM200", "방 목록 조회에 성공했습니다."),
     ROOM_DETAIL_FOUND(HttpStatus.OK, "ROOM200", "방 상세 정보 조회에 성공했습니다."),

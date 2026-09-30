@@ -58,6 +58,18 @@ public class RoomController implements RoomControllerApi {
     }
 
     @Override
+    @PostMapping("/{roomId}/members")
+    public ResponseEntity<CustomResponse<RoomDetailResponse>> joinRoom(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @PathVariable Long roomId
+    ) {
+        RoomDetailResponse response = roomService.joinRoom(customUserDetails.getUserId(), roomId);
+
+        return ResponseEntity.status(RoomSuccessStatus.ROOM_MEMBER_JOINED.getHttpStatus())
+            .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_MEMBER_JOINED, response));
+    }
+
+    @Override
     @PostMapping
     public ResponseEntity<CustomResponse<RoomCreateResponse>> createRoom(
         @AuthenticationPrincipal CustomUserDetails customUserDetails, @RequestBody RoomCreateRequest request
