@@ -23,11 +23,12 @@ class TermsReagreementViewModelTest {
         assertFalse(f.vm.uiState.blocksService)
     }
     @Test
-    fun `로그인 세션에서 두 약관이 최신이면 확인 후 진입을 허용한다`() = runTest {
+    fun `로그인 세션에서 두 약관이 최신이면 다이얼로그 없이 이용을 유지한다`() = runTest {
         val f = Fixture(this)
         f.repo.status = terms(current = true)
         runCurrent()
         assertEquals(TermsGatePhase.Allowed, f.vm.uiState.phase)
+        assertFalse(f.vm.uiState.blocksService)
         f.session.markAuthenticated()
         runCurrent()
         assertEquals(1, f.repo.getCount)
@@ -74,16 +75,72 @@ class TermsReagreementViewModelTest {
         assertEquals(TermsGatePhase.Notice, f.vm.uiState.phase)
     }
     @Test
-    fun `온라인 조회 실패는 진입을 차단하고 재시도를 제공한다`() = runTest {
+    fun `백그라운드 조회 실패는 서비스를 차단하지 않고 연결 복구 후 다시 조회한다`() = runTest {
         val f = Fixture(this)
         f.repo.loader = { error("서버 오류") }
         runCurrent()
-        assertEquals(TermsGatePhase.Failure, f.vm.uiState.phase)
-        assertTrue(f.vm.uiState.blocksService)
+        assertEquals(TermsGatePhase.CheckFailed, f.vm.uiState.phase)
+        assertFalse(f.vm.uiState.blocksService)
+        assertFalse(f.vm.uiState.isChecking)
+        assertNull(f.vm.uiState.errorMessage)
+        f.network.status.value = NetworkStatus.Offline
+        runCurrent()
         f.repo.loader = { terms(current = true) }
-        f.vm.retry()
+        f.network.status.value = NetworkStatus.Online
         runCurrent()
         assertEquals(TermsGatePhase.Allowed, f.vm.uiState.phase)
+        assertEquals(2, f.repo.getCount)
+    }
+    @Test
+    fun `응답을 기다리는 동안 서비스를 유지하고 재동의 필요 응답 후에만 안내한다`() = runTest {
+        val f = Fixture(this)
+        val response = CompletableDeferred<RequiredTermsStatus>()
+        f.repo.loader = { response.await() }
+        assertFalse(f.vm.uiState.blocksService)
+
+        runCurrent()
+        assertEquals(1, f.repo.getCount)
+        assertTrue(f.vm.uiState.isChecking)
+        assertFalse(f.vm.uiState.blocksService)
+
+        response.complete(terms())
+        runCurrent()
+        assertEquals(TermsGatePhase.Notice, f.vm.uiState.phase)
+        assertTrue(f.vm.uiState.blocksService)
+        assertFalse(f.vm.uiState.isChecking)
+    }
+    @Test
+    fun `늦은 응답이 최신 동의를 확인하면 화면을 띄우지 않는다`() = runTest {
+        val f = Fixture(this)
+        val response = CompletableDeferred<RequiredTermsStatus>()
+        f.repo.loader = { response.await() }
+        runCurrent()
+        assertFalse(f.vm.uiState.blocksService)
+
+        response.complete(terms(current = true))
+        runCurrent()
+        assertEquals(TermsGatePhase.Allowed, f.vm.uiState.phase)
+        assertFalse(f.vm.uiState.blocksService)
+    }
+    @Test
+    fun `네트워크 확인과 연결 복구 후 조회 대기 중에도 서비스를 이용한다`() = runTest {
+        val f = Fixture(this, connection = NetworkStatus.Unknown)
+        runCurrent()
+        assertEquals(0, f.repo.getCount)
+        assertFalse(f.vm.uiState.blocksService)
+        f.network.status.value = NetworkStatus.Offline
+        runCurrent()
+
+        val response = CompletableDeferred<RequiredTermsStatus>()
+        f.repo.loader = { response.await() }
+        f.network.status.value = NetworkStatus.Online
+        runCurrent()
+        assertTrue(f.vm.uiState.isChecking)
+        assertFalse(f.vm.uiState.blocksService)
+
+        response.complete(terms())
+        runCurrent()
+        assertEquals(TermsGatePhase.Notice, f.vm.uiState.phase)
     }
     @Test
     fun `필수 선택을 완료해야 제출하며 중복 제출을 막고 서버 확인 후에만 진입한다`() = runTest {
@@ -129,8 +186,15 @@ class TermsReagreementViewModelTest {
         f.vm.submit()
         runCurrent()
         assertEquals(TermsGatePhase.Failure, f.vm.uiState.phase)
-        f.repo.loader = { terms(current = true) }
+        val response = CompletableDeferred<RequiredTermsStatus>()
+        f.repo.loader = { response.await() }
         f.vm.retry()
+        runCurrent()
+        assertEquals(TermsGatePhase.Failure, f.vm.uiState.phase)
+        assertTrue(f.vm.uiState.isChecking)
+        assertTrue(f.vm.uiState.blocksService)
+        f.vm.retry()
+        response.complete(terms(current = true))
         runCurrent()
         assertEquals(1, f.repo.postCount)
         assertEquals(TermsGatePhase.Allowed, f.vm.uiState.phase)

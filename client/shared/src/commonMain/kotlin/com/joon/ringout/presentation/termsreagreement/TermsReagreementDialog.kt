@@ -53,7 +53,7 @@ internal fun TermsReagreementDialog(
                 },
                 onStartClick = if (state.phase == TermsGatePhase.Failure) onRetry else onSubmit,
                 modifier = modifier,
-                startEnabled = !state.isSubmitting && !state.isLoggingOut,
+                startEnabled = !state.isSubmitting && !state.isChecking && !state.isLoggingOut,
                 errorMessage = state.errorMessage,
                 secondaryAction = {
                     TextButton(

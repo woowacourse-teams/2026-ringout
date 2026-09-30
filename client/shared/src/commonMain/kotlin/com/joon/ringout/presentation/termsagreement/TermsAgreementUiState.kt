@@ -1,6 +1,6 @@
 package com.joon.ringout.presentation.termsagreement
 
-enum class TermsAgreementContentState { Agreement, Loading, Error }
+enum class TermsAgreementContentState { Agreement, Error }
 
 data class TermsAgreementUiState(
     val terms: List<TermAgreementItem> = defaultTerms,

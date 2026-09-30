@@ -61,11 +61,12 @@ class TermsReagreementViewModel(
                     connection == NetworkStatus.Offline -> {
                         cancelRequest()
                         // 오프라인 허용은 동의 완료와 별개의 상태다.
-                        uiState = uiState.copy(phase = TermsGatePhase.Offline, isSubmitting = false, errorMessage = null)
+                        uiState = uiState.copy(phase = TermsGatePhase.Offline, isSubmitting = false,
+                            isChecking = false, errorMessage = null)
                     }
                     connection == NetworkStatus.Unknown -> {
                         cancelRequest()
-                        uiState = uiState.copy(phase = TermsGatePhase.Checking)
+                        uiState = uiState.copy(phase = TermsGatePhase.Checking, isSubmitting = false, isChecking = false)
                     }
                     changed || uiState.phase == TermsGatePhase.Checking -> checkStatus()
                 }
@@ -78,7 +79,7 @@ class TermsReagreementViewModel(
     }
 
     fun setAgreed(type: RequiredTermType, agreed: Boolean) {
-        if (uiState.phase != TermsGatePhase.Consent || uiState.isSubmitting || uiState.isLoggingOut) return
+        if (uiState.phase != TermsGatePhase.Consent || uiState.isSubmitting || uiState.isChecking || uiState.isLoggingOut) return
         if (uiState.status?.pending?.none { it.type == type } != false) return
         uiState = uiState.copy(selected = if (agreed) uiState.selected + type else uiState.selected - type)
     }
@@ -138,7 +139,7 @@ class TermsReagreementViewModel(
         if (uiState.isLoggingOut || uiState.isSubmitting) return
         cancelRequest()
         val key = identity
-        uiState = uiState.copy(isLoggingOut = true, errorMessage = null)
+        uiState = uiState.copy(isLoggingOut = true, isChecking = false, errorMessage = null)
         logoutJob = scope.launch {
             try {
                 authRepository.logout()
@@ -157,17 +158,25 @@ class TermsReagreementViewModel(
         if (network != NetworkStatus.Online || session.state.value != AuthSessionState.Authenticated) return
         cancelRequest()
         val id = requestId
-        uiState = uiState.copy(phase = TermsGatePhase.Checking, isSubmitting = false, errorMessage = null)
+        val isReagreementFlow = uiState.blocksService
+        // 최초 조회는 서비스 위에 화면을 띄우지 않는다. 재동의 중 재시도는 현재 화면을 유지한다.
+        uiState = uiState.copy(
+            phase = if (isReagreementFlow) uiState.phase else TermsGatePhase.Checking,
+            isChecking = true,
+            isSubmitting = false,
+            errorMessage = null,
+        )
         request = scope.launch {
             try {
                 val status = repository.getStatus()
-                if (isCurrent(key, id)) applyStatus(status)
+                if (isCurrent(key, id)) applyStatus(status, consent = isReagreementFlow)
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {
                 if (isCurrent(key, id)) uiState = uiState.copy(
-                    phase = TermsGatePhase.Failure,
-                    errorMessage = "약관 동의 상태를 확인하지 못했어요. 다시 시도해 주세요.",
+                    phase = if (isReagreementFlow) TermsGatePhase.Failure else TermsGatePhase.CheckFailed,
+                    isChecking = false,
+                    errorMessage = if (isReagreementFlow) "약관 동의 상태를 확인하지 못했어요. 다시 시도해 주세요." else null,
                 )
             }
         }

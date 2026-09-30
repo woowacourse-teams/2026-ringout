@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -105,18 +104,6 @@ internal fun TermsAgreementScreen(
                                 )
                             }
                         }
-                        TermsAgreementContentState.Loading -> item {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                CircularProgressIndicator()
-                                Text(
-                                    text = "약관 동의 상태를 확인하고 있어요.",
-                                    modifier = Modifier.padding(top = 16.dp),
-                                )
-                            }
-                        }
                         TermsAgreementContentState.Error -> Unit
                     }
                 }
@@ -131,15 +118,13 @@ internal fun TermsAgreementScreen(
                             .padding(bottom = 8.dp),
                     )
                 }
-                if (uiState.contentState != TermsAgreementContentState.Loading) {
-                    TermsStartButton(
-                        enabled = startEnabled && (
-                            uiState.contentState == TermsAgreementContentState.Error || uiState.canStart
-                        ),
-                        onClick = onStartClick,
-                        label = uiState.actionLabel,
-                    )
-                }
+                TermsStartButton(
+                    enabled = startEnabled && (
+                        uiState.contentState == TermsAgreementContentState.Error || uiState.canStart
+                    ),
+                    onClick = onStartClick,
+                    label = uiState.actionLabel,
+                )
                 secondaryAction()
             }
         }
@@ -270,15 +255,6 @@ private fun TermsAgreementReagreementPreview() {
             title = "최신 약관에 동의해 주세요",
             actionLabel = "동의하고 계속하기",
         ),
-    )
-}
-
-@Preview(name = "약관 확인 중", widthDp = 360, heightDp = 640)
-@Composable
-private fun TermsAgreementLoadingPreview() {
-    TermsAgreementScreenPreview(
-        ThemeMode.Dark,
-        TermsAgreementUiState(terms = emptyList(), contentState = TermsAgreementContentState.Loading),
     )
 }
 
