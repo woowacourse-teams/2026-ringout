@@ -32,6 +32,9 @@ import platform.CoreFoundation.kCFURLPOSIXPathStyle
 import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreGraphics.CGImageRelease
 import platform.Foundation.NSURL
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSFileSize
+import platform.Foundation.NSNumber
 import platform.PhotosUI.PHPickerConfiguration
 import platform.PhotosUI.PHPickerFilter
 import platform.PhotosUI.PHPickerResult
@@ -91,7 +94,13 @@ internal actual fun rememberProfileImagePicker(
                                 ProfileImagePickResult.Failure
                             } else {
                                 runCatching {
-                                    ProfileImagePickResult.Selected(decodePreviewImage(fileUrl))
+                                    val fileSizeBytes = profileImageFileSize(fileUrl)
+                                        ?: error("The selected image size could not be read")
+                                    if (isProfileImageSizeTooLarge(fileSizeBytes)) {
+                                        ProfileImagePickResult.TooLarge
+                                    } else {
+                                        ProfileImagePickResult.Selected(decodePreviewImage(fileUrl))
+                                    }
                                 }.getOrElse { ProfileImagePickResult.Failure }
                             }
                             coroutineScope.launch {
@@ -120,6 +129,15 @@ private class ProfileImagePickerSession(
     var picker: PHPickerViewController? = null,
     var delegate: PHPickerViewControllerDelegateProtocol? = null,
 )
+
+@OptIn(ExperimentalForeignApi::class)
+private fun profileImageFileSize(fileUrl: NSURL): Long? {
+    val path = fileUrl.path ?: return null
+    val attributes = runCatching {
+        NSFileManager.defaultManager.attributesOfItemAtPath(path, error = null)
+    }.getOrNull() ?: return null
+    return (attributes[NSFileSize] as? NSNumber)?.longLongValue
+}
 
 @OptIn(BetaInteropApi::class, ExperimentalForeignApi::class)
 private fun decodePreviewImage(fileUrl: NSURL): ImageBitmap {
