@@ -70,6 +70,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             viewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class),
             authSessionState = authSessionState,
             onCreateRoom = { navigationState.navigate(AppRoute.RoomCreate) },
+            onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomDetail(roomId)) },
         )
     }
