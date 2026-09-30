@@ -102,4 +102,11 @@ public class User extends BaseEntity {
   public void changeNickname(String nickname) {
     this.nickname = new Nickname(nickname);
   }
+
+  public void changeProfileImage(ImageFile image) {
+    if (image == null) {
+      throw new IllegalArgumentException("프로필 이미지는 비어 있을 수 없습니다.");
+    }
+    this.image = image;
+  }
 }

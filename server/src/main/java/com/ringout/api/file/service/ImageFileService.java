@@ -52,6 +52,15 @@ public class ImageFileService {
         return imageStorage.createReadUri(imageFile.getUrl());
     }
 
+    @Transactional
+    public void delete(ImageFile imageFile) {
+        if (imageFile == null) {
+            return;
+        }
+        imageFileRepository.delete(imageFile);
+        deleteStorageAfterCommit(imageFile.getUrl());
+    }
+
     private boolean registerRollbackCleanup(String objectKey) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             return false;
@@ -65,5 +74,18 @@ public class ImageFileService {
             }
         });
         return true;
+    }
+
+    private void deleteStorageAfterCommit(String objectKey) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            imageStorage.delete(objectKey);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                imageStorage.delete(objectKey);
+            }
+        });
     }
 }

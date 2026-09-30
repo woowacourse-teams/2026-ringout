@@ -4,6 +4,7 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.common.response.code.ErrorReasonResponse;
 import com.ringout.api.common.response.code.status.ErrorStatus;
 import com.ringout.api.config.security.CustomUserDetails;
+import com.ringout.api.file.status.FileErrorStatus;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.time.format.DateTimeParseException;
@@ -25,6 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.multipart.MultipartHttpServletRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 @Slf4j
 @RestControllerAdvice(annotations = {RestController.class})
@@ -81,6 +84,15 @@ public class ExceptionAdvice {
 
         logClientRequestFailure(ErrorStatus.BAD_REQUEST, request);
         return fail(ErrorStatus.BAD_REQUEST, errorPoint);
+    }
+
+    @ExceptionHandler({MissingServletRequestPartException.class, MaxUploadSizeExceededException.class})
+    public ResponseEntity<CustomResponse<Void>> handleInvalidMultipart(
+        Exception exception,
+        HttpServletRequest request
+    ) {
+        logClientRequestFailure(FileErrorStatus.IMAGE_FILE_INVALID.getReasonHttpStatus(), request);
+        return fail(FileErrorStatus.IMAGE_FILE_INVALID.getReasonHttpStatus());
     }
 
     @ExceptionHandler(TypeMismatchException.class)
