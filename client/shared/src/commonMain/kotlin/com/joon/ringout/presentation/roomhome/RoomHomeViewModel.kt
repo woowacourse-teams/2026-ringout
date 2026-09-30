@@ -1,15 +1,22 @@
 package com.joon.ringout.presentation.roomhome
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.plusDays
 import com.joon.ringout.domain.missionhistory.weekDates
 import com.joon.ringout.domain.missionhistory.yearMonth
+import com.joon.ringout.domain.room.RoomScheduleClock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
-/** 전달받은 정보만 표시하는 UI 단계의 ViewModel. 조회 API나 일정 계산을 수행하지 않는다. */
+/** 전달받은 모임 정보와 기기 시각으로 화면 상태를 관리한다. 조회 API는 연결하지 않는다. */
 internal class RoomHomeViewModel(
     initialState: RoomHomeUiState = RoomHomeUiState(),
     recordsByDate: Map<MissionDate, RoomHomeDayRecordsUiModel> = mapOf(
@@ -18,6 +25,8 @@ internal class RoomHomeViewModel(
             achievedMemberCount = initialState.recordsState.achievedMemberCount,
         ),
     ),
+    private val clock: RoomScheduleClock = systemRoomScheduleClock(),
+    private val coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     // UI 확인을 위해 전달된 메모리 데이터만 사용한다. 서버/개인 기록 저장소에 접근하지 않는다.
     private val canViewRecords = initialState.room?.isJoined == true && initialState.recordsState.canViewRecords
@@ -33,9 +42,27 @@ internal class RoomHomeViewModel(
                 participantCounts = localRecords.mapValues { it.value.achievedMemberCount },
             ),
             isCalendarVisible = initialState.isCalendarVisible && canViewRecords,
-        ),
+        ).withCurrentSchedule(clock),
     )
     val uiState = mutableUiState.asStateFlow()
+    private var countdownJob: Job? = null
+
+    /** 화면 복귀 시에도 저장된 초를 감소시키지 않고 실제 현재 시각으로 다시 계산한다. */
+    fun startCountdown() {
+        mutableUiState.update { it.withCurrentSchedule(clock) }
+        if (countdownJob?.isActive == true || uiState.value.room?.toActivitySchedule()?.days.isNullOrEmpty()) return
+        countdownJob = (coroutineScope ?: viewModelScope).launch {
+            while (isActive) {
+                delay(1_000)
+                mutableUiState.update { it.withCurrentSchedule(clock) }
+            }
+        }
+    }
+
+    fun stopCountdown() {
+        countdownJob?.cancel()
+        countdownJob = null
+    }
 
     fun onTabSelected(tab: RoomHomeTab) {
         mutableUiState.update { it.copy(selectedTab = tab, isCalendarVisible = false) }

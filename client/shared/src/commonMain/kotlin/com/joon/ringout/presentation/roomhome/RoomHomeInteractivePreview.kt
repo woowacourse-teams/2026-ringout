@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.roomhome
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -14,12 +15,21 @@ import com.joon.ringout.domain.missionhistory.weekDates
 import com.joon.ringout.domain.missionhistory.yearMonth
 import com.joon.ringout.presentation.roomhome.component.RoomHomePreviewRecordsByDate
 import com.joon.ringout.presentation.roomhome.component.RoomHomePreviewState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 /** 실행 모드에서 탭·주간 날짜·월간 달력·새로고침을 확인하는 독립 Preview. */
 @Preview(name = "모임 홈 · 동작 확인", widthDp = 402, heightDp = 949)
 @Composable
 private fun RoomHomeInteractivePreview() {
     var state by remember { mutableStateOf(RoomHomePreviewState) }
+    val clock = remember { systemRoomScheduleClock() }
+    LaunchedEffect(state.room) {
+        while (isActive) {
+            state = state.withCurrentSchedule(clock)
+            delay(1_000)
+        }
+    }
     val selectDate: (MissionDate) -> Unit = { date ->
         val day = RoomHomePreviewRecordsByDate[date] ?: RoomHomeDayRecordsUiModel()
         state = state.copy(
