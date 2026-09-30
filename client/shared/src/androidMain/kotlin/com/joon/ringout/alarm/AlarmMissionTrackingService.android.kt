@@ -25,6 +25,7 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.joon.ringout.shared.R
 
 class AlarmMissionTrackingService : Service() {
     private lateinit var missionStore: ActiveAlarmMissionStore
@@ -347,7 +348,7 @@ class AlarmMissionTrackingService : Service() {
             )
         }
         return Notification.Builder(this, TrackingNotificationChannelId)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_ringout)
             .setContentTitle("목적지로 이동 중")
             .setContentText(
                 statusMessage

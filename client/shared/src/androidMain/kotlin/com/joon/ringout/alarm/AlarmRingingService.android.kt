@@ -22,6 +22,7 @@ import android.os.VibratorManager
 import android.provider.Settings
 import com.joon.ringout.analytics.AlarmAnalytics
 import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
+import com.joon.ringout.shared.R
 
 class AlarmRingingService : Service() {
     private var mediaPlayer: MediaPlayer? = null
@@ -157,7 +158,7 @@ class AlarmRingingService : Service() {
             ?: "러닝 미션을 시작할 시간입니다."
 
         return Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(R.drawable.ic_notification_ringout)
             .setContentTitle(if (alarmTime.isBlank()) "알람이 울리고 있어요" else "$alarmTime 알람")
             .setContentText(contentText)
             .setCategory(Notification.CATEGORY_ALARM)
