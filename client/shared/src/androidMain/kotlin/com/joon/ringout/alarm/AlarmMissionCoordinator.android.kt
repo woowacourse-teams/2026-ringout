@@ -17,6 +17,7 @@ import com.joon.ringout.analytics.AlarmAnalytics
 import com.joon.ringout.analytics.ForceEndHoldAnalyticsAttempt
 import com.joon.ringout.analytics.ForceEndHoldAnalyticsAttemptStore
 import com.joon.ringout.data.alarmactivity.currentAlarmActivityTimestamp
+import com.joon.ringout.shared.R
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -692,7 +693,7 @@ class AlarmMissionCoordinator(context: Context) {
             applicationContext,
             ArrivalNotificationChannelId,
         )
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_ringout)
             .setContentTitle("목적지에 도착했습니다.")
             .setContentText("${mission.destinationName} 미션을 완료했어요.")
             .setCategory(Notification.CATEGORY_STATUS)
