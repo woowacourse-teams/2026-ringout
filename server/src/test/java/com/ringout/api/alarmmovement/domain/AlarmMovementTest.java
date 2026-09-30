@@ -43,6 +43,18 @@ class AlarmMovementTest {
         }
 
         @Test
+        void 이동_시작_후_2분_직전까지_시작_상태를_유지한다() {
+            // given
+            AlarmMovement alarmMovement = alarmMovementWith(ACTION_AT, null, null);
+
+            // when
+            MovementStatus status = alarmMovement.getMovementStatus(ACTION_AT.plusMinutes(1).plusSeconds(59));
+
+            // then
+            assertThat(status).isEqualTo(MovementStatus.MOVEMENT_STARTED);
+        }
+
+        @Test
         void 이동_시작_후_2분이_지나면_이동중_상태를_반환한다() {
             // given
             AlarmMovement alarmMovement = alarmMovementWith(ACTION_AT, null, null);
