@@ -20,7 +20,9 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
+import com.ringout.api.room.dto.response.RoomMemberResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
 import com.ringout.api.room.repository.RoomRepository;
@@ -789,6 +791,161 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_HOST_KICK_FORBIDDEN));
             verify(roomUserRepository, never()).findActiveByRoomIdAndUserId(any(), any());
+        }
+    }
+
+    @Nested
+    class 인증된_참여자_모임방_상세_조회 {
+
+        @Test
+        void 일반_참여자는_정렬된_현재_참여자와_MEMBER_관계를_포함한_상세_정보를_조회한다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User host = userWithId(1L, "방장");
+            User requester = userWithId(userId, "Alice");
+            User koreanMember = userWithId(3L, "가나다");
+            User specialMember = userWithId(4L, "@runner");
+            ImageFile requesterProfileImage = mock(ImageFile.class);
+            given(requesterProfileImage.getUrl()).willReturn("https://example.com/profiles/2.png");
+            given(requester.getImage()).willReturn(requesterProfileImage);
+            Room room = roomWithDetails(
+                roomId,
+                "아침 운동 모임",
+                "매주 함께 운동하고 인증하는 모임입니다.",
+                List.of(ActivityDay.FRIDAY, ActivityDay.MONDAY, ActivityDay.WEDNESDAY),
+                LocalTime.of(8, 0),
+                "https://example.com/images/room-1.png",
+                LocalDateTime.of(2026, 9, 20, 10, 30)
+            );
+            ReflectionTestUtils.setField(room, "hostUser", host);
+            List<RoomUser> roomUsers = List.of(
+                RoomUser.of(specialMember, room),
+                RoomUser.of(requester, room),
+                RoomUser.of(koreanMember, room),
+                RoomUser.of(host, room)
+            );
+            given(userRepository.findById(userId)).willReturn(Optional.of(requester));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId))
+                .willReturn(Optional.of(RoomUser.of(requester, room)));
+            given(roomUserRepository.findActiveByRoomId(roomId)).willReturn(roomUsers);
+
+            // when
+            RoomDetailResponse response = roomService.getRoom(userId, roomId);
+
+            // then
+            assertThat(response.roomId()).isEqualTo(roomId);
+            assertThat(response.name()).isEqualTo("아침 운동 모임");
+            assertThat(response.description()).isEqualTo("매주 함께 운동하고 인증하는 모임입니다.");
+            assertThat(response.imageUrl()).isEqualTo("https://example.com/images/room-1.png");
+            assertThat(response.activityDays()).containsExactly("MONDAY", "WEDNESDAY", "FRIDAY");
+            assertThat(response.activityTime()).isEqualTo("08:00");
+            assertThat(response.memberCount()).isEqualTo(4);
+            assertThat(response.membershipRole()).isEqualTo("MEMBER");
+            assertThat(response.createdAt()).isEqualTo(LocalDateTime.of(2026, 9, 20, 10, 30));
+            assertThat(response.members()).hasSize(4);
+            assertThat(response.members()).extracting(RoomMemberResponse::nickname)
+                .containsExactly("가나다", "방장", "Alice", "@runner");
+            assertThat(response.members()).extracting(RoomMemberResponse::profileImageUrl)
+                .containsExactly(null, null, "https://example.com/profiles/2.png", null);
+            verify(roomUserRepository).findActiveByRoomId(roomId);
+        }
+
+        @Test
+        void 방장은_OWNER_관계를_포함한_상세_정보를_조회한다() {
+            // given
+            Long hostUserId = 1L;
+            Long roomId = 10L;
+            User host = userWithId(hostUserId, "방장");
+            Room room = roomWithHost(hostUserId, roomId);
+            given(userRepository.findById(hostUserId)).willReturn(Optional.of(host));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, hostUserId))
+                .willReturn(Optional.of(RoomUser.of(host, room)));
+            given(roomUserRepository.findActiveByRoomId(roomId)).willReturn(List.of(RoomUser.of(host, room)));
+
+            // when
+            RoomDetailResponse response = roomService.getRoom(hostUserId, roomId);
+
+            // then
+            assertThat(response.membershipRole()).isEqualTo("OWNER");
+            assertThat(response.memberCount()).isOne();
+            assertThat(response.imageUrl()).isEqualTo("/images/default-room.png");
+        }
+    }
+
+    @Nested
+    class 모임방_상세_조회_접근_제어 {
+
+        @Test
+        void 인증되지_않은_사용자는_상세_정보를_조회할_수_없다() {
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.getRoom(null, 10L));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_UNAUTHORIZED));
+            verify(roomRepository, never()).findActiveById(any());
+        }
+
+        @Test
+        void 존재하지_않거나_삭제된_모임방은_조회할_수_없다() {
+            // given
+            Long userId = 1L;
+            Long roomId = 10L;
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.getRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_NOT_FOUND));
+            verify(roomUserRepository, never()).findActiveByRoomId(any());
+        }
+
+        @Test
+        void 참여하지_않은_사용자는_상세_정보를_조회할_수_없다() {
+            // given
+            Long userId = 2L;
+            Long roomId = 10L;
+            User user = userWithId(userId, "외부인");
+            Room room = roomWithHost(1L, roomId);
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.getRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_DETAIL_FORBIDDEN));
+            verify(roomUserRepository, never()).findActiveByRoomId(roomId);
+        }
+
+        @Test
+        void 상세_정보_조회_중_예기치_않은_오류가_발생하면_ROOM500을_반환한다() {
+            // given
+            Long userId = 1L;
+            Long roomId = 10L;
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findActiveById(roomId)).willThrow(new IllegalStateException("database error"));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.getRoom(userId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_DETAIL_FAILED));
         }
     }
 

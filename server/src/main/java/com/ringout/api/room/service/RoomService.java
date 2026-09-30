@@ -8,6 +8,7 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomSummaryResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
@@ -73,6 +74,29 @@ public class RoomService {
             .toList();
 
         return new RoomListResponse(rooms);
+    }
+
+    @Transactional(readOnly = true)
+    public RoomDetailResponse getRoom(Long userId, Long roomId) {
+        try {
+            User user = findAuthenticatedUser(userId);
+            Room room = findActiveRoom(roomId);
+            roomUserRepository.findActiveByRoomIdAndUserId(roomId, user.getId())
+                .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_DETAIL_FORBIDDEN));
+            List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
+
+            return RoomDetailResponse.from(room, user.getId(), roomUsers);
+        } catch (GeneralException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            log.atError()
+                .addKeyValue("event", "room_detail_lookup_failed")
+                .addKeyValue("userId", userId)
+                .addKeyValue("roomId", roomId)
+                .setCause(exception)
+                .log("모임방 상세 조회 실패");
+            throw new GeneralException(RoomErrorStatus.ROOM_DETAIL_FAILED);
+        }
     }
 
     @Transactional

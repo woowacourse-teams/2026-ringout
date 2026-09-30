@@ -72,4 +72,19 @@ class RoomControllerWebMvcTest {
         );
         verify(roomService).getRooms(null);
     }
+
+    @Test
+    void 비로그인_사용자는_모임방_상세_정보를_조회할_수_없다() throws Exception {
+        // when
+        var result = mockMvc.perform(get("/api/v1/rooms/1"));
+
+        // then
+        result.andExpectAll(
+            status().isUnauthorized(),
+            jsonPath("$.isSuccess").value(false),
+            jsonPath("$.code").value("AUTH401"),
+            jsonPath("$.message").value("인증되지 않은 사용자입니다."),
+            jsonPath("$.result").doesNotExist()
+        );
+    }
 }

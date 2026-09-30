@@ -7,6 +7,7 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.service.RoomService;
@@ -42,6 +43,18 @@ public class RoomController implements RoomControllerApi {
 
         return ResponseEntity.status(RoomSuccessStatus.ROOM_LIST_FOUND.getHttpStatus())
             .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_LIST_FOUND, response));
+    }
+
+    @Override
+    @GetMapping("/{roomId}")
+    public ResponseEntity<CustomResponse<RoomDetailResponse>> getRoom(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @PathVariable Long roomId
+    ) {
+        RoomDetailResponse response = roomService.getRoom(customUserDetails.getUserId(), roomId);
+
+        return ResponseEntity.status(RoomSuccessStatus.ROOM_DETAIL_FOUND.getHttpStatus())
+            .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_DETAIL_FOUND, response));
     }
 
     @Override

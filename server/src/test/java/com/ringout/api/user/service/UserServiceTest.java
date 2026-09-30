@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.dto.request.UpdateNicknameRequest;
 import com.ringout.api.user.dto.response.UpdateNicknameResponse;
@@ -29,10 +30,13 @@ class UserServiceTest {
     private UserRepository userRepository;
 
     private UserService userService;
+    // TODO: 테스트 실패 방지를 위해 임의로 imageFileService를 추가했습니다. 추후 담당자가 확인 후 수정해주세요.
+    private ImageFileService imageFileService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository);
+        // TODO: 테스트 실패 방지를 위해 임의로 imageFileService를 추가했습니다. 추후 담당자가 확인 후 수정해주세요.
+        userService = new UserService(userRepository, imageFileService);
     }
 
     @Test
