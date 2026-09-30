@@ -45,6 +45,24 @@ public interface AlarmOccurrenceRepository extends JpaRepository<AlarmOccurrence
     );
 
     @Query("""
+        select distinct alarmOccurrence
+        from AlarmOccurrence alarmOccurrence
+        join RoomUser roomUser on roomUser.user = alarmOccurrence.user
+        left join fetch alarmOccurrence.ringings
+        where roomUser.room.id = :roomId
+          and roomUser.deletedAt is null
+          and alarmOccurrence.startedAt >= :start
+          and alarmOccurrence.startedAt < :end
+          and alarmOccurrence.deletedAt is null
+        order by alarmOccurrence.startedAt asc, alarmOccurrence.id asc
+        """)
+    List<AlarmOccurrence> findActiveByRoomIdAndStartedAtBetween(
+        @Param("roomId") Long roomId,
+        @Param("start") LocalDateTime start,
+        @Param("end") LocalDateTime end
+    );
+
+    @Query("""
         select alarmOccurrence from AlarmOccurrence alarmOccurrence
         where alarmOccurrence.user.id = :userId
           and alarmOccurrence.clientAlarmId = :clientAlarmId

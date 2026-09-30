@@ -17,6 +17,7 @@ import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomMemberResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.service.RoomService;
+import com.ringout.api.room.service.RoomRecordService;
 import com.ringout.api.user.domain.Role;
 import java.time.LocalTime;
 import java.util.List;
@@ -30,12 +31,14 @@ import org.springframework.mock.web.MockMultipartFile;
 class RoomControllerTest {
 
     private RoomService roomService;
+    private RoomRecordService roomRecordService;
     private RoomController roomController;
 
     @BeforeEach
     void setUp() {
         roomService = mock(RoomService.class);
-        roomController = new RoomController(roomService);
+        roomRecordService = mock(RoomRecordService.class);
+        roomController = new RoomController(roomService, roomRecordService);
     }
 
     @Nested

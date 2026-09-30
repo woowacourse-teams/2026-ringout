@@ -1,5 +1,7 @@
 package com.ringout.api.room.controller;
 
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,7 +14,13 @@ import com.ringout.api.config.jwt.JwtProvider;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.config.security.JwtAuthenticationEntryPoint;
 import com.ringout.api.room.service.RoomService;
+import com.ringout.api.room.service.RoomRecordService;
+import com.ringout.api.room.dto.response.MemberRecordResponse;
+import com.ringout.api.room.dto.response.RoomRecordsResponse;
+import com.ringout.api.room.status.RecordErrorStatus;
+import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.user.domain.Role;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -31,13 +39,19 @@ class RoomRecordControllerTest {
     private RoomService roomService;
 
     @MockitoBean
+    private RoomRecordService roomRecordService;
+
+    @MockitoBean
     private JwtProvider jwtProvider;
 
     @Test
-    void 인증된_회원이_기록이_없는_활동_날짜를_조회하면_빈_회원_기록을_반환한다() throws Exception {
+    void 인증된_회원이_기록이_없는_활동_날짜를_조회하면_현재_회원과_빈_기록을_반환한다() throws Exception {
         // given
         Long roomId = 1L;
         String date = "2026-09-16";
+        given(roomRecordService.getRoomRecords(1L, roomId, date)).willReturn(new RoomRecordsResponse(List.of(
+            new MemberRecordResponse(1L, "아이아티스트님", null, List.of())
+        )));
 
         // when
         var result = mockMvc.perform(get("/api/v1/rooms/{roomId}/records", roomId)
@@ -50,9 +64,12 @@ class RoomRecordControllerTest {
             jsonPath("$.isSuccess").value(true),
             jsonPath("$.code").value("RECORD200"),
             jsonPath("$.message").value("모임 회원 기록 조회에 성공했습니다."),
-            jsonPath("$.result.memberRecords").isArray(),
-            jsonPath("$.result.memberRecords").isEmpty()
+            jsonPath("$.result.memberRecords[0].userId").value(1L),
+            jsonPath("$.result.memberRecords[0].nickname").value("아이아티스트님"),
+            jsonPath("$.result.memberRecords[0].profileImageUrl").doesNotExist(),
+            jsonPath("$.result.memberRecords[0].records").isEmpty()
         );
+        verify(roomRecordService).getRoomRecords(1L, roomId, date);
     }
 
     @Test
@@ -60,10 +77,33 @@ class RoomRecordControllerTest {
         // given
         Long roomId = 1L;
         String invalidDate = "2026/09/16";
+        given(roomRecordService.getRoomRecords(1L, roomId, invalidDate))
+            .willThrow(new GeneralException(RecordErrorStatus.RECORD_DATE_INVALID));
 
         // when
         var result = mockMvc.perform(get("/api/v1/rooms/{roomId}/records", roomId)
             .param("date", invalidDate)
+            .with(user(new CustomUserDetails(1L, Role.USER))));
+
+        // then
+        result.andExpectAll(
+            status().isBadRequest(),
+            jsonPath("$.isSuccess").value(false),
+            jsonPath("$.code").value("RECORD400"),
+            jsonPath("$.message").value("조회 날짜의 형식이 올바르지 않습니다."),
+            jsonPath("$.result").doesNotExist()
+        );
+    }
+
+    @Test
+    void 날짜가_누락되면_RECORD400을_반환한다() throws Exception {
+        // given
+        Long roomId = 1L;
+        given(roomRecordService.getRoomRecords(1L, roomId, (String) null))
+            .willThrow(new GeneralException(RecordErrorStatus.RECORD_DATE_INVALID));
+
+        // when
+        var result = mockMvc.perform(get("/api/v1/rooms/{roomId}/records", roomId)
             .with(user(new CustomUserDetails(1L, Role.USER))));
 
         // then

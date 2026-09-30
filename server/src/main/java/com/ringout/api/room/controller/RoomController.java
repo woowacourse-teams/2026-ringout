@@ -9,8 +9,11 @@ import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
+import com.ringout.api.room.dto.response.RoomRecordsResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
+import com.ringout.api.room.service.RoomRecordService;
 import com.ringout.api.room.service.RoomService;
+import com.ringout.api.room.status.RecordSuccessStatus;
 import com.ringout.api.room.status.RoomSuccessStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class RoomController implements RoomControllerApi {
 
     private final RoomService roomService;
+    private final RoomRecordService roomRecordService;
 
     @Override
     @GetMapping
@@ -55,6 +59,19 @@ public class RoomController implements RoomControllerApi {
 
         return ResponseEntity.status(RoomSuccessStatus.ROOM_DETAIL_FOUND.getHttpStatus())
             .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_DETAIL_FOUND, response));
+    }
+
+    @Override
+    @GetMapping("/{roomId}/records")
+    public ResponseEntity<CustomResponse<RoomRecordsResponse>> getRoomRecords(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @PathVariable Long roomId,
+        @org.springframework.web.bind.annotation.RequestParam(required = false) String date
+    ) {
+        RoomRecordsResponse response = roomRecordService.getRoomRecords(customUserDetails.getUserId(), roomId, date);
+
+        return ResponseEntity.status(RecordSuccessStatus.ROOM_MEMBER_RECORDS_FOUND.getHttpStatus())
+            .body(CustomResponse.onSuccess(RecordSuccessStatus.ROOM_MEMBER_RECORDS_FOUND, response));
     }
 
     @Override

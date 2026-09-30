@@ -69,7 +69,7 @@ class RoomRecordServiceTest {
             LocalDate date = LocalDate.of(2026, 9, 16);
             User requester = userWithId(USER_ID, "아이아티스트님");
             User member = userWithId(2L, "북여서여남여");
-            givenCurrentMembers(requester, member);
+            givenCurrentMembers(requester, requester, member);
             given(alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetween(
                 ROOM_ID, date.atStartOfDay(), date.plusDays(1).atStartOfDay())).willReturn(List.of());
 
