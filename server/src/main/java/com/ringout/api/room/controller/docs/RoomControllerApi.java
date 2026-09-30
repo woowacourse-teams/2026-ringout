@@ -88,7 +88,21 @@ public interface RoomControllerApi {
 
     @Operation(
         summary = "모임 방 상세 정보 조회",
-        description = "인증된 참여자가 모임 방의 상세 정보와 현재 참여자 목록을 조회합니다.",
+        description = """
+            인증된 현재 참여자만 삭제되지 않은 모임 방의 상세 정보를 조회할 수 있습니다.
+            membershipRole은 요청한 사용자가 방장이면 OWNER, 일반 참여자이면 MEMBER입니다.
+            미참여자는 OUTSIDER 성공 응답 대신 403을 반환합니다.
+            참여자 목록은 방장을 포함하며 탈퇴·추방된 참여 관계는 제외하고 userId 기준 중복을 제거합니다.
+            memberCount는 반환된 members의 크기와 같습니다.
+            닉네임 첫 글자를 기준으로 한글 완성형(가–힣), 영문(A–Z, a–z), 그 외 문자 순으로 정렬합니다.
+            각 그룹은 문자열 자연 순서로 오름차순 정렬하며 영문 대소문자를 구분합니다.
+            activityDays는 중복 없이 월요일부터 일요일 순으로 반환합니다.
+            activityTime은 모든 활동 요일에 공통으로 적용되는 시간이며 HH:mm 형식입니다.
+            대표 이미지가 없으면 /images/default-room.png를 반환합니다.
+            description과 members[].profileImageUrl은 값이 없으면 null입니다.
+            createdAt은 최초 생성 일시로 ISO 8601 형식이며 방 수정으로 변경되지 않습니다.
+            조회는 방 설정이나 참여 관계, 개인 알람 정보를 변경하지 않습니다.
+            """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
@@ -118,10 +132,49 @@ public interface RoomControllerApi {
                     """)
             )
         ),
-        @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자"),
-        @ApiResponse(responseCode = "403", description = "참여하지 않은 방"),
-        @ApiResponse(responseCode = "404", description = "존재하지 않거나 삭제된 모임 방"),
-        @ApiResponse(responseCode = "500", description = "모임 방 상세 정보 조회 실패")
+        @ApiResponse(
+            responseCode = "400",
+            description = "roomId를 Long으로 변환할 수 없음 (문자열 또는 Long 범위 초과)",
+            content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess": false, "code": "COMMON400", "message": "잘못된 요청입니다.", "result": null}
+                """))
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "보안 필터 인증 실패는 AUTH401, 인증된 사용자가 DB에 없으면 ROOM401",
+            content = @Content(mediaType = "application/json", examples = {
+                @ExampleObject(name = "unauthorized", value = """
+                    {"isSuccess": false, "code": "AUTH401", "message": "인증되지 않은 사용자입니다.", "result": null}
+                    """),
+                @ExampleObject(name = "expiredAccessToken", value = """
+                    {"isSuccess": false, "code": "AUTH401", "message": "액세스 토큰이 만료되었습니다.", "result": null}
+                    """),
+                @ExampleObject(name = "authenticatedUserNotFound", value = """
+                    {"isSuccess": false, "code": "ROOM401", "message": "인증되지 않은 사용자입니다.", "result": null}
+                    """)
+            })
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "현재 참여하지 않은 방 (탈퇴·추방된 참여 관계 포함)",
+            content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess": false, "code": "ROOM403", "message": "참여하지 않은 방입니다.", "result": null}
+                """))
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "존재하지 않거나 삭제된 모임 방",
+            content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess": false, "code": "ROOM404", "message": "존재하지 않는 모임 방입니다.", "result": null}
+                """))
+        ),
+        @ApiResponse(
+            responseCode = "500",
+            description = "서비스에서 상세 정보 조회 중 예기치 않은 오류 발생",
+            content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess": false, "code": "ROOM500", "message": "모임 방 상세 정보를 조회하는 중 오류가 발생했습니다.", "result": null}
+                """))
+        )
     })
     ResponseEntity<CustomResponse<RoomDetailResponse>> getRoom(
         @Parameter(hidden = true) CustomUserDetails customUserDetails,
