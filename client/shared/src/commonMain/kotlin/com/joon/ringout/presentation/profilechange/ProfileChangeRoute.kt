@@ -41,12 +41,15 @@ internal fun ProfileChangeRoute(
     val uiState = viewModel.uiState
     var profileImage by remember { mutableStateOf<ImageBitmap?>(null) }
     var profileImageError by remember { mutableStateOf<String?>(null) }
+    var showProfileImageSizeLimitDialog by remember { mutableStateOf(false) }
     val launchProfileImagePicker = rememberProfileImagePicker { result ->
         when (result) {
             is ProfileImagePickResult.Selected -> {
                 profileImage = result.image
                 profileImageError = null
+                showProfileImageSizeLimitDialog = false
             }
+            ProfileImagePickResult.TooLarge -> showProfileImageSizeLimitDialog = true
             ProfileImagePickResult.Cancelled -> profileImageError = null
             ProfileImagePickResult.Failure -> {
                 profileImageError = "사진을 불러오지 못했어요. 다시 선택해 주세요."
@@ -65,8 +68,9 @@ internal fun ProfileChangeRoute(
         onBackClick = onBackClick,
         profileImage = profileImage,
         profileImageError = profileImageError,
+        showProfileImageSizeLimitDialog = showProfileImageSizeLimitDialog,
+        onProfileImageSizeLimitConfirm = { showProfileImageSizeLimitDialog = false },
         onProfileImageChangeClick = {
-            profileImageError = null
             launchProfileImagePicker()
         },
         onConfirmClick = viewModel::confirm,

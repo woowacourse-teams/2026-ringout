@@ -23,6 +23,8 @@ internal data class ProfileChangeColors(
     val disabledAction: Color,
     val actionContent: Color,
     val profileImageBackground: Color,
+    val dialogBackground: Color,
+    val dialogText: Color,
 )
 
 @Composable
@@ -43,6 +45,8 @@ internal fun profileChangeColors(): ProfileChangeColors =
             disabledAction = Color(0xFFA7A9B0),
             actionContent = Color.White,
             profileImageBackground = Color(0xFF202127),
+            dialogBackground = Color.White,
+            dialogText = Color.Black,
         )
     } else {
         ProfileChangeColors(
@@ -60,5 +64,7 @@ internal fun profileChangeColors(): ProfileChangeColors =
             disabledAction = Color(0xFFA7A9B0),
             actionContent = Color.White,
             profileImageBackground = Color(0xFFF3F4F6),
+            dialogBackground = Color.White,
+            dialogText = Color.Black,
         )
     }

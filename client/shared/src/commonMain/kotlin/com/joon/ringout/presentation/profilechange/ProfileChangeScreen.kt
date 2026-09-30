@@ -39,6 +39,7 @@ import com.joon.ringout.presentation.profilechange.component.nickname.NicknameIn
 import com.joon.ringout.presentation.profilechange.component.nickname.NicknameValidationList
 import com.joon.ringout.presentation.profilechange.component.profileChangeColors
 import com.joon.ringout.presentation.profilechange.component.profileimage.ProfileImageEditor
+import com.joon.ringout.presentation.profilechange.component.profileimage.ProfileImageSizeLimitDialog
 
 @Composable
 internal fun ProfileChangeScreen(
@@ -47,6 +48,8 @@ internal fun ProfileChangeScreen(
     onBackClick: () -> Unit,
     profileImage: ImageBitmap?,
     profileImageError: String?,
+    showProfileImageSizeLimitDialog: Boolean,
+    onProfileImageSizeLimitConfirm: () -> Unit,
     onProfileImageChangeClick: () -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -129,6 +132,10 @@ internal fun ProfileChangeScreen(
             )
         }
     }
+
+    if (showProfileImageSizeLimitDialog) {
+        ProfileImageSizeLimitDialog(onConfirm = onProfileImageSizeLimitConfirm)
+    }
 }
 
 private val ProfileChangeHorizontalPadding = 20.dp
@@ -179,11 +186,33 @@ private fun ProfileChangeProfileImagePreview() {
     )
 }
 
+@Preview(name = "Profile image size limit - Default", widthDp = 402, heightDp = 941)
+@Composable
+private fun ProfileChangeProfileImageTooLargeDefaultPreview() {
+    ProfileChangeInteractivePreview(
+        themeMode = ThemeMode.Dark,
+        initialNickname = "Ringout12",
+        showProfileImageSizeLimitDialog = true,
+    )
+}
+
+@Preview(name = "Profile image size limit - Selected", widthDp = 402, heightDp = 941)
+@Composable
+private fun ProfileChangeProfileImageTooLargeSelectedPreview() {
+    ProfileChangeInteractivePreview(
+        themeMode = ThemeMode.Dark,
+        initialNickname = "Ringout12",
+        showProfileImage = true,
+        showProfileImageSizeLimitDialog = true,
+    )
+}
+
 @Composable
 private fun ProfileChangeInteractivePreview(
     themeMode: ThemeMode,
     initialNickname: String,
     showProfileImage: Boolean = false,
+    showProfileImageSizeLimitDialog: Boolean = false,
 ) {
     var nickname by remember(initialNickname) { mutableStateOf(initialNickname) }
     val profileImage = remember(showProfileImage) {
@@ -209,6 +238,8 @@ private fun ProfileChangeInteractivePreview(
             onBackClick = {},
             profileImage = profileImage,
             profileImageError = null,
+            showProfileImageSizeLimitDialog = showProfileImageSizeLimitDialog,
+            onProfileImageSizeLimitConfirm = {},
             onProfileImageChangeClick = {},
             onConfirmClick = {},
         )
