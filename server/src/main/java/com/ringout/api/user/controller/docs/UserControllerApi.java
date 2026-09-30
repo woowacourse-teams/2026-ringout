@@ -257,8 +257,9 @@ public interface UserControllerApi {
     );
 
     @Operation(
-        summary = "프로필 이미지 업로드",
-        description = "로그인한 사용자의 프로필 이미지를 multipart/form-data 형식으로 업로드합니다.",
+        summary = "프로필 이미지 업로드 및 교체",
+        description = "로그인한 사용자의 프로필 이미지를 multipart/form-data 형식으로 업로드합니다. "
+            + "기존 이미지가 있으면 새 이미지로 교체하고 기존 S3 객체와 파일 레코드를 삭제합니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
