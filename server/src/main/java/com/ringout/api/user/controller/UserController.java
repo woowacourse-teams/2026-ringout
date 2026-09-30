@@ -77,4 +77,26 @@ public class UserController implements UserControllerApi {
         return ResponseEntity.status(UserSuccessStatus.USER_PROFILE_IMAGE_UPLOADED.getHttpStatus())
             .body(CustomResponse.onSuccess(UserSuccessStatus.USER_PROFILE_IMAGE_UPLOADED, response));
     }
+
+    @Override
+    @GetMapping("/user/profile-image")
+    public ResponseEntity<CustomResponse<ProfileImageResponse>> getProfileImage(
+        @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        ProfileImageResponse response = userService.getProfileImage(userDetails.getUserId());
+
+        return ResponseEntity.status(UserSuccessStatus.USER_PROFILE_IMAGE_FOUND.getHttpStatus())
+            .body(CustomResponse.onSuccess(UserSuccessStatus.USER_PROFILE_IMAGE_FOUND, response));
+    }
+
+    @Override
+    @DeleteMapping("/user/profile-image")
+    public ResponseEntity<CustomResponse<Void>> deleteProfileImage(
+        @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        userService.deleteProfileImage(userDetails.getUserId());
+
+        return ResponseEntity.status(UserSuccessStatus.USER_PROFILE_IMAGE_DELETED.getHttpStatus())
+            .build();
+    }
 }

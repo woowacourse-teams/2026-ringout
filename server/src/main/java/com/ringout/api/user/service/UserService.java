@@ -91,4 +91,31 @@ public class UserService {
 
         return new ProfileImageResponse(profileImageUri.toString());
     }
+
+    @Transactional(readOnly = true)
+    public ProfileImageResponse getProfileImage(Long userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
+
+        if (user.getImage() == null) {
+            return new ProfileImageResponse(null);
+        }
+
+        URI profileImageUri = imageFileService.createReadUri(user.getImage());
+        return new ProfileImageResponse(profileImageUri.toString());
+    }
+
+    @Transactional
+    public void deleteProfileImage(Long userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
+        ImageFile profileImage = user.getImage();
+
+        if (profileImage == null) {
+            return;
+        }
+
+        user.removeProfileImage();
+        imageFileService.delete(profileImage);
+    }
 }
