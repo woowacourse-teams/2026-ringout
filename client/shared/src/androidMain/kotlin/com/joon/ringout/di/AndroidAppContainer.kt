@@ -34,6 +34,8 @@ class AndroidAppContainer(
     }
 
     override val authSession = getAuthSession()
+    override val termsRepository = com.joon.ringout.data.terms.DefaultTermsRepository(httpClient, tokenStorage, authSession)
+    override val networkMonitor = com.joon.ringout.data.connectivity.AndroidNetworkMonitor(context)
 
     override val appPreferencesRepository =
         DataStoreAppPreferencesRepository(

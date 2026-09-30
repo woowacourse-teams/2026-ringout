@@ -41,6 +41,8 @@ import com.joon.ringout.presentation.navigation.homeGraph
 import com.joon.ringout.presentation.navigation.rememberAppNavigationState
 import com.joon.ringout.presentation.navigation.rememberNavigationViewModelScopes
 import com.joon.ringout.presentation.currentLocalClockSnapshot
+import com.joon.ringout.presentation.termsreagreement.TermsReagreementViewModel
+import com.joon.ringout.presentation.termsreagreement.TermsReagreementRoute
 import com.joon.ringout.presentation.to24HourTimeString
 
 @Composable
@@ -157,6 +159,10 @@ private fun RingoutAppContent(
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
+    val termsViewModel: TermsReagreementViewModel = viewModel {
+        TermsReagreementViewModel(appContainer.termsRepository, appContainer.authRepository,
+            appContainer.authSession, appContainer.networkMonitor)
+    }
     val productAnalyticsRecorder = appContainer.productAnalyticsRecorder
     val authSessionState by appContainer.authSession.state.collectAsStateWithLifecycle()
     val navigationState = rememberAppNavigationState()
@@ -326,4 +332,9 @@ private fun RingoutAppContent(
             }
         },
     )
+    // 알람 울림과 진행 중 미션의 필수 조작은 기존 우선순위를 유지한다.
+    if (displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking) {
+        TermsReagreementRoute(termsViewModel)
+    }
+
 }

@@ -27,6 +27,7 @@ fun AgreementCheckbox(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val containerColor = if (checked) {
         MaterialTheme.colorScheme.primary
@@ -48,6 +49,7 @@ fun AgreementCheckbox(
             }
             .toggleable(
                 value = checked,
+                enabled = enabled,
                 role = Role.Checkbox,
                 onValueChange = onCheckedChange,
             ),
