@@ -1,7 +1,6 @@
 package com.joon.ringout.presentation.roommembermanagement
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,6 +8,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -34,7 +34,7 @@ internal fun RoomMemberManagementScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(roomMemberManagementColors().background)
+            .background(MaterialTheme.colorScheme.background)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
@@ -64,8 +64,7 @@ internal fun RoomMemberManagementScreen(
 
             else -> LazyColumn(
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             ) {
                 items(uiState.members, key = { it.id }) { member ->
                     RoomMemberRow(
@@ -89,7 +88,7 @@ internal fun RoomMemberManagementScreen(
         }
 }
 
-@Preview(name = "회원 관리 · 다크", widthDp = 402, heightDp = 941)
+@Preview(name = "회원 관리 · 다크", widthDp = 402, heightDp = 874)
 @Composable
 private fun RoomMemberManagementScreenDarkPreview() {
     RingoutTheme(ThemeMode.Dark) {
@@ -106,7 +105,7 @@ private fun RoomMemberManagementScreenDarkPreview() {
     }
 }
 
-@Preview(name = "회원 관리 · 라이트", widthDp = 402, heightDp = 941)
+@Preview(name = "회원 관리 · 라이트", widthDp = 402, heightDp = 874)
 @Composable
 private fun RoomMemberManagementScreenLightPreview() {
     RingoutTheme(ThemeMode.Light) {
