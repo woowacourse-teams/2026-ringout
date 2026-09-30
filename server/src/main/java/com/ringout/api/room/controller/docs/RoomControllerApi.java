@@ -7,6 +7,7 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -83,6 +84,48 @@ public interface RoomControllerApi {
     })
     ResponseEntity<CustomResponse<RoomListResponse>> getRooms(
         @Parameter(hidden = true) CustomUserDetails customUserDetails
+    );
+
+    @Operation(
+        summary = "모임 방 상세 정보 조회",
+        description = "인증된 참여자가 모임 방의 상세 정보와 현재 참여자 목록을 조회합니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "모임 방 상세 정보 조회 성공",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": true,
+                      "code": "ROOM200",
+                      "message": "방 상세 정보 조회에 성공했습니다.",
+                      "result": {
+                        "roomId": 1,
+                        "name": "아침 운동 모임",
+                        "description": "매주 함께 운동하고 인증하는 모임입니다.",
+                        "imageUrl": "https://example.com/images/room-1.png",
+                        "activityDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
+                        "activityTime": "08:00",
+                        "memberCount": 1,
+                        "membershipRole": "OWNER",
+                        "createdAt": "2026-09-20T10:30:00",
+                        "members": [{"userId": 1, "nickname": "가나다", "profileImageUrl": null}]
+                      }
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자"),
+        @ApiResponse(responseCode = "403", description = "참여하지 않은 방"),
+        @ApiResponse(responseCode = "404", description = "존재하지 않거나 삭제된 모임 방"),
+        @ApiResponse(responseCode = "500", description = "모임 방 상세 정보 조회 실패")
+    })
+    ResponseEntity<CustomResponse<RoomDetailResponse>> getRoom(
+        @Parameter(hidden = true) CustomUserDetails customUserDetails,
+        @Parameter(description = "조회할 모임 방 식별자", required = true, example = "1") Long roomId
     );
 
     @Operation(

@@ -12,7 +12,7 @@ public record RoomMemberResponse(
         return new RoomMemberResponse(
             roomUser.getUser().getId(),
             roomUser.getUser().getNickname().getValue(),
-            null
+            roomUser.getUser().getImage() == null ? null : roomUser.getUser().getImage().getUrl()
         );
     }
 }
