@@ -12,6 +12,7 @@ import com.ringout.api.room.dto.request.RoomCreateRequest;
 import com.ringout.api.room.dto.request.RoomKickRequest;
 import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
+import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomMemberResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.service.RoomService;
@@ -76,6 +77,47 @@ class RoomControllerTest {
             assertThat(response.getBody().getMessage()).isEqualTo("모임 방이 생성되었습니다.");
             assertThat(response.getBody().getResult()).isEqualTo(serviceResponse);
             verify(roomService).createRoom(userId, request);
+        }
+    }
+
+    @Nested
+    class 선택적_인증_모임방_목록_조회_응답 {
+
+        @Test
+        void 로그인한_사용자에게_목록_성공_응답을_반환한다() {
+            // given
+            Long userId = 1L;
+            CustomUserDetails userDetails = new CustomUserDetails(userId, Role.USER);
+            RoomListResponse serviceResponse = new RoomListResponse(List.of());
+            given(roomService.findRooms(userId)).willReturn(serviceResponse);
+
+            // when
+            ResponseEntity<CustomResponse<RoomListResponse>> response = roomController.findRooms(userDetails);
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getIsSuccess()).isTrue();
+            assertThat(response.getBody().getCode()).isEqualTo("ROOM200");
+            assertThat(response.getBody().getMessage()).isEqualTo("방 목록 조회에 성공했습니다.");
+            assertThat(response.getBody().getResult()).isEqualTo(serviceResponse);
+            verify(roomService).findRooms(userId);
+        }
+
+        @Test
+        void 비로그인_사용자에게도_목록_성공_응답을_반환한다() {
+            // given
+            RoomListResponse serviceResponse = new RoomListResponse(List.of());
+            given(roomService.findRooms(null)).willReturn(serviceResponse);
+
+            // when
+            ResponseEntity<CustomResponse<RoomListResponse>> response = roomController.findRooms(null);
+
+            // then
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody()).isNotNull();
+            assertThat(response.getBody().getResult()).isEqualTo(serviceResponse);
+            verify(roomService).findRooms(null);
         }
     }
 
