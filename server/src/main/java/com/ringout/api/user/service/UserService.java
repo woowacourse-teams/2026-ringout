@@ -91,4 +91,17 @@ public class UserService {
 
         return new ProfileImageResponse(profileImageUri.toString());
     }
+
+    @Transactional(readOnly = true)
+    public ProfileImageResponse getProfileImage(Long userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
+
+        if (user.getImage() == null) {
+            return new ProfileImageResponse(null);
+        }
+
+        URI profileImageUri = imageFileService.createReadUri(user.getImage());
+        return new ProfileImageResponse(profileImageUri.toString());
+    }
 }

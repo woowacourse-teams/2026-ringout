@@ -349,4 +349,77 @@ public interface UserControllerApi {
         )
         MultipartFile image
     );
+
+    @Operation(
+        summary = "현재 프로필 이미지 조회",
+        description = "로그인한 사용자의 현재 프로필 이미지 URL을 조회합니다. 등록된 이미지가 없으면 URL은 null입니다.",
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "프로필 이미지 조회 성공",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": true,
+                      "code": "USER200",
+                      "message": "성공적으로 요청을 수행했습니다.",
+                      "result": {
+                        "profileImageUrl": "https://cdn.example.com/ringout/images/profiles/profile-a81f2c.webp"
+                      }
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "COMMON401",
+                      "message": "인증되지 않은 사용자입니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "존재하지 않는 사용자",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "USER404",
+                      "message": "존재하지 않는 사용자입니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "500",
+            description = "프로필 이미지 조회 URL 생성 실패",
+            content = @Content(
+                mediaType = MediaType.APPLICATION_JSON_VALUE,
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "FILE500_1",
+                      "message": "이미지 조회 URL 생성에 실패했습니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<ProfileImageResponse>> getProfileImage(
+        @Parameter(hidden = true) CustomUserDetails userDetails
+    );
 }
