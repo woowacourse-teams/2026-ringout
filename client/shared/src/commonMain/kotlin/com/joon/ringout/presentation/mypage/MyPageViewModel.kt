@@ -9,6 +9,7 @@ import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.StampMonthChangeDirection
 import com.joon.ringout.domain.auth.AuthRepository
+import com.joon.ringout.domain.member.MemberProfile
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
@@ -31,7 +32,10 @@ class MyPageViewModel(
     coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     var uiState by mutableStateOf(
-        MyPageUiState(selectedMonth = MyPageCalendarMonth(initialMonth)),
+        MyPageUiState(
+            selectedMonth = MyPageCalendarMonth(initialMonth),
+            accountStatus = memberRepository.getCachedProfile()?.toAccountStatus() ?: MyPageAccountStatus.Loading,
+        ),
     )
         private set
 
@@ -209,6 +213,11 @@ class MyPageViewModel(
     }
 
     private fun loadProfile() {
+        memberRepository.getCachedProfile()?.let { profile ->
+            cancelProfileLoad()
+            uiState = uiState.copy(accountStatus = profile.toAccountStatus(), dataActionNotice = null)
+            return
+        }
         profileLoadJob?.cancel()
         val currentRequestId = ++profileRequestId
         uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading, dataActionNotice = null)
@@ -217,10 +226,7 @@ class MyPageViewModel(
                 val profile = memberRepository.getProfile()
                 if (currentRequestId != profileRequestId) return@launch
                 uiState = uiState.copy(
-                    accountStatus = MyPageAccountStatus.LoggedIn(
-                        nickname = profile.nickname,
-                        email = profile.email?.takeIf { it.isNotBlank() } ?: MissingEmailMessage,
-                    ),
+                    accountStatus = profile.toAccountStatus(),
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -327,3 +333,8 @@ private val MyPageAccountAction.defaultErrorMessage: String
     }
 
 private const val MissingEmailMessage = "이메일 정보 없음"
+
+private fun MemberProfile.toAccountStatus() = MyPageAccountStatus.LoggedIn(
+    nickname = nickname,
+    email = email?.takeIf { it.isNotBlank() } ?: MissingEmailMessage,
+)

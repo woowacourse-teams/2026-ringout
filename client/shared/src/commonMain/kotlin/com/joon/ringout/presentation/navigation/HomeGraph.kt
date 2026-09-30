@@ -59,7 +59,6 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             themeMode = themeMode,
             appVersion = appVersion,
             onThemeModeChange = onThemeModeChange,
-            onBackClick = { navigationState.popBackStack(AppRoute.MyPage) },
             onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onEditProfileClick = { navigationState.navigate(AppRoute.NicknameChange) },
         )

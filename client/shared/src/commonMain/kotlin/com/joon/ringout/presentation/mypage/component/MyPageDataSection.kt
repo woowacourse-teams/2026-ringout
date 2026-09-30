@@ -84,7 +84,7 @@ private fun MyPageDataRow(
             .fillMaxWidth()
             .heightIn(min = 54.dp)
             .clickable(enabled = enabled, role = Role.Button, onClickLabel = title, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp)
+            .padding(start = 10.dp, top = 10.dp, end = 18.dp, bottom = 10.dp)
             .alpha(if (enabled) 1f else 0.5f),
         verticalAlignment = Alignment.CenterVertically,
     ) {

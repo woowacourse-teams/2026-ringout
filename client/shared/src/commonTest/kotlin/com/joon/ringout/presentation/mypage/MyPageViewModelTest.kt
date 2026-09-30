@@ -39,6 +39,35 @@ import kotlin.test.assertNull
 @OptIn(ExperimentalCoroutinesApi::class)
 class MyPageViewModelTest {
     @Test
+    fun `캐시가 있으면 재생성된 화면도 로딩 없이 계정 정보를 표시한다`() = runTest {
+        val repository = FakeMemberRepository().apply {
+            storedProfile = MemberProfile("저장된닉네임", "cached@example.com")
+        }
+        repeat(2) {
+            val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+            val expected = MyPageAccountStatus.LoggedIn("저장된닉네임", "cached@example.com")
+            assertEquals(expected, viewModel.uiState.accountStatus)
+            viewModel.onAuthenticated()
+            assertEquals(expected, viewModel.uiState.accountStatus)
+            runCurrent()
+        }
+        assertEquals(0, repository.profileRequestCount)
+    }
+
+    @Test
+    fun `캐시가 없는 최초 진입은 조회가 끝날 때까지 로딩을 표시한다`() = runTest {
+        val pending = CompletableDeferred<MemberProfile>()
+        val repository = FakeMemberRepository().apply { profileLoader = { pending.await() } }
+        val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+        viewModel.onAuthenticated()
+        runCurrent()
+        assertEquals(MyPageAccountStatus.Loading, viewModel.uiState.accountStatus)
+        pending.complete(MemberProfile("첫조회", null))
+        runCurrent()
+        assertEquals(MyPageAccountStatus.LoggedIn("첫조회", "이메일 정보 없음"), viewModel.uiState.accountStatus)
+    }
+
+    @Test
     fun `데이터 작업 확인은 준비 중 안내만 표시하고 계정과 기록을 변경하지 않는다`() = runTest {
         val memberRepository = FakeMemberRepository()
         val authRepository = FakeAuthRepository()
@@ -718,6 +747,9 @@ private class FakeMissionHistoryRepository(
 private class FakeMemberRepository(
     private val order: MutableList<String> = mutableListOf(),
 ) : MemberRepository {
+    var storedProfile: MemberProfile? = null
+    override fun getCachedProfile(): MemberProfile? = storedProfile
+
     var profileRequestCount = 0
     var withdrawRequestCount = 0
     var withdrawGate: CompletableDeferred<Unit>? = null

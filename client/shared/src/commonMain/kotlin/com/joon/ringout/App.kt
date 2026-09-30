@@ -193,6 +193,7 @@ private fun RingoutAppContent(
     }
     AuthSessionCoordinator(
         authRepository = appContainer.authRepository,
+        authSession = appContainer.authSession,
         authSessionState = authSessionState,
         myPageViewModel = myPageViewModel,
         destinationViewModel = alarmEditorNavigation?.destinationViewModel,
