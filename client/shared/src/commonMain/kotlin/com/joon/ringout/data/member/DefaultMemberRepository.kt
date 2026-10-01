@@ -10,6 +10,7 @@ import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.domain.member.MemberProfile
+import com.joon.ringout.domain.member.MemberProfileImage
 import com.joon.ringout.domain.member.MemberRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
@@ -45,6 +46,22 @@ class DefaultMemberRepository(
         session = authSession,
         scope = cacheScope,
     )
+
+    private val profileImageCache = SessionProfileImageCache(authSession, cacheScope)
+
+    override fun getCachedProfileImage(): MemberProfileImage? = profileImageCache.peek()
+
+    override suspend fun getProfileImage(): MemberProfileImage = profileImageCache.get {
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.get(ApiConfig.url("/api/v1/user/profile-image")) {
+                bearerAuth(accessToken)
+            }
+        }
+        val body = response.decodeOrThrow<GetProfileImageResponse>()
+        check(body.isSuccess) { body.message }
+        val result = checkNotNull(body.result) { "프로필 이미지 조회 응답이 비어 있어요." }
+        MemberProfileImage(result.profileImageUrl?.takeIf { it.isNotBlank() })
+    }
 
     override fun getCachedProfile(): MemberProfile? = profileCache.peek()
 
@@ -88,6 +105,7 @@ class DefaultMemberRepository(
         val body = response.decodeOrThrow<JsonElement>()
         check(body.isSuccess) { body.message }
         profileCache.onWithdrawn(identity)
+        profileImageCache.onWithdrawn(identity)
     }
 }
 
@@ -123,3 +141,8 @@ private suspend inline fun <reified T> HttpResponse.decodeOrThrow(): ApiResponse
         result = errorResponse?.result,
     )
 }
+
+@Serializable
+private data class GetProfileImageResponse(
+    val profileImageUrl: String?,
+)

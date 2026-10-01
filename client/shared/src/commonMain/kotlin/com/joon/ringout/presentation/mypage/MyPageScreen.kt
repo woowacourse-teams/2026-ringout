@@ -44,6 +44,7 @@ internal fun MyPageScreen(
     modifier: Modifier = Modifier,
     onLoginClick: () -> Unit = {},
     accountStatus: AccountStatus = AccountStatus.LoggedOut,
+    profileImageUrl: String? = null,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
     isAccountActionInProgress: Boolean = false,
@@ -57,6 +58,7 @@ internal fun MyPageScreen(
         onPolicyClick = onPolicyClick,
         onLoginClick = onLoginClick,
         accountStatus = accountStatus,
+        profileImageUrl = profileImageUrl,
         onAccountRetry = onAccountRetry,
         onEditProfileClick = onEditProfileClick,
         isAccountActionInProgress = isAccountActionInProgress,
@@ -75,6 +77,7 @@ fun MyPageScreenContent(
     modifier: Modifier = Modifier,
     onLoginClick: () -> Unit = {},
     accountStatus: AccountStatus = AccountStatus.LoggedOut,
+    profileImageUrl: String? = null,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
     isAccountActionInProgress: Boolean = false,
@@ -105,6 +108,7 @@ fun MyPageScreenContent(
                 is AccountStatus.LoggedIn -> MyPageLoggedInAccountStatus(
                     nickname = accountStatus.nickname,
                     email = accountStatus.email,
+                    profileImageUrl = profileImageUrl,
                     onEditClick = if (isAccountActionInProgress) null else onEditProfileClick,
                 )
             }

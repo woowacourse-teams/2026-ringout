@@ -17,6 +17,7 @@ import com.joon.ringout.domain.auth.SocialLoginOutcome
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.domain.member.MemberProfile
+import com.joon.ringout.domain.member.MemberProfileImage
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
@@ -348,6 +349,8 @@ private class ReauthenticationDestinationRepository : DestinationRepository {
 }
 
 private object ReauthenticationMemberRepository : MemberRepository {
+    override suspend fun getProfileImage(): MemberProfileImage = MemberProfileImage(null)
+
     override suspend fun getProfile(): MemberProfile = MemberProfile("기존 닉네임", null)
 
     override suspend fun updateNickname(nickname: String): String = nickname

@@ -11,6 +11,7 @@ data class MyPageUiState(
     val successDates: Set<MissionDate> = emptySet(),
     val errorMessage: String? = null,
     val accountStatus: MyPageAccountStatus = MyPageAccountStatus.Loading,
+    val profileImageUrl: String? = null,
     val accountAction: MyPageAccountActionState = MyPageAccountActionState.Idle,
 )
 

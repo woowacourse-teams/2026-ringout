@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.mypage.component
 
 import org.jetbrains.compose.resources.DrawableResource
+import ringout.shared.generated.resources.profile_image
 import ringout.shared.generated.resources.Res
 import ringout.shared.generated.resources.mypage_app_info
 import ringout.shared.generated.resources.mypage_arrow_left
@@ -27,3 +28,5 @@ internal actual val MyPageLogoutIconResource: DrawableResource =
     Res.drawable.mypage_logout
 internal actual val MyPageDeleteAccountIconResource: DrawableResource =
     Res.drawable.mypage_delete_account
+
+internal actual val MyPageDefaultProfileImageResource: DrawableResource = Res.drawable.profile_image

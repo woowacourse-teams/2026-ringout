@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.profilechange
 
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.member.MemberProfile
+import com.joon.ringout.domain.member.MemberProfileImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,6 +48,8 @@ private inline fun withViewModel(
 
 private class FakeMemberRepository : MemberRepository {
     val requests = mutableListOf<String>()
+
+    override suspend fun getProfileImage(): MemberProfileImage = MemberProfileImage(null)
 
     override suspend fun getProfile(): MemberProfile = error("사용하지 않는 요청입니다.")
 
