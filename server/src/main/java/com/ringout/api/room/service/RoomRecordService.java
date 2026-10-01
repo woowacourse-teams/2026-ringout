@@ -1,9 +1,8 @@
 package com.ringout.api.room.service;
 
-import com.ringout.api.alarmmovement.domain.AlarmMovement;
-import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
 import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmoccurrence.domain.AlarmRinging;
+import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
 import com.ringout.api.alarmoccurrence.domain.RingingType;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.common.response.error.GeneralException;
@@ -39,7 +38,6 @@ public class RoomRecordService {
     private final RoomRepository roomRepository;
     private final RoomUserRepository roomUserRepository;
     private final AlarmOccurrenceRepository alarmOccurrenceRepository;
-    private final AlarmMovementRepository alarmMovementRepository;
 
     @Transactional(readOnly = true)
     public RoomRecordsResponse getRoomRecords(Long userId, Long roomId, String date) {
@@ -56,10 +54,8 @@ public class RoomRecordService {
             roomId, date.atStartOfDay(), date.plusDays(1).atStartOfDay());
 
         Map<Long, List<AlarmOccurrence>> occurrencesByMemberId = groupOccurrencesByMemberId(occurrences);
-        Map<Long, AlarmMovement> movementsByOccurrenceId = findMovementsByOccurrenceId(occurrences);
-
         List<MemberRecordResponse> memberRecords = roomUsers.stream()
-            .map(roomUser -> toMemberRecordResponse(roomUser, occurrencesByMemberId, movementsByOccurrenceId))
+            .map(roomUser -> toMemberRecordResponse(roomUser, occurrencesByMemberId))
             .toList();
 
         return new RoomRecordsResponse(memberRecords);
@@ -95,21 +91,12 @@ public class RoomRecordService {
             .collect(Collectors.groupingBy(occurrence -> occurrence.getUser().getId()));
     }
 
-    private Map<Long, AlarmMovement> findMovementsByOccurrenceId(List<AlarmOccurrence> occurrences) {
-        if (occurrences.isEmpty()) {
-            return Map.of();
-        }
-        return alarmMovementRepository.findActiveByAlarmOccurrenceIn(occurrences).stream()
-            .collect(Collectors.toMap(movement -> movement.getAlarmOccurrence().getId(), movement -> movement));
-    }
-
     private MemberRecordResponse toMemberRecordResponse(RoomUser roomUser,
-        Map<Long, List<AlarmOccurrence>> occurrencesByMemberId,
-        Map<Long, AlarmMovement> movementsByOccurrenceId) {
+        Map<Long, List<AlarmOccurrence>> occurrencesByMemberId) {
         List<ActivityRecordResponse> records = occurrencesByMemberId
             .getOrDefault(roomUser.getUser().getId(), List.of())
             .stream()
-            .flatMap(occurrence -> toActivityRecords(occurrence, movementsByOccurrenceId.get(occurrence.getId())).stream())
+            .flatMap(occurrence -> toActivityRecords(occurrence).stream())
             .sorted(Comparator.comparing(ActivityRecordResponse::occurredAt))
             .toList();
 
@@ -124,9 +111,9 @@ public class RoomRecordService {
         );
     }
 
-    private List<ActivityRecordResponse> toActivityRecords(AlarmOccurrence occurrence, AlarmMovement movement) {
+    private List<ActivityRecordResponse> toActivityRecords(AlarmOccurrence occurrence) {
         List<ActivityRecordResponse> records = new ArrayList<>(toAlarmRecords(occurrence));
-        records.addAll(toMovementRecords(movement));
+        records.addAll(toMovementRecords(occurrence));
         return records;
     }
 
@@ -148,14 +135,15 @@ public class RoomRecordService {
         return record(RecordEvent.ALARM_RINGING, ringing.getRingingAt(), repeatCount);
     }
 
-    private List<ActivityRecordResponse> toMovementRecords(AlarmMovement movement) {
-        if (movement == null) {
-            return List.of();
-        }
+    private List<ActivityRecordResponse> toMovementRecords(AlarmOccurrence occurrence) {
         List<ActivityRecordResponse> records = new ArrayList<>();
-        addRecordIfOccurred(records, RecordEvent.MOVEMENT_STARTED, movement.getMovementStartedAt());
-        addRecordIfOccurred(records, RecordEvent.ARRIVED, movement.getArrivedAt());
-        addRecordIfOccurred(records, RecordEvent.GAVE_UP, movement.getGaveUpAt());
+        addRecordIfOccurred(records, RecordEvent.MOVEMENT_STARTED, occurrence.getMovementStartedAt());
+        if (occurrence.getEndType() == OccurrenceEndType.ARRIVED) {
+            addRecordIfOccurred(records, RecordEvent.ARRIVED, occurrence.getEndedAt());
+        }
+        if (occurrence.getEndType() == OccurrenceEndType.FORCE_ENDED) {
+            addRecordIfOccurred(records, RecordEvent.GAVE_UP, occurrence.getEndedAt());
+        }
         return records;
     }
 
