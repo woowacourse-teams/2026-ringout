@@ -60,7 +60,7 @@ internal class RoomSessionStateHandler(
 ) {
     fun onSessionStateChanged(authSessionState: AuthSessionState, sessionIdentity: Any?) {
         roomListViewModel?.onAuthSessionChanged(authSessionState, sessionIdentity)
-        roomHomeViewModels.forEach { it.onAuthSessionChanged(sessionIdentity) }
+        roomHomeViewModels.forEach { it.onAuthSessionChanged(authSessionState, sessionIdentity) }
     }
 }
 

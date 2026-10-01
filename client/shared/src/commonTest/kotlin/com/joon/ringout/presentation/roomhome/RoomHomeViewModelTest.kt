@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.roomhome
 
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
+import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -188,8 +189,8 @@ class RoomHomeViewModelTest {
     @Test
     fun `계정이 바뀌면 이전 모임 정보와 기록 캐시를 비운다`() {
         val viewModel = RoomHomeViewModel(initialState(), recordsByDate)
-        viewModel.onAuthSessionChanged(identity = Any())
-        viewModel.onAuthSessionChanged(identity = Any())
+        viewModel.onAuthSessionChanged(AuthSessionState.Authenticated, identity = Any())
+        viewModel.onAuthSessionChanged(AuthSessionState.Authenticated, identity = Any())
 
         val state = viewModel.uiState.value
         assertNull(state.room)

@@ -81,7 +81,9 @@ internal fun RoomHomeScreen(
                 },
                 modifier = Modifier.weight(1f),
                 isLoading = uiState.isLoading,
-                onRetry = onRetry.takeIf { !uiState.isLoading && uiState.errorMessage != null },
+                onRetry = onRetry.takeIf {
+                    !uiState.isLoading && uiState.errorMessage != null && uiState.canRetry
+                },
             )
         } else {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
@@ -241,7 +243,7 @@ private fun RoomHomeScreenLoadingPreview() {
 private fun RoomHomeScreenErrorPreview() {
     RingoutTheme {
         RoomHomeScreen(
-            RoomHomeUiState(errorMessage = "모임 정보를 불러오지 못했어요."),
+            RoomHomeUiState(errorMessage = "모임 정보를 불러오지 못했어요.", canRetry = true),
             onBackClick = {},
             onMenuClick = {},
             onRetry = {},

@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.roomhome.RoomHomeMemberUiModel
@@ -74,12 +75,24 @@ internal fun RoomHomeMembers(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Image(
-                            painter = painterResource(Res.drawable.room_member_default_avatar),
-                            contentDescription = null,
-                            modifier = Modifier.size(38.dp).clip(CircleShape),
-                            contentScale = ContentScale.Crop,
-                        )
+                        val defaultAvatar = painterResource(Res.drawable.room_member_default_avatar)
+                        if (member.profileImageUrl.isNullOrBlank()) {
+                            Image(
+                                painter = defaultAvatar,
+                                contentDescription = null,
+                                modifier = Modifier.size(38.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            AsyncImage(
+                                model = member.profileImageUrl,
+                                contentDescription = null,
+                                modifier = Modifier.size(38.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop,
+                                placeholder = defaultAvatar,
+                                error = defaultAvatar,
+                            )
+                        }
                         Text(
                             text = member.nickname,
                             modifier = Modifier.weight(1f),

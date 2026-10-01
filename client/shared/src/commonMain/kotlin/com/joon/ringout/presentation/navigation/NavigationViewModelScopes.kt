@@ -118,7 +118,12 @@ private fun navigationViewModelFactory(container: AppContainer): ViewModelProvid
         }
         initializer { RoomCreateViewModel() }
         initializer { RoomEditViewModel() }
-        initializer { RoomHomeViewModel() }
+        initializer {
+            RoomHomeViewModel(
+                loadRoom = container.roomRepository::getRoom,
+                authSession = container.authSession,
+            )
+        }
         initializer {
             RecordsViewModel(
                 activityRepository = container.alarmActivityRepository,

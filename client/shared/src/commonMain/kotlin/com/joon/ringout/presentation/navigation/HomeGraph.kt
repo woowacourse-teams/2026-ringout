@@ -117,17 +117,15 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
         )
     }
     entry<AppRoute.RoomHome>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
-        val roomListViewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
         val roomHomeViewModel = viewModelScopes.get(route, RoomHomeViewModel::class)
-        val initialState = roomListViewModel.roomHomeInitialState(route.roomId)
-        androidx.compose.runtime.SideEffect {
-            roomHomeViewModel.updateRoomContext(initialState)
-        }
         RoomHomeRoute(
             viewModel = roomHomeViewModel,
+            roomId = route.roomId,
+            authSessionState = authSessionState,
+            sessionIdentity = sessionIdentity,
             onBackClick = { navigationState.popBackStack(route) },
             onMenuClick = {},
-            onRetry = roomListViewModel::onRetryRooms,
+            onRetry = roomHomeViewModel::onRetry,
         )
     }
     entry<AppRoute.RoomEdit>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->

@@ -46,7 +46,11 @@ internal val RoomHomePreviewState = RoomHomeUiState(
         isJoined = true,
     ),
     members = listOf(
-        RoomHomeMemberUiModel("member-1", "볼링뜨실분다이겨드림"),
+        RoomHomeMemberUiModel(
+            "member-1",
+            "볼링뜨실분다이겨드림",
+            profileImageUrl = "https://cdn.example.com/member-1.png",
+        ),
         RoomHomeMemberUiModel("member-2", "아아아티스트"),
         RoomHomeMemberUiModel("member-3", "누누와월럼프"),
         RoomHomeMemberUiModel("member-4", "북여서여남여동여"),
