@@ -37,6 +37,7 @@ import ringout.shared.generated.resources.room_member_default_avatar
 internal fun RoomHomeMembers(
     members: List<RoomHomeMemberUiModel>,
     modifier: Modifier = Modifier,
+    isLoaded: Boolean = true,
 ) {
     val colors = roomHomeColors()
 
@@ -51,7 +52,14 @@ internal fun RoomHomeMembers(
             ),
         )
         Spacer(Modifier.height(18.dp))
-        if (members.isEmpty()) {
+        if (!isLoaded) {
+            Text(
+                text = "회원 정보는 아직 조회되지 않았어요.",
+                modifier = Modifier.padding(10.dp),
+                color = colors.secondary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        } else if (members.isEmpty()) {
             Text(
                 text = "아직 가입한 회원이 없어요.",
                 modifier = Modifier.padding(10.dp),

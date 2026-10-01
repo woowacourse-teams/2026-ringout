@@ -123,6 +123,7 @@ internal fun RoomHomeScreen(
                         RoomHomeMembers(
                             members = uiState.members,
                             modifier = Modifier.padding(horizontal = 20.dp).padding(top = 10.dp),
+                            isLoaded = uiState.areMembersLoaded,
                         )
                     }
                     item(key = "description") {

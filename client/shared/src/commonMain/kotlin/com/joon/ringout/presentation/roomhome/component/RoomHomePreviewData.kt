@@ -51,6 +51,7 @@ internal val RoomHomePreviewState = RoomHomeUiState(
         RoomHomeMemberUiModel("member-3", "누누와월럼프"),
         RoomHomeMemberUiModel("member-4", "북여서여남여동여"),
     ),
+    areMembersLoaded = true,
     nextScheduleText = "내일 오전 06:00",
     remainingTimeText = "00:18:24",
     recordsState = RoomHomeRecordsUiState(
@@ -58,5 +59,6 @@ internal val RoomHomePreviewState = RoomHomeUiState(
         records = RoomHomePreviewRecords,
         achievedMemberCount = 1,
         participantCounts = RoomHomePreviewRecordsByDate.mapValues { it.value.achievedMemberCount },
+        isDataLoaded = true,
     ),
 )

@@ -29,10 +29,12 @@ internal class RoomHomeViewModel(
     private val coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     // UI 확인을 위해 전달된 메모리 데이터만 사용한다. 서버/개인 기록 저장소에 접근하지 않는다.
-    private val canViewRecords = initialState.room?.isJoined == true && initialState.recordsState.canViewRecords
-    private val localRecords = if (canViewRecords) {
+    private var canViewRecords = initialState.room?.isJoined == true && initialState.recordsState.canViewRecords
+    private var localRecords = if (canViewRecords && initialState.recordsState.isDataLoaded) {
         recordsByDate.mapValues { (_, value) -> value.copy(records = value.records.toList()) }
     } else emptyMap()
+    private var authIdentity: Any? = null
+    private var hasObservedAuthIdentity = false
     private val mutableUiState = MutableStateFlow(
         initialState.copy(
             recordsState = initialState.recordsState.copy(
@@ -46,6 +48,68 @@ internal class RoomHomeViewModel(
     )
     val uiState = mutableUiState.asStateFlow()
     private var countdownJob: Job? = null
+
+    fun updateRoomContext(context: RoomHomeUiState) {
+        val current = uiState.value
+        val room = context.room ?: if (context.isLoading || context.errorMessage != null) null else current.room
+        if (room == null && !context.isLoading && context.errorMessage == null) return
+
+        canViewRecords = room?.isJoined == true && context.recordsState.canViewRecords
+        mutableUiState.update { state ->
+            state.copy(
+                room = room,
+                members = context.members,
+                areMembersLoaded = context.areMembersLoaded,
+                isLoading = context.isLoading,
+                errorMessage = context.errorMessage,
+                recordsState = state.recordsState.copy(
+                    canViewRecords = canViewRecords,
+                    isDataLoaded = context.recordsState.isDataLoaded,
+                    records = if (context.recordsState.isDataLoaded) state.recordsState.records else emptyList(),
+                    achievedMemberCount = if (context.recordsState.isDataLoaded) {
+                        state.recordsState.achievedMemberCount
+                    } else {
+                        0
+                    },
+                    participantCounts = if (context.recordsState.isDataLoaded) {
+                        state.recordsState.participantCounts
+                    } else {
+                        emptyMap()
+                    },
+                ),
+            )
+        }
+    }
+
+    fun onAuthSessionChanged(identity: Any?) {
+        if (!hasObservedAuthIdentity) {
+            hasObservedAuthIdentity = true
+            authIdentity = identity
+            return
+        }
+        if (authIdentity === identity) return
+
+        authIdentity = identity
+        canViewRecords = false
+        localRecords = emptyMap()
+        mutableUiState.update { state ->
+            state.copy(
+                room = null,
+                members = emptyList(),
+                areMembersLoaded = false,
+                isLoading = false,
+                errorMessage = null,
+                recordsState = state.recordsState.copy(
+                    records = emptyList(),
+                    achievedMemberCount = 0,
+                    participantCounts = emptyMap(),
+                    canViewRecords = false,
+                    isDataLoaded = false,
+                ),
+                isCalendarVisible = false,
+            )
+        }
+    }
 
     /** 화면 복귀 시에도 저장된 초를 감소시키지 않고 실제 현재 시각으로 다시 계산한다. */
     fun startCountdown() {

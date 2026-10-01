@@ -24,6 +24,24 @@ internal fun RoomSection(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(bottom = 128.dp),
     ) {
+        if (uiState.allRooms.isNotEmpty() && uiState.isRefreshingAllRooms) {
+            item(key = "all-rooms-refreshing") {
+                RoomListMessage(
+                    title = "모임 목록을 갱신하고 있어요",
+                    isLoading = true,
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+            }
+        }
+        if (uiState.allRooms.isNotEmpty() && uiState.allRoomsRefreshErrorMessage != null) {
+            item(key = "all-rooms-refresh-error") {
+                RoomListMessage(
+                    title = uiState.allRoomsRefreshErrorMessage,
+                    onRetry = onRetryRooms,
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
+            }
+        }
         when {
             uiState.isLoadingAllRooms -> item(key = "all-rooms-loading") {
                 RoomListMessage(

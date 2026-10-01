@@ -22,11 +22,11 @@ internal class RoomCreateViewModel : ViewModel() {
     }
 
     fun updateName(name: String) {
-        uiState = uiState.copy(name = name)
+        uiState = uiState.copy(name = name, submitErrorMessage = null)
     }
 
     fun updateIntroduction(introduction: String) {
-        uiState = uiState.copy(introduction = introduction)
+        uiState = uiState.copy(introduction = introduction, submitErrorMessage = null)
     }
 
     fun toggleDay(day: String) {
@@ -37,7 +37,16 @@ internal class RoomCreateViewModel : ViewModel() {
         }
         uiState = uiState.copy(
             selectedDays = WeekdayOrder.filter(selectedDays::contains),
+            submitErrorMessage = null,
         )
+    }
+
+    fun setSubmitError(message: String) {
+        uiState = uiState.copy(submitErrorMessage = message)
+    }
+
+    fun clearSubmitError() {
+        uiState = uiState.copy(submitErrorMessage = null)
     }
 
     fun updateAmPm(isAm: Boolean) = updateTime { copy(isAm = isAm) }
@@ -70,7 +79,10 @@ internal class RoomCreateViewModel : ViewModel() {
 
     private fun updateTime(transform: AlarmTimePickerValue.() -> AlarmTimePickerValue) {
         val pickerValue = (uiState.time24Hour ?: DefaultTime24Hour).toAlarmTimePickerValue()
-        uiState = uiState.copy(time24Hour = transform(pickerValue).to24HourString())
+        uiState = uiState.copy(
+            time24Hour = transform(pickerValue).to24HourString(),
+            submitErrorMessage = null,
+        )
     }
 }
 

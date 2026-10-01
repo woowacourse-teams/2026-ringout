@@ -34,9 +34,10 @@ internal fun RoomListMessage(
     description: String? = null,
     isLoading: Boolean = false,
     onRetry: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.ringoutColors.elevatedSurface,
