@@ -34,6 +34,7 @@ class MyPageViewModel(
         MyPageUiState(
             selectedMonth = MyPageCalendarMonth(initialMonth),
             accountStatus = memberRepository.getCachedProfile()?.toAccountStatus() ?: MyPageAccountStatus.Loading,
+            profileImageUrl = memberRepository.getCachedProfileImage()?.url,
         ),
     )
         private set
@@ -43,6 +44,8 @@ class MyPageViewModel(
     private var calendarRequestId = 0L
     private var profileLoadJob: Job? = null
     private var profileRequestId = 0L
+    private var profileImageLoadJob: Job? = null
+    private var profileImageRequestId = 0L
     private var accountActionJob: Job? = null
     private var accountActionRequestId = 0L
     private var nextAccountActionEventId = 0L
@@ -83,21 +86,36 @@ class MyPageViewModel(
 
     fun onSessionRestoring() {
         cancelProfileLoad()
-        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading)
+        cancelProfileImageLoad()
+        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading, profileImageUrl = null)
     }
 
     fun onAuthenticated() {
         loadProfile()
+        loadProfileImage()
     }
 
     fun onLoggedOut() {
         cancelProfileLoad()
-        uiState = uiState.copy(accountStatus = MyPageAccountStatus.LoggedOut)
+        cancelProfileImageLoad()
+        uiState = uiState.copy(accountStatus = MyPageAccountStatus.LoggedOut, profileImageUrl = null)
     }
 
     fun retryAccount() {
         if (uiState.accountStatus != MyPageAccountStatus.Error) return
         loadProfile()
+        loadProfileImage()
+    }
+
+    fun refreshProfileFromCache() {
+        memberRepository.getCachedProfile()?.let { profile ->
+            cancelProfileLoad()
+            uiState = uiState.copy(accountStatus = profile.toAccountStatus())
+        }
+        memberRepository.getCachedProfileImage()?.let { image ->
+            cancelProfileImageLoad()
+            uiState = uiState.copy(profileImageUrl = image.url)
+        }
     }
 
     fun onNicknameUpdated(nickname: String) {
@@ -223,6 +241,36 @@ class MyPageViewModel(
                 }
             }
         }
+    }
+
+    private fun loadProfileImage() {
+        cancelProfileImageLoad()
+        val cachedImage = memberRepository.getCachedProfileImage()
+        uiState = uiState.copy(profileImageUrl = cachedImage?.url)
+        if (cachedImage != null) return
+
+        val requestId = profileImageRequestId
+        profileImageLoadJob = scope.launch {
+            try {
+                val image = memberRepository.getProfileImage()
+                if (requestId == profileImageRequestId) {
+                    uiState = uiState.copy(profileImageUrl = image.url)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // 사진 조회 실패는 계정 정보 표시를 막지 않는다. 다음 진입에서 다시 조회한다.
+                if (requestId == profileImageRequestId) {
+                    uiState = uiState.copy(profileImageUrl = null)
+                }
+            }
+        }
+    }
+
+    private fun cancelProfileImageLoad() {
+        profileImageRequestId++
+        profileImageLoadJob?.cancel()
+        profileImageLoadJob = null
     }
 
     private fun cancelProfileLoad() {

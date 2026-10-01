@@ -6,6 +6,13 @@ interface MemberRepository {
 
     suspend fun getProfile(): MemberProfile
 
+    /** null은 미조회 상태이며, 이미지가 없는 조회 결과는 MemberProfileImage(null)이다. */
+    fun getCachedProfileImage(): MemberProfileImage? = null
+
+    suspend fun getProfileImage(): MemberProfileImage
+
+    suspend fun uploadProfileImage(image: ProfileImageUpload): MemberProfileImage
+
     suspend fun updateNickname(nickname: String): String
 
     suspend fun withdraw()

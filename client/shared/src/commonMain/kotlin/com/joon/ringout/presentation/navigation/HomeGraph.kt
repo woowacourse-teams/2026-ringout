@@ -126,9 +126,13 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             accountStatus = myPage.uiState.accountStatus,
             authSessionState = authSessionState,
             memberRepository = memberRepository,
-            onBackClick = { navigationState.popBackStack(AppRoute.NicknameChange) },
+            onBackClick = {
+                myPage.refreshProfileFromCache()
+                navigationState.popBackStack(AppRoute.NicknameChange)
+            },
             onNicknameChanged = { nickname ->
                 myPage.onNicknameUpdated(nickname)
+                myPage.refreshProfileFromCache()
                 navigationState.popBackStack(AppRoute.NicknameChange)
             },
         )

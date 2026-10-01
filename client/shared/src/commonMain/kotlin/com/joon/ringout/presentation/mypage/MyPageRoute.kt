@@ -29,6 +29,7 @@ internal fun MyPageRoute(
 
     MyPageScreen(
         accountStatus = viewModel.uiState.accountStatus,
+        profileImageUrl = viewModel.uiState.profileImageUrl,
         onAccountRetry = viewModel::retryAccount,
         isAccountActionInProgress = accountAction is MyPageAccountActionState.InProgress,
         onConfirmAccountAction = { action ->

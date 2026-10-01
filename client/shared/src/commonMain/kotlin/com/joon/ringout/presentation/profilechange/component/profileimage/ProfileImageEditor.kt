@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.LocalRingoutThemeMode
+import coil3.compose.AsyncImage
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.profilechange.component.ProfileImageEditDarkIconResource
@@ -35,6 +36,8 @@ internal fun ProfileImageEditor(
     errorMessage: String?,
     onProfileImageChangeClick: () -> Unit,
     modifier: Modifier = Modifier,
+    profileImageUrl: String? = null,
+    enabled: Boolean = true,
 ) {
     val colors = profileChangeColors()
     val editIcon = if (LocalRingoutThemeMode.current == ThemeMode.Dark) {
@@ -66,6 +69,14 @@ internal fun ProfileImageEditor(
                             .align(Alignment.Center),
                         contentScale = ContentScale.Fit,
                     )
+                    if (!profileImageUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = profileImageUrl,
+                            contentDescription = "현재 프로필 사진",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
                 } else {
                     Image(
                         bitmap = profileImage,
@@ -80,6 +91,7 @@ internal fun ProfileImageEditor(
                     .align(Alignment.BottomEnd)
                     .size(ProfileImageEditTouchSize)
                     .clickable(
+                        enabled = enabled,
                         role = Role.Button,
                         onClickLabel = "프로필 이미지 변경",
                         onClick = onProfileImageChangeClick,

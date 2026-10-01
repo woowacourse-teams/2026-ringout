@@ -1,7 +1,6 @@
 package com.joon.ringout.presentation.mypage.component
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,12 +28,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
-import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.room_member_default_avatar
 
 @Composable
 fun MyPageLoggedInAccountStatus(
@@ -42,8 +39,10 @@ fun MyPageLoggedInAccountStatus(
     email: String,
     modifier: Modifier = Modifier,
     onEditClick: (() -> Unit)? = null,
+    profileImageUrl: String? = null,
 ) {
     val colors = myPageColors()
+    val defaultProfile = painterResource(MyPageDefaultProfileImageResource)
 
     Row(
         modifier = modifier
@@ -54,15 +53,26 @@ fun MyPageLoggedInAccountStatus(
         Box(
             modifier = Modifier
                 .size(LoggedInProfileImageSize)
-                .clip(CircleShape)
-                .background(MaterialTheme.ringoutColors.profileIconLoggedInBackground),
+                .clip(CircleShape),
         ) {
-            Image(
-                painter = painterResource(Res.drawable.room_member_default_avatar),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (profileImageUrl.isNullOrBlank()) {
+                Image(
+                    painter = defaultProfile,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                AsyncImage(
+                    model = profileImageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    placeholder = defaultProfile,
+                    error = defaultProfile,
+                    fallback = defaultProfile,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
         Spacer(Modifier.width(LoggedInProfileTextSpacing))
         Column(

@@ -21,6 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.InputStream
+import java.io.ByteArrayOutputStream
+import com.joon.ringout.domain.member.ProfileImageUpload
 
 @Composable
 internal actual fun rememberProfileImagePicker(
@@ -48,7 +50,7 @@ internal actual fun rememberProfileImagePicker(
                         if (isSelectedImageTooLarge(context, uri)) {
                             ProfileImagePickResult.TooLarge
                         } else {
-                            ProfileImagePickResult.Selected(decodePreviewImage(context, uri))
+                            readSelectedImage(context, uri)
                         }
                     }
                 }.fold(
@@ -145,3 +147,39 @@ private fun calculateSampleSize(width: Int, height: Int): Int {
 
 private const val MaxPreviewDimension = 768
 private const val ProfileImageSizeReadBufferBytes = 8 * 1024
+
+private fun readSelectedImage(context: Context, uri: Uri): ProfileImagePickResult {
+    val input = context.contentResolver.openInputStream(uri)
+        ?: error("The selected image could not be opened")
+    val bytes = input.use(::readProfileImageBytes) ?: return ProfileImagePickResult.TooLarge
+    val type = context.contentResolver.getType(uri)
+        ?: BitmapFactory.Options().also { options ->
+            options.inJustDecodeBounds = true
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        }.outMimeType
+        ?: error("The selected image type could not be read")
+    val extension = type.substringAfter('/').replace("+xml", "")
+    return ProfileImagePickResult.Selected(
+        image = decodePreviewImage(context, uri),
+        upload = ProfileImageUpload(bytes, type, "profile.$extension"),
+    )
+}
+
+/** 보고된 파일 크기가 잘못되어도 제한을 초과해 계속 읽지 않는다. */
+internal fun readProfileImageBytes(input: InputStream): ByteArray? {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(ProfileImageSizeReadBufferBytes)
+    while (output.size() <= MaxProfileImageBytes) {
+        val read = input.read(buffer, 0, minOf(buffer.size, (MaxProfileImageBytes + 1 - output.size()).toInt()))
+        when {
+            read < 0 -> return output.toByteArray()
+            read == 0 -> {
+                val byte = input.read()
+                if (byte < 0) return output.toByteArray()
+                output.write(byte)
+            }
+            else -> output.write(buffer, 0, read)
+        }
+    }
+    return null
+}
