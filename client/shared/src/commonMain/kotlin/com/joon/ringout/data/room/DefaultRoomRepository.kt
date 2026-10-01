@@ -1,5 +1,6 @@
 package com.joon.ringout.data.room
 
+import com.joon.ringout.data.auth.AuthenticatedRequestExecutor
 import com.joon.ringout.data.network.ApiConfig
 import com.joon.ringout.data.network.ApiErrorResponse
 import com.joon.ringout.data.network.ApiException
@@ -8,13 +9,20 @@ import com.joon.ringout.data.network.ApiResponse
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.SecureTokenStorage
+import com.joon.ringout.domain.room.RoomCreateInput
+import com.joon.ringout.domain.room.RoomMembershipDetails
+import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomRepository
+import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomSummary
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.decodeFromString
@@ -25,6 +33,8 @@ class DefaultRoomRepository(
     private val tokenStorage: SecureTokenStorage,
     private val authSession: AuthSession,
 ) : RoomRepository {
+    private val authenticatedRequests = AuthenticatedRequestExecutor(httpClient, tokenStorage, authSession)
+
     override suspend fun getRooms(): List<RoomSummary> {
         val accessToken = if (authSession.state.value == AuthSessionState.Authenticated) {
             tokenStorage.read()?.accessToken?.takeIf(String::isNotBlank)
@@ -39,6 +49,83 @@ class DefaultRoomRepository(
         val result = checkNotNull(body.result) { "모임 목록 응답이 비어 있어요." }
         return result.rooms.map(RoomEntity::toDomain)
     }
+
+    override suspend fun createRoom(input: RoomCreateInput): RoomMembershipDetails {
+        ensurePostAuthenticated()
+        try {
+            val response = authenticatedRequests.execute { accessToken ->
+                httpClient.post(ApiConfig.url("/api/v1/rooms")) {
+                    bearerAuth(accessToken)
+                    setBody(input.toEntity())
+                }
+            }
+            return response.decodeMembershipOrThrow(
+                emptyResultMessage = "모임 생성 응답이 비어 있어요.",
+                allowedRoles = setOf(RoomMembershipRole.OWNER),
+            )
+        } catch (error: ApiException) {
+            throw error.toRoomRepositoryException()
+        }
+    }
+
+    override suspend fun joinRoom(roomId: Long): RoomMembershipDetails {
+        require(roomId > 0L) { "모임 ID를 확인해 주세요." }
+        ensurePostAuthenticated()
+        try {
+            val response = authenticatedRequests.execute { accessToken ->
+                httpClient.post(ApiConfig.url("/api/v1/rooms/$roomId/members")) {
+                    bearerAuth(accessToken)
+                }
+            }
+            val details = response.decodeMembershipOrThrow(
+                emptyResultMessage = "모임 가입 응답이 비어 있어요.",
+                allowedRoles = setOf(RoomMembershipRole.OWNER, RoomMembershipRole.MEMBER),
+            )
+            check(details.room.id == roomId) { "가입한 모임 ID가 요청과 달라요." }
+            return details
+        } catch (error: ApiException) {
+            throw error.toRoomRepositoryException()
+        }
+    }
+
+    private suspend fun ensurePostAuthenticated() {
+        val requestIdentity = authSession.identity.value
+        val tokens = tokenStorage.read()
+        if (
+            authSession.state.value != AuthSessionState.Authenticated ||
+            requestIdentity == null ||
+            authSession.identity.value !== requestIdentity ||
+            tokens?.accessToken.isNullOrBlank()
+        ) {
+            throw RoomRepositoryException(
+                statusCode = HttpStatusCode.Unauthorized.value,
+                code = RoomUnauthorizedCode,
+                message = "로그인이 필요한 기능이에요.",
+            )
+        }
+    }
+}
+
+private const val RoomUnauthorizedCode = "ROOM401"
+
+private fun ApiException.toRoomRepositoryException(): RoomRepositoryException = RoomRepositoryException(
+    statusCode = statusCode,
+    code = code,
+    message = apiMessage,
+    result = result?.toString(),
+    cause = this,
+)
+
+private suspend fun HttpResponse.decodeMembershipOrThrow(
+    emptyResultMessage: String,
+    allowedRoles: Set<RoomMembershipRole>,
+): RoomMembershipDetails {
+    val body = decodeOrThrow<RoomMembershipResponseEntity>()
+    check(status == HttpStatusCode.Created) { "모임 요청에 실패했어요." }
+    check(body.isSuccess) { body.message }
+    check(body.code == "ROOM201") { body.message }
+    val result = checkNotNull(body.result) { emptyResultMessage }
+    return result.toDomain(allowedRoles)
 }
 
 private suspend inline fun <reified T> HttpResponse.decodeOrThrow(): ApiResponse<T> {
