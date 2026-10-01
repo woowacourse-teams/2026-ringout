@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 import com.joon.ringout.RingoutTheme
 
 @Composable
@@ -36,76 +37,78 @@ internal fun ForceEndCompletedDialog(
 ) {
     val colors = activeAlarmTrackingColors()
 
-    Dialog(
-        onDismissRequest = {},
-        properties = DialogProperties(
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false,
-            usePlatformDefaultWidth = false,
-        ),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize(),
-            contentAlignment = Alignment.Center,
+    DialogWithoutRipple {
+        Dialog(
+            onDismissRequest = {},
+            properties = DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+                usePlatformDefaultWidth = false,
+            ),
         ) {
-            Column(
-                modifier = modifier
-                    .padding(horizontal = 16.dp)
-                    .widthIn(max = 332.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(15.dp))
-                    .background(colors.headerBackground)
-                    .padding(10.dp)
-                    .semantics {
-                        paneTitle = "강제 종료 완료"
-                    },
-                verticalArrangement = Arrangement.spacedBy(15.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Box(
+                modifier = Modifier
+                    .fillMaxSize(),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier = Modifier
+                Column(
+                    modifier = modifier
+                        .padding(horizontal = 16.dp)
+                        .widthIn(max = 332.dp)
                         .fillMaxWidth()
-                        .height(56.dp)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    contentAlignment = Alignment.CenterStart,
+                        .clip(RoundedCornerShape(15.dp))
+                        .background(colors.headerBackground)
+                        .padding(10.dp)
+                        .semantics {
+                            paneTitle = "강제 종료 완료"
+                        },
+                    verticalArrangement = Arrangement.spacedBy(15.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(
-                        text = "알람이 강제 종료되었습니다.",
-                        modifier = Modifier.semantics { heading() },
-                        color = colors.screenChrome,
-                        maxLines = 1,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 18.sp,
-                            lineHeight = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    )
-                }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(
+                            text = "알람이 강제 종료되었습니다.",
+                            modifier = Modifier.semantics { heading() },
+                            color = colors.screenChrome,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                lineHeight = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                    }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(51.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable(
-                            role = Role.Button,
-                            onClickLabel = "강제 종료 확인",
-                            onClick = onConfirm,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "확인",
-                        color = colors.headerBackground,
-                        maxLines = 1,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = 18.sp,
-                            lineHeight = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(51.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primary)
+                            .clickable(
+                                role = Role.Button,
+                                onClickLabel = "강제 종료 확인",
+                                onClick = onConfirm,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "확인",
+                            color = colors.headerBackground,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                lineHeight = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                    }
                 }
             }
         }

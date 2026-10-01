@@ -12,6 +12,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.domain.terms.RequiredTermType
@@ -33,38 +34,40 @@ internal fun TermsReagreementDialog(
     modifier: Modifier = Modifier,
 ) {
     if (!state.blocksService) return
-    Dialog(
-        onDismissRequest = {},
-        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false, usePlatformDefaultWidth = false),
-    ) {
-        if (state.phase == TermsGatePhase.Notice) {
-            Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                TermsUpdateNotice(onContinue)
+    DialogWithoutRipple {
+        Dialog(
+            onDismissRequest = {},
+            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false, usePlatformDefaultWidth = false),
+        ) {
+            if (state.phase == TermsGatePhase.Notice) {
+                Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    TermsUpdateNotice(onContinue)
+                }
+            } else {
+                TermsAgreementScreen(
+                    uiState = state.toTermsAgreementUiState(),
+                    onAllAgreementChange = onAllChange,
+                    onTermAgreementChange = { id, agreed ->
+                        RequiredTermType.entries.find { it.termId == id }?.let { onAgreementChange(it, agreed) }
+                    },
+                    onTermDetailClick = { id ->
+                        RequiredTermType.entries.find { it.termId == id }?.let(onDetail)
+                    },
+                    onStartClick = if (state.phase == TermsGatePhase.Failure) onRetry else onSubmit,
+                    modifier = modifier,
+                    startEnabled = !state.isSubmitting && !state.isChecking && !state.isLoggingOut,
+                    errorMessage = state.errorMessage,
+                    secondaryAction = {
+                        TextButton(
+                            onClick = onLogout,
+                            enabled = !state.isSubmitting && !state.isLoggingOut,
+                            modifier = Modifier.align(Alignment.CenterHorizontally),
+                        ) {
+                            Text(if (state.isLoggingOut) "로그아웃 중…" else "로그아웃")
+                        }
+                    },
+                )
             }
-        } else {
-            TermsAgreementScreen(
-                uiState = state.toTermsAgreementUiState(),
-                onAllAgreementChange = onAllChange,
-                onTermAgreementChange = { id, agreed ->
-                    RequiredTermType.entries.find { it.termId == id }?.let { onAgreementChange(it, agreed) }
-                },
-                onTermDetailClick = { id ->
-                    RequiredTermType.entries.find { it.termId == id }?.let(onDetail)
-                },
-                onStartClick = if (state.phase == TermsGatePhase.Failure) onRetry else onSubmit,
-                modifier = modifier,
-                startEnabled = !state.isSubmitting && !state.isChecking && !state.isLoggingOut,
-                errorMessage = state.errorMessage,
-                secondaryAction = {
-                    TextButton(
-                        onClick = onLogout,
-                        enabled = !state.isSubmitting && !state.isLoggingOut,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    ) {
-                        Text(if (state.isLoggingOut) "로그아웃 중…" else "로그아웃")
-                    }
-                },
-            )
         }
     }
 }
