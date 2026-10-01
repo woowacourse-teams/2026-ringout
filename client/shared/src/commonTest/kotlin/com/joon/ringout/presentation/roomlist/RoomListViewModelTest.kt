@@ -114,7 +114,7 @@ class RoomListViewModelTest {
         viewModel.onRouteVisible(AuthSessionState.Authenticated)
         runCurrent()
 
-        assertEquals("조회 실패", viewModel.uiState.allRoomsErrorMessage)
+        assertEquals("모임 목록을 불러오는 중 문제가 발생했어요.", viewModel.uiState.allRoomsErrorMessage)
         assertFalse(viewModel.uiState.isLoadingAllRooms)
 
         viewModel.onRetryRooms()
