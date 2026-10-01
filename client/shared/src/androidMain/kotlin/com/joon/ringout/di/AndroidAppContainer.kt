@@ -2,6 +2,7 @@ package com.joon.ringout.di
 
 import android.content.Context
 import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
+import com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -32,6 +33,7 @@ class AndroidAppContainer(
 
     init {
         AndroidAlarmActivityRecorder.get(context).flush()
+        AndroidAlarmOccurrenceRuntime.get(context)
     }
 
     override val authSession = getAuthSession()

@@ -18,20 +18,12 @@ class KSafeTokenStorage(
         )
     }
 
-    override suspend fun read(): AuthTokens? {
-        val storedTokens = kSafe.get(
-            key = AUTH_TOKENS_KEY,
-            defaultValue = StoredAuthTokens(),
-        )
-        if (storedTokens.accessToken.isBlank() || storedTokens.refreshToken.isBlank()) {
-            return null
-        }
+    override suspend fun read(): AuthTokens? =
+        kSafe.get(key = AUTH_TOKENS_KEY, defaultValue = StoredAuthTokens()).toAuthTokens()
 
-        return AuthTokens(
-            accessToken = storedTokens.accessToken,
-            refreshToken = storedTokens.refreshToken,
-        )
-    }
+    /** 네이티브 알람 콜백에서 비동기 처리 전에 소유자를 고정하기 위한 로컬 저장소 조회. */
+    internal fun readSnapshot(): AuthTokens? =
+        kSafe.getDirect(key = AUTH_TOKENS_KEY, defaultValue = StoredAuthTokens()).toAuthTokens()
 
     override suspend fun clear() {
         kSafe.delete(AUTH_TOKENS_KEY)
@@ -57,6 +49,9 @@ private data class StoredAuthTokens(
     val refreshToken: String = "",
     val reauthenticationRequired: Boolean = false,
 )
+
+private fun StoredAuthTokens.toAuthTokens(): AuthTokens? =
+    if (accessToken.isBlank() || refreshToken.isBlank()) null else AuthTokens(accessToken, refreshToken)
 
 internal const val AUTH_VAULT_FILE_NAME = "auth_vault"
 private const val AUTH_TOKENS_KEY = "auth_tokens"

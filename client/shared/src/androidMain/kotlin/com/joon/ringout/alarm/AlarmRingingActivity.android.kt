@@ -163,6 +163,11 @@ class AlarmRingingActivity : ComponentActivity() {
         var wasCurrentRingingOccurrence = false
         val startedMission = ringingSessionStore.runIfCurrent(occurrenceId) {
             wasCurrentRingingOccurrence = true
+            // 위치 추적이 즉시 도착을 판정하더라도 해제 이벤트를 먼저 보존한다.
+            runCatching {
+                com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime.get(applicationContext)
+                    .recordDismissal(occurrenceId, System.currentTimeMillis())
+            }.onFailure { android.util.Log.e("AlarmOccurrence", "Could not record dismissal", it) }
             alarmMissionCoordinator.confirmRetryAlarmStarted(intent)
             alarmMissionCoordinator.startFrom(intent)
         }

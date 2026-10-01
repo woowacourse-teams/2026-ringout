@@ -144,3 +144,51 @@ internal val RingoutMigration8To9 = Migration(8, 9) { connection ->
     connection.executeSQL("ALTER TABLE alarms ADD COLUMN schedule_version INTEGER NOT NULL DEFAULT 1")
     connection.executeSQL("ALTER TABLE alarm_activity_events ADD COLUMN schedule_version INTEGER NOT NULL DEFAULT 1")
 }
+
+/** 기존 기록에 계정이나 실제 울림 시각을 추정해서 부여하지 않고 새 전송 저장소만 추가한다. */
+internal val RingoutMigration9To10 = Migration(9, 10) { connection ->
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_occurrence_sync (
+            local_execution_id TEXT NOT NULL PRIMARY KEY,
+            owner_account_id TEXT NOT NULL,
+            alarm_id TEXT NOT NULL,
+            schedule_version INTEGER NOT NULL,
+            scheduled_at INTEGER,
+            started_at INTEGER,
+            server_occurrence_id TEXT
+        )
+    """.trimIndent())
+    connection.executeSQL("CREATE INDEX IF NOT EXISTS index_alarm_occurrence_sync_owner_account_id ON alarm_occurrence_sync (owner_account_id)")
+    connection.executeSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_alarm_occurrence_sync_server_occurrence_id ON alarm_occurrence_sync (server_occurrence_id)")
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_occurrence_ringing_links (
+            local_ringing_id TEXT NOT NULL PRIMARY KEY,
+            local_execution_id TEXT NOT NULL,
+            event_id TEXT,
+            ringing_at INTEGER,
+            FOREIGN KEY (local_execution_id) REFERENCES alarm_occurrence_sync (local_execution_id) ON UPDATE NO ACTION ON DELETE NO ACTION
+        )
+    """.trimIndent())
+    connection.executeSQL("CREATE INDEX IF NOT EXISTS index_alarm_occurrence_ringing_links_local_execution_id ON alarm_occurrence_ringing_links (local_execution_id)")
+    connection.executeSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_alarm_occurrence_ringing_links_event_id ON alarm_occurrence_ringing_links (event_id)")
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_occurrence_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            local_execution_id TEXT NOT NULL,
+            local_ringing_id TEXT NOT NULL,
+            deduplication_key TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            occurred_at INTEGER,
+            state TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            next_attempt_at INTEGER,
+            last_error_code TEXT,
+            last_error_message TEXT,
+            FOREIGN KEY (local_execution_id) REFERENCES alarm_occurrence_sync (local_execution_id) ON UPDATE NO ACTION ON DELETE NO ACTION,
+            FOREIGN KEY (local_ringing_id) REFERENCES alarm_occurrence_ringing_links (local_ringing_id) ON UPDATE NO ACTION ON DELETE NO ACTION
+        )
+    """.trimIndent())
+    connection.executeSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_alarm_occurrence_outbox_local_execution_id_deduplication_key ON alarm_occurrence_outbox (local_execution_id, deduplication_key)")
+    connection.executeSQL("CREATE INDEX IF NOT EXISTS index_alarm_occurrence_outbox_local_ringing_id ON alarm_occurrence_outbox (local_ringing_id)")
+    connection.executeSQL("CREATE INDEX IF NOT EXISTS index_alarm_occurrence_outbox_state_next_attempt_at ON alarm_occurrence_outbox (state, next_attempt_at)")
+}

@@ -370,7 +370,9 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
                 alarmId: alarm.id.uuidString,
                 state: mapAlarmState(alarm.state),
                 occurrenceId: observation?.occurrenceId,
-                ringingObservedAtEpochMillis: observation.map { KotlinLong(value: $0.observedAtEpochMillis) }
+                ringingObservedAtEpochMillis: observation.map { KotlinLong(value: $0.observedAtEpochMillis) },
+                ownerAccountId: observation?.ownerAccountId,
+                ownerCaptured: observation?.ownerCaptured ?? false
             )
         }
     }
