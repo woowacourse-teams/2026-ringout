@@ -5,12 +5,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 public record AlarmMovementRequest(
     @Schema(
-        description = "이동 상태 변경 대상 알람 실행의 식별자. 양수여야 합니다.",
-        example = "135",
+        description = "이동 상태 변경 대상 알람 실행의 UUID 식별자입니다.",
+        example = "5c9e1f7a-3b2d-4a6c-8e0f-1a2b3c4d5e6f",
         requiredMode = Schema.RequiredMode.REQUIRED,
-        minimum = "1"
+        format = "uuid"
     )
-    Long alarmId,
+    String alarmOccurrenceId,
     @Schema(
         description = "수행할 이동 행동",
         example = "START_MOVEMENT",

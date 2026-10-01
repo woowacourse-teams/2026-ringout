@@ -24,6 +24,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -47,13 +48,15 @@ public class AlarmMovementService {
         validateRequest(request);
         Room room = findActiveRoomForCurrentMember(userId, roomId);
 
-        AlarmOccurrence alarmOccurrence = alarmOccurrenceRepository.findActiveById(request.alarmId())
+        AlarmOccurrence alarmOccurrence = alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(
+                request.alarmOccurrenceId())
             .orElseThrow(() -> new GeneralException(AlarmMovementErrorStatus.ALARM_NOT_FOUND));
-        AlarmMovement alarmMovement = findAlarmMovement(alarmOccurrence, request.alarmId());
+        validateAlarmOccurrenceOwner(alarmOccurrence, userId);
+        AlarmMovement alarmMovement = findAlarmMovement(alarmOccurrence, request.alarmOccurrenceId());
 
         MovementStatus movementStatus = alarmMovement.change(request.action(), LocalDateTime.now(clock));
         roomActivityService.recordMovementActivity(room, LocalDateTime.now(clock));
-        logMovementStatusChanged(userId, roomId, request.alarmId(), request.action(), movementStatus);
+        logMovementStatusChanged(userId, roomId, request.alarmOccurrenceId(), request.action(), movementStatus);
 
         return new AlarmMovementResponse(movementStatus);
     }
@@ -165,7 +168,13 @@ public class AlarmMovementService {
         return 2;
     }
 
-    private AlarmMovement findAlarmMovement(AlarmOccurrence alarmOccurrence, Long alarmOccurrenceId) {
+    private void validateAlarmOccurrenceOwner(AlarmOccurrence alarmOccurrence, Long userId) {
+        if (!alarmOccurrence.isOwnedBy(userId)) {
+            throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ACTION_FORBIDDEN);
+        }
+    }
+
+    private AlarmMovement findAlarmMovement(AlarmOccurrence alarmOccurrence, String alarmOccurrenceId) {
         return alarmMovementRepository.findByAlarmOccurrence(alarmOccurrence)
             .orElseThrow(() -> {
                 log.error("AlarmMovement record is missing. alarmOccurrenceId={}", alarmOccurrenceId);
@@ -173,7 +182,7 @@ public class AlarmMovementService {
             });
     }
 
-    private void logMovementStatusChanged(Long userId, Long roomId, Long alarmOccurrenceId, MovementAction action,
+    private void logMovementStatusChanged(Long userId, Long roomId, String alarmOccurrenceId, MovementAction action,
         MovementStatus movementStatus) {
         log.atInfo()
             .addKeyValue("event", "movement_status_changed")
@@ -187,8 +196,8 @@ public class AlarmMovementService {
 
     private void validateRequest(AlarmMovementRequest request) {
         validateRequestExists(request);
-        validateAlarmOccurrenceIdExists(request.alarmId());
-        validateAlarmOccurrenceIdIsPositive(request.alarmId());
+        validateAlarmOccurrenceIdExists(request.alarmOccurrenceId());
+        validateAlarmOccurrenceIdFormat(request.alarmOccurrenceId());
         validateMovementActionExists(request.action());
     }
 
@@ -198,14 +207,18 @@ public class AlarmMovementService {
         }
     }
 
-    private void validateAlarmOccurrenceIdExists(Long alarmOccurrenceId) {
+    private void validateAlarmOccurrenceIdExists(String alarmOccurrenceId) {
         if (alarmOccurrenceId == null) {
             throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ALARM_OCCURRENCE_ID_REQUIRED);
         }
     }
 
-    private void validateAlarmOccurrenceIdIsPositive(Long alarmOccurrenceId) {
-        if (alarmOccurrenceId <= 0) {
+    private void validateAlarmOccurrenceIdFormat(String alarmOccurrenceId) {
+        try {
+            if (!UUID.fromString(alarmOccurrenceId).toString().equalsIgnoreCase(alarmOccurrenceId)) {
+                throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ALARM_OCCURRENCE_ID_INVALID);
+            }
+        } catch (IllegalArgumentException exception) {
             throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ALARM_OCCURRENCE_ID_INVALID);
         }
     }
