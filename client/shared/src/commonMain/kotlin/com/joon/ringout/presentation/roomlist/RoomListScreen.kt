@@ -26,6 +26,7 @@ fun RoomListScreen(
     modifier: Modifier = Modifier,
     onCreateRoom: () -> Unit,
     onRoomClick: (String) -> Unit,
+    onJoinedRoomClick: (String) -> Unit,
     onRetryRooms: () -> Unit,
 ) {
     val showJoinedRooms = uiState.isAuthenticated && uiState.joinedRooms.isNotEmpty()
@@ -47,7 +48,7 @@ fun RoomListScreen(
         if (showJoinedRooms) {
             JoinedRoomSection(
                 uiState = uiState,
-                onRoomClick = onRoomClick,
+                onRoomClick = onJoinedRoomClick,
                 modifier = Modifier.padding(top = 6.dp),
             )
             Spacer(Modifier.height(18.dp))
@@ -105,6 +106,7 @@ private fun RoomListScreenPreviewContent(
             uiState = uiState,
             onCreateRoom = {},
             onRoomClick = {},
+            onJoinedRoomClick = {},
             onRetryRooms = {},
         )
     }

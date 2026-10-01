@@ -81,6 +81,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             onCreateRoom = { navigationState.navigate(AppRoute.RoomCreate) },
             onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomDetail(roomId)) },
+            onJoinedRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomHome(roomId)) },
         )
     }
     entry<AppRoute.RoomCreate>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->

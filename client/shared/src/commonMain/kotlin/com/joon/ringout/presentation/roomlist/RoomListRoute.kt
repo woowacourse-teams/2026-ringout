@@ -19,6 +19,7 @@ internal fun RoomListRoute(
     onCreateRoom: () -> Unit,
     onLoginClick: () -> Unit,
     onRoomClick: (String) -> Unit,
+    onJoinedRoomClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isLoginDialogVisible by rememberSaveable { mutableStateOf(false) }
@@ -37,6 +38,7 @@ internal fun RoomListRoute(
             }
         },
         onRoomClick = onRoomClick,
+        onJoinedRoomClick = onJoinedRoomClick,
         onRetryRooms = viewModel::onRetryRooms,
         modifier = modifier,
     )

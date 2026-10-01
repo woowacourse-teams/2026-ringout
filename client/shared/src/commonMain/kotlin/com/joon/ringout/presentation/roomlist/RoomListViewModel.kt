@@ -10,10 +10,6 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomRepositoryException
-import com.joon.ringout.domain.room.RoomSummary
-import com.joon.ringout.presentation.roomhome.RoomHomeMemberUiModel
-import com.joon.ringout.presentation.roomhome.RoomHomeRecordsUiState
-import com.joon.ringout.presentation.roomhome.RoomHomeUiState
 import com.joon.ringout.presentation.roomlist.model.RoomListUiState
 import com.joon.ringout.presentation.roomlist.model.RoomMutationSource
 import com.joon.ringout.presentation.roomlist.model.RoomMutationSuccess
@@ -54,7 +50,6 @@ class RoomListViewModel(
     private var roomsJob: Job? = null
     private var mutationJob: Job? = null
     private var visibleMutationEntryId: Long? = null
-    private val roomHomeDetails = mutableMapOf<String, RoomMembershipDetails>()
 
     internal val isRoomListUninitialized: Boolean
         get() = !hasReceivedSession
@@ -75,7 +70,6 @@ class RoomListViewModel(
             mutationJob?.cancel()
             roomsRequestId += 1
             mutationRequestId += 1
-            roomHomeDetails.clear()
             mutationState = RoomMutationUiState()
         }
 
@@ -130,37 +124,6 @@ class RoomListViewModel(
         return RoomMutationSuccess(source = source, roomId = roomId)
     }
 
-    internal fun roomHomeInitialState(roomId: String): RoomHomeUiState {
-        if (!isLiveSessionSnapshotCurrent()) return RoomHomeUiState(isLoading = true)
-        val details = roomHomeDetails[roomId]
-        val currentRoom = uiState.allRooms.firstOrNull { it.id == roomId }
-        val room = when {
-            details != null && currentRoom != null -> details.room.toRoomUiModel().copy(
-                isJoined = currentRoom.isJoined,
-                participantCount = currentRoom.participantCount,
-            )
-            details != null -> details.room.toRoomUiModel()
-            else -> currentRoom
-        }
-        return RoomHomeUiState(
-            room = room,
-            members = details?.members.orEmpty().map { member ->
-                RoomHomeMemberUiModel(id = member.userId.toString(), nickname = member.nickname)
-            },
-            areMembersLoaded = details != null,
-            isLoading = room == null && (isRoomListUninitialized || uiState.isLoadingAllRooms),
-            errorMessage = if (room == null && !isRoomListUninitialized && !uiState.isLoadingAllRooms) {
-                uiState.allRoomsErrorMessage ?: "모임 정보를 불러올 수 없어요."
-            } else {
-                null
-            },
-            recordsState = RoomHomeRecordsUiState(
-                canViewRecords = room?.isJoined == true,
-                isDataLoaded = false,
-            ),
-        )
-    }
-
     private fun startMutation(
         source: RoomMutationSource,
         operation: suspend () -> Result<RoomMembershipDetails>,
@@ -188,7 +151,6 @@ class RoomListViewModel(
                 if (!isCurrentMutation(operationId, session)) return@launch
 
                 val room = details.room.toRoomUiModel()
-                roomHomeDetails[room.id] = details
                 invalidateRoomsRequest()
                 upsertRoom(room)
                 mutationState = RoomMutationUiState(
@@ -241,11 +203,6 @@ class RoomListViewModel(
     private fun isCurrentSession(session: SessionKey): Boolean {
         val liveSession = authSession?.let { SessionKey(it.state.value, it.identity.value) }
         return if (liveSession != null) liveSession == session else lastSessionKey == session
-    }
-
-    private fun isLiveSessionSnapshotCurrent(): Boolean {
-        val currentSession = lastSessionKey ?: return authSession == null
-        return isCurrentSession(currentSession)
     }
 
     private fun invalidateRoomsRequest() {

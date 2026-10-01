@@ -161,7 +161,7 @@ class RoomListViewModelTest {
     }
 
     @Test
-    fun `생성 성공은 새 모임과 회원 정보를 즉시 반영하고 목록 갱신 오류에도 유지한다`() = runTest {
+    fun `생성 성공은 새 모임을 즉시 목록에 반영하고 목록 갱신 오류에도 유지한다`() = runTest {
         var loadCalls = 0
         val existingRoom = previewRoom.copy(id = "room-2", isJoined = false)
         val viewModel = RoomListViewModel(
@@ -186,11 +186,6 @@ class RoomListViewModelTest {
         assertEquals(RoomListRefreshErrorMessage, viewModel.uiState.allRoomsRefreshErrorMessage)
         assertTrue(viewModel.mutationState.isSuccessful)
         assertEquals("11", viewModel.mutationState.roomId)
-
-        val homeState = viewModel.roomHomeInitialState("11")
-        assertTrue(homeState.areMembersLoaded)
-        assertEquals(listOf("방장"), homeState.members.map { it.nickname })
-        assertFalse(homeState.recordsState.isDataLoaded)
     }
 
     @Test
@@ -221,7 +216,7 @@ class RoomListViewModelTest {
     }
 
     @Test
-    fun `로그인 계정이 바뀌면 진행 중 생성 결과와 회원 캐시를 버린다`() = runTest {
+    fun `로그인 계정이 바뀌면 진행 중 생성 결과와 모임 목록을 버린다`() = runTest {
         val session = AuthSession().apply { startNewSession() }
         val pendingCreate = CompletableDeferred<Result<RoomMembershipDetails>>()
         val viewModel = RoomListViewModel(
@@ -245,7 +240,6 @@ class RoomListViewModelTest {
 
         assertTrue(viewModel.uiState.allRooms.isEmpty())
         assertFalse(viewModel.mutationState.isSuccessful)
-        assertTrue(viewModel.roomHomeInitialState("13").room == null)
     }
 
     @Test

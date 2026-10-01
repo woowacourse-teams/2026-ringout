@@ -363,6 +363,21 @@ class AppNavigationStateTest {
     }
 
     @Test
+    fun `가입 모임 바로가기는 상세 경유 없이 RoomHome으로 이동하고 뒤로 가면 Social로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+
+        state.navigate(AppRoute.RoomHome("7"))
+
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomHome("7")),
+            state.backStack.toList(),
+        )
+        state.popBackStack(AppRoute.RoomHome("7"))
+        assertEquals(AppRoute.Social, state.requestedRoute)
+    }
+
+    @Test
     fun `복원된 RoomHome 경로는 모임 식별자를 유지한다`() {
         val roomHome = AppRoute.RoomHome("room-41")
         val backStack = NavBackStack<AppRoute>(AppRoute.Home, AppRoute.Social, roomHome)
