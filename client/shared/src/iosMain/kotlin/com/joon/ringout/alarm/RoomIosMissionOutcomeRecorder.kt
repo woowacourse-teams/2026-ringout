@@ -1,6 +1,7 @@
 package com.joon.ringout.alarm
 
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecorder
 import com.joon.ringout.data.alarmactivity.AlarmActivityDao
 import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
@@ -25,12 +26,13 @@ internal class RoomIosMissionOutcomeRecorder(
     ),
     private val activityDao: AlarmActivityDao = getRingoutDatabase().alarmActivityDao(),
     private val alarmDataSource: AlarmDataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao()),
+    private val occurrenceRecorder: IosAlarmOccurrenceRecorder? = null,
 ) : IosMissionOutcomeRecorder {
 
     override suspend fun recordRingingTimes(event: IosAlarmMissionEventDto) {
         val referenceTime = event.ringingObservedAtEpochMillis ?: event.ringingStoppedAtEpochMillis
         if (event.retryAttempt == 0 && referenceTime != null) {
-            alarmDataSource.getById(event.alarmId)?.request?.time?.let { alarmTime ->
+            alarmDataSource.getById(event.alarmId)?.request?.takeIf { it.scheduleVersion == event.scheduleVersion }?.time?.let { alarmTime ->
                 activityDao.recordInitialRingingSchedule(event.occurrenceId, alarmTime, referenceTime)
             }
         }
@@ -48,22 +50,27 @@ internal class RoomIosMissionOutcomeRecorder(
                 ),
             )
         }
+        occurrenceRecorder?.recordStopped(event)
     }
 
     override suspend fun recordRetryRingingSchedule(occurrenceId: String, sourceOccurrenceId: String, intervalMinutes: Int) {
+        occurrenceRecorder?.registerRetry(occurrenceId, sourceOccurrenceId)
         val stoppedAt = activityDao.getOccurrenceTimes(sourceOccurrenceId)?.ringingStoppedAtEpochMillis ?: return
         activityDao.mergeOccurrenceTimes(AlarmOccurrenceTimesEntity(
             occurrenceId = occurrenceId,
             ringingScheduledAtEpochMillis = stoppedAt + intervalMinutes * 60_000L,
         ))
+        occurrenceRecorder?.fillRetrySchedule(occurrenceId)
     }
 
     override suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) {
         recordMissionResult(MissionResult.SUCCESS, MissionDate.parse(completedAt), occurrenceId, completedAtEpochMillis)
+        occurrenceRecorder?.recordTerminal(occurrenceId, completedAtEpochMillis, arrived = true)
     }
 
     override suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) {
         recordMissionResult(MissionResult.FAILURE, MissionDate.parse(completedAt), occurrenceId, completedAtEpochMillis)
+        occurrenceRecorder?.recordTerminal(occurrenceId, completedAtEpochMillis, arrived = false)
     }
 }
 

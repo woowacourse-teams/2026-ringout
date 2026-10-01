@@ -115,6 +115,17 @@ abstract class AlarmOccurrenceSyncDao {
     }
 
     @Transaction
+    open suspend fun registerRepeat(ownerAccountId: String, executionId: String, localRingingId: String, eventId: String) {
+        checkNotNull(getExecution(ownerAccountId, executionId))
+        require(localRingingId.isNotBlank() && localRingingId != executionId)
+        require(eventId.isNotBlank() && eventId.length <= 64)
+        // 예약만으로 전송 이벤트를 만들지 않는다. 실제 울림/해제가 확인되면 recordRepeat로 채운다.
+        insertRinging(AlarmOccurrenceRingingLinkEntity(localRingingId, executionId, eventId, null))
+        val stored = checkNotNull(getRinging(ownerAccountId, localRingingId))
+        check(stored.localExecutionId == executionId && stored.eventId != null)
+    }
+
+    @Transaction
     open suspend fun recordRepeat(
         ownerAccountId: String,
         executionId: String,

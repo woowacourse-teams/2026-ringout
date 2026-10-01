@@ -26,6 +26,8 @@ data class IosAlarmMissionEventDto(
     val ringingObservedAtEpochMillis: Long? = null,
     val ringingStoppedAtEpochMillis: Long? = null,
     val scheduleVersion: Long = 1,
+    val ownerAccountId: String? = null,
+    val ownerCaptured: Boolean = false,
 )
 
 data class IosAlarmMissionEventsResult(

@@ -69,6 +69,8 @@ data class IosScheduledAlarmDto(
     val state: IosScheduledAlarmState,
     val occurrenceId: String? = null,
     val ringingObservedAtEpochMillis: Long? = null,
+    val ownerAccountId: String? = null,
+    val ownerCaptured: Boolean = false,
 )
 
 data class IosScheduledAlarmsResult(

@@ -20,6 +20,7 @@ internal class AlarmOccurrenceSyncCoordinator(
     private val networkMonitor: NetworkMonitor,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val onStorageFailure: (Exception) -> Unit = {},
+    private val flush: suspend () -> Long? = syncer::flush,
 ) {
     fun start(scope: CoroutineScope): Job = scope.launch {
         val wakeups = Channel<Unit>(Channel.CONFLATED)
@@ -45,7 +46,7 @@ internal class AlarmOccurrenceSyncCoordinator(
                     continue
                 }
                 nextRetryAt = try {
-                    syncer.flush().also { storageRetryAt = null }
+                    flush().also { storageRetryAt = null }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {

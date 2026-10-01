@@ -1,10 +1,13 @@
 import Foundation
+import Shared
 
 struct AlarmRingingOccurrence: Codable, Equatable {
     let occurrenceId: String
     let observedAtEpochMillis: Int64
     var endedAtEpochMillis: Int64?
     var isAlerting: Bool
+    let ownerAccountId: String?
+    let ownerCaptured: Bool?
 }
 
 /// Shared by AlarmKit snapshots and stop intents, including after a process restart.
@@ -37,11 +40,14 @@ final class AlarmRingingOccurrenceStore {
                current.endedAtEpochMillis.map({ timestamp <= $0 + coalescingWindowMillis }) ?? true {
                 continue
             }
+            let owner = IosAlarmOccurrenceAccount.shared.capture()
             sessions[id] = AlarmRingingOccurrence(
                 occurrenceId: "\(id):\(UUID().uuidString)",
                 observedAtEpochMillis: timestamp,
                 endedAtEpochMillis: nil,
-                isAlerting: true
+                isAlerting: true,
+                ownerAccountId: owner.accountId,
+                ownerCaptured: owner.captured
             )
         }
         if sessions != previous { try write(sessions) }
