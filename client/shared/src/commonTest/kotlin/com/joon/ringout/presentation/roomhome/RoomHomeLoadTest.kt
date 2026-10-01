@@ -77,6 +77,7 @@ class RoomHomeLoadTest {
         assertEquals(19, loaded.room?.participantCount)
         assertEquals("오전 8:15", loaded.room?.activityTimeText)
         assertEquals(listOf("월", "수"), loaded.room?.activityDays)
+        assertEquals(RoomMembershipRole.MEMBER, loaded.membershipRole)
         assertEquals(listOf("11", "10"), loaded.members.map { it.id })
         assertEquals(listOf("두 번째", "첫 번째"), loaded.members.map { it.nickname })
         assertEquals("https://cdn.example.com/member.png", loaded.members.first().profileImageUrl)
@@ -201,6 +202,7 @@ class RoomHomeLoadTest {
                     participantCount = 1,
                     isJoined = true,
                 ),
+                membershipRole = RoomMembershipRole.OWNER,
                 members = listOf(RoomHomeMemberUiModel("10", "이전 회원")),
                 areMembersLoaded = true,
                 ongoingActivity = RoomHomeOngoingActivityUiModel(MissionDate.parse("2026-10-01"), 1),
@@ -213,6 +215,7 @@ class RoomHomeLoadTest {
 
         val state = viewModel.uiState.value
         assertNull(state.room)
+        assertNull(state.membershipRole)
         assertTrue(state.members.isEmpty())
         assertFalse(state.areMembersLoaded)
         assertFalse(state.recordsState.isDataLoaded)
