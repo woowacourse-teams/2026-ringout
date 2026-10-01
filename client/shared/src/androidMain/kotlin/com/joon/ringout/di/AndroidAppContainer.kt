@@ -14,6 +14,7 @@ import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.data.destination.DefaultDestinationRepository
 import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.member.DefaultMemberRepository
+import com.joon.ringout.data.room.DefaultRoomRepository
 import com.joon.ringout.data.missionhistory.DefaultMissionHistoryRepository
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
 import com.joon.ringout.data.network.getRingoutHttpClient
@@ -56,6 +57,11 @@ class AndroidAppContainer(
             tokenStorage = tokenStorage,
             authSession = authSession,
         )
+    override val roomRepository = DefaultRoomRepository(
+        httpClient = httpClient,
+        tokenStorage = tokenStorage,
+        authSession = authSession,
+    )
     override val destinationRepository =
         DefaultDestinationRepository(
             dataSource = RoomDestinationDataSource(
