@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.domain.destination.SavedDestination
 import org.jetbrains.compose.resources.painterResource
@@ -106,32 +107,34 @@ internal fun DestinationManagementDialogContent(
     val colors = DestinationManagementPalette
     val shape = RoundedCornerShape(15.dp)
 
-    Column(
-        modifier = modifier
-            .widthIn(max = 360.dp)
-            .fillMaxWidth()
-            .height(305.dp)
-            .clip(shape)
-            .background(colors.surface)
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        DestinationManagementHeader(onDismissRequest = onDismissRequest)
-        LazyColumn(
-            modifier = Modifier
+    DialogWithoutRipple {
+        Column(
+            modifier = modifier
+                .widthIn(max = 360.dp)
                 .fillMaxWidth()
-                .weight(1f),
+                .height(305.dp)
+                .clip(shape)
+                .background(colors.surface)
+                .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(
-                items = destinations,
-                key = SavedDestination::id,
-            ) { destination ->
-                DestinationManagementRow(
-                    destination = destination,
-                    onEditClick = { onEditClick(destination) },
-                    onDeleteClick = { onDeleteClick(destination) },
-                )
+            DestinationManagementHeader(onDismissRequest = onDismissRequest)
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(
+                    items = destinations,
+                    key = SavedDestination::id,
+                ) { destination ->
+                    DestinationManagementRow(
+                        destination = destination,
+                        onEditClick = { onEditClick(destination) },
+                        onDeleteClick = { onDeleteClick(destination) },
+                    )
+                }
             }
         }
     }

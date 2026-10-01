@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
@@ -51,44 +52,46 @@ internal fun RecordsMonthDialog(
     modifier: Modifier = Modifier,
 ) {
     val colors = recordsColors()
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            modifier = modifier.padding(horizontal = 24.dp).widthIn(max = 348.dp).fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp), color = colors.calendarSurface,
-            border = BorderStroke(1.dp, colors.calendarBorder),
-        ) {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()).padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+    DialogWithoutRipple {
+        Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(
+                modifier = modifier.padding(horizontal = 24.dp).widthIn(max = 348.dp).fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp), color = colors.calendarSurface,
+                border = BorderStroke(1.dp, colors.calendarBorder),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onPreviousMonth) {
-                        Icon(painterResource(Res.drawable.records_chevron), "이전 달", Modifier.size(20.dp).rotate(180f), tint = colors.text)
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onPreviousMonth) {
+                            Icon(painterResource(Res.drawable.records_chevron), "이전 달", Modifier.size(20.dp).rotate(180f), tint = colors.text)
+                        }
+                        Text(
+                            "${month.year}년 ${month.month}월", modifier = Modifier.weight(1f), fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold, color = colors.text, textAlign = TextAlign.Center,
+                        )
+                        IconButton(onClick = onNextMonth) {
+                            Icon(painterResource(Res.drawable.records_chevron), "다음 달", Modifier.size(20.dp), tint = colors.text)
+                        }
                     }
-                    Text(
-                        "${month.year}년 ${month.month}월", modifier = Modifier.weight(1f), fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold, color = colors.text, textAlign = TextAlign.Center,
-                    )
-                    IconButton(onClick = onNextMonth) {
-                        Icon(painterResource(Res.drawable.records_chevron), "다음 달", Modifier.size(20.dp), tint = colors.text)
+                    Row {
+                        listOf("일", "월", "화", "수", "목", "금", "토").forEach { label ->
+                            Text(label, Modifier.weight(1f), color = colors.secondaryText, fontSize = 12.sp, textAlign = TextAlign.Center)
+                        }
                     }
-                }
-                Row {
-                    listOf("일", "월", "화", "수", "목", "금", "토").forEach { label ->
-                        Text(label, Modifier.weight(1f), color = colors.secondaryText, fontSize = 12.sp, textAlign = TextAlign.Center)
-                    }
-                }
-                Column(modifier = Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    days.chunked(7).forEach { week ->
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            week.forEach { day ->
-                                if (day == null) Box(Modifier.weight(1f))
-                                else RecordsCalendarDay(day, { onDateSelected(day.date) }, Modifier.weight(1f))
+                    Column(modifier = Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        days.chunked(7).forEach { week ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                week.forEach { day ->
+                                    if (day == null) Box(Modifier.weight(1f))
+                                    else RecordsCalendarDay(day, { onDateSelected(day.date) }, Modifier.weight(1f))
+                                }
                             }
                         }
                     }
+                    if (isLoading || errorMessage != null) RecordsStateContent(isLoading, errorMessage, onRetry)
                 }
-                if (isLoading || errorMessage != null) RecordsStateContent(isLoading, errorMessage, onRetry)
             }
         }
     }

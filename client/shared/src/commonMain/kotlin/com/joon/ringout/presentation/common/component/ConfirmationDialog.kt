@@ -64,90 +64,92 @@ fun ConfirmationDialog(
     val colors = MaterialTheme.ringoutColors.dialog
     val shape = RoundedCornerShape(DialogCornerRadius)
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
-            usePlatformDefaultWidth = false,
-        ),
-    ) {
-        Box(
-            modifier = modifier
-                .padding(horizontal = layout.screenPadding),
-            contentAlignment = Alignment.Center,
+    DialogWithoutRipple {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                usePlatformDefaultWidth = false,
+            ),
         ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = layout.maxWidth)
-                    .fillMaxWidth()
-                    .shadow(
-                        elevation = DialogShadowElevation,
-                        shape = shape,
-                        clip = false,
-                        ambientColor = colors.shadow,
-                        spotColor = colors.shadow,
-                    )
-                    .clip(shape)
-                    .background(colors.surface)
-                    .padding(DialogContentPadding)
-                    .semantics {
-                        paneTitle = "${title} 확인"
-                    },
-                verticalArrangement = Arrangement.spacedBy(DialogContentSpacing),
+            Box(
+                modifier = modifier
+                    .padding(horizontal = layout.screenPadding),
+                contentAlignment = Alignment.Center,
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(DialogInfoSpacing),
-                ) {
-                    Text(
-                        text = title,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { heading() },
-                        color = colors.title,
-                        maxLines = layout.titleMaxLines,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = 20.sp,
-                            lineHeight = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    )
-                    Text(
-                        text = annotatedDescription ?: AnnotatedString(description),
-                        modifier = Modifier.fillMaxWidth(),
-                        color = colors.description,
-                        maxLines = layout.descriptionMaxLines,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = 16.sp,
-                            lineHeight = 19.2.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                    )
-                }
-                Row(
                     modifier = Modifier
-                        .align(layout.actionAlignment)
-                        .widthIn(max = layout.actionRowMaxWidth)
+                        .widthIn(max = layout.maxWidth)
                         .fillMaxWidth()
-                        .height(ActionTouchHeight),
-                    horizontalArrangement = Arrangement.spacedBy(ActionButtonSpacing),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .shadow(
+                            elevation = DialogShadowElevation,
+                            shape = shape,
+                            clip = false,
+                            ambientColor = colors.shadow,
+                            spotColor = colors.shadow,
+                        )
+                        .clip(shape)
+                        .background(colors.surface)
+                        .padding(DialogContentPadding)
+                        .semantics {
+                            paneTitle = "${title} 확인"
+                        },
+                    verticalArrangement = Arrangement.spacedBy(DialogContentSpacing),
                 ) {
-                    ConfirmationDialogButton(
-                        text = cancelLabel,
-                        containerColor = colors.cancel,
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(layout.cancelButtonWeight),
-                    )
-                    ConfirmationDialogButton(
-                        text = confirmLabel,
-                        containerColor = confirmColor,
-                        onClick = onConfirm,
-                        modifier = Modifier.weight(ConfirmButtonWeight),
-                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(DialogInfoSpacing),
+                    ) {
+                        Text(
+                            text = title,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { heading() },
+                            color = colors.title,
+                            maxLines = layout.titleMaxLines,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontSize = 20.sp,
+                                lineHeight = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                        Text(
+                            text = annotatedDescription ?: AnnotatedString(description),
+                            modifier = Modifier.fillMaxWidth(),
+                            color = colors.description,
+                            maxLines = layout.descriptionMaxLines,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = 16.sp,
+                                lineHeight = 19.2.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .align(layout.actionAlignment)
+                            .widthIn(max = layout.actionRowMaxWidth)
+                            .fillMaxWidth()
+                            .height(ActionTouchHeight),
+                        horizontalArrangement = Arrangement.spacedBy(ActionButtonSpacing),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ConfirmationDialogButton(
+                            text = cancelLabel,
+                            containerColor = colors.cancel,
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(layout.cancelButtonWeight),
+                        )
+                        ConfirmationDialogButton(
+                            text = confirmLabel,
+                            containerColor = confirmColor,
+                            onClick = onConfirm,
+                            modifier = Modifier.weight(ConfirmButtonWeight),
+                        )
+                    }
                 }
             }
         }

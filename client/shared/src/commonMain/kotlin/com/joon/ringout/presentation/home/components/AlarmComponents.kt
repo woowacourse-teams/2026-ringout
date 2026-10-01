@@ -262,6 +262,8 @@ internal fun AlarmToggle(
             }
             .toggleable(
                 value = enabled,
+                interactionSource = null,
+                indication = null,
                 role = Role.Switch,
                 onValueChange = onEnabledChange,
             ),

@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 import com.joon.ringout.RingoutTheme
 
 internal const val DestinationNicknameMaxLength = 12
@@ -111,118 +112,120 @@ internal fun DestinationNicknameDialogContent(
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .widthIn(max = 368.dp)
-            .fillMaxWidth()
-            .height(245.dp)
-            .shadow(8.dp, NicknameDialogShape, clip = false)
-            .clip(NicknameDialogShape)
-            .background(NicknameDialogSurface)
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
+    DialogWithoutRipple {
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = modifier
+                .widthIn(max = 368.dp)
+                .fillMaxWidth()
+                .height(245.dp)
+                .shadow(8.dp, NicknameDialogShape, clip = false)
+                .clip(NicknameDialogShape)
+                .background(NicknameDialogSurface)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text(
-                text = "목적지 별명 설정",
-                color = NicknameDialogPrimary,
-                maxLines = 1,
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontSize = 20.sp,
-                    lineHeight = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
-            Text(
-                text = address,
-                color = NicknameDialogSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 14.sp,
-                    lineHeight = 17.sp,
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "목적지 별명 설정",
+                    color = NicknameDialogPrimary,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 20.sp,
+                        lineHeight = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+                Text(
+                    text = address,
+                    color = NicknameDialogSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 14.sp,
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.Normal,
+                    ),
+                )
+            }
+
+            BasicTextField(
+                value = nickname,
+                onValueChange = onNicknameChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(NicknameDialogInput)
+                    .padding(horizontal = 16.dp)
+                    .semantics {
+                        contentDescription = "목적지 별명"
+                    },
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = NicknameDialogPrimary,
+                    fontSize = 16.sp,
+                    lineHeight = 19.sp,
                     fontWeight = FontWeight.Normal,
                 ),
-            )
-        }
-
-        BasicTextField(
-            value = nickname,
-            onValueChange = onNicknameChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(NicknameDialogInput)
-                .padding(horizontal = 16.dp)
-                .semantics {
-                    contentDescription = "목적지 별명"
-                },
-            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                color = NicknameDialogPrimary,
-                fontSize = 16.sp,
-                lineHeight = 19.sp,
-                fontWeight = FontWeight.Normal,
-            ),
-            singleLine = true,
-            cursorBrush = SolidColor(NicknameDialogOrange),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(
-                onDone = {
-                    if (isSaveEnabled) onSave()
-                },
-            ),
-            decorationBox = { innerTextField ->
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    if (nickname.isEmpty()) {
-                        Text(
-                            text = "헬스장, 집 앞 공원",
-                            color = NicknameDialogSecondary,
-                            maxLines = 1,
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = 16.sp,
-                                lineHeight = 19.sp,
-                                fontWeight = FontWeight.Normal,
-                            ),
-                        )
+                singleLine = true,
+                cursorBrush = SolidColor(NicknameDialogOrange),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (isSaveEnabled) onSave()
+                    },
+                ),
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (nickname.isEmpty()) {
+                            Text(
+                                text = "헬스장, 집 앞 공원",
+                                color = NicknameDialogSecondary,
+                                maxLines = 1,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = 16.sp,
+                                    lineHeight = 19.sp,
+                                    fontWeight = FontWeight.Normal,
+                                ),
+                            )
+                        }
+                        innerTextField()
                     }
-                    innerTextField()
-                }
-            },
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (isSaveEnabled) NicknameDialogOrange else NicknameDialogDisabled,
-                )
-                .clickable(
-                    enabled = isSaveEnabled,
-                    role = Role.Button,
-                    onClickLabel = "목적지 별명 저장",
-                    onClick = onSave,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "저장",
-                color = Color.White,
-                maxLines = 1,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 18.sp,
-                    lineHeight = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
+                },
             )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (isSaveEnabled) NicknameDialogOrange else NicknameDialogDisabled,
+                    )
+                    .clickable(
+                        enabled = isSaveEnabled,
+                        role = Role.Button,
+                        onClickLabel = "목적지 별명 저장",
+                        onClick = onSave,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "저장",
+                    color = Color.White,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = 18.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+            }
         }
     }
 }
