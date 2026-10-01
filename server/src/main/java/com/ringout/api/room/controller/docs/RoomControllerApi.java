@@ -468,7 +468,7 @@ public interface RoomControllerApi {
 
     @Operation(
         summary = "모임 방 수정",
-        description = "방장만 방 이름·소개 정보를 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, image 중 하나 이상을 전달해야 합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, 응답에는 해당 이미지의 presigned 조회 URL을 반환합니다. 이미지가 없으면 /images/default-room.png를 반환합니다. name 또는 description 변경 시 최신 활동 시각을 갱신합니다.",
+        description = "방장만 방 이름·소개 정보를 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, image, removeImage 중 하나 이상을 전달해야 합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage를 true로 전달하면 기존 이미지를 삭제해 기본 이미지로 전환합니다. image와 removeImage=true는 함께 전달할 수 없습니다. 응답에는 이미지가 있으면 presigned 조회 URL을, 없으면 /images/default-room.png를 반환합니다. name 또는 description 변경 시 최신 활동 시각을 갱신합니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
@@ -494,7 +494,7 @@ public interface RoomControllerApi {
         ),
         @ApiResponse(
             responseCode = "400",
-            description = "수정할 필드가 없거나 전달한 값 또는 이미지가 유효하지 않음; roomId 변환 실패는 COMMON400",
+            description = "수정할 필드가 없거나 전달한 값 또는 이미지가 유효하지 않음; image와 removeImage=true를 함께 전달한 경우; roomId 변환 실패는 COMMON400",
             content = @Content(mediaType = "application/json", examples = {
                 @ExampleObject(name = "noUpdateField", value = """
                     {"isSuccess": false, "code": "ROOM400", "message": "수정할 정보를 하나 이상 입력해주세요.", "result": null}
@@ -507,6 +507,9 @@ public interface RoomControllerApi {
                     """),
                 @ExampleObject(name = "invalidImage", value = """
                     {"isSuccess": false, "code": "ROOM400", "message": "모임 대표 이미지의 형식이 올바르지 않습니다.", "result": null}
+                    """),
+                @ExampleObject(name = "imageRemoveConflict", value = """
+                    {"isSuccess": false, "code": "ROOM400", "message": "대표 이미지 교체와 기본 이미지 전환을 동시에 요청할 수 없습니다.", "result": null}
                     """),
                 @ExampleObject(name = "invalidRoomId", value = """
                     {"isSuccess": false, "code": "COMMON400", "message": "잘못된 요청입니다.", "result": null}
@@ -555,7 +558,7 @@ public interface RoomControllerApi {
         @Parameter(description = "수정할 모임 방 식별자", required = true, example = "1") Long roomId,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
-            description = "multipart/form-data. name, description, image 중 하나 이상 전달합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체합니다.",
+            description = "multipart/form-data. name, description, image, removeImage 중 하나 이상 전달합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage=true를 전달하면 기본 이미지로 전환합니다.",
             content = @Content(
                 mediaType = "multipart/form-data",
                 schema = @Schema(implementation = RoomUpdateRequest.class)

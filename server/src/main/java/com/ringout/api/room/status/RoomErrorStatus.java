@@ -28,6 +28,7 @@ public enum RoomErrorStatus implements BaseErrorCode {
     ROOM_NAME_INVALID(HttpStatus.BAD_REQUEST, "ROOM400", "모임 방 이름의 형식이 올바르지 않습니다."),
     ROOM_DESCRIPTION_INVALID(HttpStatus.BAD_REQUEST, "ROOM400", "모임 소개의 형식이 올바르지 않습니다."),
     ROOM_IMAGE_INVALID(HttpStatus.BAD_REQUEST, "ROOM400", "모임 대표 이미지의 형식이 올바르지 않습니다."),
+    ROOM_IMAGE_REMOVE_CONFLICT(HttpStatus.BAD_REQUEST, "ROOM400", "대표 이미지 교체와 기본 이미지 전환을 동시에 요청할 수 없습니다."),
     ROOM_UPDATE_REQUIRED(HttpStatus.BAD_REQUEST, "ROOM400", "수정할 정보를 하나 이상 입력해주세요."),
     ROOM_ACTIVITY_DAYS_REQUIRED(HttpStatus.BAD_REQUEST, "ROOM400", "활동 요일을 1개 이상 선택해야 합니다."),
     ROOM_ACTIVITY_DAY_INVALID(HttpStatus.BAD_REQUEST, "ROOM400", "올바르지 않은 활동 요일입니다."),

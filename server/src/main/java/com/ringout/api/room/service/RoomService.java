@@ -27,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @Service
@@ -134,20 +135,8 @@ public class RoomService {
             throw new GeneralException(RoomErrorStatus.ROOM_FORBIDDEN);
         }
 
-        if (request.name() != null || request.description() != null) {
-            room.update(request.name(), request.description());
-            room.recordActivityAt(java.time.LocalDateTime.now());
-        }
-
-        if (request.image() != null) {
-            ImageFile previousImage = room.getImage();
-            ImageFile uploadedImage = imageFileService.upload(request.image(), ROOM_IMAGE_DIRECTORY);
-            room.changeImage(uploadedImage);
-
-            if (previousImage != null) {
-                imageFileService.delete(previousImage);
-            }
-        }
+        updateRoomInformation(room, request);
+        updateRoomImage(room, request);
 
         log.atInfo()
             .addKeyValue("event", "room_update_succeeded")
@@ -273,6 +262,53 @@ public class RoomService {
 
         if (request.hasInvalidImage()) {
             throw new GeneralException(RoomErrorStatus.ROOM_IMAGE_INVALID);
+        }
+
+        if (request.hasImageRemovalConflict()) {
+            throw new GeneralException(RoomErrorStatus.ROOM_IMAGE_REMOVE_CONFLICT);
+        }
+    }
+
+    private void updateRoomInformation(Room room, RoomUpdateRequest request) {
+        if (request.name() == null && request.description() == null) {
+            return;
+        }
+
+        room.update(request.name(), request.description());
+        room.recordActivityAt(java.time.LocalDateTime.now());
+    }
+
+    private void updateRoomImage(Room room, RoomUpdateRequest request) {
+        if (request.removeImage()) {
+            removeRoomImage(room);
+            return;
+        }
+
+        if (request.image() != null) {
+            replaceRoomImage(room, request.image());
+        }
+    }
+
+    private void removeRoomImage(Room room) {
+        ImageFile previousImage = room.getImage();
+        if (previousImage == null) {
+            return;
+        }
+
+        room.removeImage();
+        imageFileService.delete(previousImage);
+    }
+
+    private void replaceRoomImage(Room room, MultipartFile image) {
+        ImageFile previousImage = room.getImage();
+        ImageFile uploadedImage = imageFileService.upload(image, ROOM_IMAGE_DIRECTORY);
+        room.changeImage(uploadedImage);
+        deletePreviousImage(previousImage);
+    }
+
+    private void deletePreviousImage(ImageFile previousImage) {
+        if (previousImage != null) {
+            imageFileService.delete(previousImage);
         }
     }
 

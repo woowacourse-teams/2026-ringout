@@ -112,6 +112,10 @@ public class Room extends BaseEntity {
         this.image = image;
     }
 
+    public void removeImage() {
+        this.image = null;
+    }
+
     public void recordActivityAt(LocalDateTime activityAt) {
         if (activityAt.isAfter(latestActivityAt)) {
             latestActivityAt = activityAt;

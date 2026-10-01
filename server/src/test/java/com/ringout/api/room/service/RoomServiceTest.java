@@ -425,6 +425,28 @@ class RoomServiceTest {
             verify(imageFileService).upload(image, "images/rooms");
             verify(imageFileService).createReadUri(savedImage);
         }
+
+        @Test
+        void 기본_이미지_전환을_요청하면_기존_이미지를_삭제하고_기본_URL을_반환한다() {
+            // given
+            Long userId = 1L;
+            ImageFile previousImage = ImageFile.from("images/rooms/previous-room.png");
+            User user = userWithId(userId, "가나다");
+            Room room = roomWithHost(userId, 10L);
+            room.changeImage(previousImage);
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+            RoomUpdateRequest request = new RoomUpdateRequest(null, null, null, true);
+
+            // when
+            RoomUpdateResponse response = roomService.updateRoom(userId, 10L, request);
+
+            // then
+            assertThat(response.imageUrl()).isEqualTo("/images/default-room.png");
+            assertThat(room.getImage()).isNull();
+            verify(imageFileService).delete(previousImage);
+            verify(imageFileService, never()).upload(any(), any());
+        }
     }
 
     @Nested
@@ -542,6 +564,26 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_IMAGE_INVALID));
             verify(roomRepository, never()).findById(10L);
+        }
+
+        @Test
+        void 이미지_교체와_기본_이미지_전환을_함께_요청할_수_없다() {
+            // given
+            Long userId = 1L;
+            MockMultipartFile image = new MockMultipartFile("image", "room.png", "image/png", new byte[]{1});
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.updateRoom(userId, 10L,
+                new RoomUpdateRequest(null, null, image, true)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_IMAGE_REMOVE_CONFLICT));
+            verify(roomRepository, never()).findById(10L);
+            verify(imageFileService, never()).upload(any(), any());
         }
     }
 
