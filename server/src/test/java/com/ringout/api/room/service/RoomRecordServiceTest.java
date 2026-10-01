@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import com.ringout.api.alarmmovement.domain.AlarmMovement;
 import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
 import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
+import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.room.domain.Room;
@@ -90,7 +91,7 @@ class RoomRecordServiceTest {
         }
 
         @Test
-        void 회원별로_기록을_그룹화하고_실제_발생_시각_순으로_반환한다() {
+        void 알람_실행만으로_회원별_기록을_그룹화하고_실제_발생_시각_순으로_반환한다() {
             // given
             LocalDate date = LocalDate.of(2026, 9, 16);
             User member = userWithId(USER_ID, "아이아티스트님");
@@ -98,16 +99,10 @@ class RoomRecordServiceTest {
             occurrence.dismiss(null, LocalDateTime.of(2026, 9, 16, 7, 0, 30));
             occurrence.ringRepeat("repeat-1", LocalDateTime.of(2026, 9, 16, 7, 5));
             occurrence.dismiss("repeat-1", LocalDateTime.of(2026, 9, 16, 7, 5, 20));
-            AlarmMovement movement = AlarmMovement.of(
-                occurrence,
-                LocalDateTime.of(2026, 9, 16, 7, 7),
-                null,
-                LocalDateTime.of(2026, 9, 16, 7, 25)
-            );
+            occurrence.end(OccurrenceEndType.ARRIVED, LocalDateTime.of(2026, 9, 16, 7, 25));
             givenCurrentMembers(member, member);
             given(alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetween(
                 ROOM_ID, date.atStartOfDay(), date.plusDays(1).atStartOfDay())).willReturn(List.of(occurrence));
-            given(alarmMovementRepository.findActiveByAlarmOccurrenceIn(List.of(occurrence))).willReturn(List.of(movement));
 
             // when
             RoomRecordsResponse response = roomRecordService.getRoomRecords(USER_ID, ROOM_ID, date);
@@ -124,7 +119,6 @@ class RoomRecordServiceTest {
                     tuple(RecordEvent.ALARM_DISMISSED, OffsetDateTime.parse("2026-09-16T07:00:30+09:00"), null),
                     tuple(RecordEvent.ALARM_RINGING, OffsetDateTime.parse("2026-09-16T07:05:00+09:00"), 1),
                     tuple(RecordEvent.ALARM_DISMISSED, OffsetDateTime.parse("2026-09-16T07:05:20+09:00"), null),
-                    tuple(RecordEvent.MOVEMENT_STARTED, OffsetDateTime.parse("2026-09-16T07:07:00+09:00"), null),
                     tuple(RecordEvent.ARRIVED, OffsetDateTime.parse("2026-09-16T07:25:00+09:00"), null)
                 );
         }

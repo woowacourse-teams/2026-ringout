@@ -253,7 +253,7 @@ class AlarmMovementServiceTest {
         }
 
         @Test
-        void 알람_실행에_이동_기록이_없으면_내부_정합성_오류를_반환한다() {
+        void 알람_실행에_별도_이동_기록이_없어도_알람_실행_기준_상태를_반환한다() {
             // given
             Room room = roomWithId(ROOM_ID);
             User requester = userWithId(USER_ID, "요청자");
@@ -262,13 +262,13 @@ class AlarmMovementServiceTest {
             given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
             given(alarmOccurrenceRepository.findActiveByRoomIdOrderByIdDesc(ROOM_ID))
                 .willReturn(List.of(alarmOccurrence));
-            given(alarmMovementRepository.findActiveByAlarmOccurrenceIn(List.of(alarmOccurrence))).willReturn(List.of());
 
             // when
-            Throwable thrown = catchThrowable(() -> alarmMovementService.getMemberMovements(USER_ID, ROOM_ID));
+            MemberMovementsResponse response = alarmMovementService.getMemberMovements(USER_ID, ROOM_ID);
 
             // then
-            assertError(thrown, 500, "MOVEMENT500", "이동 상태를 처리할 수 없습니다.");
+            assertThat(response.members()).extracting(MemberMovementResponse::status)
+                .containsExactly(MovementStatus.ALARM_TRIGGERED);
         }
 
         @Test
@@ -335,24 +335,20 @@ class AlarmMovementServiceTest {
         }
 
         @Test
-        void 알람_실행에_연결된_이동_상태가_없으면_내부_정합성_오류를_반환한다() {
+        void 알람_실행에_별도_이동_기록이_없어도_이동_시작을_처리한다() {
             // given
             givenCurrentMember();
-            AlarmOccurrence alarmOccurrence = mock(AlarmOccurrence.class);
-            given(alarmOccurrence.isOwnedBy(USER_ID)).willReturn(true);
+            AlarmOccurrence alarmOccurrence = alarmOccurrenceWith(userWithId(USER_ID, "요청자"), 11L);
             given(alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(ALARM_OCCURRENCE_ID))
                 .willReturn(Optional.of(alarmOccurrence));
-            given(alarmMovementRepository.findByAlarmOccurrence(alarmOccurrence)).willReturn(Optional.empty());
             AlarmMovementRequest request = new AlarmMovementRequest(ALARM_OCCURRENCE_ID, MovementAction.START_MOVEMENT);
 
             // when
-            Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
+            AlarmMovementResponse response = alarmMovementService.changeMovement(USER_ID, ROOM_ID, request);
 
             // then
-            assertError(thrown, 500, "MOVEMENT500", "이동 상태를 처리할 수 없습니다.");
-            assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
-                exception -> assertThat(exception.getCode())
-                    .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_RECORD_MISSING));
+            assertThat(response.status()).isEqualTo(MovementStatus.MOVEMENT_STARTED);
+            verify(roomActivityService).recordMovementActivity(any(Room.class), eq(NOW));
         }
     }
 
