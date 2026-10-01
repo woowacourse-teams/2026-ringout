@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,8 +22,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +44,8 @@ internal fun RoomHomeRecordRow(
     modifier: Modifier = Modifier,
     hasPrevious: Boolean = false,
     hasNext: Boolean = false,
+    memberCount: Int = 1,
+    compactNickname: Boolean = false,
 ) {
     val colors = roomHomeColors()
     val primary = MaterialTheme.colorScheme.primary
@@ -55,13 +60,14 @@ internal fun RoomHomeRecordRow(
         RoomHomeRecordEvent.ForceEnded -> colors.secondary
         RoomHomeRecordEvent.Dismissed, RoomHomeRecordEvent.Moving -> colors.content
     }
-    val label = when (record.event) {
-        RoomHomeRecordEvent.Ringing -> "${record.nickname}님, 알람 울림" +
+    val memberSuffix = "님" + if (memberCount > 1) " 외 ${memberCount - 1}명" else ""
+    val eventLabel = when (record.event) {
+        RoomHomeRecordEvent.Ringing -> ", 알람 울림" +
             if (record.ringCount > 1) " (${record.ringCount}회)" else ""
-        RoomHomeRecordEvent.Dismissed -> "${record.nickname}님, 알람 종료"
-        RoomHomeRecordEvent.Moving -> "${record.nickname}님, 이동 시작"
-        RoomHomeRecordEvent.Arrived -> "${record.nickname}님이 목적지에 도착"
-        RoomHomeRecordEvent.ForceEnded -> "${record.nickname}님, 알람 강제 종료"
+        RoomHomeRecordEvent.Dismissed -> ", 알람 종료"
+        RoomHomeRecordEvent.Moving -> ", 이동 시작"
+        RoomHomeRecordEvent.Arrived -> "이 목적지에 도착"
+        RoomHomeRecordEvent.ForceEnded -> ", 알람 강제 종료"
     }
 
     Row(
@@ -142,17 +148,32 @@ internal fun RoomHomeRecordRow(
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RoomHomeParticipantAvatars(count = 1)
-            Text(
-                text = label,
-                modifier = Modifier.weight(1f),
-                color = labelColor,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
+            if (record.event != RoomHomeRecordEvent.Ringing || memberCount == 1) {
+                RoomHomeParticipantAvatars(count = memberCount)
+            }
+            val labelStyle = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.Medium,
             )
+            val fontScale = LocalDensity.current.fontScale
+            BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                if (compactNickname && fontScale <= 1.2f && maxWidth >= 150.dp) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = record.nickname,
+                            modifier = Modifier.weight(1f, fill = false),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = labelColor,
+                            style = labelStyle,
+                        )
+                        Text(text = memberSuffix + eventLabel, color = labelColor, style = labelStyle)
+                    }
+                } else {
+                    Text(text = record.nickname + memberSuffix + eventLabel, color = labelColor, style = labelStyle)
+                }
+            }
         }
     }
 }

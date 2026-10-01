@@ -40,6 +40,8 @@ internal fun RoomHomeSchedule(
     nextScheduleText: String?,
     remainingTimeText: String?,
     modifier: Modifier = Modifier,
+    ongoingParticipantCount: Int? = null,
+    onActivityClick: () -> Unit = {},
 ) {
     val colors = roomHomeColors()
     val countdownFontSize = when (LocalRingoutThemeMode.current) {
@@ -68,7 +70,13 @@ internal fun RoomHomeSchedule(
             }
         }
 
-        Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
+        if (ongoingParticipantCount != null) {
+            RoomHomeOngoingActivityCard(
+                participantCount = ongoingParticipantCount,
+                onClick = onActivityClick,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        } else Column(modifier = Modifier.fillMaxWidth().padding(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),

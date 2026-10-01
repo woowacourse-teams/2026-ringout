@@ -52,6 +52,7 @@ internal fun RoomHomeScreen(
     onNextMonth: () -> Unit = {},
     onDismissCalendar: () -> Unit = {},
     onRefresh: () -> Unit = {},
+    onActivityClick: (String, MissionDate) -> Unit = { _, _ -> },
 ) {
     val room = uiState.room
     val listState = rememberLazyListState()
@@ -112,6 +113,10 @@ internal fun RoomHomeScreen(
                             nextScheduleText = uiState.nextScheduleText,
                             remainingTimeText = uiState.remainingTimeText,
                             modifier = Modifier.padding(horizontal = 20.dp).padding(top = 10.dp),
+                            ongoingParticipantCount = uiState.ongoingActivity?.participantCount,
+                            onActivityClick = {
+                                uiState.ongoingActivity?.let { onActivityClick(room.id, it.date) }
+                            },
                         )
                     }
                     item(key = "members") {
