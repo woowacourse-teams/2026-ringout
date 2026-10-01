@@ -77,7 +77,7 @@ internal fun RoomDetailInformation(room: RoomUiModel) {
         }
         Spacer(Modifier.height(18.dp))
         Text(
-            text = room.description,
+            text = room.description.ifBlank { "모임 소개가 아직 없어요." },
             color = textColor,
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontSize = 14.sp,
@@ -92,5 +92,13 @@ internal fun RoomDetailInformation(room: RoomUiModel) {
 private fun RoomDetailInformationPreview() {
     RingoutTheme {
         RoomDetailInformation(room = RoomDetailPreviewRoom)
+    }
+}
+
+@Preview(name = "소개 없음", widthDp = 402, showBackground = true)
+@Composable
+private fun RoomDetailInformationWithoutDescriptionPreview() {
+    RingoutTheme {
+        RoomDetailInformation(room = RoomDetailPreviewRoom.copy(description = ""))
     }
 }

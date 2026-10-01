@@ -15,7 +15,6 @@ data class RoomUiModel(
     val isJoined: Boolean,
 ) {
     init {
-        require(description.isNotBlank()) { "Room description must not be blank." }
         require(createdAt.isNotBlank()) { "Room creation date must not be blank." }
         parseCreatedAtDate(createdAt)
     }
