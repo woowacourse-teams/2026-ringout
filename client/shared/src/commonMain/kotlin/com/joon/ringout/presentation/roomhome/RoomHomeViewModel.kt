@@ -11,6 +11,7 @@ import com.joon.ringout.domain.missionhistory.yearMonth
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomScheduleClock
+import com.joon.ringout.domain.room.RoomRecords
 import com.joon.ringout.presentation.roomlist.model.toRoomUiModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -37,6 +38,9 @@ internal class RoomHomeViewModel(
         throw IllegalStateException("모임 상세 조회를 사용할 수 없어요.")
     },
     private val authSession: AuthSession = AuthSession(),
+    private val loadRecords: suspend (Long, MissionDate) -> RoomRecords = { _, _ ->
+        throw IllegalStateException("모임 기록 조회를 사용할 수 없어요.")
+    },
 ) : ViewModel() {
     private val scope = coroutineScope ?: viewModelScope
     private var canViewRecords = initialState.room?.isJoined == true && initialState.recordsState.canViewRecords
@@ -49,6 +53,8 @@ internal class RoomHomeViewModel(
     private var activeRouteAuthState: AuthSessionState? = null
     private var activeRouteIdentity: Any? = null
     private var hasObservedRoute = false
+    private var recordsRequestId = 0L
+    private var recordsRequestJob: Job? = null
     private var roomRequestId = 0L
     private var roomRequestJob: Job? = null
     private var isScreenResumed = false
@@ -59,6 +65,7 @@ internal class RoomHomeViewModel(
                 records = localRecords[initialState.recordsState.selectedDate]?.records.orEmpty(),
                 achievedMemberCount = localRecords[initialState.recordsState.selectedDate]?.achievedMemberCount ?: 0,
                 participantCounts = localRecords.mapValues { it.value.achievedMemberCount },
+                participantProfiles = localRecords.mapValues { it.value.achievedMembers.map { member -> member.profileImageUrl } },
             ),
             isCalendarVisible = initialState.isCalendarVisible && canViewRecords,
         ).withCurrentSchedule(clock),
@@ -170,6 +177,7 @@ internal class RoomHomeViewModel(
                             records = emptyList(),
                             achievedMemberCount = 0,
                             participantCounts = emptyMap(),
+                            participantProfiles = emptyMap(),
                             isLoading = false,
                             errorMessage = null,
                             canViewRecords = canViewRecords,
@@ -180,6 +188,7 @@ internal class RoomHomeViewModel(
                     ).withCurrentSchedule(clock)
                 }
                 ensureCountdownJob()
+                if (uiState.value.selectedTab == RoomHomeTab.Records) requestRecords()
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
@@ -206,6 +215,7 @@ internal class RoomHomeViewModel(
             authSession.identity.value === identity
 
     private fun invalidateRoomRequest() {
+        invalidateRecordsRequest()
         roomRequestId += 1L
         roomRequestJob?.cancel()
         roomRequestJob = null
@@ -227,6 +237,7 @@ internal class RoomHomeViewModel(
                     records = emptyList(),
                     achievedMemberCount = 0,
                     participantCounts = emptyMap(),
+                    participantProfiles = emptyMap(),
                     isLoading = false,
                     errorMessage = null,
                     canViewRecords = false,
@@ -256,6 +267,7 @@ internal class RoomHomeViewModel(
                     records = emptyList(),
                     achievedMemberCount = 0,
                     participantCounts = emptyMap(),
+                    participantProfiles = emptyMap(),
                     isLoading = false,
                     errorMessage = null,
                     canViewRecords = false,
@@ -285,6 +297,7 @@ internal class RoomHomeViewModel(
                     records = emptyList(),
                     achievedMemberCount = 0,
                     participantCounts = emptyMap(),
+                    participantProfiles = emptyMap(),
                     isLoading = false,
                     errorMessage = null,
                     canViewRecords = false,
@@ -319,9 +332,17 @@ internal class RoomHomeViewModel(
 
     fun onTabSelected(tab: RoomHomeTab) {
         mutableUiState.update { it.copy(selectedTab = tab, isCalendarVisible = false) }
+        if (tab == RoomHomeTab.Records && !uiState.value.recordsState.isDataLoaded &&
+            !uiState.value.recordsState.isLoading
+        ) requestRecords()
     }
 
     fun onDateSelected(date: MissionDate) {
+        val changed = uiState.value.recordsState.selectedDate != date
+        if (!changed && activeRoomId != null) {
+            mutableUiState.update { it.copy(isCalendarVisible = false) }
+            return
+        }
         mutableUiState.update { state ->
             val day = localRecords[date] ?: RoomHomeDayRecordsUiModel()
             state.copy(
@@ -331,6 +352,7 @@ internal class RoomHomeViewModel(
                     records = day.records,
                     achievedMemberCount = day.achievedMemberCount,
                     participantCounts = localRecords.mapValues { it.value.achievedMemberCount },
+                    participantProfiles = localRecords.mapValues { it.value.achievedMembers.map { member -> member.profileImageUrl } },
                     isLoading = false,
                     errorMessage = null,
                 ),
@@ -338,6 +360,7 @@ internal class RoomHomeViewModel(
                 isCalendarVisible = false,
             )
         }
+        if (changed && uiState.value.selectedTab == RoomHomeTab.Records) requestRecords()
     }
 
     fun onPreviousWeek() = onDateSelected(uiState.value.recordsState.selectedDate.plusDays(-7))
@@ -362,8 +385,73 @@ internal class RoomHomeViewModel(
         mutableUiState.update { it.copy(calendarMonth = it.calendarMonth.next()) }
     }
 
-    /** 현재 선택 날짜의 메모리 데이터를 다시 표시한다. 네트워크 새로고침은 후속 API 작업에서 연결한다. */
-    fun onRefresh() = onDateSelected(uiState.value.recordsState.selectedDate)
+    fun onRefresh() {
+        if (activeRoomId == null) onDateSelected(uiState.value.recordsState.selectedDate)
+        else requestRecords()
+    }
+
+    private fun invalidateRecordsRequest() {
+        recordsRequestId += 1
+        recordsRequestJob?.cancel()
+        recordsRequestJob = null
+    }
+
+    private fun requestRecords() {
+        val roomId = activeRoomId?.toLongOrNull() ?: return
+        val identity = activeRouteIdentity ?: return
+        if (!canViewRecords || !isLiveSession(activeRouteAuthState, identity)) return
+        invalidateRecordsRequest()
+        val requestId = recordsRequestId
+        val date = uiState.value.recordsState.selectedDate
+        // 이전 날짜/실패한 새로고침의 데이터를 현재 응답으로 오인하지 않도록 비운다.
+        localRecords = localRecords - date
+        mutableUiState.update { state ->
+            state.copy(recordsState = state.recordsState.copy(
+                records = emptyList(), achievedMemberCount = 0,
+                participantCounts = state.recordsState.participantCounts - date,
+                participantProfiles = state.recordsState.participantProfiles - date,
+                isLoading = true, isDataLoaded = false, errorMessage = null,
+            ))
+        }
+        recordsRequestJob = scope.launch {
+            try {
+                val day = loadRecords(roomId, date).toDayUiModel()
+                if (!isCurrentRecordsRequest(requestId, roomId, date, identity)) return@launch
+                localRecords = localRecords + (date to day)
+                mutableUiState.update { state ->
+                    state.copy(recordsState = state.recordsState.copy(
+                        records = day.records, achievedMemberCount = day.achievedMemberCount,
+                        participantCounts = localRecords.mapValues { it.value.achievedMemberCount },
+                        participantProfiles = localRecords.mapValues { it.value.achievedMembers.map { member -> member.profileImageUrl } },
+                        isLoading = false, isDataLoaded = true, errorMessage = null,
+                    ))
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                if (!isCurrentRecordsRequest(requestId, roomId, date, identity)) return@launch
+                val apiError = error as? RoomRepositoryException
+                if (apiError?.statusCode in setOf(401, 403, 404) ||
+                    apiError?.code in setOf("AUTH401", "COMMON401", "ROOM401", "COMMON403", "ROOM403", "RECORD403", "COMMON404", "ROOM404")
+                ) {
+                    invalidateRoomRequest()
+                    showError(roomLoadError(error).first, canRetry = false)
+                } else {
+                    mutableUiState.update { state ->
+                        state.copy(recordsState = state.recordsState.copy(
+                            isLoading = false, isDataLoaded = false,
+                            errorMessage = "기록을 불러오지 못했어요. 다시 시도해 주세요.",
+                        ))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun isCurrentRecordsRequest(requestId: Long, roomId: Long, date: MissionDate, identity: Any): Boolean =
+        recordsRequestId == requestId && activeRoomId?.toLongOrNull() == roomId &&
+            activeRouteIdentity === identity && uiState.value.recordsState.selectedDate == date &&
+            isLiveSession(activeRouteAuthState, identity)
 }
 
 private fun roomLoadError(error: Throwable): Pair<String, Boolean> {
@@ -372,7 +460,7 @@ private fun roomLoadError(error: Throwable): Pair<String, Boolean> {
         apiError?.statusCode == 401 || apiError?.code in setOf("AUTH401", "COMMON401", "ROOM401") ->
             RoomHomeLoginRequiredMessage to false
 
-        apiError?.statusCode == 403 || apiError?.code in setOf("COMMON403", "ROOM403") ->
+        apiError?.statusCode == 403 || apiError?.code in setOf("COMMON403", "ROOM403", "RECORD403") ->
             RoomHomeForbiddenMessage to false
 
         apiError?.statusCode == 404 || apiError?.code in setOf("COMMON404", "ROOM404") ->

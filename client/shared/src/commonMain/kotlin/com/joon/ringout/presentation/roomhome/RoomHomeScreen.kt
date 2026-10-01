@@ -23,7 +23,7 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.calendarDates
 import com.joon.ringout.presentation.records.component.RecordsMonthDialog
-import com.joon.ringout.presentation.records.currentRecordsDate
+import com.joon.ringout.domain.room.roomRecordsDate
 import com.joon.ringout.presentation.records.recordsDayUiState
 import com.joon.ringout.presentation.roomhome.component.RoomHomeDescription
 import com.joon.ringout.presentation.roomhome.component.RoomHomeHeader
@@ -156,7 +156,7 @@ internal fun RoomHomeScreen(
     if (uiState.isCalendarVisible && uiState.selectedTab == RoomHomeTab.Records &&
         room?.isJoined == true && uiState.recordsState.canViewRecords
     ) {
-        val today = currentRecordsDate()
+        val today = roomRecordsDate()
         RecordsMonthDialog(
             month = uiState.calendarMonth,
             days = uiState.calendarMonth.calendarDates().map { date ->

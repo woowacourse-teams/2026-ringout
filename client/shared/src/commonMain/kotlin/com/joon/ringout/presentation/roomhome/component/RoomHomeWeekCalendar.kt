@@ -48,6 +48,7 @@ internal fun RoomHomeWeekCalendar(
     onNextWeek: () -> Unit,
     onOpenCalendar: () -> Unit,
     modifier: Modifier = Modifier,
+    participantProfiles: Map<MissionDate, List<String?>> = emptyMap(),
 ) {
     val colors = roomHomeColors()
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -88,7 +89,7 @@ internal fun RoomHomeWeekCalendar(
         ) {
             repeat(7) { index ->
                 val date = visibleWeekStart.plusDays(index)
-                val count = (participantCounts[date] ?: 0).coerceAtLeast(0)
+                val count = participantCounts[date]?.coerceAtLeast(0)
                 val selected = date == selectedDate
                 Column(
                     modifier = Modifier.weight(1f).heightIn(min = 49.dp)
@@ -96,7 +97,8 @@ internal fun RoomHomeWeekCalendar(
                         .then(if (selected) Modifier.background(colors.selectedDay) else Modifier)
                         .selectable(selected = selected, role = Role.Tab, onClick = { onDateSelected(date) })
                         .semantics(mergeDescendants = true) {
-                            contentDescription = "${date.year}년 ${date.month}월 ${date.day}일, 목표 달성 ${count}명"
+                            contentDescription = "${date.year}년 ${date.month}월 ${date.day}일, " +
+                                if (count == null) "기록 미조회" else "목표 달성 ${count}명"
                         }
                         .padding(vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -111,7 +113,13 @@ internal fun RoomHomeWeekCalendar(
                             fontWeight = FontWeight.Medium,
                         ),
                     )
-                    RoomHomeParticipantAvatars(count = count)
+                    if (count == null) {
+                        Text("–", color = colors.secondary, style = MaterialTheme.typography.labelSmall)
+                    } else if (count == 0) {
+                        Text("0명", color = colors.secondary, style = MaterialTheme.typography.labelSmall)
+                    } else {
+                        RoomHomeParticipantAvatars(count = count, profileImageUrls = participantProfiles[date].orEmpty())
+                    }
                 }
             }
         }

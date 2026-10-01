@@ -8,6 +8,8 @@ import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.AuthTokens
 import com.joon.ringout.domain.auth.SecureTokenStorage
+import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.room.RoomRecordEvent
 import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomRepositoryException
@@ -36,6 +38,83 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DefaultRoomRepositoryTest {
+    @Test
+    fun `모임 기록은 인증 헤더와 선택 날짜로 조회하고 여섯 이벤트와 빈 회원을 변환한다`() = runTest {
+        val events = RoomRecordEvent.entries.map { event ->
+            """{"event":"${event.name}","occurredAt":"2026-10-01T08:00:00+09:00","count":${if (event == RoomRecordEvent.ALARM_RINGING) 1 else "null"}}"""
+        }
+        val client = clientFor { request ->
+            assertEquals(HttpMethod.Get, request.method)
+            assertEquals("/api/v1/rooms/7/records", request.url.encodedPath)
+            assertEquals("2026-10-01", request.url.parameters["date"])
+            assertEquals("Bearer access", request.headers[HttpHeaders.Authorization])
+            respond(
+                """{"isSuccess":true,"code":"RECORD200","message":"성공","result":{"memberRecords":[
+                  {"userId":1,"nickname":"회원","profileImageUrl":"https://example.com/avatar","records":[${events.joinToString()}]},
+                  {"userId":2,"nickname":"빈 회원","records":[]}]}}""",
+                headers = jsonHeaders,
+            )
+        }
+        val result = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+            .getRoomRecords(7, MissionDate.parse("2026-10-01"))
+        assertEquals(RoomRecordEvent.entries.toList(), result.members.first().records.map { it.event })
+        assertEquals(1, result.members.first().records[1].repeatCount)
+        assertEquals("https://example.com/avatar", result.members.first().profileImageUrl)
+        assertTrue(result.members.last().records.isEmpty())
+        assertEquals(null, result.members.last().profileImageUrl)
+        client.close()
+    }
+
+    @Test
+    fun `기록 조회는 비로그인 토큰 없음 잘못된 모임 ID에서 요청하지 않는다`() = runTest {
+        var calls = 0
+        val client = clientFor { calls++; error("요청하면 안 됨") }
+        val date = MissionDate.parse("2026-10-01")
+        assertFailsWith<RoomRepositoryException> { repository(client).getRoomRecords(7, date) }
+        assertFailsWith<RoomRepositoryException> {
+            repository(client, state = AuthSessionState.Authenticated).getRoomRecords(7, date)
+        }
+        assertFailsWith<IllegalArgumentException> { repository(client).getRoomRecords(0, date) }
+        assertEquals(0, calls)
+        client.close()
+    }
+
+    @Test
+    fun `기록 API의 날짜 인증 권한 삭제 서버 오류는 상태와 코드를 보존한다`() = runTest {
+        for ((status, code) in listOf(400 to "RECORD400", 401 to "RECORD401", 403 to "RECORD403", 404 to "ROOM404", 500 to "COMMON500")) {
+            val client = clientFor {
+                respond("""{"isSuccess":false,"code":"$code","message":"실패"}""", HttpStatusCode.fromValue(status), jsonHeaders)
+            }
+            val error = assertFailsWith<RoomRepositoryException> {
+                repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                    .getRoomRecords(7, MissionDate.parse("2026-10-01"))
+            }
+            assertEquals(status, error.statusCode)
+            assertEquals(code, error.code)
+            client.close()
+        }
+    }
+
+    @Test
+    fun `기록 응답의 빈 결과와 잘못된 이벤트 시간은 정상 빈 기록으로 숨기지 않는다`() = runTest {
+        val invalidResults = listOf(
+            "null",
+            """{"memberRecords":[{"userId":1,"nickname":"회원","records":[{"event":"UNKNOWN","occurredAt":"2026-10-01T00:00:00Z"}]}]}""",
+            """{"memberRecords":[{"userId":1,"nickname":"회원","records":[{"event":"ARRIVED","occurredAt":"잘못된 시간"}]}]}""",
+            """{"memberRecords":[{"userId":1,"nickname":"회원","records":[{"event":"ALARM_RINGING","occurredAt":"2026-10-01T00:00:00Z","count":0}]}]}""",
+        )
+        for (result in invalidResults) {
+            val client = clientFor {
+                respond("""{"isSuccess":true,"code":"RECORD200","message":"성공","result":$result}""", headers = jsonHeaders)
+            }
+            assertFailsWith<Exception> {
+                repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                    .getRoomRecords(7, MissionDate.parse("2026-10-01"))
+            }
+            client.close()
+        }
+    }
+
     @Test
     fun `로그인 상태면 Bearer 토큰으로 전체 목록을 조회하고 서버 순서를 보존한다`() = runTest {
         val client = HttpClient(MockEngine { request ->

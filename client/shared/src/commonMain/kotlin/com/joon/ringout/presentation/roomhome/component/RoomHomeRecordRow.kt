@@ -62,8 +62,11 @@ internal fun RoomHomeRecordRow(
     }
     val memberSuffix = "님" + if (memberCount > 1) " 외 ${memberCount - 1}명" else ""
     val eventLabel = when (record.event) {
-        RoomHomeRecordEvent.Ringing -> ", 알람 울림" +
-            if (record.ringCount > 1) " (${record.ringCount}회)" else ""
+        RoomHomeRecordEvent.Ringing -> if (record.repeatCount != null) {
+            ", 알람 재울림 (${record.repeatCount}회)"
+        } else {
+            ", 알람 울림" + if (record.ringCount > 1) " (${record.ringCount}회)" else ""
+        }
         RoomHomeRecordEvent.Dismissed -> ", 알람 종료"
         RoomHomeRecordEvent.Moving -> ", 이동 시작"
         RoomHomeRecordEvent.Arrived -> "이 목적지에 도착"
@@ -149,7 +152,11 @@ internal fun RoomHomeRecordRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (record.event != RoomHomeRecordEvent.Ringing || memberCount == 1) {
-                RoomHomeParticipantAvatars(count = memberCount)
+                RoomHomeParticipantAvatars(
+                    count = memberCount,
+                    profileImageUrls = listOf(record.profileImageUrl),
+                    avatarSize = if (record.event == RoomHomeRecordEvent.Arrived) 20.dp else 19.dp,
+                )
             }
             val labelStyle = MaterialTheme.typography.bodyMedium.copy(
                 fontSize = 14.sp,
@@ -189,6 +196,7 @@ private fun RoomHomeRecordRowPreview() {
             RoomHomePreviewRecords.forEachIndexed { index, record ->
                 RoomHomeRecordRow(
                     record = record,
+                    compactNickname = true,
                     hasPrevious = index > 0,
                     hasNext = index < RoomHomePreviewRecords.lastIndex,
                 )
@@ -201,9 +209,16 @@ private fun RoomHomeRecordRowPreview() {
 @Composable
 private fun RoomHomeRecordRowDarkPreview() {
     RingoutTheme(ThemeMode.Dark) {
-        RoomHomeRecordRow(
-            record = RoomHomePreviewRecords.first { it.event == RoomHomeRecordEvent.Arrived },
+        Column(
             modifier = Modifier.background(roomHomeColors().background).padding(10.dp),
-        )
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(RoomHomeRecordEvent.Moving, RoomHomeRecordEvent.Arrived, RoomHomeRecordEvent.ForceEnded).forEach { event ->
+                RoomHomeRecordRow(
+                    record = RoomHomePreviewRecords.first { it.event == event },
+                    compactNickname = true,
+                )
+            }
+        }
     }
 }

@@ -9,6 +9,8 @@ import com.joon.ringout.data.network.ApiResponse
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.SecureTokenStorage
+import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.room.RoomRecords
 import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomMembershipRole
@@ -18,6 +20,7 @@ import com.joon.ringout.domain.room.RoomSummary
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -81,6 +84,31 @@ class DefaultRoomRepository(
                 .toDomain(setOf(RoomMembershipRole.OWNER, RoomMembershipRole.MEMBER))
             check(details.room.id == roomId) { "조회한 모임 ID가 요청과 달라요." }
             return details
+        } catch (error: ApiException) {
+            throw error.toRoomRepositoryException()
+        }
+    }
+
+    override suspend fun getRoomRecords(roomId: Long, date: MissionDate): RoomRecords {
+        require(roomId > 0L) { "모임 ID를 확인해 주세요." }
+        ensureGetAuthenticated()
+        val identity = authSession.identity.value
+        try {
+            val response = authenticatedRequests.execute { accessToken ->
+                check(authSession.identity.value === identity) { "로그인 상태가 바뀌었어요." }
+                httpClient.get(ApiConfig.url("/api/v1/rooms/$roomId/records")) {
+                    bearerAuth(accessToken)
+                    parameter("date", date.iso8601)
+                }
+            }
+            check(authSession.state.value == AuthSessionState.Authenticated && authSession.identity.value === identity) {
+                "로그인 상태가 바뀌었어요."
+            }
+            val body = response.decodeOrThrow<JsonElement>()
+            if (!body.isSuccess) throw RoomRepositoryException(response.status.value, body.code, body.message)
+            check(response.status == HttpStatusCode.OK && body.code == "RECORD200") { body.message }
+            val result = checkNotNull(body.result) { "모임 기록 응답이 비어 있어요." }
+            return ApiJson.decodeFromJsonElement<RoomRecordsResponseEntity>(result).toDomain()
         } catch (error: ApiException) {
             throw error.toRoomRepositoryException()
         }

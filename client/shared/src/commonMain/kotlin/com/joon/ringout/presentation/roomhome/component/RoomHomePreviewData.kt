@@ -13,11 +13,10 @@ import com.joon.ringout.domain.missionhistory.plusDays
 internal val RoomHomePreviewDate = MissionDate.of(2026, 9, 17)
 
 internal val RoomHomePreviewRecords = listOf(
-    RoomHomeRecordUiModel("ring-1", "member-2", "아아아티스트", "06:00", RoomHomeRecordEvent.Ringing),
-    RoomHomeRecordUiModel("dismiss-1", "member-2", "아아아티스트", "06:00", RoomHomeRecordEvent.Dismissed),
+    RoomHomeRecordUiModel("ring-1", "member-2", "아아아티스트", "06:00", RoomHomeRecordEvent.Moving),
     RoomHomeRecordUiModel("move-1", "member-4", "북여서여남여동여", "06:02", RoomHomeRecordEvent.Moving),
     RoomHomeRecordUiModel("move-2", "member-2", "아아아티스트", "06:03", RoomHomeRecordEvent.Moving),
-    RoomHomeRecordUiModel("ring-2", "member-1", "볼링뜨실분다이겨드림", "06:10", RoomHomeRecordEvent.Ringing, ringCount = 2),
+    RoomHomeRecordUiModel("ring-2", "member-1", "볼링뜨실분다이겨드림", "06:10", RoomHomeRecordEvent.Moving, ringCount = 2),
     RoomHomeRecordUiModel("arrive-1", "member-2", "아아아티스트", "06:12", RoomHomeRecordEvent.Arrived),
     RoomHomeRecordUiModel("end-1", "member-4", "북여서여남여동여", "06:13", RoomHomeRecordEvent.ForceEnded),
 )
