@@ -113,11 +113,7 @@ internal fun RoomHomeWeekCalendar(
                             fontWeight = FontWeight.Medium,
                         ),
                     )
-                    if (count == null) {
-                        Text("–", color = colors.secondary, style = MaterialTheme.typography.labelSmall)
-                    } else if (count == 0) {
-                        Text("0명", color = colors.secondary, style = MaterialTheme.typography.labelSmall)
-                    } else {
+                    if (count != null && count > 0) {
                         RoomHomeParticipantAvatars(count = count, profileImageUrls = participantProfiles[date].orEmpty())
                     }
                 }
