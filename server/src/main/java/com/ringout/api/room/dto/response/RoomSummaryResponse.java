@@ -23,12 +23,10 @@ public record RoomSummaryResponse(
 
     public static RoomSummaryResponse from(
         Room room,
-        String defaultImageUrl,
+        String imageUrl,
         int memberCount,
         boolean isJoined
     ) {
-        String imageUrl = room.getImage() == null ? defaultImageUrl : room.getImage().getUrl();
-
         return new RoomSummaryResponse(
             room.getId(),
             room.getName(),

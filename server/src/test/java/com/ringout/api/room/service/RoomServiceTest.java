@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.file.domain.ImageFile;
+import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomBlackList;
@@ -31,6 +32,7 @@ import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.user.domain.Nickname;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -61,11 +63,20 @@ class RoomServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private ImageFileService imageFileService;
+
     private RoomService roomService;
 
     @BeforeEach
     void setUp() {
-        roomService = new RoomService(roomRepository, roomUserRepository, roomBlackListRepository, userRepository);
+        roomService = new RoomService(
+            roomRepository,
+            roomUserRepository,
+            roomBlackListRepository,
+            userRepository,
+            imageFileService
+        );
     }
 
     @Nested
@@ -150,6 +161,8 @@ class RoomServiceTest {
             given(roomUserRepository.existsActiveByRoomIdAndUserId(10L, userId)).willReturn(true);
             given(roomUserRepository.existsActiveByRoomIdAndUserId(20L, userId)).willReturn(false);
             given(roomUserRepository.existsActiveByRoomIdAndUserId(30L, userId)).willReturn(false);
+            URI roomImageUri = URI.create("https://example.com/room-1.png?signature=test");
+            given(imageFileService.createReadUri(roomUpdated.getImage())).willReturn(roomImageUri);
 
             // when
             RoomListResponse response = roomService.getRooms(userId);
@@ -159,7 +172,9 @@ class RoomServiceTest {
             assertThat(response.rooms().get(0).isJoined()).isFalse();
             assertThat(response.rooms().get(1).memberCount()).isEqualTo(3);
             assertThat(response.rooms().get(2).isJoined()).isTrue();
+            assertThat(response.rooms().get(2).imageUrl()).isEqualTo(roomImageUri.toString());
             verify(roomRepository).findAllActiveOrderByLatestActivityAtDescIdAsc();
+            verify(imageFileService).createReadUri(roomUpdated.getImage());
         }
 
         @Test
@@ -385,15 +400,19 @@ class RoomServiceTest {
         }
 
         @Test
-        void 유효한_이미지만_전달하면_기본_이미지_URL을_반환한다() {
+        void 이미지를_전달하면_S3에_업로드하고_조회_URL을_반환한다() {
             // given
             Long userId = 1L;
             User user = userWithId(userId, "가나다");
             Room room = roomWithHost(userId, 10L);
             MockMultipartFile image = new MockMultipartFile("image", "room.png", "image/png",
                 "image".getBytes(StandardCharsets.UTF_8));
+            ImageFile savedImage = ImageFile.from("images/rooms/updated-room.png");
+            URI readUri = URI.create("https://example.com/updated-room.png?signature=test");
             given(userRepository.findById(userId)).willReturn(Optional.of(user));
             given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+            given(imageFileService.upload(image, "images/rooms")).willReturn(savedImage);
+            given(imageFileService.createReadUri(savedImage)).willReturn(readUri);
             RoomUpdateRequest request = new RoomUpdateRequest(null, null, image);
 
             // when
@@ -401,7 +420,32 @@ class RoomServiceTest {
 
             // then
             assertThat(response.name()).isEqualTo("아침 운동 모임");
+            assertThat(response.imageUrl()).isEqualTo(readUri.toString());
+            assertThat(room.getImage()).isSameAs(savedImage);
+            verify(imageFileService).upload(image, "images/rooms");
+            verify(imageFileService).createReadUri(savedImage);
+        }
+
+        @Test
+        void 기본_이미지_전환을_요청하면_기존_이미지를_삭제하고_기본_URL을_반환한다() {
+            // given
+            Long userId = 1L;
+            ImageFile previousImage = ImageFile.from("images/rooms/previous-room.png");
+            User user = userWithId(userId, "가나다");
+            Room room = roomWithHost(userId, 10L);
+            room.changeImage(previousImage);
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+            RoomUpdateRequest request = new RoomUpdateRequest(null, null, null, true);
+
+            // when
+            RoomUpdateResponse response = roomService.updateRoom(userId, 10L, request);
+
+            // then
             assertThat(response.imageUrl()).isEqualTo("/images/default-room.png");
+            assertThat(room.getImage()).isNull();
+            verify(imageFileService).delete(previousImage);
+            verify(imageFileService, never()).upload(any(), any());
         }
     }
 
@@ -520,6 +564,26 @@ class RoomServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_IMAGE_INVALID));
             verify(roomRepository, never()).findById(10L);
+        }
+
+        @Test
+        void 이미지_교체와_기본_이미지_전환을_함께_요청할_수_없다() {
+            // given
+            Long userId = 1L;
+            MockMultipartFile image = new MockMultipartFile("image", "room.png", "image/png", new byte[]{1});
+            User user = userWithId(userId, "가나다");
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.updateRoom(userId, 10L,
+                new RoomUpdateRequest(null, null, image, true)));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_IMAGE_REMOVE_CONFLICT));
+            verify(roomRepository, never()).findById(10L);
+            verify(imageFileService, never()).upload(any(), any());
         }
     }
 
@@ -1078,6 +1142,8 @@ class RoomServiceTest {
             given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId))
                 .willReturn(Optional.of(RoomUser.of(requester, room)));
             given(roomUserRepository.findActiveByRoomId(roomId)).willReturn(roomUsers);
+            URI roomImageUri = URI.create("https://example.com/room-1.png?signature=test");
+            given(imageFileService.createReadUri(room.getImage())).willReturn(roomImageUri);
 
             // when
             RoomDetailResponse response = roomService.getRoom(userId, roomId);
@@ -1086,7 +1152,7 @@ class RoomServiceTest {
             assertThat(response.roomId()).isEqualTo(roomId);
             assertThat(response.name()).isEqualTo("아침 운동 모임");
             assertThat(response.description()).isEqualTo("매주 함께 운동하고 인증하는 모임입니다.");
-            assertThat(response.imageUrl()).isEqualTo("https://example.com/images/room-1.png");
+            assertThat(response.imageUrl()).isEqualTo(roomImageUri.toString());
             assertThat(response.activityDays()).containsExactly("MONDAY", "WEDNESDAY", "FRIDAY");
             assertThat(response.activityTime()).isEqualTo("08:00");
             assertThat(response.memberCount()).isEqualTo(4);
@@ -1098,6 +1164,7 @@ class RoomServiceTest {
             assertThat(response.members()).extracting(RoomMemberResponse::profileImageUrl)
                 .containsExactly(null, null, "https://example.com/profiles/2.png", null);
             verify(roomUserRepository).findActiveByRoomId(roomId);
+            verify(imageFileService).createReadUri(room.getImage());
         }
 
         @Test
@@ -1229,7 +1296,6 @@ class RoomServiceTest {
         ReflectionTestUtils.setField(room, "created_at", createdAt);
         if (imageUrl != null) {
             ImageFile image = mock(ImageFile.class);
-            given(image.getUrl()).willReturn(imageUrl);
             ReflectionTestUtils.setField(room, "image", image);
         }
         return room;

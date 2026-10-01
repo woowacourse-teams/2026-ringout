@@ -21,20 +21,33 @@ public record RoomUpdateRequest(
     )
     String description,
     @Schema(
-        description = "이미지 파일. 빈 파일 또는 image/*가 아닌 콘텐츠 타입은 거부됩니다. 현재 파일은 형식만 검증하고 저장하지 않습니다. 변경하지 않으면 파일 파트를 생략합니다.",
+        description = "이미지 파일. 빈 파일 또는 image/*가 아닌 콘텐츠 타입은 거부됩니다. 전달하면 S3에 저장하고 대표 이미지를 교체합니다. 변경하지 않으면 파일 파트를 생략합니다.",
         format = "binary",
         nullable = true
     )
-    MultipartFile image
+    MultipartFile image,
+    @Schema(
+        description = "true이면 현재 대표 이미지를 삭제하고 기본 이미지로 전환합니다. image와 함께 전달할 수 없습니다.",
+        example = "false"
+    )
+    boolean removeImage
 ) {
 
+    public RoomUpdateRequest(String name, String description, MultipartFile image) {
+        this(name, description, image, false);
+    }
+
     public boolean hasNoUpdateField() {
-        return name == null && description == null && image == null;
+        return name == null && description == null && image == null && !removeImage;
     }
 
     public boolean hasInvalidImage() {
         return image != null && (image.isEmpty()
             || image.getContentType() == null
             || !image.getContentType().startsWith("image/"));
+    }
+
+    public boolean hasImageRemovalConflict() {
+        return image != null && removeImage;
     }
 }

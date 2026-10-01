@@ -105,6 +105,17 @@ public class Room extends BaseEntity {
         }
     }
 
+    public void changeImage(ImageFile image) {
+        if (image == null) {
+            throw new IllegalArgumentException("모임방 이미지는 비어 있을 수 없습니다.");
+        }
+        this.image = image;
+    }
+
+    public void removeImage() {
+        this.image = null;
+    }
+
     public void recordActivityAt(LocalDateTime activityAt) {
         if (activityAt.isAfter(latestActivityAt)) {
             latestActivityAt = activityAt;
