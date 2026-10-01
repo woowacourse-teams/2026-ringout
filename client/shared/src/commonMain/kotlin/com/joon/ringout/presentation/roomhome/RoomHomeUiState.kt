@@ -41,6 +41,12 @@ internal data class RoomHomeMemberUiModel(
     val nickname: String,
 )
 
+/** 진행 여부와 참여 인원은 외부에서 전달한다. UI가 시각만으로 활동 여부를 추정하지 않는다. */
+internal data class RoomHomeOngoingActivityUiModel(
+    val date: MissionDate,
+    val participantCount: Int,
+)
+
 internal data class RoomHomeUiState(
     val room: RoomUiModel? = null,
     val members: List<RoomHomeMemberUiModel> = emptyList(),
@@ -52,4 +58,5 @@ internal data class RoomHomeUiState(
     val recordsState: RoomHomeRecordsUiState = RoomHomeRecordsUiState(),
     val calendarMonth: MissionYearMonth = recordsState.selectedDate.yearMonth,
     val isCalendarVisible: Boolean = false,
+    val ongoingActivity: RoomHomeOngoingActivityUiModel? = null,
 )
