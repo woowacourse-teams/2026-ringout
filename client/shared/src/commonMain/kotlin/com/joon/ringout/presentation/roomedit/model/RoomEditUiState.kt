@@ -25,10 +25,10 @@ internal data class RoomEditUiState(
         get() = validateRoomIntroduction(introductionInput)
 
     val effectiveName: String
-        get() = if (nameInput.isEmpty()) original?.name.orEmpty() else nameInput
+        get() = nameInput
 
     val effectiveIntroduction: String
-        get() = if (introductionInput.isEmpty()) original?.description.orEmpty() else introductionInput
+        get() = introductionInput
 
     val effectiveNameValidation: RoomNameValidation
         get() = validateRoomName(effectiveName)
@@ -37,12 +37,11 @@ internal data class RoomEditUiState(
         get() = validateRoomIntroduction(effectiveIntroduction)
 
     val nameChanged: Boolean
-        get() = isOriginalLoaded && nameInput.isNotEmpty() &&
+        get() = isOriginalLoaded &&
             effectiveNameValidation.normalizedValue != validateRoomName(checkNotNull(original).name).normalizedValue
 
     val introductionChanged: Boolean
-        get() = isOriginalLoaded && introductionInput.isNotEmpty() &&
-            effectiveIntroduction != checkNotNull(original).description
+        get() = isOriginalLoaded && effectiveIntroduction != checkNotNull(original).description
 
     val hasChanges: Boolean
         get() = nameChanged || introductionChanged || imageSelectionToken != null

@@ -89,13 +89,11 @@ internal fun RoomEditScreen(
                     }
                 }
                 RoomEditNameSection(
-                    originalPlaceholder = original.name,
                     value = uiState.nameInput,
                     validation = uiState.nameInputValidation,
                     onValueChange = onNameChange,
                 )
                 RoomEditIntroductionSection(
-                    originalPlaceholder = original.description,
                     value = uiState.introductionInput,
                     validation = uiState.introductionInputValidation,
                     onValueChange = onIntroductionChange,
@@ -130,8 +128,8 @@ private val RoomEditPreviewRoom = RoomUiModel(
 )
 
 private fun previewRoomEditState(
-    nameInput: String = "",
-    introductionInput: String = "",
+    nameInput: String = RoomEditPreviewRoom.name,
+    introductionInput: String = RoomEditPreviewRoom.description,
 ) = RoomEditUiState(
     roomId = RoomEditPreviewRoom.id,
     original = RoomEditPreviewRoom,

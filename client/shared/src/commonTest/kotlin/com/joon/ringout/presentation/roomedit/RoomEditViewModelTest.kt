@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 
 class RoomEditViewModelTest {
     @Test
-    fun `초기 편집값은 비어 있고 원본이 도착할 때까지 저장할 수 없다`() {
+    fun `원본이 도착하면 편집 입력 기본값으로 채우고 저장은 막는다`() {
         val viewModel = RoomEditViewModel()
         viewModel.initialize("room-1", null)
 
@@ -23,6 +23,8 @@ class RoomEditViewModelTest {
         viewModel.initialize("room-1", sampleRoom())
 
         assertTrue(viewModel.uiState.isOriginalLoaded)
+        assertEquals("아침러닝", viewModel.uiState.nameInput)
+        assertEquals("함께 달리며 달려요.", viewModel.uiState.introductionInput)
         assertEquals("아침러닝", viewModel.uiState.effectiveName)
         assertEquals("함께 달리며 달려요.", viewModel.uiState.effectiveIntroduction)
         assertFalse(viewModel.uiState.canSave)
@@ -46,7 +48,7 @@ class RoomEditViewModelTest {
     }
 
     @Test
-    fun `입력한 값을 모두 지우면 원본을 유지하고 변경을 취소한다`() {
+    fun `편집 입력값을 모두 지우면 빈 값으로 처리하고 저장하지 못한다`() {
         val viewModel = initializedViewModel()
         viewModel.updateName("새모임")
         viewModel.updateIntroduction("새 소개입니다.")
@@ -55,9 +57,9 @@ class RoomEditViewModelTest {
         viewModel.updateName("")
         viewModel.updateIntroduction("")
 
-        assertEquals("아침러닝", viewModel.uiState.effectiveName)
-        assertEquals("함께 달리며 달려요.", viewModel.uiState.effectiveIntroduction)
-        assertFalse(viewModel.uiState.hasChanges)
+        assertEquals("", viewModel.uiState.effectiveName)
+        assertEquals("", viewModel.uiState.effectiveIntroduction)
+        assertTrue(viewModel.uiState.hasChanges)
         assertFalse(viewModel.uiState.canSave)
         assertNull(viewModel.createDraft())
     }
@@ -141,7 +143,8 @@ class RoomEditViewModelTest {
         viewModel.initialize("room-2", sampleRoom("room-2").copy(name = "다른모임"))
 
         assertEquals("room-2", viewModel.uiState.roomId)
-        assertEquals("", viewModel.uiState.nameInput)
+        assertEquals("다른모임", viewModel.uiState.nameInput)
+        assertEquals("함께 달리며 달려요.", viewModel.uiState.introductionInput)
         assertEquals("다른모임", viewModel.uiState.effectiveName)
         assertFalse(viewModel.uiState.canSave)
     }

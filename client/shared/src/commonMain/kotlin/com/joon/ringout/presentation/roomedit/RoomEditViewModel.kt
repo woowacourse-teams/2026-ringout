@@ -18,7 +18,11 @@ internal class RoomEditViewModel : ViewModel() {
             uiState = RoomEditUiState(roomId = roomId)
         }
         if (!uiState.isOriginalLoaded && original?.id == roomId) {
-            uiState = uiState.copy(original = original)
+            uiState = uiState.copy(
+                original = original,
+                nameInput = original.name,
+                introductionInput = original.description,
+            )
         }
     }
 

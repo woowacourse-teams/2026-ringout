@@ -39,7 +39,6 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun RoomEditNameSection(
-    originalPlaceholder: String,
     value: String,
     validation: RoomNameValidation,
     onValueChange: (String) -> Unit,
@@ -96,13 +95,6 @@ internal fun RoomEditNameSection(
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    if (value.isEmpty()) {
-                        Text(
-                            text = originalPlaceholder,
-                            color = colors.placeholder,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
                     innerTextField()
                 }
             },
@@ -127,9 +119,8 @@ internal fun RoomEditNameSection(
 private fun RoomEditNameSectionInitialPreview() {
     RingoutTheme(ThemeMode.Light) {
         RoomEditNameSection(
-            originalPlaceholder = "아침러닝",
-            value = "",
-            validation = validateRoomName(""),
+            value = "아침러닝",
+            validation = validateRoomName("아침러닝"),
             onValueChange = {},
             modifier = Modifier.padding(16.dp),
         )
@@ -141,7 +132,6 @@ private fun RoomEditNameSectionInitialPreview() {
 private fun RoomEditNameSectionValidPreview() {
     RingoutTheme(ThemeMode.Dark) {
         RoomEditNameSection(
-            originalPlaceholder = "아침러닝",
             value = "새러닝모임",
             validation = validateRoomName("새러닝모임"),
             onValueChange = {},

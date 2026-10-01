@@ -37,7 +37,6 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun RoomEditIntroductionSection(
-    originalPlaceholder: String,
     value: String,
     validation: RoomIntroductionValidation,
     onValueChange: (String) -> Unit,
@@ -96,13 +95,6 @@ internal fun RoomEditIntroductionSection(
                         .padding(16.dp),
                     contentAlignment = Alignment.TopStart,
                 ) {
-                    if (value.isEmpty()) {
-                        Text(
-                            text = originalPlaceholder,
-                            color = colors.placeholder,
-                            style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 24.sp),
-                        )
-                    }
                     innerTextField()
                 }
             },
@@ -120,9 +112,8 @@ internal fun RoomEditIntroductionSection(
 private fun RoomEditIntroductionSectionInitialPreview() {
     RingoutTheme(ThemeMode.Dark) {
         RoomEditIntroductionSection(
-            originalPlaceholder = "함께 달리며 건강한 습관을 만들어요.",
-            value = "",
-            validation = validateRoomIntroduction(""),
+            value = "함께 달리며 건강한 습관을 만들어요.",
+            validation = validateRoomIntroduction("함께 달리며 건강한 습관을 만들어요."),
             onValueChange = {},
             modifier = Modifier.padding(16.dp),
         )
@@ -135,7 +126,6 @@ private fun RoomEditIntroductionSectionValidPreview() {
     val value = "함께 달리며 건강한 습관을 만들어요."
     RingoutTheme(ThemeMode.Light) {
         RoomEditIntroductionSection(
-            originalPlaceholder = "모임 소개",
             value = value,
             validation = validateRoomIntroduction(value),
             onValueChange = {},
