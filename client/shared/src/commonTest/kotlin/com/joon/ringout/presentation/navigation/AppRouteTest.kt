@@ -16,6 +16,7 @@ class AppRouteTest {
             AppRoute.RoomCreate,
             AppRoute.RoomDetail("room/서울?name=러닝"),
             AppRoute.RoomEdit("room/서울?name=러닝"),
+            AppRoute.RoomMemberManagement("room/서울?name=러닝"),
             AppRoute.Records,
             AppRoute.AddAlarm,
             AppRoute.EditAlarm(alarmId = "alarm/서울?time=07:30&label=\"출근\""),
@@ -42,6 +43,7 @@ class AppRouteTest {
         val serializers = listOf(
             AppRoute.EditAlarm.serializer(),
             AppRoute.RoomEdit.serializer(),
+            AppRoute.RoomMemberManagement.serializer(),
             AppRoute.Destination.serializer(),
             AppRoute.AlarmRinging.serializer(),
             AppRoute.ActiveAlarmTracking.serializer(),

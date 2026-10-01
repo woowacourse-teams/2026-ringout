@@ -100,6 +100,28 @@ class RoomListViewModel(
         if (hasReceivedSession && lastSessionKey?.state != AuthSessionState.Restoring) requestRooms()
     }
 
+    /** 삭제 성공을 현재 인증 세션의 캐시에 즉시 반영하고, 오래된 목록 응답을 무효화한다. */
+    internal fun onRoomDeleted(roomId: Long, sessionIdentity: Any) {
+        if (!isCurrentActionSession(sessionIdentity)) return
+        invalidateRoomsRequest()
+        val roomIdString = roomId.toString()
+        val allRooms = uiState.allRooms.filterNot { it.id == roomIdString }
+        uiState = uiState.copy(allRooms = allRooms, joinedRooms = allRooms.filter(RoomUiModel::isJoined))
+        requestRooms()
+    }
+
+    /** 탈퇴 성공은 가입 목록에서 제거하고 전체 목록의 가입 여부만 갱신한다. */
+    internal fun onRoomLeft(roomId: Long, sessionIdentity: Any) {
+        if (!isCurrentActionSession(sessionIdentity)) return
+        invalidateRoomsRequest()
+        val roomIdString = roomId.toString()
+        val allRooms = uiState.allRooms.map { room ->
+            if (room.id == roomIdString) room.copy(isJoined = false) else room
+        }
+        uiState = uiState.copy(allRooms = allRooms, joinedRooms = allRooms.filter(RoomUiModel::isJoined))
+        requestRooms()
+    }
+
     internal fun createRoom(source: RoomMutationSource, input: RoomCreateInput) {
         if (source.type != RoomMutationType.Create || source.entryId != visibleMutationEntryId) return
         startMutation(source) { createRoom(input) }
@@ -203,6 +225,12 @@ class RoomListViewModel(
     private fun isCurrentSession(session: SessionKey): Boolean {
         val liveSession = authSession?.let { SessionKey(it.state.value, it.identity.value) }
         return if (liveSession != null) liveSession == session else lastSessionKey == session
+    }
+
+    private fun isCurrentActionSession(identity: Any): Boolean {
+        val session = lastSessionKey ?: return false
+        return session.state == AuthSessionState.Authenticated &&
+            session.identity === identity && isCurrentSession(session)
     }
 
     private fun invalidateRoomsRequest() {
