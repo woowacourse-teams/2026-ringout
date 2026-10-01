@@ -6,10 +6,20 @@ import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
 import androidx.room3.Transaction
 import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceId
+import kotlinx.coroutines.flow.Flow
 
 /** 저장만 담당한다. 전송 가능 여부 판단, HTTP 요청, 재시도 스케줄링은 전송 계층에서 처리한다. */
 @Dao
 abstract class AlarmOccurrenceSyncDao {
+    // 실행/울림의 누락 시각 보완도 전송기에 알려야 하므로 세 테이블의 변경을 관찰한다.
+    @Query("""
+        SELECT o.* FROM alarm_occurrence_outbox o
+        JOIN alarm_occurrence_sync e ON e.local_execution_id = o.local_execution_id
+        JOIN alarm_occurrence_ringing_links r ON r.local_ringing_id = o.local_ringing_id
+        WHERE o.state != 'SENT' ORDER BY o.id
+    """)
+    abstract fun observeUnsentEvents(): Flow<List<AlarmOccurrenceOutboxEntity>>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     protected abstract suspend fun insertExecution(execution: AlarmOccurrenceSyncEntity)
 

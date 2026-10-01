@@ -29,13 +29,15 @@ import kotlinx.serialization.decodeFromString
 class DefaultAlarmOccurrenceRepository(
     private val httpClient: HttpClient,
     tokenStorage: SecureTokenStorage,
-    authSession: AuthSession = getAuthSession(),
+    private val authSession: AuthSession = getAuthSession(),
+    private val account: AlarmOccurrenceAccount? = null,
 ) : AlarmOccurrenceRepository {
     private val authenticatedRequests = AuthenticatedRequestExecutor(httpClient, tokenStorage, authSession)
 
     override suspend fun start(start: AlarmOccurrenceStart): AlarmOccurrence {
         val request = start.toRequest()
         return authenticatedRequests.execute { accessToken ->
+            account?.checkToken(authSession, accessToken)
             httpClient.post(ApiConfig.url("/api/v1/alarm-occurrences")) {
                 bearerAuth(accessToken)
                 contentType(ContentType.Application.Json)
@@ -50,6 +52,7 @@ class DefaultAlarmOccurrenceRepository(
     ): AlarmOccurrence {
         val request = event.toRequest()
         return authenticatedRequests.execute { accessToken ->
+            account?.checkToken(authSession, accessToken)
             httpClient.patch(ApiConfig.url("/api/v1/alarm-occurrences/${occurrenceId.value}")) {
                 bearerAuth(accessToken)
                 contentType(ContentType.Application.Json)
