@@ -47,7 +47,7 @@ class AlarmMovementControllerTest {
     @Test
     void 인증된_사용자의_이동_시작_요청에_MOVEMENT_STARTED_상태를_반환한다() throws Exception {
         // given
-        AlarmMovementRequest request = new AlarmMovementRequest(135L, MovementAction.START_MOVEMENT);
+        AlarmMovementRequest request = new AlarmMovementRequest("5c9e1f7a-3b2d-4a6c-8e0f-1a2b3c4d5e6f", MovementAction.START_MOVEMENT);
         given(alarmMovementService.changeMovement(1L, 10L, request))
             .willReturn(new AlarmMovementResponse(MovementStatus.MOVEMENT_STARTED));
 
@@ -55,7 +55,7 @@ class AlarmMovementControllerTest {
         var result = mockMvc.perform(post("/api/v1/rooms/10/movements")
             .with(user(new CustomUserDetails(1L, Role.USER)))
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"alarmId\":135,\"action\":\"START_MOVEMENT\"}"));
+            .content("{\"alarmOccurrenceId\":\"5c9e1f7a-3b2d-4a6c-8e0f-1a2b3c4d5e6f\",\"action\":\"START_MOVEMENT\"}"));
 
         // then
         result.andExpectAll(

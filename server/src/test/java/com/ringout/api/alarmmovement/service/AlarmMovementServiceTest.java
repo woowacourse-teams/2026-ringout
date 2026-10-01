@@ -51,7 +51,7 @@ class AlarmMovementServiceTest {
 
     private static final Long USER_ID = 1L;
     private static final Long ROOM_ID = 10L;
-    private static final Long ALARM_OCCURRENCE_ID = 135L;
+    private static final String ALARM_OCCURRENCE_ID = "5c9e1f7a-3b2d-4a6c-8e0f-1a2b3c4d5e6f";
     private static final Clock CLOCK = Clock.fixed(
         Instant.parse("2026-09-29T00:00:00Z"), ZoneId.of("Asia/Seoul"));
     private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
@@ -91,7 +91,8 @@ class AlarmMovementServiceTest {
             givenCurrentMember();
             AlarmOccurrence alarmOccurrence = mock(AlarmOccurrence.class);
             AlarmMovement alarmMovement = AlarmMovement.of(alarmOccurrence, null, null, null);
-            given(alarmOccurrenceRepository.findActiveById(ALARM_OCCURRENCE_ID))
+            given(alarmOccurrence.isOwnedBy(USER_ID)).willReturn(true);
+            given(alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(ALARM_OCCURRENCE_ID))
                 .willReturn(Optional.of(alarmOccurrence));
             given(alarmMovementRepository.findByAlarmOccurrence(alarmOccurrence)).willReturn(Optional.of(alarmMovement));
             AlarmMovementRequest request = new AlarmMovementRequest(ALARM_OCCURRENCE_ID, action);
@@ -102,7 +103,7 @@ class AlarmMovementServiceTest {
             // then
             assertThat(response.status()).isEqualTo(expectedStatus);
             assertThat(alarmMovement.getMovementStatus(NOW)).isEqualTo(expectedStatus);
-            verify(alarmOccurrenceRepository).findActiveById(ALARM_OCCURRENCE_ID);
+            verify(alarmOccurrenceRepository).findActiveByOccurrenceUuidForUpdate(ALARM_OCCURRENCE_ID);
             verify(alarmMovementRepository).findByAlarmOccurrence(alarmOccurrence);
             verify(roomActivityService).recordMovementActivity(any(Room.class), eq(NOW));
         }
@@ -321,7 +322,8 @@ class AlarmMovementServiceTest {
         void 존재하지_않는_알람이면_알람_이동_상태를_변경할_수_없다() {
             // given
             givenCurrentMember();
-            given(alarmOccurrenceRepository.findActiveById(ALARM_OCCURRENCE_ID)).willReturn(Optional.empty());
+            given(alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(ALARM_OCCURRENCE_ID))
+                .willReturn(Optional.empty());
             AlarmMovementRequest request = new AlarmMovementRequest(ALARM_OCCURRENCE_ID, MovementAction.START_MOVEMENT);
 
             // when
@@ -337,7 +339,8 @@ class AlarmMovementServiceTest {
             // given
             givenCurrentMember();
             AlarmOccurrence alarmOccurrence = mock(AlarmOccurrence.class);
-            given(alarmOccurrenceRepository.findActiveById(ALARM_OCCURRENCE_ID))
+            given(alarmOccurrence.isOwnedBy(USER_ID)).willReturn(true);
+            given(alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(ALARM_OCCURRENCE_ID))
                 .willReturn(Optional.of(alarmOccurrence));
             given(alarmMovementRepository.findByAlarmOccurrence(alarmOccurrence)).willReturn(Optional.empty());
             AlarmMovementRequest request = new AlarmMovementRequest(ALARM_OCCURRENCE_ID, MovementAction.START_MOVEMENT);
@@ -387,9 +390,9 @@ class AlarmMovementServiceTest {
         }
 
         @Test
-        void 알람_실행_ID가_양수가_아니면_알람_실행_ID_형식_오류를_반환한다() {
+        void 알람_실행_ID가_UUID_형식이_아니면_알람_실행_ID_형식_오류를_반환한다() {
             // given
-            AlarmMovementRequest request = new AlarmMovementRequest(0L, MovementAction.START_MOVEMENT);
+            AlarmMovementRequest request = new AlarmMovementRequest("not-a-uuid", MovementAction.START_MOVEMENT);
 
             // when
             Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
@@ -414,6 +417,28 @@ class AlarmMovementServiceTest {
                 exception -> assertThat(exception.getCode())
                     .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_ACTION_REQUIRED));
             verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository, alarmMovementRepository);
+        }
+    }
+
+    @Nested
+    class 알람_실행_소유_권한_검증 {
+
+        @Test
+        void 다른_사용자의_알람_실행은_이동_상태를_변경할_수_없다() {
+            // given
+            givenCurrentMember();
+            AlarmOccurrence alarmOccurrence = mock(AlarmOccurrence.class);
+            given(alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(ALARM_OCCURRENCE_ID))
+                .willReturn(Optional.of(alarmOccurrence));
+            given(alarmOccurrence.isOwnedBy(USER_ID)).willReturn(false);
+            AlarmMovementRequest request = new AlarmMovementRequest(ALARM_OCCURRENCE_ID, MovementAction.START_MOVEMENT);
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmMovementService.changeMovement(USER_ID, ROOM_ID, request));
+
+            // then
+            assertError(thrown, 403, "MOVEMENT403", "해당 알람에 대한 이동 상태를 변경할 권한이 없습니다.");
+            verifyNoInteractions(alarmMovementRepository);
         }
     }
 
