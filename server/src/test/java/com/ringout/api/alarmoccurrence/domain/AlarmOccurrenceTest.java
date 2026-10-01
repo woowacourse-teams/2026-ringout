@@ -92,6 +92,19 @@ class AlarmOccurrenceTest {
             // then
             assertThat(occurrence.getRingings()).hasSize(2);
         }
+
+        @Test
+        void 최초_울림보다_빠른_재울림은_추가할_수_없다() {
+            // given
+            AlarmOccurrence occurrence = startOccurrence();
+
+            // when
+            Throwable thrown = catchThrowable(() -> occurrence.ringRepeat("E1", STARTED_AT.minusSeconds(1)));
+
+            // then
+            assertOrderInvalid(thrown);
+            assertThat(occurrence.getRingings()).hasSize(1);
+        }
     }
 
     @Nested
@@ -148,6 +161,22 @@ class AlarmOccurrenceTest {
             // then
             assertAlreadyEnded(thrown);
         }
+
+        @Test
+        void 울린_시각보다_빠른_시각으로_끌_수_없다() {
+            // given
+            AlarmOccurrence occurrence = startOccurrence();
+            occurrence.ringRepeat("E1", STARTED_AT.plusMinutes(5));
+
+            // when
+            Throwable initial = catchThrowable(() -> occurrence.dismiss(null, STARTED_AT.minusSeconds(1)));
+            Throwable repeat = catchThrowable(() -> occurrence.dismiss("E1", STARTED_AT.plusMinutes(4)));
+
+            // then
+            assertOrderInvalid(initial);
+            assertOrderInvalid(repeat);
+            assertThat(occurrence.getRingings()).allSatisfy(ringing -> assertThat(ringing.getDismissedAt()).isNull());
+        }
     }
 
     @Nested
@@ -196,11 +225,31 @@ class AlarmOccurrenceTest {
             assertAlreadyEnded(differentType);
             assertAlreadyEnded(differentTime);
         }
+
+        @Test
+        void 최초_울림보다_빠른_시각으로_종료할_수_없다() {
+            // given
+            AlarmOccurrence occurrence = startOccurrence();
+
+            // when
+            Throwable thrown = catchThrowable(
+                () -> occurrence.end(OccurrenceEndType.ARRIVED, STARTED_AT.minusSeconds(1)));
+
+            // then
+            assertOrderInvalid(thrown);
+            assertThat(occurrence.getEndType()).isNull();
+        }
     }
 
     private AlarmOccurrence startOccurrence() {
         return AlarmOccurrence.start(null, "alarm-1", LocalDateTime.of(2026, 9, 23, 7, 0), LocalTime.of(7, 0),
             STARTED_AT);
+    }
+
+    private void assertOrderInvalid(Throwable thrown) {
+        assertThat(thrown).isInstanceOf(GeneralException.class);
+        assertThat(((GeneralException) thrown).getCode())
+            .isEqualTo(AlarmOccurrenceErrorStatus.EVENT_TIME_ORDER_INVALID);
     }
 
     private void assertAlreadyEnded(Throwable thrown) {

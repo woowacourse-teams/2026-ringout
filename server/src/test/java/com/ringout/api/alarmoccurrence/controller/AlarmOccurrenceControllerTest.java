@@ -167,7 +167,7 @@ class AlarmOccurrenceControllerTest {
             var result = mockMvc.perform(post("/api/v1/alarm-occurrences")
                 .with(user(USER))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"alarmId\":\"alarm-1\",\"scheduledAt\":\"2026-09-23T07:00:00+09:00\"}"));
+                .content("{\"alarmId\":\"alarm-1\",\"scheduledAt\":\"2026-09-23T07:00:00+09:00\",\"startedAt\":\"2026-09-23T07:00:02+09:00\"}"));
 
             // then
             result.andExpectAll(
@@ -196,7 +196,7 @@ class AlarmOccurrenceControllerTest {
             var result = mockMvc.perform(post("/api/v1/alarm-occurrences")
                 .with(user(USER))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"alarmId\":\"alarm-1\",\"scheduledAt\":\"2026-09-23T07:00:00+09:00\"}"));
+                .content("{\"alarmId\":\"alarm-1\",\"scheduledAt\":\"2026-09-23T07:00:00+09:00\",\"startedAt\":\"2026-09-23T07:00:02+09:00\"}"));
 
             // then
             result.andExpectAll(
@@ -211,7 +211,7 @@ class AlarmOccurrenceControllerTest {
             // when
             var result = mockMvc.perform(post("/api/v1/alarm-occurrences")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"alarmId\":\"alarm-1\",\"scheduledAt\":\"2026-09-23T07:00:00+09:00\"}"));
+                .content("{\"alarmId\":\"alarm-1\",\"scheduledAt\":\"2026-09-23T07:00:00+09:00\",\"startedAt\":\"2026-09-23T07:00:02+09:00\"}"));
 
             // then
             result.andExpect(status().isUnauthorized());
@@ -258,7 +258,7 @@ class AlarmOccurrenceControllerTest {
             var result = mockMvc.perform(patch("/api/v1/alarm-occurrences/" + OCCURRENCE_ID)
                 .with(user(USER))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"eventId\":\"E1\",\"dismissedAt\":\"2026-09-23T07:05:40+09:00\"}"));
+                .content("{\"eventId\":\"E1\",\"ringingAt\":\"2026-09-23T07:05:00+09:00\",\"dismissedAt\":\"2026-09-23T07:05:40+09:00\"}"));
 
             // then
             result.andExpectAll(
@@ -288,11 +288,13 @@ class AlarmOccurrenceControllerTest {
     // JSON 역직렬화 시 offset이 UTC로 정규화되므로 같은 시점인지로 비교한다.
     private AlarmOccurrenceStartRequest sameStartRequest() {
         return argThat(request -> request.alarmId().equals("alarm-1")
-            && request.scheduledAt().isEqual(OffsetDateTime.parse("2026-09-23T07:00:00+09:00")));
+            && request.scheduledAt().isEqual(OffsetDateTime.parse("2026-09-23T07:00:00+09:00"))
+            && request.startedAt().isEqual(OffsetDateTime.parse("2026-09-23T07:00:02+09:00")));
     }
 
     private AlarmOccurrenceEventRequest sameEventRequest() {
         return argThat(request -> "E1".equals(request.eventId())
+            && request.ringingAt().isEqual(OffsetDateTime.parse("2026-09-23T07:05:00+09:00"))
             && request.dismissedAt().isEqual(OffsetDateTime.parse("2026-09-23T07:05:40+09:00"))
             && request.arrivedAt() == null && request.forceEndedAt() == null);
     }

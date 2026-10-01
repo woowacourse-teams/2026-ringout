@@ -115,6 +115,7 @@ public class AlarmOccurrence extends BaseEntity {
             return;
         }
         validateNotEnded();
+        validateNotBefore(ringingAt, startedAt);
         ringings.add(AlarmRinging.repeat(this, eventId, ringingAt));
     }
 
@@ -125,11 +126,13 @@ public class AlarmOccurrence extends BaseEntity {
             return;
         }
         validateNotEnded();
+        validateNotBefore(dismissedAt, ringing.getRingingAt());
         ringing.dismiss(dismissedAt);
     }
 
     public void end(OccurrenceEndType endType, LocalDateTime endedAt) {
         if (this.endType == null) {
+            validateNotBefore(endedAt, startedAt);
             this.endType = endType;
             this.endedAt = endedAt;
             return;
@@ -151,6 +154,12 @@ public class AlarmOccurrence extends BaseEntity {
         return ringings.stream()
             .filter(ringing -> !ringing.isInitial() && ringing.hasEventId(eventId))
             .findFirst();
+    }
+
+    private void validateNotBefore(LocalDateTime eventAt, LocalDateTime previousEventAt) {
+        if (eventAt.isBefore(previousEventAt)) {
+            throw new GeneralException(AlarmOccurrenceErrorStatus.EVENT_TIME_ORDER_INVALID);
+        }
     }
 
     private void validateNotEnded() {

@@ -46,6 +46,7 @@ public interface AlarmOccurrenceControllerApi {
 
     @Operation(summary = "알람 실행 시작",
         description = "알람이 처음 울린 시점에 실행 기록을 생성하고 서버가 실행 식별자를 발급합니다. "
+            + "최초 울림 시각은 기기가 보낸 startedAt으로 저장합니다. "
             + "같은 alarmId와 scheduledAt으로 다시 요청하면 기존 기록을 반환합니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH))
     @ApiResponses({
@@ -57,7 +58,8 @@ public interface AlarmOccurrenceControllerApi {
                 "arrivedAt":null,"forceEndedAt":null}}
                 """))),
         @ApiResponse(responseCode = "200", description = "이미 생성된 알람 실행 기록 반환 (재시도)"),
-        @ApiResponse(responseCode = "400", description = "alarmId 또는 scheduledAt 누락·형식 오류"),
+        @ApiResponse(responseCode = "400",
+            description = "alarmId, scheduledAt, startedAt 누락·형식 오류 또는 startedAt이 서버 시각보다 1분 넘게 미래"),
         @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자")
     })
     ResponseEntity<CustomResponse<AlarmOccurrenceDetailResponse>> startAlarmOccurrence(
@@ -67,6 +69,7 @@ public interface AlarmOccurrenceControllerApi {
 
     @Operation(summary = "알람 실행 이벤트 저장",
         description = "진행 중인 알람 실행에 재울림, 울림 끔, 도착, 강제 종료 이벤트를 병합합니다. "
+            + "모든 시각은 기기에서 이벤트가 발생한 시각이며, eventId를 보낼 때는 ringingAt을 함께 보냅니다. "
             + "같은 요청을 다시 보내도 결과가 같습니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH))
     @ApiResponses({
@@ -79,7 +82,8 @@ public interface AlarmOccurrenceControllerApi {
                 {"type":"REPEAT","eventId":"b1e2c3d4-0000-4000-8000-000000000001","ringingAt":"2026-09-23T07:05:00+09:00","dismissedAt":"2026-09-23T07:05:40+09:00"}],
                 "arrivedAt":"2026-09-23T07:48:10+09:00","forceEndedAt":null}}
                 """))),
-        @ApiResponse(responseCode = "400", description = "유효하지 않은 실행 식별자 또는 이벤트 요청"),
+        @ApiResponse(responseCode = "400", description = "유효하지 않은 실행 식별자 또는 이벤트 요청 "
+            + "(eventId와 ringingAt 불일치, 서버 시각보다 1분 넘게 미래인 시각, 이전 이벤트보다 빠른 시각)"),
         @ApiResponse(responseCode = "401", description = "인증되지 않은 사용자"),
         @ApiResponse(responseCode = "403", description = "다른 사용자의 실행 기록"),
         @ApiResponse(responseCode = "404", description = "실행 기록이 없음"),
