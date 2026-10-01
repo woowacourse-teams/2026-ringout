@@ -329,6 +329,51 @@ class AppNavigationStateTest {
     }
 
     @Test
+    fun `생성 성공은 RoomHome을 열고 뒤로 가면 Social로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomCreate)
+
+        assertTrue(state.navigateToRoomHomeFrom(AppRoute.RoomCreate, "41"))
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomHome("41")),
+            state.backStack.toList(),
+        )
+
+        state.popBackStack(AppRoute.RoomHome("41"))
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), state.backStack.toList())
+        assertEquals(AppRoute.Social, state.requestedRoute)
+    }
+
+    @Test
+    fun `가입 성공은 상세 경로를 RoomHome으로 바꾸고 이전 상세 콜백은 무시한다`() {
+        val state = AppNavigationState()
+        val roomDetail = AppRoute.RoomDetail("7")
+        state.navigate(roomDetail)
+        state.navigate(AppRoute.Login)
+
+        assertFalse(state.navigateToRoomHomeFrom(roomDetail, "7"))
+        state.popBackStack(AppRoute.Login)
+        assertTrue(state.navigateToRoomHomeFrom(roomDetail, "7"))
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomHome("7")),
+            state.backStack.toList(),
+        )
+    }
+
+    @Test
+    fun `복원된 RoomHome 경로는 모임 식별자를 유지한다`() {
+        val roomHome = AppRoute.RoomHome("room-41")
+        val backStack = NavBackStack<AppRoute>(AppRoute.Home, AppRoute.Social, roomHome)
+        val serializer = NavBackStackSerializer(AppRoute.serializer())
+        val restored = Json.decodeFromString(serializer, Json.encodeToString(serializer, backStack))
+
+        assertEquals(backStack.toList(), restored.toList())
+        assertEquals(roomHome, restored.last())
+    }
+
+    @Test
     fun `복원한 모임 상세 경로가 같은 모임 식별자를 유지한다`() {
         val roomDetail = AppRoute.RoomDetail("room-42")
         val backStack = NavBackStack<AppRoute>(AppRoute.Home, AppRoute.Social, roomDetail)

@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,8 +43,13 @@ internal fun RoomDetailScreen(
     authSessionState: AuthSessionState,
     onBackClick: () -> Unit,
     onLoginClick: () -> Unit,
-    onJoinRoom: (String) -> Unit,
+    onJoinRoom: () -> Unit,
     modifier: Modifier = Modifier,
+    isMutationInProgress: Boolean = false,
+    isJoining: Boolean = false,
+    mutationErrorMessage: String? = null,
+    isMembershipConfirmed: Boolean = false,
+    onRetryRooms: () -> Unit = {},
 ) {
     var isLoginDialogVisible by rememberSaveable(room.id) { mutableStateOf(false) }
     val joinAction = roomJoinAction(room, authSessionState)
@@ -69,14 +75,36 @@ internal fun RoomDetailScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 28.dp, vertical = 16.dp),
         ) {
+            if (isMutationInProgress) {
+                Text(
+                    text = if (isJoining) "모임 가입을 요청하고 있어요." else "다른 모임 요청을 처리하고 있어요.",
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            mutationErrorMessage?.let { message ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = if (isMembershipConfirmed) onBackClick else onRetryRooms) {
+                        Text(if (isMembershipConfirmed) "가입한 모임 목록 보기" else "모임 목록 새로고침")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
             RoomDetailJoinButton(
                 isJoined = room.isJoined,
-                enabled = joinAction != RoomJoinAction.Disabled,
+                isJoining = isJoining,
+                enabled = joinAction != RoomJoinAction.Disabled && !isMutationInProgress,
                 onClick = {
                     when (joinAction) {
                         RoomJoinAction.Disabled -> Unit
                         RoomJoinAction.RequestLogin -> isLoginDialogVisible = true
-                        RoomJoinAction.Join -> onJoinRoom(room.id)
+                        RoomJoinAction.Join -> onJoinRoom()
                     }
                 },
             )
@@ -168,6 +196,38 @@ private fun RoomDetailScreenJoinedPreview() {
             onBackClick = {},
             onLoginClick = {},
             onJoinRoom = {},
+        )
+    }
+}
+
+@Preview(name = "가입 상태 확인 · 다크", widthDp = 402, heightDp = 941)
+@Composable
+private fun RoomDetailMembershipConfirmedPreview() {
+    RingoutTheme(themeMode = ThemeMode.Dark) {
+        RoomDetailScreen(
+            room = RoomDetailPreviewRoom.copy(isJoined = true),
+            authSessionState = AuthSessionState.Authenticated,
+            onBackClick = {},
+            onLoginClick = {},
+            onJoinRoom = {},
+            mutationErrorMessage = "이미 참여 중인 모임이에요. 목록의 가입 상태를 갱신했어요.",
+            isMembershipConfirmed = true,
+        )
+    }
+}
+
+@Preview(name = "가입 결과 재확인 · 라이트", widthDp = 402, heightDp = 941)
+@Composable
+private fun RoomDetailMembershipRefreshPreview() {
+    RingoutTheme(themeMode = ThemeMode.Light) {
+        RoomDetailScreen(
+            room = RoomDetailPreviewRoom,
+            authSessionState = AuthSessionState.Authenticated,
+            onBackClick = {},
+            onLoginClick = {},
+            onJoinRoom = {},
+            mutationErrorMessage = "이미 참여 중인 모임인지 확인하고 있어요.",
+            onRetryRooms = {},
         )
     }
 }
