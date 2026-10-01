@@ -19,6 +19,10 @@ internal data class RoomHomeColors(
     val selectedDay: Color,
     val timeline: Color,
     val iconContent: Color,
+    val dropdownSurface: Color,
+    val dropdownContent: Color,
+    val dropdownDivider: Color,
+    val actionDialogPrimary: Color,
 )
 
 // Figma: 493:11437 / 493:11511 (dark), 465:9829 (light).
@@ -34,6 +38,10 @@ private val DarkRoomHomeColors = RoomHomeColors(
     selectedDay = Color(0xFF22242A),
     timeline = Color(0xFFA7A9B0),
     iconContent = Color.White,
+    dropdownSurface = Color(0xFF101113),
+    dropdownContent = Color(0xFFF9FAFB),
+    dropdownDivider = Color(0xFF4B4D52),
+    actionDialogPrimary = Color(0xFFFF682B),
 )
 
 private val LightRoomHomeColors = RoomHomeColors(
@@ -48,6 +56,10 @@ private val LightRoomHomeColors = RoomHomeColors(
     selectedDay = Color(0xFFECEEF1),
     timeline = Color(0xFFD1D5DB),
     iconContent = Color.White,
+    dropdownSurface = Color(0xFF101113),
+    dropdownContent = Color(0xFFF9FAFB),
+    dropdownDivider = Color(0xFF4B4D52),
+    actionDialogPrimary = Color(0xFFFF682B),
 )
 
 @Composable
