@@ -40,11 +40,6 @@ internal fun RoomMemberManagementScreen(
     ) {
         RoomMemberManagementTopBar(onBackClick = onBackClick)
         when {
-            !uiState.canManageMembers -> RoomMemberManagementStatus(
-                message = "방장만 회원을 관리할 수 있어요.",
-                modifier = Modifier.weight(1f),
-            )
-
             uiState.isLoading -> RoomMemberManagementStatus(
                 message = "회원 목록을 불러오는 중이에요.",
                 modifier = Modifier.weight(1f),
@@ -55,6 +50,11 @@ internal fun RoomMemberManagementScreen(
                 message = uiState.errorMessage,
                 modifier = Modifier.weight(1f),
                 onRetry = onRetry,
+            )
+
+            !uiState.canManageMembers -> RoomMemberManagementStatus(
+                message = "방장만 회원을 관리할 수 있어요.",
+                modifier = Modifier.weight(1f),
             )
 
             uiState.members.isEmpty() -> RoomMemberManagementStatus(
@@ -69,7 +69,7 @@ internal fun RoomMemberManagementScreen(
                 items(uiState.members, key = { it.id }) { member ->
                     RoomMemberRow(
                         member = member,
-                        canRemove = uiState.canManageMembers && !member.isOwner,
+                        canRemove = uiState.canRemoveMembers && !member.isOwner,
                         onRemoveClick = { onRemoveMemberClick(member.id) },
                     )
                 }
@@ -78,7 +78,7 @@ internal fun RoomMemberManagementScreen(
     }
 
     uiState.selectedMember
-        ?.takeIf { uiState.canManageMembers && !it.isOwner && !uiState.isLoading && uiState.errorMessage == null }
+        ?.takeIf { uiState.canRemoveMembers && !it.isOwner && !uiState.isLoading && uiState.errorMessage == null }
         ?.let { member ->
             RoomMemberRemoveDialog(
                 nickname = member.nickname,
@@ -96,6 +96,7 @@ private fun RoomMemberManagementScreenDarkPreview() {
             uiState = RoomMemberManagementUiState(
                 members = RoomMemberManagementPreviewMembers,
                 canManageMembers = true,
+                canRemoveMembers = true,
             ),
             onBackClick = {},
             onRemoveMemberClick = {},
@@ -113,6 +114,7 @@ private fun RoomMemberManagementScreenLightPreview() {
             uiState = RoomMemberManagementUiState(
                 members = RoomMemberManagementPreviewMembers,
                 canManageMembers = true,
+                canRemoveMembers = true,
             ),
             onBackClick = {},
             onRemoveMemberClick = {},
@@ -132,6 +134,7 @@ private fun RoomMemberManagementScreenCompactPreview() {
                     it.copy(nickname = "아주긴닉네임으로모임에참여한회원입니다")
                 },
                 canManageMembers = true,
+                canRemoveMembers = true,
             ),
             onBackClick = {},
             onRemoveMemberClick = {},
