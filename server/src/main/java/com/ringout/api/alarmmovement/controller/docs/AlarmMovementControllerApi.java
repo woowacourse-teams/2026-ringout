@@ -118,15 +118,10 @@ public interface AlarmMovementControllerApi {
         ),
         @ApiResponse(
             responseCode = "500",
-            description = "이동 상태 레코드 누락 또는 예상하지 못한 서버 오류",
-            content = @Content(mediaType = "application/json", examples = {
-                @ExampleObject(name = "movementRecordMissing", value = """
-                    {"isSuccess": false, "code": "MOVEMENT500", "message": "이동 상태를 처리할 수 없습니다.", "result": null}
-                    """),
-                @ExampleObject(name = "unexpectedError", value = """
+            description = "예상하지 못한 서버 오류",
+            content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "unexpectedError", value = """
                     {"isSuccess": false, "code": "COMMON500", "message": "서버 에러, 관리자에게 문의 바랍니다.", "result": "예외 메시지"}
-                    """)
-            })
+                    """))
         )
     })
     ResponseEntity<CustomResponse<AlarmMovementResponse>> changeMovement(
@@ -151,7 +146,7 @@ public interface AlarmMovementControllerApi {
         summary = "모임 회원 이동 상태 조회",
         description = """
             인증된 현재 모임 참여자의 상태를 조회합니다. 목록은 탈퇴·추방되지 않은 활성 참여자만 포함하며 닉네임 첫 글자 기준 한글(가–힣), 영문(A–Z, a–z), 그 외 문자 순으로 정렬하고 각 그룹은 문자열 오름차순으로 정렬합니다. 영문 대소문자는 구분합니다.
-            각 회원은 자신의 가장 최근 알람 실행 기준 상태를 반환합니다. 알람 실행이 없으면 IDLE, 알람 실행은 있으나 이동 시작 전이면 ALARM_TRIGGERED입니다. 이동 시작 후 2분 미만이면 MOVEMENT_STARTED, 2분 이상이면 MOVING이며 종료 상태는 GAVE_UP 또는 ARRIVED입니다. 필요한 이동 상태 레코드가 없거나 종료 시각 데이터가 서로 충돌하면 500 오류를 반환합니다.
+            각 회원은 자신의 가장 최근 알람 실행 기준 상태를 반환합니다. 알람 실행이 없으면 IDLE, 알람 실행은 있으나 이동 시작 전이면 ALARM_TRIGGERED입니다. 이동 시작 후 2분 미만이면 MOVEMENT_STARTED, 2분 이상이면 MOVING이며 종료 상태는 GAVE_UP 또는 ARRIVED입니다.
             """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
@@ -211,21 +206,6 @@ public interface AlarmMovementControllerApi {
             content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
                 {"isSuccess": false, "code": "ROOM404", "message": "존재하지 않는 모임 방입니다.", "result": null}
                 """))
-        ),
-        @ApiResponse(
-            responseCode = "500",
-            description = "알람 실행의 이동 상태 레코드가 누락·불일치하거나 예상하지 못한 서버 오류",
-            content = @Content(mediaType = "application/json", examples = {
-                @ExampleObject(name = "movementRecordMissing", value = """
-                    {"isSuccess": false, "code": "MOVEMENT500", "message": "이동 상태를 처리할 수 없습니다.", "result": null}
-                    """),
-                @ExampleObject(name = "terminalStateInconsistent", value = """
-                    {"isSuccess": false, "code": "MOVEMENT500", "message": "이동 상태를 조회할 수 없습니다.", "result": null}
-                    """),
-                @ExampleObject(name = "unexpectedError", value = """
-                    {"isSuccess": false, "code": "COMMON500", "message": "서버 에러, 관리자에게 문의 바랍니다.", "result": "예외 메시지"}
-                    """)
-            })
         )
     })
     ResponseEntity<CustomResponse<MemberMovementsResponse>> getMemberMovements(

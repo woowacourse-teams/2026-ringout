@@ -9,14 +9,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.ringout.api.alarmmovement.domain.AlarmMovement;
 import com.ringout.api.alarmmovement.domain.MovementAction;
 import com.ringout.api.alarmmovement.domain.MovementStatus;
 import com.ringout.api.alarmmovement.dto.request.AlarmMovementRequest;
 import com.ringout.api.alarmmovement.dto.response.AlarmMovementResponse;
 import com.ringout.api.alarmmovement.dto.response.MemberMovementResponse;
 import com.ringout.api.alarmmovement.dto.response.MemberMovementsResponse;
-import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
 import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
 import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
@@ -66,9 +64,6 @@ class AlarmMovementServiceTest {
     private AlarmOccurrenceRepository alarmOccurrenceRepository;
 
     @Mock
-    private AlarmMovementRepository alarmMovementRepository;
-
-    @Mock
     private RoomActivityService roomActivityService;
 
     private AlarmMovementService alarmMovementService;
@@ -76,7 +71,7 @@ class AlarmMovementServiceTest {
     @BeforeEach
     void setUp() {
         alarmMovementService = new AlarmMovementService(
-            roomRepository, roomUserRepository, alarmOccurrenceRepository, alarmMovementRepository, roomActivityService,
+            roomRepository, roomUserRepository, alarmOccurrenceRepository, roomActivityService,
             CLOCK
         );
     }
@@ -86,15 +81,12 @@ class AlarmMovementServiceTest {
 
         @ParameterizedTest
         @CsvSource({"START_MOVEMENT, MOVEMENT_STARTED", "GIVE_UP, GAVE_UP", "ARRIVE, ARRIVED"})
-        void 알람_실행에_연결된_이동_상태를_변경하고_반환한다(MovementAction action, MovementStatus expectedStatus) {
+        void 알람_실행의_이동_상태를_변경하고_반환한다(MovementAction action, MovementStatus expectedStatus) {
             // given
             givenCurrentMember();
-            AlarmOccurrence alarmOccurrence = mock(AlarmOccurrence.class);
-            AlarmMovement alarmMovement = AlarmMovement.of(alarmOccurrence, null, null, null);
-            given(alarmOccurrence.isOwnedBy(USER_ID)).willReturn(true);
+            AlarmOccurrence alarmOccurrence = alarmOccurrenceWith(userWithId(USER_ID, "요청자"), 11L);
             given(alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(ALARM_OCCURRENCE_ID))
                 .willReturn(Optional.of(alarmOccurrence));
-            given(alarmMovementRepository.findByAlarmOccurrence(alarmOccurrence)).willReturn(Optional.of(alarmMovement));
             AlarmMovementRequest request = new AlarmMovementRequest(ALARM_OCCURRENCE_ID, action);
 
             // when
@@ -102,9 +94,8 @@ class AlarmMovementServiceTest {
 
             // then
             assertThat(response.status()).isEqualTo(expectedStatus);
-            assertThat(alarmMovement.getMovementStatus(NOW)).isEqualTo(expectedStatus);
+            assertThat(alarmOccurrence.getMovementStatus(NOW)).isEqualTo(expectedStatus);
             verify(alarmOccurrenceRepository).findActiveByOccurrenceUuidForUpdate(ALARM_OCCURRENCE_ID);
-            verify(alarmMovementRepository).findByAlarmOccurrence(alarmOccurrence);
             verify(roomActivityService).recordMovementActivity(any(Room.class), eq(NOW));
         }
     }
@@ -130,6 +121,10 @@ class AlarmMovementServiceTest {
                 alarmOccurrenceWith(triggeredMember, 14L),
                 alarmOccurrenceWith(gaveUpMember, 15L)
             );
+            alarmOccurrences.get(0).changeMovement(MovementAction.ARRIVE, NOW.minusMinutes(1));
+            alarmOccurrences.get(1).changeMovement(MovementAction.START_MOVEMENT, NOW.minusMinutes(2));
+            alarmOccurrences.get(2).changeMovement(MovementAction.START_MOVEMENT, NOW.minusMinutes(1));
+            alarmOccurrences.get(4).changeMovement(MovementAction.GIVE_UP, NOW.minusMinutes(1));
             givenCurrentMember();
             given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(
                 RoomUser.of(arrivedMember, room),
@@ -139,15 +134,8 @@ class AlarmMovementServiceTest {
                 RoomUser.of(gaveUpMember, room),
                 RoomUser.of(idleMember, room)
             ));
-            List<AlarmMovement> alarmMovements = List.of(
-                movementOf(alarmOccurrences.get(0), MovementStatus.ARRIVED),
-                movementOf(alarmOccurrences.get(1), MovementStatus.MOVING),
-                movementOf(alarmOccurrences.get(2), MovementStatus.MOVEMENT_STARTED),
-                movementOf(alarmOccurrences.get(3), MovementStatus.ALARM_TRIGGERED),
-                movementOf(alarmOccurrences.get(4), MovementStatus.GAVE_UP)
-            );
-            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByIdDesc(ROOM_ID)).willReturn(alarmOccurrences);
-            given(alarmMovementRepository.findActiveByAlarmOccurrenceIn(alarmOccurrences)).willReturn(alarmMovements);
+            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByStartedAtDescIdDesc(ROOM_ID))
+                .willReturn(alarmOccurrences);
 
             // when
             MemberMovementsResponse response = alarmMovementService.getMemberMovements(USER_ID, ROOM_ID);
@@ -167,32 +155,28 @@ class AlarmMovementServiceTest {
                     MovementStatus.ARRIVED
                 );
             verify(roomUserRepository).findActiveByRoomId(ROOM_ID);
-            verify(alarmOccurrenceRepository).findActiveByRoomIdOrderByIdDesc(ROOM_ID);
-            verify(alarmMovementRepository).findActiveByAlarmOccurrenceIn(alarmOccurrences);
+            verify(alarmOccurrenceRepository).findActiveByRoomIdOrderByStartedAtDescIdDesc(ROOM_ID);
         }
 
         @Test
-        void 한_회원에게_활성_알람이_여러_개면_ID가_가장_큰_알람의_상태를_반환한다() {
+        void 한_회원에게_알람_실행_이력이_여러_개면_실제_시작_시각이_가장_최근인_실행의_상태를_반환한다() {
             // given
             Room room = roomWithId(ROOM_ID);
             User requester = userWithId(USER_ID, "요청자");
-            AlarmOccurrence firstAlarmOccurrence = alarmOccurrenceWith(requester, 11L);
-            AlarmOccurrence laterAlarmOccurrence = alarmOccurrenceWith(requester, 12L);
-            AlarmMovement laterMovement = movementOf(laterAlarmOccurrence, MovementStatus.ARRIVED);
+            AlarmOccurrence earlierStartedOccurrence = alarmOccurrenceWith(requester, 12L, NOW.minusMinutes(30));
+            AlarmOccurrence laterStartedOccurrence = alarmOccurrenceWith(requester, 11L, NOW.minusMinutes(5));
+            earlierStartedOccurrence.changeMovement(MovementAction.ARRIVE, NOW);
             givenCurrentMember();
             given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
-            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByIdDesc(ROOM_ID))
-                .willReturn(List.of(laterAlarmOccurrence, firstAlarmOccurrence));
-            given(alarmMovementRepository.findActiveByAlarmOccurrenceIn(List.of(laterAlarmOccurrence)))
-                .willReturn(List.of(laterMovement));
+            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByStartedAtDescIdDesc(ROOM_ID))
+                .willReturn(List.of(laterStartedOccurrence, earlierStartedOccurrence));
 
             // when
             MemberMovementsResponse response = alarmMovementService.getMemberMovements(USER_ID, ROOM_ID);
 
             // then
             assertThat(response.members()).extracting(MemberMovementResponse::status)
-                .containsExactly(MovementStatus.ARRIVED);
-            verify(alarmMovementRepository).findActiveByAlarmOccurrenceIn(List.of(laterAlarmOccurrence));
+                .containsExactly(MovementStatus.ALARM_TRIGGERED);
         }
     }
 
@@ -209,7 +193,7 @@ class AlarmMovementServiceTest {
 
             // then
             assertError(thrown, 401, "ROOM401", "인증되지 않은 사용자입니다.");
-            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository, alarmMovementRepository);
+            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository);
         }
 
         @Test
@@ -222,7 +206,7 @@ class AlarmMovementServiceTest {
 
             // then
             assertError(thrown, 404, "ROOM404", "존재하지 않는 모임 방입니다.");
-            verifyNoInteractions(alarmOccurrenceRepository, alarmMovementRepository);
+            verifyNoInteractions(alarmOccurrenceRepository);
         }
 
         @Test
@@ -235,7 +219,7 @@ class AlarmMovementServiceTest {
 
             // then
             assertError(thrown, 400, "ROOM400", "모임 방 ID는 양수여야 합니다.");
-            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository, alarmMovementRepository);
+            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository);
         }
 
         @Test
@@ -249,7 +233,7 @@ class AlarmMovementServiceTest {
 
             // then
             assertError(thrown, 403, "ROOM403", "모임 회원 상태를 조회할 권한이 없습니다.");
-            verifyNoInteractions(alarmOccurrenceRepository, alarmMovementRepository);
+            verifyNoInteractions(alarmOccurrenceRepository);
         }
 
         @Test
@@ -260,7 +244,7 @@ class AlarmMovementServiceTest {
             AlarmOccurrence alarmOccurrence = alarmOccurrenceWith(requester, 11L);
             givenCurrentMember();
             given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
-            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByIdDesc(ROOM_ID))
+            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByStartedAtDescIdDesc(ROOM_ID))
                 .willReturn(List.of(alarmOccurrence));
 
             // when
@@ -271,29 +255,6 @@ class AlarmMovementServiceTest {
                 .containsExactly(MovementStatus.ALARM_TRIGGERED);
         }
 
-        @Test
-        void 포기와_도착_시각이_함께_존재하면_내부_정합성_오류를_반환한다() {
-            // given
-            Room room = roomWithId(ROOM_ID);
-            User requester = userWithId(USER_ID, "요청자");
-            AlarmOccurrence alarmOccurrence = alarmOccurrenceWith(requester, 11L);
-            AlarmMovement alarmMovement = mock(AlarmMovement.class);
-            givenCurrentMember();
-            given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
-            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByIdDesc(ROOM_ID))
-                .willReturn(List.of(alarmOccurrence));
-            given(alarmMovementRepository.findActiveByAlarmOccurrenceIn(List.of(alarmOccurrence))).willReturn(
-                List.of(alarmMovement));
-            given(alarmMovement.getAlarmOccurrence()).willReturn(alarmOccurrence);
-            given(alarmMovement.getGaveUpAt()).willReturn(NOW.minusMinutes(1));
-            given(alarmMovement.getArrivedAt()).willReturn(NOW);
-
-            // when
-            Throwable thrown = catchThrowable(() -> alarmMovementService.getMemberMovements(USER_ID, ROOM_ID));
-
-            // then
-            assertError(thrown, 500, "MOVEMENT500", "이동 상태를 조회할 수 없습니다.");
-        }
     }
 
     @Nested
@@ -311,7 +272,7 @@ class AlarmMovementServiceTest {
 
             // then
             assertError(thrown, 403, "MOVEMENT403", "해당 모임의 회원이 아닙니다.");
-            verifyNoInteractions(alarmOccurrenceRepository, alarmMovementRepository);
+            verifyNoInteractions(alarmOccurrenceRepository);
         }
     }
 
@@ -331,7 +292,6 @@ class AlarmMovementServiceTest {
 
             // then
             assertError(thrown, 404, "ALARM404", "존재하지 않는 알람 입니다.");
-            verifyNoInteractions(alarmMovementRepository);
         }
 
         @Test
@@ -367,7 +327,7 @@ class AlarmMovementServiceTest {
             assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
                 exception -> assertThat(exception.getCode())
                     .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_REQUEST_EMPTY));
-            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository, alarmMovementRepository);
+            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository);
         }
 
         @Test
@@ -382,7 +342,7 @@ class AlarmMovementServiceTest {
             assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
                 exception -> assertThat(exception.getCode())
                     .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_ALARM_OCCURRENCE_ID_REQUIRED));
-            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository, alarmMovementRepository);
+            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository);
         }
 
         @Test
@@ -397,7 +357,7 @@ class AlarmMovementServiceTest {
             assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
                 exception -> assertThat(exception.getCode())
                     .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_ALARM_OCCURRENCE_ID_INVALID));
-            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository, alarmMovementRepository);
+            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository);
         }
 
         @Test
@@ -412,7 +372,7 @@ class AlarmMovementServiceTest {
             assertThat(thrown).isInstanceOfSatisfying(GeneralException.class,
                 exception -> assertThat(exception.getCode())
                     .isEqualTo(AlarmMovementErrorStatus.MOVEMENT_ACTION_REQUIRED));
-            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository, alarmMovementRepository);
+            verifyNoInteractions(roomRepository, roomUserRepository, alarmOccurrenceRepository);
         }
     }
 
@@ -434,7 +394,6 @@ class AlarmMovementServiceTest {
 
             // then
             assertError(thrown, 403, "MOVEMENT403", "해당 알람에 대한 이동 상태를 변경할 권한이 없습니다.");
-            verifyNoInteractions(alarmMovementRepository);
         }
     }
 
@@ -465,17 +424,14 @@ class AlarmMovementServiceTest {
     }
 
     private AlarmOccurrence alarmOccurrenceWith(User user, Long alarmOccurrenceId) {
-        AlarmOccurrence alarmOccurrence = AlarmOccurrence.start(user, "alarm-" + alarmOccurrenceId, NOW,
-            LocalTime.of(8, 0), NOW);
-        ReflectionTestUtils.setField(alarmOccurrence, "id", alarmOccurrenceId);
-        return alarmOccurrence;
+        return alarmOccurrenceWith(user, alarmOccurrenceId, NOW.minusHours(1));
     }
 
-    private AlarmMovement movementOf(AlarmOccurrence alarmOccurrence, MovementStatus status) {
-        AlarmMovement alarmMovement = mock(AlarmMovement.class);
-        given(alarmMovement.getAlarmOccurrence()).willReturn(alarmOccurrence);
-        given(alarmMovement.getMovementStatus(NOW)).willReturn(status);
-        return alarmMovement;
+    private AlarmOccurrence alarmOccurrenceWith(User user, Long alarmOccurrenceId, LocalDateTime startedAt) {
+        AlarmOccurrence alarmOccurrence = AlarmOccurrence.start(user, "alarm-" + alarmOccurrenceId, startedAt,
+            LocalTime.of(8, 0), startedAt);
+        ReflectionTestUtils.setField(alarmOccurrence, "id", alarmOccurrenceId);
+        return alarmOccurrence;
     }
 
     private void assertError(Throwable thrown, int status, String code, String message) {

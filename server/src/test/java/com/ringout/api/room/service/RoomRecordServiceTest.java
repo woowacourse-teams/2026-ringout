@@ -6,8 +6,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
-import com.ringout.api.alarmmovement.domain.AlarmMovement;
-import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
+import com.ringout.api.alarmmovement.domain.MovementAction;
 import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
@@ -49,15 +48,12 @@ class RoomRecordServiceTest {
     @Mock
     private AlarmOccurrenceRepository alarmOccurrenceRepository;
 
-    @Mock
-    private AlarmMovementRepository alarmMovementRepository;
-
     private RoomRecordService roomRecordService;
 
     @BeforeEach
     void setUp() {
         roomRecordService = new RoomRecordService(
-            roomRepository, roomUserRepository, alarmOccurrenceRepository, alarmMovementRepository
+            roomRepository, roomUserRepository, alarmOccurrenceRepository
         );
     }
 
@@ -129,17 +125,12 @@ class RoomRecordServiceTest {
             LocalDate activityDate = LocalDate.of(2026, 9, 16);
             User member = userWithId(USER_ID, "야간러너");
             AlarmOccurrence occurrence = occurrenceWithId(member, 101L, LocalDateTime.of(2026, 9, 16, 23, 50));
-            AlarmMovement movement = AlarmMovement.of(
-                occurrence,
-                LocalDateTime.of(2026, 9, 16, 23, 55),
-                null,
-                LocalDateTime.of(2026, 9, 17, 0, 20)
-            );
+            occurrence.changeMovement(MovementAction.START_MOVEMENT, LocalDateTime.of(2026, 9, 16, 23, 55));
+            occurrence.changeMovement(MovementAction.ARRIVE, LocalDateTime.of(2026, 9, 17, 0, 20));
             givenCurrentMembers(member, member);
             given(alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetween(
                 ROOM_ID, activityDate.atStartOfDay(), activityDate.plusDays(1).atStartOfDay()))
                 .willReturn(List.of(occurrence));
-            given(alarmMovementRepository.findActiveByAlarmOccurrenceIn(List.of(occurrence))).willReturn(List.of(movement));
 
             // when
             RoomRecordsResponse response = roomRecordService.getRoomRecords(USER_ID, ROOM_ID, activityDate);

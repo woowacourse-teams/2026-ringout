@@ -1,13 +1,11 @@
 package com.ringout.api.alarmmovement.service;
 
-import com.ringout.api.alarmmovement.domain.AlarmMovement;
 import com.ringout.api.alarmmovement.domain.MovementAction;
 import com.ringout.api.alarmmovement.domain.MovementStatus;
 import com.ringout.api.alarmmovement.dto.request.AlarmMovementRequest;
 import com.ringout.api.alarmmovement.dto.response.AlarmMovementResponse;
 import com.ringout.api.alarmmovement.dto.response.MemberMovementResponse;
 import com.ringout.api.alarmmovement.dto.response.MemberMovementsResponse;
-import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
 import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
 import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
@@ -38,7 +36,6 @@ public class AlarmMovementService {
     private final RoomRepository roomRepository;
     private final RoomUserRepository roomUserRepository;
     private final AlarmOccurrenceRepository alarmOccurrenceRepository;
-    private final AlarmMovementRepository alarmMovementRepository;
     private final RoomActivityService roomActivityService;
 
     private final Clock clock;
@@ -52,9 +49,7 @@ public class AlarmMovementService {
                 request.alarmOccurrenceId())
             .orElseThrow(() -> new GeneralException(AlarmMovementErrorStatus.ALARM_NOT_FOUND));
         validateAlarmOccurrenceOwner(alarmOccurrence, userId);
-        AlarmMovement alarmMovement = findAlarmMovement(alarmOccurrence, request.alarmOccurrenceId());
-
-        MovementStatus movementStatus = alarmMovement.change(request.action(), LocalDateTime.now(clock));
+        MovementStatus movementStatus = alarmOccurrence.changeMovement(request.action(), LocalDateTime.now(clock));
         roomActivityService.recordMovementActivity(room, LocalDateTime.now(clock));
         logMovementStatusChanged(userId, roomId, request.alarmOccurrenceId(), request.action(), movementStatus);
 
@@ -69,12 +64,9 @@ public class AlarmMovementService {
 
         List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
         Map<Long, AlarmOccurrence> latestAlarmOccurrenceByUserId = findLatestAlarmOccurrenceByUserId(roomId);
-        Map<AlarmOccurrence, AlarmMovement> movementByAlarmOccurrence = findMovementByAlarmOccurrence(
-            latestAlarmOccurrenceByUserId.values());
-
         List<MemberMovementResponse> members = roomUsers.stream()
             .map(roomUser -> toMemberMovementResponse(roomUser,
-                latestAlarmOccurrenceByUserId.get(roomUser.getUser().getId()), movementByAlarmOccurrence))
+                latestAlarmOccurrenceByUserId.get(roomUser.getUser().getId())))
             .sorted(NicknameComparator.comparing(MemberMovementResponse::nickname))
             .toList();
 
@@ -113,57 +105,26 @@ public class AlarmMovementService {
 
     private Map<Long, AlarmOccurrence> findLatestAlarmOccurrenceByUserId(Long roomId) {
         Map<Long, AlarmOccurrence> latestAlarmOccurrenceByUserId = new LinkedHashMap<>();
-        alarmOccurrenceRepository.findActiveByRoomIdOrderByIdDesc(roomId)
+        alarmOccurrenceRepository.findActiveByRoomIdOrderByStartedAtDescIdDesc(roomId)
             .forEach(alarmOccurrence -> latestAlarmOccurrenceByUserId.putIfAbsent(
                 alarmOccurrence.getUser().getId(), alarmOccurrence));
         return latestAlarmOccurrenceByUserId;
     }
 
-    private Map<AlarmOccurrence, AlarmMovement> findMovementByAlarmOccurrence(
-        Iterable<AlarmOccurrence> alarmOccurrences) {
-        List<AlarmOccurrence> alarmOccurrenceList = java.util.stream.StreamSupport.stream(
-                alarmOccurrences.spliterator(), false)
-            .toList();
-        if (alarmOccurrenceList.isEmpty()) {
-            return Map.of();
-        }
-        return alarmMovementRepository.findActiveByAlarmOccurrenceIn(alarmOccurrenceList).stream()
-            .collect(java.util.stream.Collectors.toMap(AlarmMovement::getAlarmOccurrence, alarmMovement -> alarmMovement));
-    }
-
-    private MemberMovementResponse toMemberMovementResponse(RoomUser roomUser, AlarmOccurrence alarmOccurrence,
-        Map<AlarmOccurrence, AlarmMovement> movementByAlarmOccurrence) {
+    private MemberMovementResponse toMemberMovementResponse(RoomUser roomUser, AlarmOccurrence alarmOccurrence) {
         if (alarmOccurrence == null) {
             return new MemberMovementResponse(roomUser.getUser().getId(), roomUser.getUser().getNickname().getValue(),
                 MovementStatus.IDLE);
         }
 
-        AlarmMovement alarmMovement = movementByAlarmOccurrence.get(alarmOccurrence);
-        if (alarmMovement == null) {
-            log.error("AlarmMovement record is missing. alarmOccurrenceId={}", alarmOccurrence.getId());
-            throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_RECORD_MISSING);
-        }
-        if (alarmMovement.getGaveUpAt() != null && alarmMovement.getArrivedAt() != null) {
-            log.error("AlarmMovement terminal states conflict. alarmOccurrenceId={}", alarmOccurrence.getId());
-            throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_TERMINAL_STATE_INCONSISTENT);
-        }
-
         return new MemberMovementResponse(roomUser.getUser().getId(), roomUser.getUser().getNickname().getValue(),
-            alarmMovement.getMovementStatus(LocalDateTime.now(clock)));
+            alarmOccurrence.getMovementStatus(LocalDateTime.now(clock)));
     }
 
     private void validateAlarmOccurrenceOwner(AlarmOccurrence alarmOccurrence, Long userId) {
         if (!alarmOccurrence.isOwnedBy(userId)) {
             throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ACTION_FORBIDDEN);
         }
-    }
-
-    private AlarmMovement findAlarmMovement(AlarmOccurrence alarmOccurrence, String alarmOccurrenceId) {
-        return alarmMovementRepository.findByAlarmOccurrence(alarmOccurrence)
-            .orElseThrow(() -> {
-                log.error("AlarmMovement record is missing. alarmOccurrenceId={}", alarmOccurrenceId);
-                return new GeneralException(AlarmMovementErrorStatus.MOVEMENT_RECORD_MISSING);
-            });
     }
 
     private void logMovementStatusChanged(Long userId, Long roomId, String alarmOccurrenceId, MovementAction action,
