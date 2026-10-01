@@ -1,6 +1,7 @@
 package com.ringout.api.room.service;
 
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.common.util.NicknameComparator;
 import com.ringout.api.file.domain.ImageFile;
 import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.room.domain.Room;
@@ -12,6 +13,8 @@ import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
+import com.ringout.api.room.dto.response.RoomManagementMemberResponse;
+import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomSummaryResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
@@ -92,6 +95,22 @@ public class RoomService {
         List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
 
         return RoomDetailResponse.from(room, user.getId(), roomUsers, resolveRoomImageUrl(room));
+    }
+
+    @Transactional(readOnly = true)
+    public RoomMembersResponse getMembersForManagement(Long userId, Long roomId) {
+        User user = findAuthenticatedUser(userId);
+        Room room = findActiveRoom(roomId);
+        if (!room.isHostedBy(user.getId())) {
+            throw new GeneralException(RoomErrorStatus.ROOM_MEMBER_MANAGEMENT_FORBIDDEN);
+        }
+
+        List<RoomManagementMemberResponse> members = roomUserRepository.findActiveByRoomId(roomId).stream()
+            .map(roomUser -> RoomManagementMemberResponse.from(roomUser, room))
+            .sorted(NicknameComparator.comparing(RoomManagementMemberResponse::nickname))
+            .toList();
+
+        return new RoomMembersResponse(members);
     }
 
     @Transactional

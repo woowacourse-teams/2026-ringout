@@ -23,6 +23,8 @@ import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
+import com.ringout.api.room.dto.response.RoomManagementMemberResponse;
+import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomMemberResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
@@ -1242,6 +1244,81 @@ class RoomServiceTest {
             assertThat(thrown)
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_DETAIL_FORBIDDEN));
+            verify(roomUserRepository, never()).findActiveByRoomId(roomId);
+        }
+    }
+
+    @Nested
+    class 모임방_회원_관리_조회_처리 {
+
+        @Test
+        void 방장은_활성_회원의_가입일시와_역할을_닉네임순으로_조회한다() {
+            // given
+            Long hostUserId = 1L;
+            Long roomId = 10L;
+            User host = userWithId(hostUserId, "방장");
+            User englishMember = userWithId(2L, "Alice");
+            User koreanMember = userWithId(3L, "가나다");
+            Room room = roomWithHost(hostUserId, roomId);
+            RoomUser hostRoomUser = RoomUser.of(host, room);
+            RoomUser englishRoomUser = RoomUser.of(englishMember, room);
+            RoomUser koreanRoomUser = RoomUser.of(koreanMember, room);
+            ReflectionTestUtils.setField(hostRoomUser, "created_at", LocalDateTime.of(2026, 9, 20, 10, 30));
+            ReflectionTestUtils.setField(englishRoomUser, "created_at", LocalDateTime.of(2026, 9, 21, 14, 20));
+            ReflectionTestUtils.setField(koreanRoomUser, "created_at", LocalDateTime.of(2026, 9, 22, 9, 0));
+            given(userRepository.findById(hostUserId)).willReturn(Optional.of(host));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+            given(roomUserRepository.findActiveByRoomId(roomId))
+                .willReturn(List.of(englishRoomUser, hostRoomUser, koreanRoomUser));
+
+            // when
+            RoomMembersResponse response = roomService.getMembersForManagement(hostUserId, roomId);
+
+            // then
+            assertThat(response.members()).extracting(RoomManagementMemberResponse::nickname)
+                .containsExactly("가나다", "방장", "Alice");
+            assertThat(response.members()).extracting(RoomManagementMemberResponse::membershipRole)
+                .containsExactly("MEMBER", "OWNER", "MEMBER");
+            assertThat(response.members().get(1).joinedAt()).isEqualTo(LocalDateTime.of(2026, 9, 20, 10, 30));
+            verify(roomUserRepository).findActiveByRoomId(roomId);
+        }
+
+        @Test
+        void 방장이_아닌_사용자는_회원_관리를_조회할_수_없다() {
+            // given
+            Long memberUserId = 2L;
+            Long roomId = 10L;
+            User member = userWithId(memberUserId, "일반회원");
+            Room room = roomWithHost(1L, roomId);
+            given(userRepository.findById(memberUserId)).willReturn(Optional.of(member));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.getMembersForManagement(memberUserId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_MEMBER_MANAGEMENT_FORBIDDEN));
+            verify(roomUserRepository, never()).findActiveByRoomId(roomId);
+        }
+
+        @Test
+        void 존재하지_않거나_삭제된_모임방의_회원_관리를_조회할_수_없다() {
+            // given
+            Long hostUserId = 1L;
+            Long roomId = 10L;
+            User host = userWithId(hostUserId, "방장");
+            given(userRepository.findById(hostUserId)).willReturn(Optional.of(host));
+            given(roomRepository.findActiveById(roomId)).willReturn(Optional.empty());
+
+            // when
+            Throwable thrown = catchThrowable(() -> roomService.getMembersForManagement(hostUserId, roomId));
+
+            // then
+            assertThat(thrown)
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(RoomErrorStatus.ROOM_NOT_FOUND));
             verify(roomUserRepository, never()).findActiveByRoomId(roomId);
         }
     }
