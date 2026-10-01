@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +40,6 @@ fun RoomListScreen(
     ) {
         RoomListHeader(
             onCreateRoom = onCreateRoom,
-            modifier = Modifier.offset(x = 10.dp),
         )
 
         Spacer(Modifier.height(16.dp))

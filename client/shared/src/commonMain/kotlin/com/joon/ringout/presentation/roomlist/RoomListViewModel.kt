@@ -14,9 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class RoomListViewModel(
-    private val loadRooms: suspend () -> Result<List<RoomUiModel>> = {
-        Result.success(emptyList())
-    },
+    private val loadRooms: suspend () -> Result<List<RoomUiModel>>,
     coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     private val scope = coroutineScope ?: viewModelScope
@@ -41,11 +39,11 @@ class RoomListViewModel(
             allRoomsErrorMessage = if (hadRouteState) null else uiState.allRoomsErrorMessage,
             isAuthenticated = authSessionState == AuthSessionState.Authenticated,
         )
-        requestRooms()
+        if (authSessionState != AuthSessionState.Restoring) requestRooms()
     }
 
     internal fun onRetryRooms() {
-        if (lastAuthSessionState != null) requestRooms()
+        if (lastAuthSessionState != null && lastAuthSessionState != AuthSessionState.Restoring) requestRooms()
     }
 
     private fun requestRooms() {
@@ -72,11 +70,11 @@ class RoomListViewModel(
                 if (requestId != roomsRequestId) return@launch
                 uiState = uiState.copy(
                     isLoadingAllRooms = false,
-                    allRoomsErrorMessage = error.message ?: RoomListLoadErrorMessage,
+                    allRoomsErrorMessage = RoomListLoadErrorMessage,
                 )
             }
         }
     }
 }
 
-internal const val RoomListLoadErrorMessage = "모임 목록을 불러오지 못했습니다."
+internal const val RoomListLoadErrorMessage = "모임 목록을 불러오는 중 문제가 발생했어요."

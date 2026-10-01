@@ -15,10 +15,9 @@ class RoomUiModelTest {
     }
 
     @Test
-    fun `소개 문구가 비어 있으면 모임 모델을 만들 수 없다`() {
-        assertFailsWith<IllegalArgumentException> {
-            previewRoom.copy(description = " \n\t")
-        }
+    fun `소개 문구가 비어 있어도 서버 응답을 모임 모델로 표현한다`() {
+        assertEquals("", previewRoom.copy(description = "").description)
+        assertEquals(" \n\t", previewRoom.copy(description = " \n\t").description)
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.MissionHistoryRepository
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
 import com.joon.ringout.domain.preferences.SystemThemeModeReader
+import com.joon.ringout.domain.room.RoomRepository
 
 interface AppContainer {
     val termsRepository: com.joon.ringout.domain.terms.TermsRepository
@@ -18,6 +19,7 @@ interface AppContainer {
     val authSession: AuthSession
     val authRepository: AuthRepository
     val memberRepository: MemberRepository
+    val roomRepository: RoomRepository
     val destinationRepository: DestinationRepository
     val alarmActivityRepository: AlarmActivityRepository
     val missionHistoryRepository: MissionHistoryRepository

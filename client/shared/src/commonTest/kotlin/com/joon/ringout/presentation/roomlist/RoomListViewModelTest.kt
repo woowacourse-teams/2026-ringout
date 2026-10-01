@@ -16,6 +16,31 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomListViewModelTest {
     @Test
+    fun `인증 복구 중에는 목록 요청을 보류하고 복구 후 조회한다`() = runTest {
+        var roomsCalls = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                roomsCalls += 1
+                Result.success(listOf(previewRoom))
+            },
+            coroutineScope = this,
+        )
+
+        viewModel.onRouteVisible(AuthSessionState.Restoring)
+        viewModel.onRetryRooms()
+        runCurrent()
+
+        assertEquals(0, roomsCalls)
+        assertFalse(viewModel.uiState.isLoadingAllRooms)
+
+        viewModel.onRouteVisible(AuthSessionState.Authenticated)
+        runCurrent()
+
+        assertEquals(1, roomsCalls)
+        assertEquals(listOf(previewRoom), viewModel.uiState.allRooms)
+    }
+
+    @Test
     fun `전체 목록 한 번으로 참여 목록을 분리하고 전체 목록에도 같은 방을 유지한다`() = runTest {
         var roomsCalls = 0
         val notJoinedRoom = previewRoom.copy(id = "room-2", isJoined = false)
@@ -89,7 +114,7 @@ class RoomListViewModelTest {
         viewModel.onRouteVisible(AuthSessionState.Authenticated)
         runCurrent()
 
-        assertEquals("조회 실패", viewModel.uiState.allRoomsErrorMessage)
+        assertEquals("모임 목록을 불러오는 중 문제가 발생했어요.", viewModel.uiState.allRoomsErrorMessage)
         assertFalse(viewModel.uiState.isLoadingAllRooms)
 
         viewModel.onRetryRooms()
