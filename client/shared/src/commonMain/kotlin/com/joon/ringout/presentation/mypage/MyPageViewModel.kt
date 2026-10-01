@@ -16,7 +16,6 @@ import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
-import com.joon.ringout.presentation.mypage.model.MyPageDataAction
 import com.joon.ringout.presentation.mypage.model.MyPageUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -84,7 +83,7 @@ class MyPageViewModel(
 
     fun onSessionRestoring() {
         cancelProfileLoad()
-        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading, dataActionNotice = null)
+        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading)
     }
 
     fun onAuthenticated() {
@@ -93,7 +92,7 @@ class MyPageViewModel(
 
     fun onLoggedOut() {
         cancelProfileLoad()
-        uiState = uiState.copy(accountStatus = MyPageAccountStatus.LoggedOut, dataActionNotice = null)
+        uiState = uiState.copy(accountStatus = MyPageAccountStatus.LoggedOut)
     }
 
     fun retryAccount() {
@@ -126,18 +125,6 @@ class MyPageViewModel(
         if (uiState.accountAction is MyPageAccountActionState.Error) {
             uiState = uiState.copy(accountAction = MyPageAccountActionState.Idle)
         }
-    }
-
-    fun confirmDataAction(action: MyPageDataAction) {
-        if (uiState.accountStatus !is MyPageAccountStatus.LoggedIn) return
-        if (uiState.accountAction != MyPageAccountActionState.Idle) return
-
-        // 서버 연동 전에는 성공으로 표시하지 않고 준비 중 안내를 제공한다.
-        uiState = uiState.copy(dataActionNotice = action)
-    }
-
-    fun dismissDataActionNotice() {
-        uiState = uiState.copy(dataActionNotice = null)
     }
 
     fun consumeAccountActionCompletedEvent(eventId: Long) {
@@ -215,12 +202,12 @@ class MyPageViewModel(
     private fun loadProfile() {
         memberRepository.getCachedProfile()?.let { profile ->
             cancelProfileLoad()
-            uiState = uiState.copy(accountStatus = profile.toAccountStatus(), dataActionNotice = null)
+            uiState = uiState.copy(accountStatus = profile.toAccountStatus())
             return
         }
         profileLoadJob?.cancel()
         val currentRequestId = ++profileRequestId
-        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading, dataActionNotice = null)
+        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading)
         profileLoadJob = scope.launch {
             try {
                 val profile = memberRepository.getProfile()
@@ -261,7 +248,6 @@ class MyPageViewModel(
         val currentRequestId = ++accountActionRequestId
         uiState = uiState.copy(
             accountAction = MyPageAccountActionState.InProgress(action),
-            dataActionNotice = null,
         )
         accountActionJob = scope.launch {
             try {
