@@ -1,6 +1,8 @@
 package com.ringout.api.room.service;
 
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.file.domain.ImageFile;
+import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomBlackList;
 import com.ringout.api.room.domain.RoomUser;
@@ -19,6 +21,7 @@ import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
 import com.ringout.api.user.status.UserErrorStatus;
+import java.net.URI;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,10 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class RoomService {
 
     private static final String DEFAULT_ROOM_IMAGE_URL = "/images/default-room.png";
+    private static final String ROOM_IMAGE_DIRECTORY = "images/rooms";
     private final RoomRepository roomRepository;
     private final RoomUserRepository roomUserRepository;
     private final RoomBlackListRepository roomBlackListRepository;
     private final UserRepository userRepository;
+    private final ImageFileService imageFileService;
 
     @Transactional
     public RoomCreateResponse createRoom(Long userId, RoomCreateRequest request) {
@@ -57,8 +62,7 @@ public class RoomService {
             .addKeyValue("roomId", savedRoom.getId())
             .addKeyValue("activityDayCount", savedRoom.getActivityDays().size())
             .log("모임방 생성 성공");
-
-        // TODO: imageURL 어떻게 관리해야하는지 알아야함. 우선 임시 링크 반환
+        
         return RoomCreateResponse.from(savedRoom, roomUser, DEFAULT_ROOM_IMAGE_URL);
     }
 
@@ -67,7 +71,7 @@ public class RoomService {
         List<RoomSummaryResponse> rooms = roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc().stream()
             .map(room -> RoomSummaryResponse.from(
                 room,
-                DEFAULT_ROOM_IMAGE_URL,
+                resolveRoomImageUrl(room),
                 roomUserRepository.countActiveByRoomId(room.getId()),
                 userId != null && roomUserRepository.existsActiveByRoomIdAndUserId(room.getId(), userId)
             ))
@@ -86,7 +90,7 @@ public class RoomService {
 
         List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
 
-        return RoomDetailResponse.from(room, user.getId(), roomUsers);
+        return RoomDetailResponse.from(room, user.getId(), roomUsers, resolveRoomImageUrl(room));
     }
 
     @Transactional
@@ -106,7 +110,7 @@ public class RoomService {
             .addKeyValue("roomId", roomId)
             .log("모임방 참여 성공");
 
-        return RoomDetailResponse.from(room, user.getId(), roomUsers);
+        return RoomDetailResponse.from(room, user.getId(), roomUsers, resolveRoomImageUrl(room));
     }
 
     @Transactional
@@ -135,6 +139,16 @@ public class RoomService {
             room.recordActivityAt(java.time.LocalDateTime.now());
         }
 
+        if (request.image() != null) {
+            ImageFile previousImage = room.getImage();
+            ImageFile uploadedImage = imageFileService.upload(request.image(), ROOM_IMAGE_DIRECTORY);
+            room.changeImage(uploadedImage);
+
+            if (previousImage != null) {
+                imageFileService.delete(previousImage);
+            }
+        }
+
         log.atInfo()
             .addKeyValue("event", "room_update_succeeded")
             .addKeyValue("userId", userId)
@@ -144,8 +158,7 @@ public class RoomService {
             .addKeyValue("updatedImage", request.image() != null)
             .log("모임방 수정 성공");
 
-        // TODO: imageURL 어떻게 관리해야하는지 알아야함. 우선 임시 링크 반환
-        return RoomUpdateResponse.from(room, DEFAULT_ROOM_IMAGE_URL);
+        return RoomUpdateResponse.from(room, resolveRoomImageUrl(room));
     }
 
     @Transactional
@@ -271,6 +284,16 @@ public class RoomService {
             throw new GeneralException(RoomErrorStatus.ROOM_JOIN_FORBIDDEN);
         }
 
+    }
+
+    private String resolveRoomImageUrl(Room room) {
+        ImageFile image = room.getImage();
+        if (image == null) {
+            return DEFAULT_ROOM_IMAGE_URL;
+        }
+
+        URI imageUri = imageFileService.createReadUri(image);
+        return imageUri.toString();
     }
 
 }

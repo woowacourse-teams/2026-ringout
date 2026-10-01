@@ -161,6 +161,8 @@ class RoomServiceTest {
             given(roomUserRepository.existsActiveByRoomIdAndUserId(10L, userId)).willReturn(true);
             given(roomUserRepository.existsActiveByRoomIdAndUserId(20L, userId)).willReturn(false);
             given(roomUserRepository.existsActiveByRoomIdAndUserId(30L, userId)).willReturn(false);
+            URI roomImageUri = URI.create("https://example.com/room-1.png?signature=test");
+            given(imageFileService.createReadUri(roomUpdated.getImage())).willReturn(roomImageUri);
 
             // when
             RoomListResponse response = roomService.getRooms(userId);
@@ -170,7 +172,9 @@ class RoomServiceTest {
             assertThat(response.rooms().get(0).isJoined()).isFalse();
             assertThat(response.rooms().get(1).memberCount()).isEqualTo(3);
             assertThat(response.rooms().get(2).isJoined()).isTrue();
+            assertThat(response.rooms().get(2).imageUrl()).isEqualTo(roomImageUri.toString());
             verify(roomRepository).findAllActiveOrderByLatestActivityAtDescIdAsc();
+            verify(imageFileService).createReadUri(roomUpdated.getImage());
         }
 
         @Test
@@ -1096,6 +1100,8 @@ class RoomServiceTest {
             given(roomUserRepository.findActiveByRoomIdAndUserId(roomId, userId))
                 .willReturn(Optional.of(RoomUser.of(requester, room)));
             given(roomUserRepository.findActiveByRoomId(roomId)).willReturn(roomUsers);
+            URI roomImageUri = URI.create("https://example.com/room-1.png?signature=test");
+            given(imageFileService.createReadUri(room.getImage())).willReturn(roomImageUri);
 
             // when
             RoomDetailResponse response = roomService.getRoom(userId, roomId);
@@ -1104,7 +1110,7 @@ class RoomServiceTest {
             assertThat(response.roomId()).isEqualTo(roomId);
             assertThat(response.name()).isEqualTo("아침 운동 모임");
             assertThat(response.description()).isEqualTo("매주 함께 운동하고 인증하는 모임입니다.");
-            assertThat(response.imageUrl()).isEqualTo("https://example.com/images/room-1.png");
+            assertThat(response.imageUrl()).isEqualTo(roomImageUri.toString());
             assertThat(response.activityDays()).containsExactly("MONDAY", "WEDNESDAY", "FRIDAY");
             assertThat(response.activityTime()).isEqualTo("08:00");
             assertThat(response.memberCount()).isEqualTo(4);
@@ -1116,6 +1122,7 @@ class RoomServiceTest {
             assertThat(response.members()).extracting(RoomMemberResponse::profileImageUrl)
                 .containsExactly(null, null, "https://example.com/profiles/2.png", null);
             verify(roomUserRepository).findActiveByRoomId(roomId);
+            verify(imageFileService).createReadUri(room.getImage());
         }
 
         @Test
@@ -1247,7 +1254,6 @@ class RoomServiceTest {
         ReflectionTestUtils.setField(room, "created_at", createdAt);
         if (imageUrl != null) {
             ImageFile image = mock(ImageFile.class);
-            given(image.getUrl()).willReturn(imageUrl);
             ReflectionTestUtils.setField(room, "image", image);
         }
         return room;

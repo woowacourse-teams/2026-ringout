@@ -23,10 +23,9 @@ public record RoomDetailResponse(
     @Schema(description = "방장과 현재 참여 중인 회원 목록. 닉네임 정렬") List<RoomMemberResponse> members
 ) {
 
-    private static final String DEFAULT_ROOM_IMAGE_URL = "/images/default-room.png";
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
-    public static RoomDetailResponse from(Room room, Long currentUserId, List<RoomUser> roomUsers) {
+    public static RoomDetailResponse from(Room room, Long currentUserId, List<RoomUser> roomUsers, String imageUrl) {
         List<RoomMemberResponse> members = roomUsers.stream()
             .map(RoomMemberResponse::from)
             .sorted(Comparator.comparing(RoomMemberResponse::nickname, RoomDetailResponse::compareNickname))
@@ -37,7 +36,6 @@ public record RoomDetailResponse(
             .stream()
             .toList();
 
-        String imageUrl = room.getImage() == null ? DEFAULT_ROOM_IMAGE_URL : room.getImage().getUrl();
         String membershipRole = room.isHostedBy(currentUserId) ? "OWNER" : "MEMBER";
 
         return new RoomDetailResponse(

@@ -21,7 +21,7 @@ public record RoomUpdateRequest(
     )
     String description,
     @Schema(
-        description = "이미지 파일. 빈 파일 또는 image/*가 아닌 콘텐츠 타입은 거부됩니다. 현재 파일은 형식만 검증하고 저장하지 않습니다. 변경하지 않으면 파일 파트를 생략합니다.",
+        description = "이미지 파일. 빈 파일 또는 image/*가 아닌 콘텐츠 타입은 거부됩니다. 전달하면 S3에 저장하고 대표 이미지를 교체합니다. 변경하지 않으면 파일 파트를 생략합니다.",
         format = "binary",
         nullable = true
     )

@@ -468,7 +468,7 @@ public interface RoomControllerApi {
 
     @Operation(
         summary = "모임 방 수정",
-        description = "방장만 방 이름·소개 정보를 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, image 중 하나 이상을 전달해야 합니다. 현재 image는 내용 형식만 검증하며 저장하지 않고, 응답의 imageUrl은 항상 /images/default-room.png입니다. name 또는 description 변경 시 최신 활동 시각을 갱신합니다.",
+        description = "방장만 방 이름·소개 정보를 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, image 중 하나 이상을 전달해야 합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, 응답에는 해당 이미지의 presigned 조회 URL을 반환합니다. 이미지가 없으면 /images/default-room.png를 반환합니다. name 또는 description 변경 시 최신 활동 시각을 갱신합니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
@@ -486,7 +486,7 @@ public interface RoomControllerApi {
                         "roomId": 1,
                         "name": "새로운 아침 운동 모임",
                         "description": "매주 아침 함께 운동하는 모임입니다.",
-                        "imageUrl": "/images/default-room.png"
+                        "imageUrl": "https://example.com/images/room-1.png?signature=test"
                       }
                     }
                     """)
@@ -555,7 +555,7 @@ public interface RoomControllerApi {
         @Parameter(description = "수정할 모임 방 식별자", required = true, example = "1") Long roomId,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
-            description = "multipart/form-data. name, description, image 중 하나 이상 전달합니다. image는 현재 형식만 검증하며 저장되지 않습니다.",
+            description = "multipart/form-data. name, description, image 중 하나 이상 전달합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체합니다.",
             content = @Content(
                 mediaType = "multipart/form-data",
                 schema = @Schema(implementation = RoomUpdateRequest.class)
