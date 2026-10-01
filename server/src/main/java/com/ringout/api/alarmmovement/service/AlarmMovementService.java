@@ -12,6 +12,7 @@ import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
 import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.common.util.NicknameComparator;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.repository.RoomRepository;
@@ -20,7 +21,6 @@ import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.room.service.RoomActivityService;
 import java.time.Clock;
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,7 +75,7 @@ public class AlarmMovementService {
         List<MemberMovementResponse> members = roomUsers.stream()
             .map(roomUser -> toMemberMovementResponse(roomUser,
                 latestAlarmOccurrenceByUserId.get(roomUser.getUser().getId()), movementByAlarmOccurrence))
-            .sorted(memberNicknameComparator())
+            .sorted(NicknameComparator.comparing(MemberMovementResponse::nickname))
             .toList();
 
         return new MemberMovementsResponse(members);
@@ -150,22 +150,6 @@ public class AlarmMovementService {
 
         return new MemberMovementResponse(roomUser.getUser().getId(), roomUser.getUser().getNickname().getValue(),
             alarmMovement.getMovementStatus(LocalDateTime.now(clock)));
-    }
-
-    private Comparator<MemberMovementResponse> memberNicknameComparator() {
-        return Comparator.comparingInt((MemberMovementResponse member) -> nicknameGroup(member.nickname()))
-            .thenComparing(MemberMovementResponse::nickname);
-    }
-
-    private int nicknameGroup(String nickname) {
-        char firstCharacter = nickname.charAt(0);
-        if (firstCharacter >= '가' && firstCharacter <= '힣') {
-            return 0;
-        }
-        if ((firstCharacter >= 'A' && firstCharacter <= 'Z') || (firstCharacter >= 'a' && firstCharacter <= 'z')) {
-            return 1;
-        }
-        return 2;
     }
 
     private void validateAlarmOccurrenceOwner(AlarmOccurrence alarmOccurrence, Long userId) {
