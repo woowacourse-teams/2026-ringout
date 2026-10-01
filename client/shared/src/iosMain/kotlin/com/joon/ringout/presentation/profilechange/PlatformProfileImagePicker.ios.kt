@@ -31,7 +31,11 @@ import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.CoreFoundation.kCFURLPOSIXPathStyle
 import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreGraphics.CGImageRelease
+import platform.Foundation.dataWithContentsOfURL
+import platform.Foundation.NSData
 import platform.Foundation.NSURL
+import platform.UniformTypeIdentifiers.UTType
+import com.joon.ringout.domain.member.ProfileImageUpload
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
@@ -99,7 +103,7 @@ internal actual fun rememberProfileImagePicker(
                                     if (isProfileImageSizeTooLarge(fileSizeBytes)) {
                                         ProfileImagePickResult.TooLarge
                                     } else {
-                                        ProfileImagePickResult.Selected(decodePreviewImage(fileUrl))
+                                        readSelectedImage(fileUrl)
                                     }
                                 }.getOrElse { ProfileImagePickResult.Failure }
                             }
@@ -199,3 +203,18 @@ private fun decodePreviewImage(fileUrl: NSURL): ImageBitmap {
 
 private const val MaxPreviewDimension = 768
 private const val MaxEncodedPreviewBytes = 16L * 1024 * 1024
+
+@OptIn(ExperimentalForeignApi::class)
+private fun readSelectedImage(fileUrl: NSURL): ProfileImagePickResult {
+    // PHPicker 콜백이 끝나면 임시 URL이 사라질 수 있어 여기서 원본 파일을 읽는다.
+    val data = NSData.dataWithContentsOfURL(fileUrl) ?: error("The selected image could not be read")
+    if (isProfileImageSizeTooLarge(data.length.toLong())) return ProfileImagePickResult.TooLarge
+    val bytes = data.bytes?.readBytes(data.length.toInt()) ?: error("The selected image is empty")
+    val extension = fileUrl.pathExtension ?: error("The selected image type could not be read")
+    val contentType = UTType.typeWithFilenameExtension(extension)?.preferredMIMEType
+        ?: error("The selected image type could not be read")
+    return ProfileImagePickResult.Selected(
+        image = decodePreviewImage(fileUrl),
+        upload = ProfileImageUpload(bytes, contentType, "profile.${extension.lowercase()}"),
+    )
+}

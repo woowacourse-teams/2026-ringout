@@ -27,6 +27,7 @@ internal fun ProfileConfirmButton(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isSaving: Boolean = false,
 ) {
     val colors = profileChangeColors()
 
@@ -34,11 +35,11 @@ internal fun ProfileConfirmButton(
         modifier = modifier
             .fillMaxWidth()
             .height(ProfileConfirmTouchHeight)
-            .semantics { stateDescription = if (enabled) "사용 가능" else "사용 불가" }
+            .semantics { stateDescription = if (isSaving) "저장 중" else if (enabled) "사용 가능" else "사용 불가" }
             .clickable(
                 enabled = enabled,
                 role = Role.Button,
-                onClickLabel = "닉네임 변경 확인",
+                onClickLabel = "프로필 저장",
                 onClick = onClick,
             )
             .padding(vertical = ProfileConfirmTouchPadding),
@@ -55,7 +56,7 @@ internal fun ProfileConfirmButton(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "확인",
+                text = if (isSaving) "저장 중…" else "확인",
                 color = colors.actionContent,
                 maxLines = 1,
                 style = MaterialTheme.typography.labelLarge.copy(

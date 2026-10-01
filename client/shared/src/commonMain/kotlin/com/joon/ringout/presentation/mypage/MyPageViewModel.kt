@@ -107,6 +107,17 @@ class MyPageViewModel(
         loadProfileImage()
     }
 
+    fun refreshProfileFromCache() {
+        memberRepository.getCachedProfile()?.let { profile ->
+            cancelProfileLoad()
+            uiState = uiState.copy(accountStatus = profile.toAccountStatus())
+        }
+        memberRepository.getCachedProfileImage()?.let { image ->
+            cancelProfileImageLoad()
+            uiState = uiState.copy(profileImageUrl = image.url)
+        }
+    }
+
     fun onNicknameUpdated(nickname: String) {
         val profile = uiState.accountStatus as? MyPageAccountStatus.LoggedIn ?: return
         uiState = uiState.copy(

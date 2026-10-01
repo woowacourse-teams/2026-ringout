@@ -13,20 +13,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -56,6 +64,16 @@ internal fun ProfileChangeScreen(
 ) {
     val colors = profileChangeColors()
     val hasInput = uiState.nickname.isNotEmpty()
+    val nicknameSectionRequester = remember { BringIntoViewRequester() }
+    var isNicknameFocused by remember { mutableStateOf(false) }
+    var contentViewportHeight by remember { mutableIntStateOf(0) }
+
+    // 키보드로 본문 높이가 바뀌면 입력창과 검증 문구를 함께 표시한다.
+    LaunchedEffect(isNicknameFocused, contentViewportHeight) {
+        if (isNicknameFocused && contentViewportHeight > 0) {
+            nicknameSectionRequester.bringIntoView()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -68,12 +86,16 @@ internal fun ProfileChangeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .onSizeChanged { contentViewportHeight = it.height }
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = ProfileChangeHorizontalPadding, vertical = 12.dp),
         ) {
             ProfileChangeHeader(onBackClick = onBackClick)
             Spacer(Modifier.height(ProfileChangeHeaderToProfileImageSpacing))
             ProfileImageEditor(
                 profileImage = profileImage,
+                profileImageUrl = uiState.profileImageUrl,
+                enabled = !uiState.isSaving,
                 errorMessage = profileImageError,
                 onProfileImageChangeClick = onProfileImageChangeClick,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -92,20 +114,28 @@ internal fun ProfileChangeScreen(
                 ),
             )
             Spacer(Modifier.height(ProfileChangeTitleToInputSpacing))
-            NicknameInputField(
-                nickname = uiState.nickname,
-                hasInput = hasInput,
-                isValid = uiState.validation.isValid,
-                onNicknameChange = onNicknameChange,
-                onDone = onConfirmClick,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(NicknameInputToValidationSpacing))
-            NicknameValidationList(
-                isLengthValid = uiState.validation.isLengthValid,
-                hasOnlyAllowedCharacters = uiState.validation.hasOnlyAllowedCharacters,
-                modifier = Modifier.widthIn(max = NicknameValidationMaxWidth),
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(nicknameSectionRequester),
+            ) {
+                NicknameInputField(
+                    nickname = uiState.nickname,
+                    hasInput = hasInput,
+                    isValid = uiState.validation.isValid,
+                    onNicknameChange = onNicknameChange,
+                    onDone = onConfirmClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { isNicknameFocused = it.isFocused },
+                )
+                Spacer(Modifier.height(NicknameInputToValidationSpacing))
+                NicknameValidationList(
+                    isLengthValid = uiState.validation.isLengthValid,
+                    hasOnlyAllowedCharacters = uiState.validation.hasOnlyAllowedCharacters,
+                    modifier = Modifier.widthIn(max = NicknameValidationMaxWidth),
+                )
+            }
             uiState.errorMessage?.let { message ->
                 Spacer(Modifier.height(NicknameInputToValidationSpacing))
                 Text(
@@ -128,6 +158,7 @@ internal fun ProfileChangeScreen(
         ) {
             ProfileConfirmButton(
                 enabled = uiState.validation.isValid && !uiState.isSaving,
+                isSaving = uiState.isSaving,
                 onClick = onConfirmClick,
             )
         }

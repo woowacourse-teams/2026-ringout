@@ -55,8 +55,10 @@ internal class SessionProfileImageCache(
                             ensureCurrentSession(current.sessionIdentity)
                             val latest = state.value
                             if (latest.withdrawn) throw CancellationException("탈퇴한 계정의 응답입니다.")
-                            state.value = latest.copy(image = image)
-                            image
+                            // 업로드 전에 시작된 조회가 늦게 도착해도 저장한 사진을 유지한다.
+                            val result = latest.updatedImage ?: image
+                            state.value = latest.copy(image = result)
+                            result
                         })
                     } catch (error: Throwable) {
                         Result.failure<MemberProfileImage>(error)
@@ -86,6 +88,13 @@ internal class SessionProfileImageCache(
         }
     }
 
+    suspend fun update(identity: Any?, image: MemberProfileImage) = mutex.withLock {
+        ensureCurrentSession(identity)
+        val current = currentState()
+        if (current.withdrawn) throw CancellationException("탈퇴한 계정의 응답입니다.")
+        state.value = current.copy(image = image, updatedImage = image)
+    }
+
     suspend fun onWithdrawn(identity: Any?) = mutex.withLock {
         ensureCurrentSession(identity)
         state.value.request?.cancel()
@@ -109,6 +118,7 @@ internal class SessionProfileImageCache(
     private data class CacheState(
         val sessionIdentity: Any?,
         val image: MemberProfileImage? = null,
+        val updatedImage: MemberProfileImage? = null,
         val request: Deferred<Result<MemberProfileImage>>? = null,
         val requestId: Any? = null,
         val withdrawn: Boolean = false,

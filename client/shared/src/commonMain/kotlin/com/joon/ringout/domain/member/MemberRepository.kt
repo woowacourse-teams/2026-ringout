@@ -11,6 +11,8 @@ interface MemberRepository {
 
     suspend fun getProfileImage(): MemberProfileImage
 
+    suspend fun uploadProfileImage(image: ProfileImageUpload): MemberProfileImage
+
     suspend fun updateNickname(nickname: String): String
 
     suspend fun withdraw()

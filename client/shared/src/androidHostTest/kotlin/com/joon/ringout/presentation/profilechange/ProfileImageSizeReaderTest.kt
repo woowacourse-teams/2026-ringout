@@ -4,12 +4,27 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertNull
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class ProfileImageSizeReaderTest {
+    @Test
+    fun `업로드용 파일을 미리보기 변환 없이 그대로 읽는다`() {
+        val bytes = byteArrayOf(0, 1, 2, 127, -1)
+        assertContentEquals(bytes, readProfileImageBytes(ByteArrayInputStream(bytes)))
+    }
+
+    @Test
+    fun `업로드용 원본 읽기는 최대 크기를 초과하면 중단한다`() {
+        val input = CountingInputStream()
+        assertNull(readProfileImageBytes(input))
+        assertEquals(MaxProfileImageBytes + 1, input.bytesRead)
+    }
+
     @Test
     fun `제한 크기에서 끝나는 스트림을 허용한다`() {
         val inputStream = ByteArrayInputStream(ByteArray(MaxProfileImageBytes.toInt()))

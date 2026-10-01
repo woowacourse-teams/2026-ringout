@@ -11,6 +11,7 @@ import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthTerm
 import com.joon.ringout.domain.auth.SocialLoginOutcome
 import com.joon.ringout.domain.member.MemberProfile
+import com.joon.ringout.domain.member.ProfileImageUpload
 import com.joon.ringout.domain.member.MemberProfileImage
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
@@ -40,6 +41,18 @@ import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MyPageViewModelTest {
+    @Test
+    fun `프로필 저장 후 캐시 갱신은 마이페이지의 사진과 닉네임을 함께 반영한다`() = runTest {
+        val repository = FakeMemberRepository()
+        val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+        repository.storedProfile = MemberProfile("새닉네임", "member@example.com")
+        repository.storedImage = MemberProfileImage("https://example.com/new.jpg")
+        viewModel.refreshProfileFromCache()
+        assertEquals(MyPageAccountStatus.LoggedIn("새닉네임", "member@example.com"), viewModel.uiState.accountStatus)
+        assertEquals("https://example.com/new.jpg", viewModel.uiState.profileImageUrl)
+        assertEquals(0, repository.imageRequestCount)
+    }
+
     @Test
     fun `이미지 조회가 늦어도 계정 정보를 표시하고 응답 후 사진을 갱신한다`() = runTest {
         val pending = CompletableDeferred<MemberProfileImage>()
@@ -756,6 +769,8 @@ private class FakeMemberRepository(
     var imageRequestCount = 0
     var imageLoader: suspend () -> MemberProfileImage = { MemberProfileImage(null) }
     override fun getCachedProfileImage(): MemberProfileImage? = storedImage
+    override suspend fun uploadProfileImage(image: ProfileImageUpload): MemberProfileImage = error("사용하지 않는 요청입니다.")
+
     override suspend fun getProfileImage(): MemberProfileImage {
         imageRequestCount++
         return imageLoader()
