@@ -34,6 +34,7 @@ internal data class RoomHomeRecordsUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val canViewRecords: Boolean = true,
+    val isDataLoaded: Boolean = false,
 )
 
 internal data class RoomHomeMemberUiModel(
@@ -50,6 +51,7 @@ internal data class RoomHomeOngoingActivityUiModel(
 internal data class RoomHomeUiState(
     val room: RoomUiModel? = null,
     val members: List<RoomHomeMemberUiModel> = emptyList(),
+    val areMembersLoaded: Boolean = false,
     val nextScheduleText: String? = null,
     val remainingTimeText: String? = null,
     val isLoading: Boolean = false,

@@ -1,7 +1,17 @@
 package com.joon.ringout.presentation.roomlist
 
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.auth.AuthSession
+import com.joon.ringout.domain.room.RoomCreateInput
+import com.joon.ringout.domain.room.RoomMemberDetails
+import com.joon.ringout.domain.room.RoomMembershipDetails
+import com.joon.ringout.domain.room.RoomMembershipRole
+import com.joon.ringout.domain.room.RoomRepositoryException
+import com.joon.ringout.domain.room.RoomSummary
+import com.joon.ringout.presentation.roomlist.model.RoomMutationSource
+import com.joon.ringout.presentation.roomlist.model.RoomMutationType
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
+import com.joon.ringout.presentation.roomlist.model.toRoomUiModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -150,6 +160,174 @@ class RoomListViewModelTest {
         assertEquals(viewModel.uiState.allRooms, viewModel.uiState.joinedRooms)
     }
 
+    @Test
+    fun `생성 성공은 새 모임과 회원 정보를 즉시 반영하고 목록 갱신 오류에도 유지한다`() = runTest {
+        var loadCalls = 0
+        val existingRoom = previewRoom.copy(id = "room-2", isJoined = false)
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                loadCalls += 1
+                if (loadCalls == 1) Result.success(listOf(existingRoom))
+                else Result.failure(IllegalStateException("refresh failed"))
+            },
+            createRoom = { Result.success(membershipDetails(roomId = 11L)) },
+            coroutineScope = this,
+        )
+        val source = mutationSource(RoomMutationType.Create)
+        viewModel.onRouteVisible(AuthSessionState.Authenticated, identity = Any())
+        runCurrent()
+        viewModel.onMutationSourceVisible(source.entryId)
+
+        viewModel.createRoom(source, createInput())
+        runCurrent()
+
+        assertEquals(listOf("11", "room-2"), viewModel.uiState.allRooms.map(RoomUiModel::id))
+        assertEquals(listOf("11"), viewModel.uiState.joinedRooms.map(RoomUiModel::id))
+        assertEquals(RoomListRefreshErrorMessage, viewModel.uiState.allRoomsRefreshErrorMessage)
+        assertTrue(viewModel.mutationState.isSuccessful)
+        assertEquals("11", viewModel.mutationState.roomId)
+
+        val homeState = viewModel.roomHomeInitialState("11")
+        assertTrue(homeState.areMembersLoaded)
+        assertEquals(listOf("방장"), homeState.members.map { it.nickname })
+        assertFalse(homeState.recordsState.isDataLoaded)
+    }
+
+    @Test
+    fun `생성 응답 뒤 시작한 목록 갱신은 오래된 GET 응답이 덮어쓰지 못한다`() = runTest {
+        val lateRooms = CompletableDeferred<Result<List<RoomUiModel>>>()
+        var loadCalls = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                loadCalls += 1
+                if (loadCalls == 1) withContext(NonCancellable) { lateRooms.await() }
+                else Result.success(listOf(membershipDetails(roomId = 12L).room.toRoomUiModel()))
+            },
+            createRoom = { Result.success(membershipDetails(roomId = 12L)) },
+            coroutineScope = this,
+        )
+        val source = mutationSource(RoomMutationType.Create)
+        viewModel.onRouteVisible(AuthSessionState.Authenticated, identity = Any())
+        runCurrent()
+        viewModel.onMutationSourceVisible(source.entryId)
+
+        viewModel.createRoom(source, createInput())
+        runCurrent()
+        lateRooms.complete(Result.success(listOf(previewRoom.copy(id = "stale-room"))))
+        runCurrent()
+
+        assertEquals(2, loadCalls)
+        assertEquals(listOf("12"), viewModel.uiState.allRooms.map(RoomUiModel::id))
+    }
+
+    @Test
+    fun `로그인 계정이 바뀌면 진행 중 생성 결과와 회원 캐시를 버린다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val pendingCreate = CompletableDeferred<Result<RoomMembershipDetails>>()
+        val viewModel = RoomListViewModel(
+            loadRooms = { Result.success(emptyList()) },
+            createRoom = { withContext(NonCancellable) { pendingCreate.await() } },
+            authSession = session,
+            coroutineScope = this,
+        )
+        viewModel.onRouteVisible(session.state.value, session.identity.value)
+        runCurrent()
+        val source = mutationSource(RoomMutationType.Create)
+        viewModel.onMutationSourceVisible(source.entryId)
+        viewModel.createRoom(source, createInput())
+        runCurrent()
+
+        session.startNewSession()
+        viewModel.onAuthSessionChanged(session.state.value, session.identity.value)
+        runCurrent()
+        pendingCreate.complete(Result.success(membershipDetails(roomId = 13L)))
+        runCurrent()
+
+        assertTrue(viewModel.uiState.allRooms.isEmpty())
+        assertFalse(viewModel.mutationState.isSuccessful)
+        assertTrue(viewModel.roomHomeInitialState("13").room == null)
+    }
+
+    @Test
+    fun `이미 가입한 응답이면 목록을 다시 받아 가입 상태를 확인한다`() = runTest {
+        var loadCalls = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                loadCalls += 1
+                val joined = loadCalls > 1
+                Result.success(listOf(previewRoom.copy(id = "1", isJoined = joined)))
+            },
+            joinRoom = { Result.failure(RoomRepositoryException(409, "ROOM409", "이미 가입함")) },
+            coroutineScope = this,
+        )
+        val source = mutationSource(RoomMutationType.Join, roomId = "1")
+        viewModel.onRouteVisible(AuthSessionState.Authenticated, identity = Any())
+        runCurrent()
+        viewModel.onMutationSourceVisible(source.entryId)
+
+        viewModel.joinRoom(source)
+        runCurrent()
+
+        assertEquals(2, loadCalls)
+        assertEquals("1", viewModel.uiState.joinedRooms.single().id)
+        assertEquals("이미 참여 중인 모임이에요. 목록의 가입 상태를 갱신했어요.", viewModel.mutationState.errorMessage)
+        assertTrue(viewModel.mutationState.isMembershipConfirmed)
+    }
+
+    @Test
+    fun `같은 화면에서 빠르게 가입을 눌러도 POST는 한 번만 실행한다`() = runTest {
+        val pendingJoin = CompletableDeferred<Result<RoomMembershipDetails>>()
+        var joinCalls = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = { Result.success(emptyList()) },
+            joinRoom = {
+                joinCalls += 1
+                pendingJoin.await()
+            },
+            coroutineScope = this,
+        )
+        val source = mutationSource(RoomMutationType.Join, roomId = "1")
+        viewModel.onRouteVisible(AuthSessionState.Authenticated, identity = Any())
+        runCurrent()
+        viewModel.onMutationSourceVisible(source.entryId)
+
+        viewModel.joinRoom(source)
+        viewModel.joinRoom(source)
+        runCurrent()
+
+        assertEquals(1, joinCalls)
+        pendingJoin.complete(Result.success(membershipDetails(roomId = 1L, role = RoomMembershipRole.MEMBER)))
+        runCurrent()
+        assertTrue(viewModel.mutationState.isSuccessful)
+    }
+
+    @Test
+    fun `화면을 떠난 요청이 다시 열린 같은 화면을 자동 이동시키지 않는다`() = runTest {
+        val pendingCreate = CompletableDeferred<Result<RoomMembershipDetails>>()
+        val viewModel = RoomListViewModel(
+            loadRooms = { Result.success(emptyList()) },
+            createRoom = { withContext(NonCancellable) { pendingCreate.await() } },
+            coroutineScope = this,
+        )
+        val firstSource = mutationSource(RoomMutationType.Create)
+        val secondSource = mutationSource(RoomMutationType.Create).copy(entryId = 101L)
+        viewModel.onRouteVisible(AuthSessionState.Authenticated, identity = Any())
+        runCurrent()
+        viewModel.onMutationSourceVisible(firstSource.entryId)
+        viewModel.createRoom(firstSource, createInput())
+        runCurrent()
+
+        viewModel.onMutationSourceHidden(firstSource.entryId)
+        viewModel.onMutationSourceVisible(secondSource.entryId)
+        pendingCreate.complete(Result.success(membershipDetails(roomId = 14L)))
+        runCurrent()
+
+        val success = viewModel.consumeSuccessfulMutation(viewModel.mutationState.operationId)
+        assertEquals(firstSource, success?.source)
+        assertFalse(viewModel.isCurrentMutationSource(firstSource.entryId))
+        assertTrue(viewModel.isCurrentMutationSource(secondSource.entryId))
+    }
+
     private companion object {
         val previewRoom = RoomUiModel(
             id = "room-1",
@@ -160,6 +338,38 @@ class RoomListViewModelTest {
             activityTimeText = "오후 7:30",
             participantCount = 12,
             isJoined = true,
+        )
+
+        fun mutationSource(type: RoomMutationType, roomId: String? = null) = RoomMutationSource(
+            entryId = 100L + (roomId?.toLongOrNull() ?: 0L),
+            type = type,
+            roomId = roomId,
+        )
+
+        fun createInput() = RoomCreateInput(
+            name = "아침운동모임",
+            description = "함께 운동해요",
+            activityDays = listOf("MONDAY", "WEDNESDAY"),
+            activityTime = "08:00",
+        )
+
+        fun membershipDetails(
+            roomId: Long,
+            role: RoomMembershipRole = RoomMembershipRole.OWNER,
+        ) = RoomMembershipDetails(
+            room = RoomSummary(
+                id = roomId,
+                name = "아침운동모임",
+                description = "함께 운동해요",
+                imageUrl = null,
+                activityDays = listOf("MONDAY", "WEDNESDAY"),
+                activityTime = "08:00",
+                memberCount = 1,
+                isJoined = true,
+                createdAt = "2026-10-01T08:30:00",
+            ),
+            membershipRole = role,
+            members = listOf(RoomMemberDetails(userId = 10L, nickname = "방장")),
         )
     }
 }
