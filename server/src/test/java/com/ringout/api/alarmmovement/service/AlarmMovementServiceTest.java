@@ -134,7 +134,8 @@ class AlarmMovementServiceTest {
                 RoomUser.of(gaveUpMember, room),
                 RoomUser.of(idleMember, room)
             ));
-            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByStartedAtDescIdDesc(ROOM_ID))
+            given(alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
+                ROOM_ID, NOW.toLocalDate().atStartOfDay(), NOW.toLocalDate().plusDays(1).atStartOfDay()))
                 .willReturn(alarmOccurrences);
 
             // when
@@ -155,7 +156,8 @@ class AlarmMovementServiceTest {
                     MovementStatus.ARRIVED
                 );
             verify(roomUserRepository).findActiveByRoomId(ROOM_ID);
-            verify(alarmOccurrenceRepository).findActiveByRoomIdOrderByStartedAtDescIdDesc(ROOM_ID);
+            verify(alarmOccurrenceRepository).findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
+                ROOM_ID, NOW.toLocalDate().atStartOfDay(), NOW.toLocalDate().plusDays(1).atStartOfDay());
         }
 
         @Test
@@ -168,7 +170,8 @@ class AlarmMovementServiceTest {
             earlierStartedOccurrence.changeMovement(MovementAction.ARRIVE, NOW);
             givenCurrentMember();
             given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
-            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByStartedAtDescIdDesc(ROOM_ID))
+            given(alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
+                ROOM_ID, NOW.toLocalDate().atStartOfDay(), NOW.toLocalDate().plusDays(1).atStartOfDay()))
                 .willReturn(List.of(laterStartedOccurrence, earlierStartedOccurrence));
 
             // when
@@ -177,6 +180,29 @@ class AlarmMovementServiceTest {
             // then
             assertThat(response.members()).extracting(MemberMovementResponse::status)
                 .containsExactly(MovementStatus.ALARM_TRIGGERED);
+        }
+
+        @Test
+        void 오늘_울린_알람_실행이_없으면_이전_날_도착한_회원도_IDLE을_반환한다() {
+            // given
+            Room room = roomWithId(ROOM_ID);
+            User requester = userWithId(USER_ID, "요청자");
+            AlarmOccurrence yesterdayOccurrence = alarmOccurrenceWith(requester, 11L, NOW.minusDays(1));
+            yesterdayOccurrence.changeMovement(MovementAction.ARRIVE, NOW.minusDays(1).plusMinutes(1));
+            givenCurrentMember();
+            given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
+            given(alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
+                ROOM_ID, NOW.toLocalDate().atStartOfDay(), NOW.toLocalDate().plusDays(1).atStartOfDay()))
+                .willReturn(List.of());
+
+            // when
+            MemberMovementsResponse response = alarmMovementService.getMemberMovements(USER_ID, ROOM_ID);
+
+            // then
+            assertThat(response.members()).extracting(MemberMovementResponse::status)
+                .containsExactly(MovementStatus.IDLE);
+            verify(alarmOccurrenceRepository).findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
+                ROOM_ID, NOW.toLocalDate().atStartOfDay(), NOW.toLocalDate().plusDays(1).atStartOfDay());
         }
     }
 
@@ -244,7 +270,8 @@ class AlarmMovementServiceTest {
             AlarmOccurrence alarmOccurrence = alarmOccurrenceWith(requester, 11L);
             givenCurrentMember();
             given(roomUserRepository.findActiveByRoomId(ROOM_ID)).willReturn(List.of(RoomUser.of(requester, room)));
-            given(alarmOccurrenceRepository.findActiveByRoomIdOrderByStartedAtDescIdDesc(ROOM_ID))
+            given(alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
+                ROOM_ID, NOW.toLocalDate().atStartOfDay(), NOW.toLocalDate().plusDays(1).atStartOfDay()))
                 .willReturn(List.of(alarmOccurrence));
 
             // when

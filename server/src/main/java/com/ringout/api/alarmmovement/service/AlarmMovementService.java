@@ -18,6 +18,7 @@ import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.room.service.RoomActivityService;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,7 +64,9 @@ public class AlarmMovementService {
         validateCurrentRoomMemberForMovementStatus(userId, roomId);
 
         List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
-        Map<Long, AlarmOccurrence> latestAlarmOccurrenceByUserId = findLatestAlarmOccurrenceByUserId(roomId);
+        LocalDate currentDate = LocalDate.now(clock);
+        Map<Long, AlarmOccurrence> latestAlarmOccurrenceByUserId = findLatestAlarmOccurrenceByUserId(roomId,
+            currentDate);
         List<MemberMovementResponse> members = roomUsers.stream()
             .map(roomUser -> toMemberMovementResponse(roomUser,
                 latestAlarmOccurrenceByUserId.get(roomUser.getUser().getId())))
@@ -103,9 +106,10 @@ public class AlarmMovementService {
         }
     }
 
-    private Map<Long, AlarmOccurrence> findLatestAlarmOccurrenceByUserId(Long roomId) {
+    private Map<Long, AlarmOccurrence> findLatestAlarmOccurrenceByUserId(Long roomId, LocalDate date) {
         Map<Long, AlarmOccurrence> latestAlarmOccurrenceByUserId = new LinkedHashMap<>();
-        alarmOccurrenceRepository.findActiveByRoomIdOrderByStartedAtDescIdDesc(roomId)
+        alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
+                roomId, date.atStartOfDay(), date.plusDays(1).atStartOfDay())
             .forEach(alarmOccurrence -> latestAlarmOccurrenceByUserId.putIfAbsent(
                 alarmOccurrence.getUser().getId(), alarmOccurrence));
         return latestAlarmOccurrenceByUserId;
