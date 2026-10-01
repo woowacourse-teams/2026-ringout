@@ -23,6 +23,49 @@ import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTest {
     @Test
+    fun `버전 구의 기존 데이터를 보존하고 빈 알람 전송 저장소를 추가한다`() = runBlocking<Unit> {
+        val path = temporaryDatabasePath()
+        createVersionFiveDatabase(path)
+        BundledSQLiteDriver().open(path).use { connection ->
+            connection.execSQL("DELETE FROM alarm_activity_events WHERE type = 'CREATED'")
+            connection.execSQL("""
+                CREATE TABLE alarm_occurrence_times (
+                    occurrence_id TEXT NOT NULL PRIMARY KEY,
+                    ringing_started_at INTEGER, ringing_stopped_at INTEGER, mission_completed_at INTEGER,
+                    ringing_start_observed INTEGER NOT NULL, ringing_scheduled_at INTEGER
+                )
+            """.trimIndent())
+            connection.execSQL("INSERT INTO alarm_occurrence_times VALUES ('one', 2000, 3000, 4000, 1, 1000)")
+            connection.execSQL("ALTER TABLE alarms ADD COLUMN schedule_version INTEGER NOT NULL DEFAULT 1")
+            connection.execSQL("ALTER TABLE alarm_activity_events ADD COLUMN schedule_version INTEGER NOT NULL DEFAULT 1")
+            connection.execSQL("INSERT INTO saved_destinations (name, address, latitude, longitude) VALUES ('회사', '서울', 37.5, 127.0)")
+            connection.execSQL("PRAGMA user_version = 9")
+        }
+        val database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            assertNotNull(database.alarmDao().getById("alarm-v2"))
+            assertEquals(1, database.missionHistoryDao().getHistory("2026-08-01", "2026-08-31").size)
+            assertEquals(1, database.alarmActivityDao().observeCounts("2026-09-28").first().ringingCount)
+            assertEquals("rang:one", database.alarmActivityDao().getObservations().single().eventKey)
+            assertEquals(1_000L, database.alarmActivityDao().getOccurrenceTimes("one")?.ringingScheduledAtEpochMillis)
+            assertEquals(4_000L, database.alarmActivityDao().getOccurrenceTimes("one")?.missionCompletedAtEpochMillis)
+            assertEquals("회사", destinationRepository(database).observeAll().first().single().name)
+            val sync = database.alarmOccurrenceSyncDao()
+            assertTrue(sync.getUnsentEvents("account-1").isEmpty())
+            sync.recordStart(com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity(
+                "new-execution", "account-1", "alarm-v2", 1, 5_000, 5_010,
+            ))
+            sync.recordDismissal("account-1", "new-execution", 6_000)
+            database.alarmDao().delete("alarm-v2")
+            assertEquals(2, sync.getUnsentEvents("account-1").size)
+            assertNotNull(database.alarmActivityDao().getOccurrenceTimes("one"))
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    @Test
     fun `버전 칠의 실행 시각을 보존하고 예정 시각은 추정하지 않은 채 새 열을 추가한다`() = runBlocking {
         val path = temporaryDatabasePath()
         createVersionFiveDatabase(path)

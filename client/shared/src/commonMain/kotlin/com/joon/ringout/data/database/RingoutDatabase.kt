@@ -18,6 +18,10 @@ import com.joon.ringout.data.destination.SavedDestinationDao
 import com.joon.ringout.data.destination.SavedDestinationEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryDao
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceRingingLinkEntity
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxEntity
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
 
 @Database(
     entities = [
@@ -30,8 +34,11 @@ import com.joon.ringout.data.missionhistory.MissionHistoryEntity
         AlarmRepeatDayEntity::class,
         StorageMigrationEntity::class,
         SavedDestinationEntity::class,
+        AlarmOccurrenceSyncEntity::class,
+        AlarmOccurrenceRingingLinkEntity::class,
+        AlarmOccurrenceOutboxEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -43,6 +50,8 @@ abstract class RingoutDatabase : RoomDatabase() {
     abstract fun alarmDao(): AlarmDao
 
     abstract fun destinationDao(): SavedDestinationDao
+
+    abstract fun alarmOccurrenceSyncDao(): AlarmOccurrenceSyncDao
 }
 
 @Suppress("KotlinNoActualForExpect")
@@ -63,6 +72,7 @@ fun buildRingoutDatabase(
         RingoutMigration6To7,
         RingoutMigration7To8,
         RingoutMigration8To9,
+        RingoutMigration9To10,
     )
     .build()
 
