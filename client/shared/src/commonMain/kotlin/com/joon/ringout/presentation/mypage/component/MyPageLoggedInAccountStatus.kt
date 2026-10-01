@@ -34,7 +34,7 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.mypage_logged_in_profile
+import ringout.shared.generated.resources.room_member_default_avatar
 
 @Composable
 fun MyPageLoggedInAccountStatus(
@@ -58,7 +58,7 @@ fun MyPageLoggedInAccountStatus(
                 .background(MaterialTheme.ringoutColors.profileIconLoggedInBackground),
         ) {
             Image(
-                painter = painterResource(Res.drawable.mypage_logged_in_profile),
+                painter = painterResource(Res.drawable.room_member_default_avatar),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
