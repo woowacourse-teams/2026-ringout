@@ -53,7 +53,7 @@ class AlarmOccurrenceServiceTest {
     private static final Long USER_ID = 1L;
     private static final Long OTHER_USER_ID = 2L;
     private static final Clock CLOCK = Clock.fixed(
-        Instant.parse("2026-09-22T22:00:02Z"), ZoneId.of("Asia/Seoul"));
+        Instant.parse("2026-09-22T23:00:00Z"), ZoneId.of("Asia/Seoul"));
     private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
     private static final LocalDate DATE = LocalDate.of(2026, 8, 17);
     private static final LocalDateTime START = DATE.atStartOfDay();
@@ -177,11 +177,14 @@ class AlarmOccurrenceServiceTest {
     @Nested
     class 알람_실행_시작 {
 
+        private static final OffsetDateTime SCHEDULED_AT = OffsetDateTime.parse("2026-09-23T07:00:00+09:00");
+        private static final OffsetDateTime STARTED_AT = OffsetDateTime.parse("2026-09-23T07:00:02+09:00");
+
         private final AlarmOccurrenceStartRequest request = new AlarmOccurrenceStartRequest(
-            "alarm-1", OffsetDateTime.parse("2026-09-23T07:00:00+09:00"));
+            "alarm-1", SCHEDULED_AT, STARTED_AT);
 
         @Test
-        void 새_실행이면_서버_수신_시각을_최초_울림으로_기록하고_생성한다() {
+        void 새_실행이면_기기가_보낸_시각을_최초_울림으로_기록하고_생성한다() {
             // given
             given(alarmOccurrenceRepository.findActiveByUserIdAndClientAlarmIdAndScheduledAt(
                 USER_ID, "alarm-1", LocalDateTime.of(2026, 9, 23, 7, 0))).willReturn(Optional.empty());
@@ -212,7 +215,7 @@ class AlarmOccurrenceServiceTest {
         @Test
         void 같은_알람과_예정_일시의_실행이_있으면_새로_만들지_않고_기존_실행을_반환한다() {
             // given
-            AlarmOccurrence existing = occurrenceWithId(10L, "alarm-1", NOW.minusSeconds(30));
+            AlarmOccurrence existing = occurrenceWithId(10L, "alarm-1", LocalDateTime.of(2026, 9, 23, 6, 59, 32));
             given(alarmOccurrenceRepository.findActiveByUserIdAndClientAlarmIdAndScheduledAt(
                 USER_ID, "alarm-1", LocalDateTime.of(2026, 9, 23, 7, 0))).willReturn(Optional.of(existing));
 
@@ -230,7 +233,7 @@ class AlarmOccurrenceServiceTest {
         void 예정_일시는_서버_시간대로_환산해_중복을_확인한다() {
             // given
             AlarmOccurrenceStartRequest utcRequest = new AlarmOccurrenceStartRequest(
-                "alarm-1", OffsetDateTime.parse("2026-09-22T22:00:00Z"));
+                "alarm-1", OffsetDateTime.parse("2026-09-22T22:00:00Z"), STARTED_AT);
             AlarmOccurrence existing = occurrenceWithId(10L, "alarm-1", NOW);
             given(alarmOccurrenceRepository.findActiveByUserIdAndClientAlarmIdAndScheduledAt(
                 USER_ID, "alarm-1", LocalDateTime.of(2026, 9, 23, 7, 0))).willReturn(Optional.of(existing));
@@ -246,7 +249,7 @@ class AlarmOccurrenceServiceTest {
         void 알람_설정_시각은_예정_일시를_서버_시간대로_환산한_시각이다() {
             // given
             AlarmOccurrenceStartRequest utcRequest = new AlarmOccurrenceStartRequest(
-                "alarm-1", OffsetDateTime.parse("2026-09-22T22:00:00Z"));
+                "alarm-1", OffsetDateTime.parse("2026-09-22T22:00:00Z"), STARTED_AT);
             given(alarmOccurrenceRepository.findActiveByUserIdAndClientAlarmIdAndScheduledAt(
                 USER_ID, "alarm-1", LocalDateTime.of(2026, 9, 23, 7, 0))).willReturn(Optional.empty());
             given(userRepository.getReferenceById(USER_ID)).willReturn(userWithId(USER_ID));
@@ -265,9 +268,9 @@ class AlarmOccurrenceServiceTest {
         void 알람_ID가_없거나_공백이면_시작할_수_없다() {
             // when
             Throwable nullId = catchThrowable(() -> alarmOccurrenceService.startAlarmOccurrence(USER_ID,
-                new AlarmOccurrenceStartRequest(null, OffsetDateTime.parse("2026-09-23T07:00:00+09:00"))));
+                new AlarmOccurrenceStartRequest(null, SCHEDULED_AT, STARTED_AT)));
             Throwable blankId = catchThrowable(() -> alarmOccurrenceService.startAlarmOccurrence(USER_ID,
-                new AlarmOccurrenceStartRequest(" ", OffsetDateTime.parse("2026-09-23T07:00:00+09:00"))));
+                new AlarmOccurrenceStartRequest(" ", SCHEDULED_AT, STARTED_AT)));
 
             // then
             assertError(nullId, AlarmOccurrenceErrorStatus.ALARM_ID_REQUIRED);
@@ -279,7 +282,7 @@ class AlarmOccurrenceServiceTest {
         void 알람_ID가_64자를_넘으면_시작할_수_없다() {
             // when
             Throwable thrown = catchThrowable(() -> alarmOccurrenceService.startAlarmOccurrence(USER_ID,
-                new AlarmOccurrenceStartRequest("a".repeat(65), OffsetDateTime.parse("2026-09-23T07:00:00+09:00"))));
+                new AlarmOccurrenceStartRequest("a".repeat(65), SCHEDULED_AT, STARTED_AT)));
 
             // then
             assertError(thrown, AlarmOccurrenceErrorStatus.ALARM_ID_TOO_LONG);
@@ -289,10 +292,52 @@ class AlarmOccurrenceServiceTest {
         void 예정_일시가_없으면_시작할_수_없다() {
             // when
             Throwable thrown = catchThrowable(() -> alarmOccurrenceService.startAlarmOccurrence(USER_ID,
-                new AlarmOccurrenceStartRequest("alarm-1", null)));
+                new AlarmOccurrenceStartRequest("alarm-1", null, STARTED_AT)));
 
             // then
             assertError(thrown, AlarmOccurrenceErrorStatus.SCHEDULED_AT_REQUIRED);
+        }
+
+        @Test
+        void 최초_울림_시각이_없으면_시작할_수_없다() {
+            // when
+            Throwable thrown = catchThrowable(() -> alarmOccurrenceService.startAlarmOccurrence(USER_ID,
+                new AlarmOccurrenceStartRequest("alarm-1", SCHEDULED_AT, null)));
+
+            // then
+            assertError(thrown, AlarmOccurrenceErrorStatus.STARTED_AT_REQUIRED);
+            verifyNoInteractions(alarmOccurrenceRepository);
+        }
+
+        @Test
+        void 최초_울림_시각이_서버_시각보다_1분_넘게_미래면_시작할_수_없다() {
+            // given
+            OffsetDateTime tooLate = OffsetDateTime.parse("2026-09-23T08:01:01+09:00");
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmOccurrenceService.startAlarmOccurrence(USER_ID,
+                new AlarmOccurrenceStartRequest("alarm-1", SCHEDULED_AT, tooLate)));
+
+            // then
+            assertError(thrown, AlarmOccurrenceErrorStatus.EVENT_TIME_IN_FUTURE);
+            verifyNoInteractions(alarmOccurrenceRepository);
+        }
+
+        @Test
+        void 서버_시각보다_1분_이내로_앞선_기기_시각은_허용한다() {
+            // given
+            OffsetDateTime slightlyAhead = OffsetDateTime.parse("2026-09-23T08:01:00+09:00");
+            given(alarmOccurrenceRepository.findActiveByUserIdAndClientAlarmIdAndScheduledAt(
+                USER_ID, "alarm-1", LocalDateTime.of(2026, 9, 23, 7, 0))).willReturn(Optional.empty());
+            given(userRepository.getReferenceById(USER_ID)).willReturn(userWithId(USER_ID));
+            given(alarmOccurrenceRepository.save(any(AlarmOccurrence.class))).willAnswer(returnsFirstArg());
+
+            // when
+            AlarmOccurrenceStartResult result = alarmOccurrenceService.startAlarmOccurrence(USER_ID,
+                new AlarmOccurrenceStartRequest("alarm-1", SCHEDULED_AT, slightlyAhead));
+
+            // then
+            assertThat(result.response().startedAt()).isEqualTo(slightlyAhead);
         }
     }
 
@@ -300,11 +345,12 @@ class AlarmOccurrenceServiceTest {
     class 알람_실행_이벤트_저장 {
 
         @Test
-        void 재울림과_끈_시각을_함께_저장한다() {
+        void 재울림과_끈_시각을_기기가_보낸_시각으로_함께_저장한다() {
             // given
             AlarmOccurrence occurrence = givenOwnedOccurrence();
             AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest(
-                "E1", OffsetDateTime.parse("2026-09-23T07:00:40+09:00"), null, null);
+                "E1", OffsetDateTime.parse("2026-09-23T07:05:00+09:00"),
+                OffsetDateTime.parse("2026-09-23T07:05:40+09:00"), null, null);
 
             // when
             AlarmOccurrenceDetailResponse response = alarmOccurrenceService.recordAlarmOccurrenceEvent(
@@ -313,8 +359,8 @@ class AlarmOccurrenceServiceTest {
             // then
             assertThat(response.ringings()).hasSize(2);
             assertThat(response.ringings().get(1)).isEqualTo(new AlarmRingingResponse(RingingType.REPEAT, "E1",
-                OffsetDateTime.parse("2026-09-23T07:00:02+09:00"),
-                OffsetDateTime.parse("2026-09-23T07:00:40+09:00")));
+                OffsetDateTime.parse("2026-09-23T07:05:00+09:00"),
+                OffsetDateTime.parse("2026-09-23T07:05:40+09:00")));
             assertThat(response.ringings().get(0).dismissedAt()).isNull();
             assertThat(occurrence.getRingings()).hasSize(2);
             verify(roomActivityService).recordMemberAlarmActivity(USER_ID, NOW);
@@ -325,7 +371,7 @@ class AlarmOccurrenceServiceTest {
             // given
             givenOwnedOccurrence();
             AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest(
-                null, OffsetDateTime.parse("2026-09-23T07:01:10+09:00"), null, null);
+                null, null, OffsetDateTime.parse("2026-09-23T07:01:10+09:00"), null, null);
 
             // when
             AlarmOccurrenceDetailResponse response = alarmOccurrenceService.recordAlarmOccurrenceEvent(
@@ -342,7 +388,7 @@ class AlarmOccurrenceServiceTest {
             // given
             givenOwnedOccurrence();
             AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest(
-                null, null, OffsetDateTime.parse("2026-09-23T07:48:10+09:00"), null);
+                null, null, null, OffsetDateTime.parse("2026-09-23T07:48:10+09:00"), null);
 
             // when
             AlarmOccurrenceDetailResponse response = alarmOccurrenceService.recordAlarmOccurrenceEvent(
@@ -358,7 +404,7 @@ class AlarmOccurrenceServiceTest {
             // given
             givenOwnedOccurrence();
             AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest(
-                null, null, null, OffsetDateTime.parse("2026-09-23T07:30:00+09:00"));
+                null, null, null, null, OffsetDateTime.parse("2026-09-23T07:30:00+09:00"));
 
             // when
             AlarmOccurrenceDetailResponse response = alarmOccurrenceService.recordAlarmOccurrenceEvent(
@@ -373,8 +419,9 @@ class AlarmOccurrenceServiceTest {
         void 종료된_실행에_새_재울림을_보내면_409를_반환한다() {
             // given
             AlarmOccurrence occurrence = givenOwnedOccurrence();
-            occurrence.end(OccurrenceEndType.ARRIVED, NOW.plusMinutes(40));
-            AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest("E9", null, null, null);
+            occurrence.end(OccurrenceEndType.ARRIVED, LocalDateTime.of(2026, 9, 23, 7, 40));
+            AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest(
+                "E9", OffsetDateTime.parse("2026-09-23T07:41:00+09:00"), null, null, null);
 
             // when
             Throwable thrown = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
@@ -389,7 +436,7 @@ class AlarmOccurrenceServiceTest {
             // given
             given(alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(OCCURRENCE_ID))
                 .willReturn(Optional.empty());
-            AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest("E1", null, null, null);
+            AlarmOccurrenceEventRequest request = repeatRequest("E1");
 
             // when
             Throwable thrown = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
@@ -405,7 +452,7 @@ class AlarmOccurrenceServiceTest {
             AlarmOccurrence occurrence = AlarmOccurrence.start(userWithId(OTHER_USER_ID), "alarm-1", NOW, LocalTime.of(7, 0), NOW);
             given(alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(OCCURRENCE_ID))
                 .willReturn(Optional.of(occurrence));
-            AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest("E1", null, null, null);
+            AlarmOccurrenceEventRequest request = repeatRequest("E1");
 
             // when
             Throwable thrown = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
@@ -419,7 +466,7 @@ class AlarmOccurrenceServiceTest {
         @Test
         void 실행_ID가_UUID_형식이_아니면_400을_반환한다() {
             // given
-            AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest("E1", null, null, null);
+            AlarmOccurrenceEventRequest request = repeatRequest("E1");
 
             // when
             Throwable notUuid = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
@@ -437,7 +484,7 @@ class AlarmOccurrenceServiceTest {
         void 이벤트가_하나도_없으면_400을_반환한다() {
             // when
             Throwable thrown = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
-                USER_ID, OCCURRENCE_ID, new AlarmOccurrenceEventRequest(null, null, null, null)));
+                USER_ID, OCCURRENCE_ID, new AlarmOccurrenceEventRequest(null, null, null, null, null)));
 
             // then
             assertError(thrown, AlarmOccurrenceErrorStatus.ALARM_OCCURRENCE_EVENT_EMPTY);
@@ -447,7 +494,7 @@ class AlarmOccurrenceServiceTest {
         void 도착과_강제_종료를_동시에_보내면_400을_반환한다() {
             // when
             Throwable thrown = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
-                USER_ID, OCCURRENCE_ID, new AlarmOccurrenceEventRequest(null, null,
+                USER_ID, OCCURRENCE_ID, new AlarmOccurrenceEventRequest(null, null, null,
                     OffsetDateTime.parse("2026-09-23T07:48:10+09:00"),
                     OffsetDateTime.parse("2026-09-23T07:48:10+09:00"))));
 
@@ -459,18 +506,66 @@ class AlarmOccurrenceServiceTest {
         void 재울림_ID가_공백이거나_64자를_넘으면_400을_반환한다() {
             // when
             Throwable blank = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
-                USER_ID, OCCURRENCE_ID, new AlarmOccurrenceEventRequest(" ", null, null, null)));
+                USER_ID, OCCURRENCE_ID, repeatRequest(" ")));
             Throwable tooLong = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
-                USER_ID, OCCURRENCE_ID, new AlarmOccurrenceEventRequest("e".repeat(65), null, null, null)));
+                USER_ID, OCCURRENCE_ID, repeatRequest("e".repeat(65))));
 
             // then
             assertError(blank, AlarmOccurrenceErrorStatus.EVENT_ID_BLANK);
             assertError(tooLong, AlarmOccurrenceErrorStatus.EVENT_ID_TOO_LONG);
         }
 
+        @Test
+        void 재울림_ID와_재울림_시각은_함께_보내야_한다() {
+            // when
+            Throwable withoutRingingAt = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
+                USER_ID, OCCURRENCE_ID, new AlarmOccurrenceEventRequest("E1", null, null, null, null)));
+            Throwable withoutEventId = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
+                USER_ID, OCCURRENCE_ID, new AlarmOccurrenceEventRequest(
+                    null, OffsetDateTime.parse("2026-09-23T07:05:00+09:00"), null, null, null)));
+
+            // then
+            assertError(withoutRingingAt, AlarmOccurrenceErrorStatus.RINGING_AT_REQUIRED);
+            assertError(withoutEventId, AlarmOccurrenceErrorStatus.EVENT_ID_REQUIRED);
+            verifyNoInteractions(alarmOccurrenceRepository);
+        }
+
+        @Test
+        void 이벤트_시각이_서버_시각보다_1분_넘게_미래면_400을_반환한다() {
+            // when
+            Throwable thrown = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
+                USER_ID, OCCURRENCE_ID, new AlarmOccurrenceEventRequest(null, null, null,
+                    OffsetDateTime.parse("2026-09-23T08:01:01+09:00"), null)));
+
+            // then
+            assertError(thrown, AlarmOccurrenceErrorStatus.EVENT_TIME_IN_FUTURE);
+            verifyNoInteractions(alarmOccurrenceRepository);
+        }
+
+        @Test
+        void 끈_시각이_재울림_시각보다_빠르면_400을_반환한다() {
+            // given
+            AlarmOccurrence occurrence = givenOwnedOccurrence();
+            AlarmOccurrenceEventRequest request = new AlarmOccurrenceEventRequest(
+                "E1", OffsetDateTime.parse("2026-09-23T07:05:00+09:00"),
+                OffsetDateTime.parse("2026-09-23T07:04:59+09:00"), null, null);
+
+            // when
+            Throwable thrown = catchThrowable(() -> alarmOccurrenceService.recordAlarmOccurrenceEvent(
+                USER_ID, OCCURRENCE_ID, request));
+
+            // then
+            assertError(thrown, AlarmOccurrenceErrorStatus.EVENT_TIME_ORDER_INVALID);
+        }
+
+        private AlarmOccurrenceEventRequest repeatRequest(String eventId) {
+            return new AlarmOccurrenceEventRequest(
+                eventId, OffsetDateTime.parse("2026-09-23T07:05:00+09:00"), null, null, null);
+        }
+
         private AlarmOccurrence givenOwnedOccurrence() {
             AlarmOccurrence occurrence = AlarmOccurrence.start(userWithId(USER_ID), "alarm-1",
-                LocalDateTime.of(2026, 9, 23, 7, 0), LocalTime.of(7, 0), NOW.minusMinutes(5));
+                LocalDateTime.of(2026, 9, 23, 7, 0), LocalTime.of(7, 0), LocalDateTime.of(2026, 9, 23, 7, 0, 2));
             given(alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(OCCURRENCE_ID))
                 .willReturn(Optional.of(occurrence));
             return occurrence;

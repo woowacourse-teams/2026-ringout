@@ -8,6 +8,8 @@ public record AlarmOccurrenceStartRequest(
     String alarmId,
     @Schema(description = "이번 울림의 예정 일시. 시각 부분이 알람 설정 시각으로 저장됩니다.",
         example = "2026-09-23T07:00:00+09:00")
-    OffsetDateTime scheduledAt
+    OffsetDateTime scheduledAt,
+    @Schema(description = "기기에서 최초 울림이 실제로 발생한 시각", example = "2026-09-23T07:00:02+09:00")
+    OffsetDateTime startedAt
 ) {
 }
