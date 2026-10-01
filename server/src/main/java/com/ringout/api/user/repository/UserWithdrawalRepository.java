@@ -40,7 +40,6 @@ public class UserWithdrawalRepository {
         deleteRoomData(userId);
 
         jdbcTemplate.update("delete from user_agreement where user_id = ?", userId);
-        jdbcTemplate.update("delete from stamp where user_id = ?", userId);
         jdbcTemplate.update("delete from destination where user_id = ?", userId);
         jdbcTemplate.update("delete from `user` where id = ?", userId);
     }
