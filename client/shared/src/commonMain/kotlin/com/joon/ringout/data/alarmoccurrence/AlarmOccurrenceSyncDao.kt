@@ -62,6 +62,15 @@ abstract class AlarmOccurrenceSyncDao {
     """)
     abstract suspend fun getExecutionForRinging(ownerAccountId: String, ringingId: String): AlarmOccurrenceSyncEntity?
 
+    /** 로컬 이벤트 생산자만 사용한다. 로그인 변경 후에도 최초 소유자에게 후속 이벤트를 기록한다.
+     * 전송기는 반드시 계정 조건이 있는 조회를 사용해야 한다. */
+    @Query("""
+        SELECT e.* FROM alarm_occurrence_sync e
+        JOIN alarm_occurrence_ringing_links r ON r.local_execution_id = e.local_execution_id
+        WHERE r.local_ringing_id = :ringingId
+    """)
+    internal abstract suspend fun findExecutionForRecording(ringingId: String): AlarmOccurrenceSyncEntity?
+
     @Query("""
         SELECT o.* FROM alarm_occurrence_outbox o
         JOIN alarm_occurrence_sync e ON e.local_execution_id = o.local_execution_id

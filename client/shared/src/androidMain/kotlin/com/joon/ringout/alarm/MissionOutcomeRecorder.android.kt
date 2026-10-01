@@ -1,6 +1,7 @@
 package com.joon.ringout.alarm
 
 import android.content.Context
+import com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime
 import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.data.missionhistory.DefaultMissionHistoryRepository
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
@@ -41,6 +42,12 @@ internal class MissionOutcomeRecorder(context: Context) {
             completedAt = completedAt,
             occurrenceId = storedMission.mission.occurrenceId,
             missionCompletedAtEpochMillis = storedMission.terminalCompletedAtEpochMillis,
+        )
+        // 영속 저널 저장까지만 기다린다. 서버 응답은 미션 완료/강제종료를 지연시키지 않는다.
+        AndroidAlarmOccurrenceRuntime.get(applicationContext).recordTerminal(
+            ringingId = storedMission.mission.occurrenceId,
+            at = storedMission.terminalCompletedAtEpochMillis,
+            arrived = result == MissionResult.SUCCESS,
         )
     }
 }

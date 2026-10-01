@@ -30,6 +30,26 @@ import kotlin.time.Clock
 
 class AlarmOccurrenceSyncerTest {
     @Test
+    fun `캡처한 울림 해제 재울림 도착을 하나의 POST와 후속 PATCH로 전송한다`() = withFixture { f ->
+        val recorder = AlarmOccurrenceEventRecorder(f.dao)
+        recorder.record(CapturedAlarmOccurrenceEvent.Rang("root", "alarm", 1, 900, 1_000, "1", eventId = "unused"))
+        recorder.record(CapturedAlarmOccurrenceEvent.Dismissed("root", 2_000))
+        recorder.record(CapturedAlarmOccurrenceEvent.Rang("retry", "alarm", 1, null, 3_000, null, "root", "repeat-id"))
+        recorder.record(CapturedAlarmOccurrenceEvent.Dismissed("retry", 4_000))
+        recorder.record(CapturedAlarmOccurrenceEvent.Terminal("retry", 5_000, arrived = true))
+        f.syncer.flush()
+
+        assertEquals(listOf("POST", "InitialDismissed", "RepeatRang", "RepeatDismissed", "Arrived"), f.remote.calls)
+        assertEquals(Instant.fromEpochMilliseconds(900), f.remote.starts.single().scheduledAt)
+        assertEquals(Instant.fromEpochMilliseconds(1_000), f.remote.starts.single().startedAt)
+        val dismissal = f.remote.events[2] as AlarmOccurrenceEvent.RepeatDismissed
+        assertEquals("repeat-id", dismissal.ringing.eventId)
+        assertEquals(Instant.fromEpochMilliseconds(3_000), dismissal.ringing.ringingAt)
+        assertEquals(Instant.fromEpochMilliseconds(4_000), dismissal.dismissedAt)
+        assertTrue(f.dao.getUnsentEvents("1").isEmpty())
+    }
+
+    @Test
     fun `실행 루프가 저장된 재시도 시각에 별도 이벤트 없이 다시 전송한다`() = withFixture { f ->
         f.readTime = { Clock.System.now().toEpochMilliseconds() }
         f.start()

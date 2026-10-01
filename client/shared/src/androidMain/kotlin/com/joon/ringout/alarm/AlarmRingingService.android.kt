@@ -22,6 +22,7 @@ import android.os.VibratorManager
 import android.provider.Settings
 import com.joon.ringout.analytics.AlarmAnalytics
 import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
+import com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime
 import com.joon.ringout.shared.R
 
 class AlarmRingingService : Service() {
@@ -52,6 +53,10 @@ class AlarmRingingService : Service() {
             if (!ringingSessionStore.clearIfCurrent(occurrenceId)) {
                 return START_NOT_STICKY
             }
+            runCatching {
+                AndroidAlarmOccurrenceRuntime.get(applicationContext)
+                    .recordDismissal(occurrenceId, System.currentTimeMillis())
+            }.onFailure { android.util.Log.e("AlarmOccurrence", "Could not record dismissal", it) }
             finishCurrentRinging()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -91,6 +96,7 @@ class AlarmRingingService : Service() {
         acquireWakeLock()
         startAlarmSound(intent)
         startVibration()
+        val ringingStartedAt = System.currentTimeMillis()
         val retryAlarmConfirmed = missionCoordinator.confirmRetryAlarmStarted(intent)
         if (isRetryAlarm && !retryAlarmConfirmed) {
             ringingSessionStore.clearIfCurrent(occurrenceId)
@@ -101,6 +107,17 @@ class AlarmRingingService : Service() {
             return START_NOT_STICKY
         }
         activeOccurrenceId = occurrenceId
+        runCatching {
+            AndroidAlarmOccurrenceRuntime.get(applicationContext).recordRinging(
+                alarmId = intent.getStringExtra(AlarmRuntime.EXTRA_ALARM_ID).orEmpty(),
+                ringingId = occurrenceId,
+                scheduleVersion = intent.getLongExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, 1),
+                scheduledAt = if (intent.hasExtra(AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS))
+                    intent.getLongExtra(AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS, 0) else null,
+                sourceRingingId = intent.getStringExtra(AlarmRuntime.EXTRA_RETRY_SOURCE_OCCURRENCE_ID),
+                at = ringingStartedAt,
+            )
+        }.onFailure { android.util.Log.e("AlarmOccurrence", "Could not record ringing", it) }
         runCatching {
             AndroidAlarmActivityRecorder.get(applicationContext).recordRinging(
                 alarmId = intent.getStringExtra(AlarmRuntime.EXTRA_ALARM_ID).orEmpty(),
