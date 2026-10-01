@@ -35,6 +35,8 @@ import com.joon.ringout.presentation.profilechange.component.profileChangeColors
 @Composable
 internal fun ProfileImageSizeLimitDialog(
     onConfirm: () -> Unit,
+    accessibilityTitle: String = "프로필 이미지 용량 안내",
+    confirmLabel: String = "프로필 이미지 용량 안내 확인",
     modifier: Modifier = Modifier,
 ) {
     val colors = profileChangeColors()
@@ -59,7 +61,7 @@ internal fun ProfileImageSizeLimitDialog(
                     .clip(RoundedCornerShape(15.dp))
                     .background(colors.dialogBackground)
                     .padding(10.dp)
-                    .semantics { paneTitle = "프로필 이미지 용량 안내" },
+                    .semantics { paneTitle = accessibilityTitle },
                 verticalArrangement = Arrangement.spacedBy(15.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -90,7 +92,7 @@ internal fun ProfileImageSizeLimitDialog(
                         .background(colors.primaryAction)
                         .clickable(
                             role = Role.Button,
-                            onClickLabel = "프로필 이미지 용량 안내 확인",
+                            onClickLabel = confirmLabel,
                             onClick = onConfirm,
                         ),
                     contentAlignment = Alignment.Center,

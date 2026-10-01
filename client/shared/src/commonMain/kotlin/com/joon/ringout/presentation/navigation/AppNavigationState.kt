@@ -56,6 +56,10 @@ internal class AppNavigationState(
             AppRoute.Social -> listOf(AppRoute.Home, AppRoute.Social)
             AppRoute.RoomCreate -> listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomCreate)
             is AppRoute.RoomDetail -> listOf(AppRoute.Home, AppRoute.Social, route)
+            is AppRoute.RoomEdit -> when {
+                routes.lastOrNull() is AppRoute.RoomEdit -> routes.dropLast(1) + route
+                else -> routes.toList() + route
+            }
             AppRoute.Records -> listOf(AppRoute.Home, AppRoute.Records)
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)

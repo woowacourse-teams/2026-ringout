@@ -24,6 +24,7 @@ import com.joon.ringout.presentation.mypage.currentMissionYearMonth
 import com.joon.ringout.presentation.records.currentRecordsDate
 import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
+import com.joon.ringout.presentation.roomedit.RoomEditViewModel
 import kotlinx.serialization.json.Json
 import kotlin.reflect.KClass
 
@@ -81,6 +82,7 @@ private fun navigationViewModelFactory(container: AppContainer): ViewModelProvid
         initializer { HomeViewModel() }
         initializer { RoomListViewModel() }
         initializer { RoomCreateViewModel() }
+        initializer { RoomEditViewModel() }
         initializer {
             RecordsViewModel(
                 activityRepository = container.alarmActivityRepository,

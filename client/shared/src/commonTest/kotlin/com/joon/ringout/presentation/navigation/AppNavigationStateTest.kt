@@ -108,6 +108,37 @@ class AppNavigationStateTest {
     }
 
     @Test
+    fun `모임 수정 화면은 현재 호출부 위에 쌓고 뒤로 가면 같은 상세로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomDetail("room-1"))
+        val callerStack = state.backStack.toList()
+        val editRoute = AppRoute.RoomEdit("room-1")
+
+        state.navigate(editRoute)
+        state.navigate(editRoute.copy())
+
+        assertEquals(callerStack + editRoute, state.backStack.toList())
+        assertEquals(editRoute, state.requestedRoute)
+        state.popBackStack(editRoute)
+        assertEquals(callerStack, state.backStack.toList())
+        assertEquals(AppRoute.RoomDetail("room-1"), state.requestedRoute)
+    }
+
+    @Test
+    fun `다른 모임 수정으로 전환하면 호출부를 유지하고 편집 경로를 교체한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomDetail("room-1"))
+        val callerStack = state.backStack.toList()
+
+        state.navigate(AppRoute.RoomEdit("room-1"))
+        state.navigate(AppRoute.RoomEdit("room-2"))
+
+        assertEquals(callerStack + AppRoute.RoomEdit("room-2"), state.backStack.toList())
+    }
+
+    @Test
     fun `식별자 경로는 전체 값 기준 singleTop으로 기존 항목을 유지한다`() {
         val state = AppNavigationState()
         val firstEditor = AppRoute.EditAlarm("alarm-1")
