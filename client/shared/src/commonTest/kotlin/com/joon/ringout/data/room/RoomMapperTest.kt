@@ -1,6 +1,7 @@
 package com.joon.ringout.data.room
 
 import com.joon.ringout.data.network.ApiConfig
+import com.joon.ringout.domain.room.RoomMembershipRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -44,6 +45,32 @@ class RoomMapperTest {
         val imageUrl = "https://cdn.example.com/room.png"
 
         assertEquals(imageUrl, roomEntity(imageUrl = imageUrl).toDomain().imageUrl)
+    }
+
+    @Test
+    fun `상세 회원의 순서와 프로필 이미지 주소를 Domain 모델에 옮긴다`() {
+        val details = RoomMembershipResponseEntity(
+            roomId = 7,
+            name = "상세 응답",
+            description = null,
+            imageUrl = "/images/default-room.png",
+            activityDays = listOf("MONDAY"),
+            activityTime = "08:00",
+            memberCount = 2,
+            membershipRole = "OWNER",
+            createdAt = "2026-10-01T08:30:00",
+            members = listOf(
+                RoomMemberEntity(11, "두 번째", "/images/profile/member-11.png"),
+                RoomMemberEntity(10, "첫 번째", null),
+            ),
+        ).toDomain(setOf(RoomMembershipRole.OWNER, RoomMembershipRole.MEMBER))
+
+        assertEquals(listOf(11L, 10L), details.members.map { it.userId })
+        assertEquals(listOf("두 번째", "첫 번째"), details.members.map { it.nickname })
+        assertEquals(
+            listOf("${ApiConfig.BASE_URL}/images/profile/member-11.png", null),
+            details.members.map { it.profileImageUrl },
+        )
     }
 }
 

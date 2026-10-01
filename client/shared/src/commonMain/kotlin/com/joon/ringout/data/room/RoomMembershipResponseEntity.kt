@@ -20,4 +20,5 @@ data class RoomMembershipResponseEntity(
 data class RoomMemberEntity(
     val userId: Long,
     val nickname: String,
+    val profileImageUrl: String? = null,
 )

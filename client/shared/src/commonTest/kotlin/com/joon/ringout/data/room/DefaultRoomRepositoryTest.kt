@@ -1,6 +1,7 @@
 package com.joon.ringout.data.room
 
 import com.joon.ringout.data.network.ApiException
+import com.joon.ringout.data.network.ApiConfig
 import com.joon.ringout.data.network.ApiJson
 import com.joon.ringout.data.network.configureRingoutHttpClient
 import com.joon.ringout.domain.auth.AuthSession
@@ -239,6 +240,129 @@ class DefaultRoomRepositoryTest {
         assertEquals(3, result.room.memberCount)
         assertEquals(RoomMembershipRole.MEMBER, result.membershipRole)
         client.close()
+    }
+
+    @Test
+    fun `모임 상세는 Bearer GET으로 조회하고 서버 회원 순서와 프로필 이미지를 반환한다`() = runTest {
+        val client = clientFor { request ->
+            assertEquals(HttpMethod.Get, request.method)
+            assertEquals("/api/v1/rooms/7", request.url.encodedPath)
+            assertEquals("Bearer access", request.headers[HttpHeaders.Authorization])
+            assertTrue(request.url.parameters.isEmpty())
+            assertTrue(request.body !is TextContent)
+            respond(
+                content = detailSuccessBody(),
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+
+        val result = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated).getRoom(7)
+
+        assertEquals(7L, result.room.id)
+        assertEquals("상세 응답 이름", result.room.name)
+        assertEquals(null, result.room.description)
+        assertEquals(3, result.room.memberCount)
+        assertEquals("2026-10-01T08:30:00", result.room.createdAt)
+        assertEquals(RoomMembershipRole.MEMBER, result.membershipRole)
+        assertEquals(listOf(11L, 10L), result.members.map { it.userId })
+        assertEquals(listOf("두 번째", "첫 번째"), result.members.map { it.nickname })
+        assertEquals(
+            "${ApiConfig.BASE_URL}/images/profile/member-11.png",
+            result.members.first().profileImageUrl,
+        )
+        assertEquals(null, result.members.last().profileImageUrl)
+        client.close()
+    }
+
+    @Test
+    fun `잘못된 모임 ID와 인증 또는 토큰이 없으면 상세 HTTP 요청을 보내지 않는다`() = runTest {
+        var requestCount = 0
+        val client = clientFor {
+            requestCount += 1
+            respond(detailSuccessBody(), headers = jsonHeaders)
+        }
+        val authenticatedWithoutToken = repository(client, null, AuthSessionState.Authenticated)
+        val unauthenticated = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Unauthenticated)
+
+        assertFailsWith<RoomRepositoryException> { authenticatedWithoutToken.getRoom(1) }
+        assertFailsWith<RoomRepositoryException> { unauthenticated.getRoom(1) }
+        assertFailsWith<RoomRepositoryException> {
+            repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated).getRoom(0)
+        }
+
+        assertEquals(0, requestCount)
+        client.close()
+    }
+
+    @Test
+    fun `상세 HTTP 오류는 서버 오류 정보를 Domain 예외에 보존한다`() = runTest {
+        val client = clientFor {
+            respond(
+                content = """{"isSuccess":false,"code":"ROOM403","message":"참여하지 않은 방입니다.","result":null}""",
+                status = HttpStatusCode.Forbidden,
+                headers = jsonHeaders,
+            )
+        }
+
+        val error = assertFailsWith<RoomRepositoryException> {
+            repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated).getRoom(7)
+        }
+
+        assertEquals(403, error.statusCode)
+        assertEquals("ROOM403", error.code)
+        assertEquals("참여하지 않은 방입니다.", error.message)
+        client.close()
+    }
+
+    @Test
+    fun `상세 API 업무 실패 응답도 성공 결과로 처리하지 않는다`() = runTest {
+        val client = clientFor {
+            respond(
+                content = """{"isSuccess":false,"code":"ROOM404","message":"삭제된 방입니다.","result":null}""",
+                headers = jsonHeaders,
+            )
+        }
+
+        val error = assertFailsWith<RoomRepositoryException> {
+            repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated).getRoom(7)
+        }
+
+        assertEquals("ROOM404", error.code)
+        assertEquals(200, error.statusCode)
+        client.close()
+    }
+
+    @Test
+    fun `상세 성공 응답의 상태 코드와 API 코드와 ID와 참여 역할을 엄격히 검증한다`() = runTest {
+        val invalidCodeClient = clientFor {
+            respond(detailSuccessBody(code = "ROOM201"), headers = jsonHeaders)
+        }
+        val nullResultClient = clientFor {
+            respond("""{"isSuccess":true,"code":"ROOM200","message":"성공","result":null}""", headers = jsonHeaders)
+        }
+        val mismatchedIdClient = clientFor {
+            respond(detailSuccessBody(roomId = 8), headers = jsonHeaders)
+        }
+        val invalidRoleClient = clientFor {
+            respond(detailSuccessBody(role = "MANAGER"), headers = jsonHeaders)
+        }
+        val wrongStatusClient = clientFor {
+            respond(detailSuccessBody(), status = HttpStatusCode.Created, headers = jsonHeaders)
+        }
+        val tokens = AuthTokens("access", "refresh")
+
+        listOf(invalidCodeClient, nullResultClient, mismatchedIdClient, invalidRoleClient, wrongStatusClient).forEach { client ->
+            assertFailsWith<IllegalStateException> {
+                repository(client, tokens, AuthSessionState.Authenticated).getRoom(7)
+            }
+        }
+
+        invalidCodeClient.close()
+        nullResultClient.close()
+        mismatchedIdClient.close()
+        invalidRoleClient.close()
+        wrongStatusClient.close()
     }
 
     @Test
@@ -518,3 +642,9 @@ private fun membershipResultJson(
     role: String = "OWNER",
     memberCount: Int = 1,
 ) = """{"roomId":$roomId,"name":"아침운동모임","description":"함께 운동해요","imageUrl":"/images/default-room.png","activityDays":["MONDAY","WEDNESDAY","FRIDAY"],"activityTime":"08:00","memberCount":$memberCount,"membershipRole":"$role","createdAt":"2026-10-01T08:30:00","members":[{"userId":10,"nickname":"방장"}]}"""
+
+private fun detailSuccessBody(
+    roomId: Long = 7,
+    role: String = "MEMBER",
+    code: String = "ROOM200",
+) = """{"isSuccess":true,"code":"$code","message":"성공","result":{"roomId":$roomId,"name":"상세 응답 이름","description":null,"imageUrl":"/images/rooms/detail.png","activityDays":["MONDAY","WEDNESDAY"],"activityTime":"08:15","memberCount":3,"membershipRole":"$role","createdAt":"2026-10-01T08:30:00","members":[{"userId":11,"nickname":"두 번째","profileImageUrl":"/images/profile/member-11.png"},{"userId":10,"nickname":"첫 번째","profileImageUrl":null}]}}"""

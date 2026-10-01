@@ -50,12 +50,13 @@ internal fun RoomMembershipResponseEntity.toDomain(
             RoomMemberDetails(
                 userId = member.userId,
                 nickname = member.nickname,
+                profileImageUrl = member.profileImageUrl.toRoomImageUrl(),
             )
         },
     )
 }
 
-private fun String?.toRoomImageUrl(): String? {
+internal fun String?.toRoomImageUrl(): String? {
     val value = this?.trim()?.takeIf(String::isNotEmpty) ?: return null
     if (value == DefaultRoomImagePath) return null
     if (value.startsWith("http://", ignoreCase = true) || value.startsWith("https://", ignoreCase = true)) {
