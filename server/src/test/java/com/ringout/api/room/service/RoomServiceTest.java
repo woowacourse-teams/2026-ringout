@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.file.domain.ImageFile;
+import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomBlackList;
@@ -31,6 +32,7 @@ import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.user.domain.Nickname;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -61,11 +63,20 @@ class RoomServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private ImageFileService imageFileService;
+
     private RoomService roomService;
 
     @BeforeEach
     void setUp() {
-        roomService = new RoomService(roomRepository, roomUserRepository, roomBlackListRepository, userRepository);
+        roomService = new RoomService(
+            roomRepository,
+            roomUserRepository,
+            roomBlackListRepository,
+            userRepository,
+            imageFileService
+        );
     }
 
     @Nested
@@ -385,15 +396,19 @@ class RoomServiceTest {
         }
 
         @Test
-        void 유효한_이미지만_전달하면_기본_이미지_URL을_반환한다() {
+        void 이미지를_전달하면_S3에_업로드하고_조회_URL을_반환한다() {
             // given
             Long userId = 1L;
             User user = userWithId(userId, "가나다");
             Room room = roomWithHost(userId, 10L);
             MockMultipartFile image = new MockMultipartFile("image", "room.png", "image/png",
                 "image".getBytes(StandardCharsets.UTF_8));
+            ImageFile savedImage = ImageFile.from("images/rooms/updated-room.png");
+            URI readUri = URI.create("https://example.com/updated-room.png?signature=test");
             given(userRepository.findById(userId)).willReturn(Optional.of(user));
             given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+            given(imageFileService.upload(image, "images/rooms")).willReturn(savedImage);
+            given(imageFileService.createReadUri(savedImage)).willReturn(readUri);
             RoomUpdateRequest request = new RoomUpdateRequest(null, null, image);
 
             // when
@@ -401,7 +416,10 @@ class RoomServiceTest {
 
             // then
             assertThat(response.name()).isEqualTo("아침 운동 모임");
-            assertThat(response.imageUrl()).isEqualTo("/images/default-room.png");
+            assertThat(response.imageUrl()).isEqualTo(readUri.toString());
+            assertThat(room.getImage()).isSameAs(savedImage);
+            verify(imageFileService).upload(image, "images/rooms");
+            verify(imageFileService).createReadUri(savedImage);
         }
     }
 
