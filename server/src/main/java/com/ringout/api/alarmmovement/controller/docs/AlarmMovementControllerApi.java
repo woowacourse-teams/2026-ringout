@@ -146,7 +146,7 @@ public interface AlarmMovementControllerApi {
         summary = "모임 회원 이동 상태 조회",
         description = """
             인증된 현재 모임 참여자의 상태를 조회합니다. 목록은 탈퇴·추방되지 않은 활성 참여자만 포함하며 닉네임 첫 글자 기준 한글(가–힣), 영문(A–Z, a–z), 그 외 문자 순으로 정렬하고 각 그룹은 문자열 오름차순으로 정렬합니다. 영문 대소문자는 구분합니다.
-            각 회원은 자신의 가장 최근 알람 실행 기준 상태를 반환합니다. 알람 실행이 없으면 IDLE, 알람 실행은 있으나 이동 시작 전이면 ALARM_TRIGGERED입니다. 이동 시작 후 2분 미만이면 MOVEMENT_STARTED, 2분 이상이면 MOVING이며 종료 상태는 GAVE_UP 또는 ARRIVED입니다.
+            각 회원은 서버 기준 오늘 00:00 이상 다음 날 00:00 미만에 실제 알람이 시작된 실행만 대상으로 상태를 반환합니다. 대상 실행 중 startedAt이 가장 최근인 것을 선택하며, 시작 시각이 같으면 ID가 큰 실행을 선택합니다. 오늘 알람 실행이 없으면 IDLE, 알람 실행은 있으나 이동 시작 전이면 ALARM_TRIGGERED입니다. 이동 시작 후 2분 미만이면 MOVEMENT_STARTED, 2분 이상이면 MOVING이며 종료 상태는 GAVE_UP 또는 ARRIVED입니다.
             """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
