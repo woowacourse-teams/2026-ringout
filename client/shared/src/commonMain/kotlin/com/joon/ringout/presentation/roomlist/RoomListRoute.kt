@@ -15,15 +15,17 @@ import com.joon.ringout.presentation.common.component.ConfirmationDialog
 internal fun RoomListRoute(
     viewModel: RoomListViewModel,
     authSessionState: AuthSessionState,
+    sessionIdentity: Any?,
     onCreateRoom: () -> Unit,
     onLoginClick: () -> Unit,
     onRoomClick: (String) -> Unit,
+    onJoinedRoomClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isLoginDialogVisible by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(viewModel, authSessionState) {
-        viewModel.onRouteVisible(authSessionState)
+    LaunchedEffect(viewModel, authSessionState, sessionIdentity) {
+        viewModel.onRouteVisible(authSessionState, sessionIdentity)
     }
 
     RoomListScreen(
@@ -36,6 +38,7 @@ internal fun RoomListRoute(
             }
         },
         onRoomClick = onRoomClick,
+        onJoinedRoomClick = onJoinedRoomClick,
         onRetryRooms = viewModel::onRetryRooms,
         modifier = modifier,
     )

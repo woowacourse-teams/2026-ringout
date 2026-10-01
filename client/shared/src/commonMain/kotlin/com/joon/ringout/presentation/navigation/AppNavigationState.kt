@@ -56,6 +56,7 @@ internal class AppNavigationState(
             AppRoute.Social -> listOf(AppRoute.Home, AppRoute.Social)
             AppRoute.RoomCreate -> listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomCreate)
             is AppRoute.RoomDetail -> listOf(AppRoute.Home, AppRoute.Social, route)
+            is AppRoute.RoomHome -> listOf(AppRoute.Home, AppRoute.Social, route)
             is AppRoute.RoomEdit -> when {
                 routes.lastOrNull() is AppRoute.RoomEdit -> routes.dropLast(1) + route
                 else -> routes.toList() + route
@@ -92,6 +93,18 @@ internal class AppNavigationState(
     /** 소셜에서 시작한 인증은 완료 후 기존 소셜 또는 모임 소개 화면으로 돌아간다. */
     fun completeAuthenticationFlow() {
         replaceBackStack(socialReturnStack() ?: listOf(AppRoute.Home))
+    }
+
+    /** 성공한 생성/가입 화면만 RoomHome으로 바꾸며, 이미 나간 화면의 완료는 무시한다. */
+    fun navigateToRoomHomeFrom(sourceRoute: AppRoute, roomId: String): Boolean {
+        if (!isCurrentRoute(sourceRoute)) return false
+        if (sourceRoute != AppRoute.RoomCreate && sourceRoute !is AppRoute.RoomDetail) return false
+        val expectedStack = listOf(AppRoute.Home, AppRoute.Social, sourceRoute)
+        if (routes.toList() != expectedStack) return false
+        val destination = AppRoute.RoomHome(roomId)
+        if (routes.lastOrNull() == destination) return true
+        replaceBackStack(listOf(AppRoute.Home, AppRoute.Social, destination))
+        return true
     }
 
     fun popBackStack(from: AppRoute = routes.last()) {

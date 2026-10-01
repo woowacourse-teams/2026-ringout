@@ -46,6 +46,14 @@ internal fun RoomHomeRecords(
             return@Column
         }
 
+        if (!uiState.isDataLoaded) {
+            RoomHomeStatus(
+                message = "모임 기록은 아직 조회되지 않았어요.",
+                modifier = Modifier.heightIn(min = 180.dp),
+            )
+            return@Column
+        }
+
         RoomHomeWeekCalendar(
             selectedDate = uiState.selectedDate,
             visibleWeekStart = uiState.visibleWeekStart,
@@ -151,7 +159,7 @@ private fun RoomHomeRecordsDarkPreview() {
 private fun RoomHomeRecordsEmptyPreview() {
     RingoutTheme {
         RoomHomeRecords(
-            uiState = RoomHomeRecordsUiState(selectedDate = RoomHomePreviewDate),
+            uiState = RoomHomeRecordsUiState(selectedDate = RoomHomePreviewDate, isDataLoaded = true),
             onDateSelected = {}, onPreviousWeek = {}, onNextWeek = {}, onOpenCalendar = {}, onRefresh = {},
             modifier = Modifier.background(roomHomeColors().background).padding(horizontal = 30.dp),
         )

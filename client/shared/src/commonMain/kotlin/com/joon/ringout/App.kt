@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,6 +32,9 @@ import com.joon.ringout.presentation.navigation.authGraph
 import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
+import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roomlist.RoomListViewModel
+import com.joon.ringout.presentation.roomlist.model.RoomMutationType
 import com.joon.ringout.presentation.onboarding.OnboardingRoute
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.presentation.navigation.AppRoute
@@ -165,6 +170,7 @@ private fun RingoutAppContent(
     }
     val productAnalyticsRecorder = appContainer.productAnalyticsRecorder
     val authSessionState by appContainer.authSession.state.collectAsStateWithLifecycle()
+    val authSessionIdentity by appContainer.authSession.identity.collectAsStateWithLifecycle()
     val navigationState = rememberAppNavigationState()
     // iOS 알람 울림 이동 정책 이전이 끝날 때까지 플랫폼 울림 상태를 현재 백스택보다 우선 표시한다.
     val displayedRoute = ringingAlarm
@@ -173,6 +179,16 @@ private fun RingoutAppContent(
     val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
     val viewModelScopes = rememberNavigationViewModelScopes(appContainer, retainedRoutes)
     val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
+    val socialRoomListViewModel = if (AppRoute.Social in retainedRoutes) {
+        viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
+    } else {
+        null
+    }
+    val roomHomeViewModels = remember(retainedRoutes, viewModelScopes) {
+        retainedRoutes.filterIsInstance<AppRoute.RoomHome>().map { route ->
+            viewModelScopes.get(route, RoomHomeViewModel::class)
+        }
+    }
     val myPageViewModel = if (AppRoute.MyPage in retainedRoutes) {
         viewModelScopes.get(AppRoute.MyPage, MyPageViewModel::class)
     } else {
@@ -203,7 +219,24 @@ private fun RingoutAppContent(
         authSessionState = authSessionState,
         myPageViewModel = myPageViewModel,
         destinationViewModel = alarmEditorNavigation?.destinationViewModel,
+        roomListViewModel = socialRoomListViewModel,
+        roomHomeViewModels = roomHomeViewModels,
     )
+    val roomMutationState = socialRoomListViewModel?.mutationState
+    LaunchedEffect(roomMutationState?.operationId, roomMutationState?.isSuccessful) {
+        val state = roomMutationState ?: return@LaunchedEffect
+        if (!state.isSuccessful) return@LaunchedEffect
+        val roomListViewModel = socialRoomListViewModel
+        val success = roomListViewModel.consumeSuccessfulMutation(state.operationId)
+            ?: return@LaunchedEffect
+        if (!roomListViewModel.isCurrentMutationSource(success.source.entryId)) return@LaunchedEffect
+        val sourceRoute = when (success.source.type) {
+            RoomMutationType.Create -> AppRoute.RoomCreate
+            RoomMutationType.Join -> success.source.roomId?.let(AppRoute::RoomDetail)
+                ?: return@LaunchedEffect
+        }
+        navigationState.navigateToRoomHomeFrom(sourceRoute, success.roomId)
+    }
     ReauthenticationCoordinator(
         authSessionState = authSessionState,
         navigationState = navigationState,
@@ -266,6 +299,7 @@ private fun RingoutAppContent(
         graph = {
             homeGraph(
                 authSessionState = authSessionState,
+                sessionIdentity = authSessionIdentity,
                 memberRepository = appContainer.memberRepository,
                 viewModelScopes = viewModelScopes,
                 navigationState = navigationState,
@@ -294,10 +328,10 @@ private fun RingoutAppContent(
                     }
                 },
                 onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
-                // 모임 가입 요청 API는 현재 화면 계획 범위에 포함되지 않는다.
-                onJoinRoom = {},
-                // 실제 모임 생성 API는 이 화면 계획 범위에 포함되지 않는다.
-                onRoomCreateDraft = {},
+                onJoinRoom = { source -> socialRoomListViewModel?.joinRoom(source) },
+                onRoomCreateDraft = { source, input ->
+                    socialRoomListViewModel?.createRoom(source, input)
+                },
                 // 모임 수정 초안은 후속 서버 연동 전까지 로컬 콜백 경계로 유지한다.
                 onRoomEditDraft = { _, _ -> },
             )

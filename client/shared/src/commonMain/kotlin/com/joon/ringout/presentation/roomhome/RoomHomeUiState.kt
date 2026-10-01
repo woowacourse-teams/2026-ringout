@@ -34,11 +34,13 @@ internal data class RoomHomeRecordsUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val canViewRecords: Boolean = true,
+    val isDataLoaded: Boolean = false,
 )
 
 internal data class RoomHomeMemberUiModel(
     val id: String,
     val nickname: String,
+    val profileImageUrl: String? = null,
 )
 
 /** 진행 여부와 참여 인원은 외부에서 전달한다. UI가 시각만으로 활동 여부를 추정하지 않는다. */
@@ -50,10 +52,12 @@ internal data class RoomHomeOngoingActivityUiModel(
 internal data class RoomHomeUiState(
     val room: RoomUiModel? = null,
     val members: List<RoomHomeMemberUiModel> = emptyList(),
+    val areMembersLoaded: Boolean = false,
     val nextScheduleText: String? = null,
     val remainingTimeText: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    val canRetry: Boolean = false,
     val selectedTab: RoomHomeTab = RoomHomeTab.Info,
     val recordsState: RoomHomeRecordsUiState = RoomHomeRecordsUiState(),
     val calendarMonth: MissionYearMonth = recordsState.selectedDate.yearMonth,

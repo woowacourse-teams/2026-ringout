@@ -21,6 +21,7 @@ internal fun RoomDetailJoinButton(
     isJoined: Boolean,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    isJoining: Boolean = false,
     onClick: () -> Unit,
 ) {
     Button(
@@ -38,7 +39,11 @@ internal fun RoomDetailJoinButton(
         ),
     ) {
         Text(
-            text = if (isJoined) "이미 가입한 모임이에요." else "가입하기",
+            text = when {
+                isJoined -> "이미 가입한 모임이에요."
+                isJoining -> "가입 중..."
+                else -> "가입하기"
+            },
             style = MaterialTheme.typography.titleSmall.copy(
                 fontSize = 16.sp,
                 lineHeight = 20.sp,

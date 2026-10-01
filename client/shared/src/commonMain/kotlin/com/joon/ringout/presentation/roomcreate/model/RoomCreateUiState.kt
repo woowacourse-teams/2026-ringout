@@ -10,6 +10,7 @@ internal data class RoomCreateUiState(
     val introduction: String = "",
     val selectedDays: List<String> = WeekdayOrder,
     val time24Hour: String? = null,
+    val submitErrorMessage: String? = null,
 ) {
     val nameValidation
         get() = validateRoomName(name)

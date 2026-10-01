@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.roomhome
 
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
+import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -148,6 +149,7 @@ class RoomHomeViewModelTest {
                 achievedMemberCount = 1,
                 isLoading = true,
                 errorMessage = "이전 표시 오류",
+                isDataLoaded = true,
             ),
         )
         val viewModel = RoomHomeViewModel(state, recordsByDate)
@@ -184,6 +186,20 @@ class RoomHomeViewModelTest {
         }
     }
 
+    @Test
+    fun `계정이 바뀌면 이전 모임 정보와 기록 캐시를 비운다`() {
+        val viewModel = RoomHomeViewModel(initialState(), recordsByDate)
+        viewModel.onAuthSessionChanged(AuthSessionState.Authenticated, identity = Any())
+        viewModel.onAuthSessionChanged(AuthSessionState.Authenticated, identity = Any())
+
+        val state = viewModel.uiState.value
+        assertNull(state.room)
+        assertTrue(state.members.isEmpty())
+        assertFalse(state.areMembersLoaded)
+        assertHiddenRecords(state.recordsState)
+        assertFalse(state.recordsState.isDataLoaded)
+    }
+
     private fun assertHiddenRecords(state: RoomHomeRecordsUiState) {
         assertFalse(state.canViewRecords)
         assertTrue(state.records.isEmpty())
@@ -198,6 +214,7 @@ class RoomHomeViewModelTest {
             records = decemberRecords.records,
             achievedMemberCount = decemberRecords.achievedMemberCount,
             participantCounts = mapOf(decemberDate to 1, januaryDate to 0),
+            isDataLoaded = true,
         ),
     )
 

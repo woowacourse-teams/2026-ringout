@@ -19,10 +19,13 @@ import com.joon.ringout.presentation.mypage.MyPageRoute
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.roomcreate.RoomCreateRoute
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
-import com.joon.ringout.presentation.roomcreate.model.RoomCreateDraft
+import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.presentation.roomedit.RoomEditRoute
 import com.joon.ringout.presentation.roomedit.RoomEditViewModel
 import com.joon.ringout.presentation.roomedit.model.RoomEditDraft
+import com.joon.ringout.presentation.roomhome.RoomHomeRoute
+import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roomlist.model.RoomMutationSource
 import androidx.compose.ui.graphics.ImageBitmap
 
 // 홈과 마이페이지는 각 백스택 항목의 저장소를 사용한다.
@@ -30,6 +33,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     navigationState: AppNavigationState,
     homeViewModel: HomeViewModel,
     viewModelScopes: NavigationViewModelScopes,
+    sessionIdentity: Any?,
     myPageViewModel: MyPageViewModel?,
     authSessionState: AuthSessionState,
     memberRepository: MemberRepository,
@@ -42,8 +46,8 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     onEditAlarm: (AlarmScheduleRequest) -> Unit,
     onActiveAlarmMissionClick: () -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
-    onJoinRoom: (String) -> Unit,
-    onRoomCreateDraft: (RoomCreateDraft) -> Unit,
+    onJoinRoom: (RoomMutationSource) -> Unit,
+    onRoomCreateDraft: (RoomMutationSource, RoomCreateInput) -> Unit,
     onRoomEditDraft: (RoomEditDraft, ImageBitmap?) -> Unit,
 ) {
     entry<AppRoute.Home>(clazzContentKey = AppRoute::viewModelStoreKey) {
@@ -73,16 +77,24 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
         RoomListRoute(
             viewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class),
             authSessionState = authSessionState,
+            sessionIdentity = sessionIdentity,
             onCreateRoom = { navigationState.navigate(AppRoute.RoomCreate) },
             onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomDetail(roomId)) },
+            onJoinedRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomHome(roomId)) },
         )
     }
     entry<AppRoute.RoomCreate>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         val viewModel = viewModelScopes.get(route, RoomCreateViewModel::class)
+        val roomListViewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
         RoomCreateRoute(
             viewModel = viewModel,
+            authSessionState = authSessionState,
+            sessionIdentity = sessionIdentity,
             onBackClick = { navigationState.popBackStack(route) },
+            mutationState = roomListViewModel.mutationState,
+            onMutationSourceVisible = roomListViewModel::onMutationSourceVisible,
+            onMutationSourceHidden = roomListViewModel::onMutationSourceHidden,
             onCreateDraft = onRoomCreateDraft,
         )
     }
@@ -94,11 +106,27 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             isLoading = roomListViewModel.isRoomListUninitialized || roomListUiState.isLoadingAllRooms,
             errorMessage = roomListUiState.allRoomsErrorMessage,
             authSessionState = authSessionState,
+            sessionIdentity = sessionIdentity,
             onRouteVisible = roomListViewModel::onRouteVisible,
+            mutationState = roomListViewModel.mutationState,
+            onMutationSourceVisible = roomListViewModel::onMutationSourceVisible,
+            onMutationSourceHidden = roomListViewModel::onMutationSourceHidden,
             onBackClick = { navigationState.popBackStack(route) },
             onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onJoinRoom = onJoinRoom,
             onRetryRooms = roomListViewModel::onRetryRooms,
+        )
+    }
+    entry<AppRoute.RoomHome>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        val roomHomeViewModel = viewModelScopes.get(route, RoomHomeViewModel::class)
+        RoomHomeRoute(
+            viewModel = roomHomeViewModel,
+            roomId = route.roomId,
+            authSessionState = authSessionState,
+            sessionIdentity = sessionIdentity,
+            onBackClick = { navigationState.popBackStack(route) },
+            onMenuClick = {},
+            onRetry = roomHomeViewModel::onRetry,
         )
     }
     entry<AppRoute.RoomEdit>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->

@@ -10,6 +10,8 @@ import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
+import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roomlist.RoomListViewModel
 
 @Composable
 internal fun AuthSessionCoordinator(
@@ -18,6 +20,8 @@ internal fun AuthSessionCoordinator(
     authSessionState: AuthSessionState,
     myPageViewModel: MyPageViewModel?,
     destinationViewModel: DestinationViewModel?,
+    roomListViewModel: RoomListViewModel? = null,
+    roomHomeViewModels: List<RoomHomeViewModel> = emptyList(),
 ) {
     val sessionIdentity by authSession.identity.collectAsState()
     AuthSessionStateBinding(
@@ -26,7 +30,38 @@ internal fun AuthSessionCoordinator(
         myPageViewModel = myPageViewModel,
         destinationViewModel = destinationViewModel,
     )
+    RoomSessionStateBinding(
+        sessionIdentity = sessionIdentity,
+        authSessionState = authSessionState,
+        roomListViewModel = roomListViewModel,
+        roomHomeViewModels = roomHomeViewModels,
+    )
     AuthSessionRestoreEffect(authRepository)
+}
+
+@Composable
+private fun RoomSessionStateBinding(
+    sessionIdentity: Any?,
+    authSessionState: AuthSessionState,
+    roomListViewModel: RoomListViewModel?,
+    roomHomeViewModels: List<RoomHomeViewModel>,
+) {
+    val handler = remember(roomListViewModel, roomHomeViewModels) {
+        RoomSessionStateHandler(roomListViewModel, roomHomeViewModels)
+    }
+    LaunchedEffect(authSessionState, sessionIdentity, handler) {
+        handler.onSessionStateChanged(authSessionState, sessionIdentity)
+    }
+}
+
+internal class RoomSessionStateHandler(
+    private val roomListViewModel: RoomListViewModel?,
+    private val roomHomeViewModels: List<RoomHomeViewModel>,
+) {
+    fun onSessionStateChanged(authSessionState: AuthSessionState, sessionIdentity: Any?) {
+        roomListViewModel?.onAuthSessionChanged(authSessionState, sessionIdentity)
+        roomHomeViewModels.forEach { it.onAuthSessionChanged(authSessionState, sessionIdentity) }
+    }
 }
 
 @Composable

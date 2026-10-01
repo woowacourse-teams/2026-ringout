@@ -45,6 +45,8 @@ internal fun RoomCreateScreen(
     onMinuteChange: (Int) -> Unit,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
+    isMutationInProgress: Boolean = false,
+    mutationErrorMessage: String? = null,
 ) {
     val scrollState = rememberScrollState()
     LaunchedEffect(uiState.step) {
@@ -100,15 +102,42 @@ internal fun RoomCreateScreen(
                 )
             }
         }
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 12.dp),
-            contentAlignment = Alignment.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            if (isMutationInProgress) {
+                androidx.compose.material3.Text(
+                    text = "요청을 보내고 있어요. 화면을 나가도 결과는 모임 목록에 반영돼요.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .widthIn(max = 560.dp)
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                )
+            }
+            val submitError = uiState.submitErrorMessage?.takeIf(String::isNotBlank) ?: mutationErrorMessage
+            if (submitError != null) {
+                androidx.compose.material3.Text(
+                    text = submitError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .widthIn(max = 560.dp)
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                )
+            }
             RoomCreateActionButton(
-                label = if (uiState.step == 3) "모임 생성하기" else "다음으로",
-                enabled = uiState.canContinue,
+                label = when {
+                    uiState.step == 3 && isMutationInProgress -> "모임 생성 중..."
+                    uiState.step == 3 -> "모임 생성하기"
+                    else -> "다음으로"
+                },
+                enabled = uiState.canContinue && !isMutationInProgress,
                 onClick = onAction,
                 modifier = Modifier.widthIn(max = 560.dp),
             )
@@ -135,6 +164,8 @@ private fun previewRoomCreateState(
 private fun RoomCreateScreenPreviewContent(
     themeMode: ThemeMode,
     uiState: RoomCreateUiState,
+    isMutationInProgress: Boolean = false,
+    mutationErrorMessage: String? = null,
 ) {
     RingoutTheme(themeMode) {
         RoomCreateScreen(
@@ -147,8 +178,40 @@ private fun RoomCreateScreenPreviewContent(
             onHourChange = {},
             onMinuteChange = {},
             onAction = {},
+            isMutationInProgress = isMutationInProgress,
+            mutationErrorMessage = mutationErrorMessage,
         )
     }
+}
+
+@Preview(name = "모임 생성 중 · 다크", widthDp = 402, heightDp = 941, showBackground = true)
+@Composable
+private fun RoomCreateSubmittingDarkPreview() {
+    RoomCreateScreenPreviewContent(
+        themeMode = ThemeMode.Dark,
+        uiState = previewRoomCreateState(
+            step = 3,
+            name = "가A2",
+            introduction = "함께 건강한 습관을 만들어요.",
+            selectedDays = listOf("월", "수", "금"),
+        ),
+        isMutationInProgress = true,
+    )
+}
+
+@Preview(name = "요청 결과 미확인 · 라이트", widthDp = 402, heightDp = 941, showBackground = true)
+@Composable
+private fun RoomCreateUnconfirmedLightPreview() {
+    RoomCreateScreenPreviewContent(
+        themeMode = ThemeMode.Light,
+        uiState = previewRoomCreateState(
+            step = 3,
+            name = "가A2",
+            introduction = "함께 건강한 습관을 만들어요.",
+            selectedDays = listOf("월", "수", "금"),
+        ),
+        mutationErrorMessage = "요청 결과를 확인할 수 없어요. 목록에서 저장 여부를 확인해 주세요.",
+    )
 }
 
 @Preview(name = "1단계 · 초기 · 라이트", widthDp = 402, heightDp = 941, showBackground = true)
