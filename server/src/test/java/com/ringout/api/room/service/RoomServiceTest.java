@@ -79,6 +79,7 @@ class RoomServiceTest {
             userRepository,
             imageFileService
         );
+        ReflectionTestUtils.setField(roomService, "ROOM_IMAGE_DIRECTORY", "images/rooms");
     }
 
     @Nested
@@ -382,7 +383,7 @@ class RoomServiceTest {
     class 방장_모임방_수정_처리 {
 
         @Test
-        void 이름과_소개를_수정하고_기본_이미지_URL을_반환한다() {
+        void 이름과_소개를_수정하고_이미지가_없으면_null을_반환한다() {
             // given
             Long userId = 1L;
             User user = userWithId(userId, "가나다");
@@ -398,7 +399,7 @@ class RoomServiceTest {
             assertThat(response.roomId()).isEqualTo(10L);
             assertThat(response.name()).isEqualTo("새로운 아침 운동 모임");
             assertThat(response.description()).isEmpty();
-            assertThat(response.imageUrl()).isEqualTo("/images/default-room.png");
+            assertThat(response.imageUrl()).isNull();
         }
 
         @Test
@@ -429,7 +430,7 @@ class RoomServiceTest {
         }
 
         @Test
-        void 기본_이미지_전환을_요청하면_기존_이미지를_삭제하고_기본_URL을_반환한다() {
+        void 기본_이미지_전환을_요청하면_기존_이미지를_삭제하고_null을_반환한다() {
             // given
             Long userId = 1L;
             ImageFile previousImage = ImageFile.from("images/rooms/previous-room.png");
@@ -444,7 +445,7 @@ class RoomServiceTest {
             RoomUpdateResponse response = roomService.updateRoom(userId, 10L, request);
 
             // then
-            assertThat(response.imageUrl()).isEqualTo("/images/default-room.png");
+            assertThat(response.imageUrl()).isNull();
             assertThat(room.getImage()).isNull();
             verify(imageFileService).delete(previousImage);
             verify(imageFileService, never()).upload(any(), any());
