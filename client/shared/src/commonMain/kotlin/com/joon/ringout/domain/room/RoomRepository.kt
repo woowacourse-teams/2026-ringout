@@ -1,5 +1,7 @@
 package com.joon.ringout.domain.room
 
+import com.joon.ringout.domain.missionhistory.MissionDate
+
 interface RoomRepository {
     suspend fun getRooms(): List<RoomSummary>
 
@@ -8,6 +10,8 @@ interface RoomRepository {
     suspend fun getMembersForManagement(roomId: Long): List<RoomManagementMember>
 
     suspend fun kickMember(roomId: Long, userId: Long)
+    
+    suspend fun getRoomRecords(roomId: Long, date: MissionDate): RoomRecords
 
     suspend fun createRoom(input: RoomCreateInput): RoomMembershipDetails
 

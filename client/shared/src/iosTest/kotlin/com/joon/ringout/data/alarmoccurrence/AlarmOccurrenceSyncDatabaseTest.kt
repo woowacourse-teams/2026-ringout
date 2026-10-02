@@ -23,6 +23,52 @@ import kotlin.test.assertTrue
 
 class AlarmOccurrenceSyncDatabaseTest {
     @Test
+    fun `중복 해제와 종료 경합은 이동 시작 한 건과 최초 종료 결과만 보존한다`() = withDatabase { dao ->
+        dao.recordStart(execution())
+        dao.recordDismissal(Owner, Root, 2_000)
+        dao.recordDismissal(Owner, Root, 2_100)
+        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
+        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.ARRIVED, 3_100)
+        val events = dao.getUnsentMovements(Owner)
+        assertEquals(listOf(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.START_MOVEMENT,
+            com.joon.ringout.domain.alarmmovement.AlarmMovementAction.GIVE_UP), events.map { it.action })
+        assertEquals(listOf(2_000L, 3_000L), events.map { it.occurredAtEpochMillis })
+        assertTrue(dao.getUnsentMovements("other").isEmpty())
+        assertEquals(0, dao.saveMovementDelivery("other", events.first().id, AlarmOccurrenceOutboxState.SENT, 1))
+    }
+
+    @Test
+    fun `DB 재실행 후에도 모임별 전송 성공과 재시도 상태를 유지한다`() = runBlocking {
+        val path = NSTemporaryDirectory() + "ringout-movement-${NSUUID().UUIDString}.db"
+        var database = openDatabase(path)
+        try {
+            var dao = database.alarmOccurrenceSyncDao()
+            dao.recordStart(execution())
+            dao.recordDismissal(Owner, Root, 2_000)
+            val parent = dao.getUnsentMovements(Owner).single()
+            dao.completeMovementTargets(Owner, parent.id, listOf(7, 8, 7))
+            val children = dao.getUnsentMovements(Owner)
+            assertEquals(listOf(7L, 8L), children.map { it.roomId })
+            dao.saveMovementDelivery(Owner, children[0].id, AlarmOccurrenceOutboxState.SENT, 1)
+            dao.saveMovementDelivery(Owner, children[1].id, AlarmOccurrenceOutboxState.PENDING, 2, 9_000, "MOVEMENT500")
+            database.close()
+            database = openDatabase(path)
+            dao = database.alarmOccurrenceSyncDao()
+            val restored = dao.getUnsentMovements(Owner).single()
+            assertEquals(8L, restored.roomId)
+            assertEquals(9_000L, restored.nextAttemptAtEpochMillis)
+            assertEquals(2, restored.attemptCount)
+            assertEquals("MOVEMENT500", restored.lastErrorCode)
+            dao.completeMovementTargets(Owner, parent.id, listOf(7, 8))
+            assertEquals(3, dao.getMovements(Owner, Root).size)
+            assertEquals(1, dao.getUnsentMovements(Owner).size)
+        } finally {
+            database.close()
+            listOf(path, "$path-wal", "$path-shm").forEach { NSFileManager.defaultManager.removeItemAtPath(it, error = null) }
+        }
+    }
+
+    @Test
     fun `중복 이벤트는 원래 시각과 재울림 식별자를 보존하고 실행당 종료 결과는 하나만 남긴다`() = withDatabase { dao ->
         dao.recordStart(execution())
         dao.recordStart(execution().copy(startedAtEpochMillis = 99_000))

@@ -28,6 +28,7 @@ import java.net.URI;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,7 +39,8 @@ import org.springframework.web.multipart.MultipartFile;
 public class RoomService {
 
     private static final String DEFAULT_ROOM_IMAGE_URL = "/images/default-room.png";
-    private static final String ROOM_IMAGE_DIRECTORY = "images/rooms";
+    @Value("${app.file.image.room-directory}")
+    private String ROOM_IMAGE_DIRECTORY;
     private final RoomRepository roomRepository;
     private final RoomUserRepository roomUserRepository;
     private final RoomBlackListRepository roomBlackListRepository;
@@ -66,7 +68,7 @@ public class RoomService {
             .addKeyValue("roomId", savedRoom.getId())
             .addKeyValue("activityDayCount", savedRoom.getActivityDays().size())
             .log("모임방 생성 성공");
-        
+
         return RoomCreateResponse.from(savedRoom, roomUser, DEFAULT_ROOM_IMAGE_URL);
     }
 
@@ -166,7 +168,7 @@ public class RoomService {
             .addKeyValue("updatedImage", request.image() != null)
             .log("모임방 수정 성공");
 
-        return RoomUpdateResponse.from(room, resolveRoomImageUrl(room));
+        return RoomUpdateResponse.from(room, resolveRoomImageUrlOrNull(room));
     }
 
     @Transactional
@@ -345,6 +347,16 @@ public class RoomService {
         ImageFile image = room.getImage();
         if (image == null) {
             return DEFAULT_ROOM_IMAGE_URL;
+        }
+
+        URI imageUri = imageFileService.createReadUri(image);
+        return imageUri.toString();
+    }
+
+    private String resolveRoomImageUrlOrNull(Room room) {
+        ImageFile image = room.getImage();
+        if (image == null) {
+            return null;
         }
 
         URI imageUri = imageFileService.createReadUri(image);

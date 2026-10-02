@@ -23,6 +23,37 @@ import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTest {
     @Test
+    fun `버전 십의 미전송 알람을 보존하고 과거 이동 이벤트를 임의 생성하지 않는다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        var database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val sync = database.alarmOccurrenceSyncDao()
+            sync.recordStart(com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity(
+                "existing", "1", "alarm", 1, 1_000, 1_001,
+            ))
+            sync.recordDismissal("1", "existing", 2_000)
+            database.close()
+            // 10과 11의 기존 테이블은 동일하다. 새 테이블을 제거해 10의 저장 파일로 복원한다.
+            BundledSQLiteDriver().open(path).use { connection ->
+                connection.execSQL("DROP TABLE alarm_movement_outbox")
+                connection.execSQL("UPDATE room_master_table SET identity_hash = '91e792c227f600707f21ca662a258bb9' WHERE id = 42")
+                connection.execSQL("PRAGMA user_version = 10")
+            }
+            database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+            val migrated = database.alarmOccurrenceSyncDao()
+            assertEquals(2, migrated.getUnsentEvents("1").size)
+            assertEquals(2_000L, migrated.getEvents("1", "existing").last().occurredAtEpochMillis)
+            assertTrue(migrated.getUnsentMovements("1").isEmpty())
+            migrated.recordTerminal("1", "existing", com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+            assertEquals(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.ARRIVE,
+                migrated.getUnsentMovements("1").single().action)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    @Test
     fun `버전 구의 기존 데이터를 보존하고 빈 알람 전송 저장소를 추가한다`() = runBlocking<Unit> {
         val path = temporaryDatabasePath()
         createVersionFiveDatabase(path)

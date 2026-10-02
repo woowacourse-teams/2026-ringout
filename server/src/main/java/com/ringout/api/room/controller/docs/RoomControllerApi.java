@@ -513,7 +513,7 @@ public interface RoomControllerApi {
 
     @Operation(
         summary = "모임 방 수정",
-        description = "방장만 방 이름·소개 정보를 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, image, removeImage 중 하나 이상을 전달해야 합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage를 true로 전달하면 기존 이미지를 삭제해 기본 이미지로 전환합니다. image와 removeImage=true는 함께 전달할 수 없습니다. 응답에는 이미지가 있으면 presigned 조회 URL을, 없으면 /images/default-room.png를 반환합니다. name 또는 description 변경 시 최신 활동 시각을 갱신합니다.",
+        description = "방장만 방 이름·소개 정보를 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, image, removeImage 중 하나 이상을 전달해야 합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage를 true로 전달하면 기존 이미지를 삭제합니다. image와 removeImage=true는 함께 전달할 수 없습니다. 응답에는 이미지가 있으면 presigned 조회 URL을, 없으면 null을 반환합니다. name 또는 description 변경 시 최신 활동 시각을 갱신합니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
