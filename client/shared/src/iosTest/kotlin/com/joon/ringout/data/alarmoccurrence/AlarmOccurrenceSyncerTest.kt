@@ -5,6 +5,8 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.joon.ringout.data.database.RingoutDatabase
 import com.joon.ringout.data.network.ApiException
 import com.joon.ringout.domain.alarmoccurrence.*
+import com.joon.ringout.domain.alarmmovement.AlarmMovementAction
+import com.joon.ringout.domain.alarmmovement.AlarmMovementRepository
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthTokens
 import com.joon.ringout.domain.auth.SecureTokenStorage
@@ -29,6 +31,148 @@ import kotlin.time.Instant
 import kotlin.time.Clock
 
 class AlarmOccurrenceSyncerTest {
+    @Test
+    fun `반복 해제는 이동 시작을 중복하지 않고 가입한 각 모임에 시작과 도착을 순서대로 전송한다`() = withFixture { f ->
+        f.movements.rooms = listOf(7, 8)
+        f.start()
+        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordRepeat("1", "root", "retry", "event", 3_000)
+        f.dao.recordDismissal("1", "retry", 4_000)
+        f.dao.recordTerminal("1", "retry", AlarmOccurrenceOutboxKind.ARRIVED, 5_000)
+        f.syncer.flush()
+        f.newSyncer().flush()
+        assertEquals(listOf(7L to AlarmMovementAction.START_MOVEMENT, 8L to AlarmMovementAction.START_MOVEMENT,
+            7L to AlarmMovementAction.ARRIVE, 8L to AlarmMovementAction.ARRIVE), f.movements.calls)
+        assertEquals(listOf(ServerId), f.movements.ids.distinct())
+        assertEquals(1, f.movements.roomLookups)
+        assertTrue(f.dao.getUnsentMovements("1").isEmpty())
+    }
+
+    @Test
+    fun `모임 이동 실패에도 기존 알람 PATCH를 완료하고 실패한 모임만 재시도한다`() = withFixture { f ->
+        f.movements.rooms = listOf(7, 8)
+        f.start()
+        f.dao.recordDismissal("1", "root", 2_000)
+        f.movements.beforeChange = { room, _ -> if (room == 8L) throw ApiException(500, "MOVEMENT500", "실패") }
+        assertEquals(15_000L, f.syncer.flush())
+        assertTrue(f.dao.getUnsentEvents("1").isEmpty())
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
+        f.syncer.flush()
+        assertEquals(listOf("POST", "InitialDismissed", "ForceEnded"), f.remote.calls)
+        assertEquals(listOf(7L to AlarmMovementAction.START_MOVEMENT, 8L to AlarmMovementAction.START_MOVEMENT,
+            7L to AlarmMovementAction.GIVE_UP), f.movements.calls)
+        f.time = 15_000
+        f.movements.beforeChange = { _, _ -> }
+        f.newSyncer().flush()
+        assertEquals(listOf(8L to AlarmMovementAction.START_MOVEMENT, 8L to AlarmMovementAction.GIVE_UP), f.movements.calls.takeLast(2))
+        assertEquals(3, f.remote.calls.size)
+        assertTrue(f.dao.getUnsentMovements("1").isEmpty())
+    }
+
+    @Test
+    fun `알람 POST가 실패하면 UUID가 생기기 전까지 모임 요청을 보내지 않는다`() = withFixture { f ->
+        f.movements.rooms = listOf(7)
+        f.start()
+        f.dao.recordDismissal("1", "root", 2_000)
+        f.remote.beforeStart = { throw IOException("연결 끊김") }
+        assertEquals(15_000L, f.syncer.flush())
+        assertEquals(0, f.movements.roomLookups)
+        assertTrue(f.movements.calls.isEmpty())
+        f.time = 15_000
+        f.remote.beforeStart = {}
+        f.syncer.flush()
+        assertEquals(listOf(ServerId), f.movements.ids)
+    }
+
+    @Test
+    fun `가입 모임 조회 실패는 종료 요청을 앞서 보내지 않고 조회부터 재시도한다`() = withFixture { f ->
+        f.movements.rooms = listOf(7)
+        f.start()
+        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+        f.movements.beforeRooms = { throw IOException("오프라인") }
+        assertEquals(15_000L, f.syncer.flush())
+        assertEquals(1, f.movements.roomLookups)
+        assertTrue(f.movements.calls.isEmpty())
+        f.time = 15_000
+        f.movements.beforeRooms = {}
+        f.newSyncer().flush()
+        assertEquals(listOf(7L to AlarmMovementAction.START_MOVEMENT, 7L to AlarmMovementAction.ARRIVE), f.movements.calls)
+        assertTrue(f.dao.getUnsentMovements("1").isEmpty())
+    }
+
+    @Test
+    fun `가입한 모임이 없으면 이동 POST 없이 완료한다`() = withFixture { f ->
+        f.start()
+        f.dao.recordDismissal("1", "root", 2_000)
+        f.syncer.flush()
+        assertEquals(1, f.movements.roomLookups)
+        assertTrue(f.movements.calls.isEmpty())
+        assertTrue(f.dao.getUnsentMovements("1").isEmpty())
+    }
+
+    @Test
+    fun `이동 응답 중 계정이 바뀌면 이전 계정의 완료 상태를 변경하지 않는다`() = withFixture { f ->
+        f.movements.rooms = listOf(7)
+        f.start()
+        f.dao.recordDismissal("1", "root", 2_000)
+        f.movements.beforeChange = { _, _ ->
+            f.tokens.tokens = AuthTokens(token(2), "refresh")
+            f.session.startNewSession()
+        }
+        f.syncer.flush()
+        assertEquals(AlarmOccurrenceOutboxState.PENDING, f.dao.getUnsentMovements("1").single().state)
+        f.syncer.flush()
+        assertEquals(1, f.movements.calls.size)
+        f.tokens.tokens = AuthTokens(token(1), "refresh")
+        f.session.startNewSession()
+        f.movements.beforeChange = { _, _ -> }
+        f.syncer.flush()
+        assertTrue(f.dao.getUnsentMovements("1").isEmpty())
+        assertEquals(2, f.movements.calls.size)
+    }
+
+    @Test
+    fun `이동 인증 실패는 같은 세션에서 반복하지 않고 재로그인하면 재개한다`() = withFixture { f ->
+        f.movements.rooms = listOf(7)
+        f.start()
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
+        f.movements.beforeChange = { _, _ -> throw ApiException(401, "AUTH401", "인증 필요") }
+        f.syncer.flush()
+        f.syncer.flush()
+        assertEquals(1, f.movements.calls.size)
+        assertEquals("AUTH_REQUIRED", f.dao.getUnsentMovements("1").single().lastErrorCode)
+        f.session.startNewSession()
+        f.movements.beforeChange = { _, _ -> }
+        f.syncer.flush()
+        assertTrue(f.dao.getUnsentMovements("1").isEmpty())
+    }
+
+    @Test
+    fun `이동 영구 오류는 다른 모임 전송을 막지 않고 자동 재전송하지 않는다`() = withFixture { f ->
+        f.movements.rooms = listOf(7, 8)
+        f.start()
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+        f.movements.beforeChange = { room, _ -> if (room == 7L) throw ApiException(403, "MOVEMENT403", "탈퇴한 모임") }
+        assertNull(f.syncer.flush())
+        f.newSyncer().flush()
+        assertEquals(2, f.movements.calls.size)
+        assertEquals(7L, f.dao.getUnsentMovements("1").single().roomId)
+        assertEquals(AlarmOccurrenceOutboxState.BLOCKED, f.dao.getUnsentMovements("1").single().state)
+    }
+
+    @Test
+    fun `종료 후 늦게 저장된 해제는 이동을 다시 시작하지 않는다`() = withFixture { f ->
+        f.movements.rooms = listOf(7)
+        f.start()
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+        f.syncer.flush()
+        f.dao.recordDismissal("1", "root", 2_000)
+        f.syncer.flush()
+        assertEquals(listOf(7L to AlarmMovementAction.ARRIVE), f.movements.calls)
+        assertEquals("ALREADY_ENDED", f.dao.getUnsentMovements("1").single().lastErrorCode)
+    }
+
     @Test
     fun `캡처한 울림 해제 재울림 도착을 하나의 POST와 후속 PATCH로 전송한다`() = withFixture { f ->
         val recorder = AlarmOccurrenceEventRecorder(f.dao)
@@ -242,10 +386,11 @@ private class SyncFixture {
     val session = AuthSession().apply { startNewSession() }
     val tokens = SyncTokens()
     val remote = SyncRemote()
+    val movements = MovementRemote()
     var time = 10_000L
     var readTime: () -> Long = { time }
     val syncer = newSyncer()
-    fun newSyncer() = AlarmOccurrenceSyncer(dao, client, tokens, session, { readTime() }, { remote })
+    fun newSyncer() = AlarmOccurrenceSyncer(dao, client, tokens, session, { readTime() }, { remote }, { movements })
     suspend fun start(id: String = "root", startedAt: Long? = 1_000) =
         dao.recordStart(AlarmOccurrenceSyncEntity(id, "1", "alarm-$id", 1, 900, startedAt))
 }
@@ -287,3 +432,22 @@ private fun token(id: Int) = "header." + Base64.UrlSafe.encode("""{"sub":"$id","
 private const val ServerId = "5c9e1f7a-3b2d-4a6c-8e0f-1a2b3c4d5e6f"
 private const val OtherServerId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 private fun response(id: String) = AlarmOccurrence(AlarmOccurrenceId(id), Instant.fromEpochMilliseconds(1_000), emptyList(), null, null)
+
+private class MovementRemote : AlarmMovementRepository {
+    var rooms: List<Long> = emptyList()
+    var roomLookups = 0
+    val calls = mutableListOf<Pair<Long, AlarmMovementAction>>()
+    val ids = mutableListOf<String>()
+    var beforeRooms: suspend () -> Unit = {}
+    var beforeChange: suspend (Long, AlarmMovementAction) -> Unit = { _, _ -> }
+    override suspend fun getJoinedRoomIds(): List<Long> {
+        roomLookups++
+        beforeRooms()
+        return rooms
+    }
+    override suspend fun changeMovement(roomId: Long, occurrenceId: AlarmOccurrenceId, action: AlarmMovementAction) {
+        calls += roomId to action
+        ids += occurrenceId.value
+        beforeChange(roomId, action)
+    }
+}

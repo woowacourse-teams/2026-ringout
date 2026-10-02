@@ -14,6 +14,10 @@ import com.joon.ringout.domain.room.RoomScheduleClock
 import com.joon.ringout.domain.room.RoomRecords
 import com.joon.ringout.presentation.roomlist.model.toRoomUiModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -54,7 +58,12 @@ internal class RoomHomeViewModel(
     private var activeRouteIdentity: Any? = null
     private var hasObservedRoute = false
     private var recordsRequestId = 0L
-    private var recordsRequestJob: Job? = null
+    // 현재 계정·모임에 한정한 메모리 캐시. 완료/실패한 주도 새로고침 전에는 다시 요청하지 않는다.
+    private val weekRequestIds = mutableMapOf<MissionDate, Long>()
+    private val weekRequestJobs = mutableMapOf<MissionDate, Job>()
+    private val pendingRecordDates = mutableSetOf<MissionDate>()
+    private val recordErrors = mutableMapOf<MissionDate, String>()
+    private val recordsRequestLimit = Semaphore(3)
     private var roomRequestId = 0L
     private var roomRequestJob: Job? = null
     private var isScreenResumed = false
@@ -332,9 +341,7 @@ internal class RoomHomeViewModel(
 
     fun onTabSelected(tab: RoomHomeTab) {
         mutableUiState.update { it.copy(selectedTab = tab, isCalendarVisible = false) }
-        if (tab == RoomHomeTab.Records && !uiState.value.recordsState.isDataLoaded &&
-            !uiState.value.recordsState.isLoading
-        ) requestRecords()
+        if (tab == RoomHomeTab.Records) requestRecords()
     }
 
     fun onDateSelected(date: MissionDate) {
@@ -360,6 +367,7 @@ internal class RoomHomeViewModel(
                 isCalendarVisible = false,
             )
         }
+        if (activeRoomId != null) showSelectedDayRecords()
         if (changed && uiState.value.selectedTab == RoomHomeTab.Records) requestRecords()
     }
 
@@ -387,71 +395,103 @@ internal class RoomHomeViewModel(
 
     fun onRefresh() {
         if (activeRoomId == null) onDateSelected(uiState.value.recordsState.selectedDate)
-        else requestRecords()
+        else requestRecords(refresh = true)
     }
 
     private fun invalidateRecordsRequest() {
         recordsRequestId += 1
-        recordsRequestJob?.cancel()
-        recordsRequestJob = null
+        // 먼저 토큰을 제거해 취소를 무시하고 도착한 응답도 캐시를 복원하지 못하게 한다.
+        weekRequestIds.clear()
+        val jobs = weekRequestJobs.values.toList()
+        weekRequestJobs.clear()
+        pendingRecordDates.clear()
+        recordErrors.clear()
+        jobs.forEach(Job::cancel)
     }
 
-    private fun requestRecords() {
+    private fun requestRecords(refresh: Boolean = false) {
         val roomId = activeRoomId?.toLongOrNull() ?: return
         val identity = activeRouteIdentity ?: return
         if (!canViewRecords || !isLiveSession(activeRouteAuthState, identity)) return
-        invalidateRecordsRequest()
-        val requestId = recordsRequestId
-        val date = uiState.value.recordsState.selectedDate
-        // 이전 날짜/실패한 새로고침의 데이터를 현재 응답으로 오인하지 않도록 비운다.
-        localRecords = localRecords - date
-        mutableUiState.update { state ->
-            state.copy(recordsState = state.recordsState.copy(
-                records = emptyList(), achievedMemberCount = 0,
-                participantCounts = state.recordsState.participantCounts - date,
-                participantProfiles = state.recordsState.participantProfiles - date,
-                isLoading = true, isDataLoaded = false, errorMessage = null,
-            ))
+        val selectedDate = uiState.value.recordsState.selectedDate
+        val dates = selectedDate.weekDates()
+        val weekStart = dates.first()
+        if (!refresh && weekStart in weekRequestIds) {
+            showSelectedDayRecords()
+            return
         }
-        recordsRequestJob = scope.launch {
+
+        val requestId = ++recordsRequestId
+        weekRequestIds[weekStart] = requestId
+        weekRequestJobs.remove(weekStart)?.cancel()
+        localRecords = localRecords - dates.toSet()
+        dates.forEach(recordErrors::remove)
+        pendingRecordDates.addAll(dates)
+        showSelectedDayRecords()
+
+        // API가 하루 단위이므로 일주일치 요청을 묶되, 선택 날짜부터 최대 3개씩 조회한다.
+        // 다른 주로 이동해도 진행 중인 조회는 완료해 캐시에 저장한다.
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                val day = loadRecords(roomId, date).toDayUiModel()
-                if (!isCurrentRecordsRequest(requestId, roomId, date, identity)) return@launch
-                localRecords = localRecords + (date to day)
-                mutableUiState.update { state ->
-                    state.copy(recordsState = state.recordsState.copy(
-                        records = day.records, achievedMemberCount = day.achievedMemberCount,
-                        participantCounts = localRecords.mapValues { it.value.achievedMemberCount },
-                        participantProfiles = localRecords.mapValues { it.value.achievedMembers.map { member -> member.profileImageUrl } },
-                        isLoading = false, isDataLoaded = true, errorMessage = null,
-                    ))
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                if (!isCurrentRecordsRequest(requestId, roomId, date, identity)) return@launch
-                val apiError = error as? RoomRepositoryException
-                if (apiError?.statusCode in setOf(401, 403, 404) ||
-                    apiError?.code in setOf("AUTH401", "COMMON401", "ROOM401", "COMMON403", "ROOM403", "RECORD403", "COMMON404", "ROOM404")
-                ) {
-                    invalidateRoomRequest()
-                    showError(roomLoadError(error).first, canRetry = false)
-                } else {
-                    mutableUiState.update { state ->
-                        state.copy(recordsState = state.recordsState.copy(
-                            isLoading = false, isDataLoaded = false,
-                            errorMessage = "기록을 불러오지 못했어요. 다시 시도해 주세요.",
-                        ))
+                coroutineScope {
+                    (listOf(selectedDate) + dates.filter { it != selectedDate }).forEach { date ->
+                        launch {
+                            recordsRequestLimit.withPermit {
+                                if (!isCurrentRecordsRequest(requestId, roomId, weekStart, identity)) return@withPermit
+                                try {
+                                    val day = loadRecords(roomId, date).toDayUiModel()
+                                    if (!isCurrentRecordsRequest(requestId, roomId, weekStart, identity)) return@withPermit
+                                    localRecords = localRecords + (date to day)
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: Throwable) {
+                                    if (!isCurrentRecordsRequest(requestId, roomId, weekStart, identity)) return@withPermit
+                                    val (message, canRetry) = roomLoadError(error)
+                                    if (!canRetry) {
+                                        invalidateRoomRequest()
+                                        showError(message, canRetry = false)
+                                    } else {
+                                        // 실패를 빈 기록으로 캐시하지 않는다. 해당 날짜를 고르면 재시도 안내를 표시한다.
+                                        recordErrors[date] = "기록을 불러오지 못했어요. 새로고침으로 다시 시도해 주세요."
+                                    }
+                                } finally {
+                                    if (isCurrentRecordsRequest(requestId, roomId, weekStart, identity)) {
+                                        pendingRecordDates.remove(date)
+                                        showSelectedDayRecords()
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
+            } finally {
+                if (weekRequestIds[weekStart] == requestId) weekRequestJobs.remove(weekStart)
             }
+        }
+        weekRequestJobs[weekStart] = job
+        job.start()
+    }
+
+    private fun showSelectedDayRecords() {
+        mutableUiState.update { state ->
+            val date = state.recordsState.selectedDate
+            val day = localRecords[date]
+            state.copy(recordsState = state.recordsState.copy(
+                records = day?.records.orEmpty(),
+                achievedMemberCount = day?.achievedMemberCount ?: 0,
+                participantCounts = localRecords.mapValues { it.value.achievedMemberCount },
+                participantProfiles = localRecords.mapValues { it.value.achievedMembers.map { member -> member.profileImageUrl } },
+                isLoading = date in pendingRecordDates,
+                isDataLoaded = day != null,
+                errorMessage = recordErrors[date],
+            ))
         }
     }
 
-    private fun isCurrentRecordsRequest(requestId: Long, roomId: Long, date: MissionDate, identity: Any): Boolean =
-        recordsRequestId == requestId && activeRoomId?.toLongOrNull() == roomId &&
-            activeRouteIdentity === identity && uiState.value.recordsState.selectedDate == date &&
-            isLiveSession(activeRouteAuthState, identity)
+    private fun isCurrentRecordsRequest(requestId: Long, roomId: Long, weekStart: MissionDate, identity: Any): Boolean =
+        weekRequestIds[weekStart] == requestId && activeRoomId?.toLongOrNull() == roomId &&
+            activeRouteIdentity === identity && isLiveSession(activeRouteAuthState, identity)
+
 }
 
 private fun roomLoadError(error: Throwable): Pair<String, Boolean> {
