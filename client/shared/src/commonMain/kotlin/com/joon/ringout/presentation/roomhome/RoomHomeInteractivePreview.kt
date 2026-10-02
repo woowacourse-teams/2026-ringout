@@ -47,7 +47,6 @@ private fun RoomHomeInteractivePreview() {
         RoomHomeScreen(
             uiState = state,
             onBackClick = {},
-            onMenuClick = {},
             onTabSelected = { state = state.copy(selectedTab = it, isCalendarVisible = false) },
             onDateSelected = selectDate,
             onPreviousWeek = { selectDate(state.recordsState.selectedDate.plusDays(-7)) },
@@ -67,7 +66,7 @@ private fun RoomHomeInteractivePreview() {
 @Composable
 private fun RoomHomeRecordsScreenPreview() {
     RingoutTheme(ThemeMode.Dark) {
-        RoomHomeScreen(RoomHomePreviewState.copy(selectedTab = RoomHomeTab.Records), onBackClick = {}, onMenuClick = {})
+        RoomHomeScreen(RoomHomePreviewState.copy(selectedTab = RoomHomeTab.Records), onBackClick = {})
     }
 }
 
@@ -75,7 +74,7 @@ private fun RoomHomeRecordsScreenPreview() {
 @Composable
 private fun RoomHomeRecordsScreenLightPreview() {
     RingoutTheme(ThemeMode.Light) {
-        RoomHomeScreen(RoomHomePreviewState.copy(selectedTab = RoomHomeTab.Records), onBackClick = {}, onMenuClick = {})
+        RoomHomeScreen(RoomHomePreviewState.copy(selectedTab = RoomHomeTab.Records), onBackClick = {})
     }
 }
 
@@ -88,7 +87,7 @@ private fun RoomHomeRecordsScreenEmptyPreview() {
                 selectedTab = RoomHomeTab.Records,
                 recordsState = RoomHomePreviewState.recordsState.copy(records = emptyList(), achievedMemberCount = 0),
             ),
-            onBackClick = {}, onMenuClick = {},
+            onBackClick = {},
         )
     }
 }
@@ -102,7 +101,7 @@ private fun RoomHomeRecordsScreenLoadingPreview() {
                 selectedTab = RoomHomeTab.Records,
                 recordsState = RoomHomePreviewState.recordsState.copy(isLoading = true),
             ),
-            onBackClick = {}, onMenuClick = {},
+            onBackClick = {},
         )
     }
 }
@@ -116,7 +115,7 @@ private fun RoomHomeRecordsScreenErrorPreview() {
                 selectedTab = RoomHomeTab.Records,
                 recordsState = RoomHomePreviewState.recordsState.copy(errorMessage = "기록을 불러오지 못했어요."),
             ),
-            onBackClick = {}, onMenuClick = {},
+            onBackClick = {},
         )
     }
 }
@@ -130,7 +129,7 @@ private fun RoomHomeRecordsScreenNoAccessPreview() {
                 selectedTab = RoomHomeTab.Records,
                 room = RoomHomePreviewState.room?.copy(isJoined = false),
             ),
-            onBackClick = {}, onMenuClick = {},
+            onBackClick = {},
         )
     }
 }
@@ -141,7 +140,7 @@ private fun RoomHomeRecordsScreenCalendarPreview() {
     RingoutTheme {
         RoomHomeScreen(
             RoomHomePreviewState.copy(selectedTab = RoomHomeTab.Records, isCalendarVisible = true),
-            onBackClick = {}, onMenuClick = {},
+            onBackClick = {},
         )
     }
 }

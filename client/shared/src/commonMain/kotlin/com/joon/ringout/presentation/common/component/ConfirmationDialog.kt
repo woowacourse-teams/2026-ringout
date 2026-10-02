@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -46,6 +47,7 @@ data class ConfirmationDialogLayout(
     val actionAlignment: Alignment.Horizontal = Alignment.End,
     val titleMaxLines: Int = 1,
     val descriptionMaxLines: Int = 2,
+    val singleActionMaxWidth: Dp = 272.dp,
 )
 
 @Composable
@@ -54,12 +56,18 @@ fun ConfirmationDialog(
     description: String,
     confirmLabel: String,
     confirmColor: Color,
-    cancelLabel: String = "취소",
+    cancelLabel: String? = "취소",
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     layout: ConfirmationDialogLayout = ConfirmationDialogLayout(),
     annotatedDescription: AnnotatedString? = null,
+    cancelOnClick: (() -> Unit)? = null,
+    confirmEnabled: Boolean = true,
+    showConfirmButton: Boolean = true,
+    dismissOnBackPress: Boolean = true,
+    dismissOnClickOutside: Boolean = true,
+    content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = MaterialTheme.ringoutColors.dialog
     val shape = RoundedCornerShape(DialogCornerRadius)
@@ -68,8 +76,8 @@ fun ConfirmationDialog(
         Dialog(
             onDismissRequest = onDismiss,
             properties = DialogProperties(
-                dismissOnBackPress = true,
-                dismissOnClickOutside = true,
+                dismissOnBackPress = dismissOnBackPress,
+                dismissOnClickOutside = dismissOnClickOutside,
                 usePlatformDefaultWidth = false,
             ),
         ) {
@@ -128,27 +136,45 @@ fun ConfirmationDialog(
                             ),
                         )
                     }
-                    Row(
-                        modifier = Modifier
-                            .align(layout.actionAlignment)
-                            .widthIn(max = layout.actionRowMaxWidth)
-                            .fillMaxWidth()
-                            .height(ActionTouchHeight),
-                        horizontalArrangement = Arrangement.spacedBy(ActionButtonSpacing),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        ConfirmationDialogButton(
-                            text = cancelLabel,
-                            containerColor = colors.cancel,
-                            onClick = onDismiss,
-                            modifier = Modifier.weight(layout.cancelButtonWeight),
-                        )
-                        ConfirmationDialogButton(
-                            text = confirmLabel,
-                            containerColor = confirmColor,
-                            onClick = onConfirm,
-                            modifier = Modifier.weight(ConfirmButtonWeight),
-                        )
+                    content?.invoke(this)
+                    if (showConfirmButton || cancelLabel != null) {
+                        Row(
+                            modifier = Modifier
+                                .align(layout.actionAlignment)
+                                .widthIn(
+                                    max = if (cancelLabel == null) {
+                                        layout.singleActionMaxWidth
+                                    } else {
+                                        layout.actionRowMaxWidth
+                                    },
+                                )
+                                .fillMaxWidth()
+                                .height(ActionTouchHeight),
+                            horizontalArrangement = Arrangement.spacedBy(ActionButtonSpacing),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            if (cancelLabel != null) {
+                                ConfirmationDialogButton(
+                                    text = cancelLabel,
+                                    containerColor = colors.cancel,
+                                    onClick = cancelOnClick ?: onDismiss,
+                                    modifier = Modifier.weight(layout.cancelButtonWeight),
+                                )
+                            }
+                            if (showConfirmButton) {
+                                ConfirmationDialogButton(
+                                    text = confirmLabel,
+                                    containerColor = confirmColor,
+                                    onClick = onConfirm,
+                                    enabled = confirmEnabled,
+                                    modifier = if (cancelLabel == null) {
+                                        Modifier.fillMaxWidth()
+                                    } else {
+                                        Modifier.weight(ConfirmButtonWeight)
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -161,6 +187,7 @@ private fun ConfirmationDialogButton(
     text: String,
     containerColor: Color,
     onClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(ActionCornerRadius)
@@ -169,6 +196,7 @@ private fun ConfirmationDialogButton(
         modifier = modifier
             .height(ActionTouchHeight)
                 .clickable(
+                    enabled = enabled,
                     role = Role.Button,
                     onClick = onClick,
                 )

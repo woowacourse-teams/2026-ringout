@@ -322,6 +322,90 @@ class RoomListViewModelTest {
         assertTrue(viewModel.isCurrentMutationSource(secondSource.entryId))
     }
 
+    @Test
+    fun `모임 삭제는 현재 목록에서 즉시 제거하고 이전 목록 GET 결과를 무시한다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val staleResponse = CompletableDeferred<Result<List<RoomUiModel>>>()
+        val deletedRoom = previewRoom.copy(id = "1")
+        val remainingRoom = previewRoom.copy(id = "room-2", isJoined = false)
+        var calls = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                calls += 1
+                when (calls) {
+                    1 -> Result.success(listOf(deletedRoom, remainingRoom))
+                    2 -> withContext(NonCancellable) { staleResponse.await() }
+                    else -> Result.success(listOf(remainingRoom))
+                }
+            },
+            authSession = session,
+            coroutineScope = this,
+        )
+        viewModel.onRouteVisible(session.state.value, session.identity.value)
+        runCurrent()
+        viewModel.onRetryRooms()
+        runCurrent()
+
+        viewModel.onRoomDeleted(1L, checkNotNull(session.identity.value))
+        assertEquals(listOf("room-2"), viewModel.uiState.allRooms.map(RoomUiModel::id))
+        runCurrent()
+        staleResponse.complete(Result.success(listOf(deletedRoom, remainingRoom)))
+        runCurrent()
+
+        assertEquals(3, calls)
+        assertEquals(listOf("room-2"), viewModel.uiState.allRooms.map(RoomUiModel::id))
+        assertTrue(viewModel.uiState.joinedRooms.isEmpty())
+    }
+
+    @Test
+    fun `모임 탈퇴는 전체 목록 가입 상태만 해제하고 가입 목록에서는 제거한다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val joinedRoom = previewRoom.copy(id = "1")
+        val notJoinedRoom = joinedRoom.copy(isJoined = false)
+        var calls = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                calls += 1
+                Result.success(listOf(if (calls == 1) joinedRoom else notJoinedRoom))
+            },
+            authSession = session,
+            coroutineScope = this,
+        )
+        viewModel.onRouteVisible(session.state.value, session.identity.value)
+        runCurrent()
+
+        viewModel.onRoomLeft(1L, checkNotNull(session.identity.value))
+        assertEquals(listOf("1"), viewModel.uiState.allRooms.map(RoomUiModel::id))
+        assertFalse(viewModel.uiState.allRooms.single().isJoined)
+        assertTrue(viewModel.uiState.joinedRooms.isEmpty())
+        runCurrent()
+
+        assertEquals(2, calls)
+        assertFalse(viewModel.uiState.allRooms.single().isJoined)
+        assertTrue(viewModel.uiState.joinedRooms.isEmpty())
+    }
+
+    @Test
+    fun `다른 계정에서 완료된 삭제 결과는 모임 목록을 바꾸지 않는다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val originalIdentity = checkNotNull(session.identity.value)
+        val room = previewRoom.copy(id = "1")
+        val viewModel = RoomListViewModel(
+            loadRooms = { Result.success(listOf(room)) },
+            authSession = session,
+            coroutineScope = this,
+        )
+        viewModel.onRouteVisible(session.state.value, originalIdentity)
+        runCurrent()
+        session.startNewSession()
+        viewModel.onAuthSessionChanged(session.state.value, session.identity.value)
+        runCurrent()
+
+        viewModel.onRoomDeleted(1L, originalIdentity)
+
+        assertEquals(listOf("1"), viewModel.uiState.allRooms.map(RoomUiModel::id))
+    }
+
     private companion object {
         val previewRoom = RoomUiModel(
             id = "room-1",

@@ -93,16 +93,18 @@ internal fun RoomMemberRow(
                     fontWeight = FontWeight.Bold,
                 ),
             )
-            Text(
-                text = "가입: ${member.joinedDate.replace('-', '.')}",
-                color = roomMemberManagementColors().joinedDate,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.sp,
-                ),
-            )
+            member.joinedDate?.let { joinedDate ->
+                Text(
+                    text = "가입: ${joinedDate.replace('-', '.')}",
+                    color = roomMemberManagementColors().joinedDate,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.sp,
+                    ),
+                )
+            }
         }
         if (canRemove && !member.isOwner) {
             Spacer(Modifier.width(12.dp))

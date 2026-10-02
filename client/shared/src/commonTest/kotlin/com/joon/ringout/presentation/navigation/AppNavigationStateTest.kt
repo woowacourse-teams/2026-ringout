@@ -139,6 +139,19 @@ class AppNavigationStateTest {
     }
 
     @Test
+    fun `다른 회원 관리로 전환하면 호출부를 유지하고 회원 관리 경로를 교체한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomHome("room-1"))
+        val callerStack = state.backStack.toList()
+
+        state.navigate(AppRoute.RoomMemberManagement("room-1"))
+        state.navigate(AppRoute.RoomMemberManagement("room-2"))
+
+        assertEquals(callerStack + AppRoute.RoomMemberManagement("room-2"), state.backStack.toList())
+    }
+
+    @Test
     fun `식별자 경로는 전체 값 기준 singleTop으로 기존 항목을 유지한다`() {
         val state = AppNavigationState()
         val firstEditor = AppRoute.EditAlarm("alarm-1")
