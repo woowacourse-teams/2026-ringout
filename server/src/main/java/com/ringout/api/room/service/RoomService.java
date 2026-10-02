@@ -168,7 +168,7 @@ public class RoomService {
             .addKeyValue("updatedImage", request.image() != null)
             .log("모임방 수정 성공");
 
-        return RoomUpdateResponse.from(room, resolveRoomImageUrl(room));
+        return RoomUpdateResponse.from(room, resolveRoomImageUrlOrNull(room));
     }
 
     @Transactional
@@ -347,6 +347,16 @@ public class RoomService {
         ImageFile image = room.getImage();
         if (image == null) {
             return DEFAULT_ROOM_IMAGE_URL;
+        }
+
+        URI imageUri = imageFileService.createReadUri(image);
+        return imageUri.toString();
+    }
+
+    private String resolveRoomImageUrlOrNull(Room room) {
+        ImageFile image = room.getImage();
+        if (image == null) {
+            return null;
         }
 
         URI imageUri = imageFileService.createReadUri(image);
