@@ -10,21 +10,22 @@ internal fun RoomRecords.toDayUiModel(): RoomHomeDayRecordsUiModel {
         achievedMembers = achieved,
         achievedMemberCount = achieved.size,
         records = timeline.mapNotNull { (member, record, index) ->
-            // 기록 탭은 울림을 이동 시작으로 표시하고, 개별 알람 해제는 표시하지 않는다.
-            if (record.event == RoomRecordEvent.ALARM_DISMISSED) return@mapNotNull null
+            // 알람 울림과 해제는 숨기고 실제 이동 행동만 표시한다.
+            val event = when (record.event) {
+                RoomRecordEvent.ALARM_TRIGGERED,
+                RoomRecordEvent.ALARM_RINGING,
+                RoomRecordEvent.ALARM_DISMISSED -> return@mapNotNull null
+                RoomRecordEvent.MOVEMENT_STARTED -> RoomHomeRecordEvent.Moving
+                RoomRecordEvent.ARRIVED -> RoomHomeRecordEvent.Arrived
+                RoomRecordEvent.GAVE_UP -> RoomHomeRecordEvent.ForceEnded
+            }
             RoomHomeRecordUiModel(
                 id = "${member.userId}:${record.occurredAt}:${record.event}:$index",
                 memberId = member.userId.toString(),
                 nickname = member.nickname,
                 profileImageUrl = member.profileImageUrl,
                 timeText = record.occurredAt.roomRecordsTimeText(),
-                event = when (record.event) {
-                    RoomRecordEvent.ALARM_TRIGGERED, RoomRecordEvent.ALARM_RINGING -> RoomHomeRecordEvent.Moving
-                    RoomRecordEvent.ALARM_DISMISSED -> RoomHomeRecordEvent.Dismissed
-                    RoomRecordEvent.MOVEMENT_STARTED -> RoomHomeRecordEvent.Moving
-                    RoomRecordEvent.ARRIVED -> RoomHomeRecordEvent.Arrived
-                    RoomRecordEvent.GAVE_UP -> RoomHomeRecordEvent.ForceEnded
-                },
+                event = event,
                 repeatCount = record.repeatCount,
             )
         },

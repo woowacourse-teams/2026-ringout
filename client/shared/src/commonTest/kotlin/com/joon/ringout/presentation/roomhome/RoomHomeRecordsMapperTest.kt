@@ -27,16 +27,16 @@ class RoomHomeRecordsMapperTest {
 
         val day = records.toDayUiModel()
 
-        assertEquals(6, day.records.size)
-        assertEquals(6, day.records.map { it.id }.distinct().size)
-        assertEquals(listOf("1", "1", "2", "1", "2", "2"), day.records.map { it.memberId })
-        assertEquals(listOf("23:50", "23:50", "23:50", "00:10", "00:10", "00:10"), day.records.map { it.timeText })
+        assertEquals(4, day.records.size)
+        assertEquals(4, day.records.map { it.id }.distinct().size)
+        assertEquals(listOf("1", "1", "2", "2"), day.records.map { it.memberId })
+        assertEquals(listOf("23:50", "00:10", "00:10", "00:10"), day.records.map { it.timeText })
         assertEquals(1, day.achievedMemberCount)
         assertEquals(listOf("2"), day.achievedMembers.map { it.id })
-        assertEquals(1, day.records.first().repeatCount)
+        assertEquals(null, day.records.first().repeatCount)
         assertEquals("https://example.com/profile", day.records.first().profileImageUrl)
-        assertEquals(listOf(RoomHomeRecordEvent.Moving, RoomHomeRecordEvent.Moving,
-            RoomHomeRecordEvent.Moving, RoomHomeRecordEvent.ForceEnded, RoomHomeRecordEvent.Arrived, RoomHomeRecordEvent.Arrived), day.records.map { it.event })
+        assertEquals(listOf(RoomHomeRecordEvent.Moving, RoomHomeRecordEvent.ForceEnded,
+            RoomHomeRecordEvent.Arrived, RoomHomeRecordEvent.Arrived), day.records.map { it.event })
     }
 
     @Test
@@ -49,12 +49,26 @@ class RoomHomeRecordsMapperTest {
     }
 
     @Test
-    fun `최초 울림과 재울림은 모두 이동 시작 컴포넌트로 표시한다`() {
+    fun `최초 울림과 재울림만 있으면 이동 시작을 표시하지 않는다`() {
         val day = RoomRecords(listOf(RoomMemberRecords(1, "회원", null, listOf(
             RoomActivityRecord(RoomRecordEvent.ALARM_TRIGGERED, Instant.parse("2026-10-01T08:00:00+09:00")),
             RoomActivityRecord(RoomRecordEvent.ALARM_RINGING, Instant.parse("2026-10-01T08:05:00+09:00"), 1),
         )))).toDayUiModel()
-        assertEquals(listOf(RoomHomeRecordEvent.Moving, RoomHomeRecordEvent.Moving), day.records.map { it.event })
+        assertEquals(emptyList(), day.records)
+        assertEquals(0, day.achievedMemberCount)
+    }
+
+    @Test
+    fun `울림과 해제와 이동 시작이 함께 오면 실제 이동 시작 시각으로 한 번만 표시한다`() {
+        val day = RoomRecords(listOf(RoomMemberRecords(1, "회원", null, listOf(
+            RoomActivityRecord(RoomRecordEvent.ALARM_TRIGGERED, Instant.parse("2026-10-01T08:00:00+09:00")),
+            RoomActivityRecord(RoomRecordEvent.ALARM_DISMISSED, Instant.parse("2026-10-01T08:01:00+09:00")),
+            RoomActivityRecord(RoomRecordEvent.MOVEMENT_STARTED, Instant.parse("2026-10-01T08:02:00+09:00")),
+            RoomActivityRecord(RoomRecordEvent.ALARM_RINGING, Instant.parse("2026-10-01T08:05:00+09:00"), 1),
+        )))).toDayUiModel()
+
+        assertEquals(RoomHomeRecordEvent.Moving, day.records.single().event)
+        assertEquals("08:02", day.records.single().timeText)
     }
 
     @Test
