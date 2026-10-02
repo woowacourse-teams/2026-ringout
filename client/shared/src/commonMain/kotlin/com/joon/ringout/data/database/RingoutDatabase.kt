@@ -1,5 +1,6 @@
 package com.joon.ringout.data.database
 
+import com.joon.ringout.data.alarmmovement.AlarmMovementOutboxEntity
 import androidx.room3.ConstructedBy
 import androidx.room3.Database
 import androidx.room3.RoomDatabase
@@ -37,8 +38,9 @@ import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
         AlarmOccurrenceSyncEntity::class,
         AlarmOccurrenceRingingLinkEntity::class,
         AlarmOccurrenceOutboxEntity::class,
+        AlarmMovementOutboxEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -73,6 +75,7 @@ fun buildRingoutDatabase(
         RingoutMigration7To8,
         RingoutMigration8To9,
         RingoutMigration9To10,
+        RingoutMigration10To11,
     )
     .build()
 

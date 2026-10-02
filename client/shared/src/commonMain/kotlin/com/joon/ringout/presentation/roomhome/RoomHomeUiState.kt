@@ -4,8 +4,8 @@ import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.domain.missionhistory.weekDates
 import com.joon.ringout.domain.missionhistory.yearMonth
+import com.joon.ringout.domain.room.roomRecordsDate
 import com.joon.ringout.domain.room.RoomMembershipRole
-import com.joon.ringout.presentation.records.currentRecordsDate
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 
 internal enum class RoomHomeTab { Info, Records }
@@ -19,19 +19,23 @@ internal data class RoomHomeRecordUiModel(
     val timeText: String,
     val event: RoomHomeRecordEvent,
     val ringCount: Int = 1,
+    val repeatCount: Int? = null,
+    val profileImageUrl: String? = null,
 )
 
 internal data class RoomHomeDayRecordsUiModel(
     val records: List<RoomHomeRecordUiModel> = emptyList(),
     val achievedMemberCount: Int = 0,
+    val achievedMembers: List<RoomHomeMemberUiModel> = emptyList(),
 )
 
 internal data class RoomHomeRecordsUiState(
-    val selectedDate: MissionDate = currentRecordsDate(),
+    val selectedDate: MissionDate = roomRecordsDate(),
     val visibleWeekStart: MissionDate = selectedDate.weekDates().first(),
     val records: List<RoomHomeRecordUiModel> = emptyList(),
     val achievedMemberCount: Int = 0,
     val participantCounts: Map<MissionDate, Int> = emptyMap(),
+    val participantProfiles: Map<MissionDate, List<String?>> = emptyMap(),
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val canViewRecords: Boolean = true,

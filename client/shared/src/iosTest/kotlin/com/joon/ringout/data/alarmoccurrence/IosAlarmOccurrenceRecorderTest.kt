@@ -58,6 +58,10 @@ class IosAlarmOccurrenceRecorderTest {
 
         val calls = mutableListOf<Pair<HttpMethod, JsonObject>>()
         val client = HttpClient(MockEngine { request ->
+            if (request.method == HttpMethod.Get) {
+                return@MockEngine respond("""{"isSuccess":true,"code":"ROOM200","message":"OK","result":{"rooms":[]}}""",
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"))
+            }
             calls += request.method to ApiJson.parseToJsonElement((request.body as TextContent).text).jsonObject
             respond("""{"isSuccess":true,"code":"OK","message":"OK","result":{
                 "alarmOccurrenceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","startedAt":"${iso("07:00")}","ringings":[]}}""",

@@ -46,18 +46,11 @@ internal fun RoomHomeRecords(
             return@Column
         }
 
-        if (!uiState.isDataLoaded) {
-            RoomHomeStatus(
-                message = "모임 기록은 아직 조회되지 않았어요.",
-                modifier = Modifier.heightIn(min = 180.dp),
-            )
-            return@Column
-        }
-
         RoomHomeWeekCalendar(
             selectedDate = uiState.selectedDate,
             visibleWeekStart = uiState.visibleWeekStart,
             participantCounts = uiState.participantCounts,
+            participantProfiles = uiState.participantProfiles,
             onDateSelected = onDateSelected,
             onPreviousWeek = onPreviousWeek,
             onNextWeek = onNextWeek,
@@ -72,6 +65,11 @@ internal fun RoomHomeRecords(
             )
             uiState.errorMessage != null -> RoomHomeStatus(
                 message = uiState.errorMessage,
+                modifier = Modifier.heightIn(min = 180.dp),
+                onRetry = onRefresh,
+            )
+            !uiState.isDataLoaded -> RoomHomeStatus(
+                message = "날짜를 선택해 모임 기록을 확인해 주세요.",
                 modifier = Modifier.heightIn(min = 180.dp),
                 onRetry = onRefresh,
             )
@@ -117,6 +115,7 @@ internal fun RoomHomeRecords(
                         uiState.records.forEachIndexed { index, record ->
                             RoomHomeRecordRow(
                                 record = record,
+                                compactNickname = true,
                                 hasPrevious = index > 0,
                                 hasNext = index < uiState.records.lastIndex,
                             )

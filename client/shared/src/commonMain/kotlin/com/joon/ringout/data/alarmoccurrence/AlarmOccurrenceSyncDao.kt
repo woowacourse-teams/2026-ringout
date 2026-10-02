@@ -6,6 +6,8 @@ import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
 import androidx.room3.Transaction
 import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceId
+import com.joon.ringout.data.alarmmovement.AlarmMovementOutboxEntity
+import com.joon.ringout.domain.alarmmovement.AlarmMovementAction
 import kotlinx.coroutines.flow.Flow
 
 /** 저장만 담당한다. 전송 가능 여부 판단, HTTP 요청, 재시도 스케줄링은 전송 계층에서 처리한다. */
@@ -151,6 +153,9 @@ abstract class AlarmOccurrenceSyncDao {
         val ringing = checkNotNull(getRinging(ownerAccountId, localRingingId))
         val kind = if (ringing.eventId == null) AlarmOccurrenceOutboxKind.INITIAL_DISMISSED else AlarmOccurrenceOutboxKind.REPEAT_DISMISSED
         insertEvent(event(ringing.localExecutionId, localRingingId, "dismiss:$localRingingId", kind, dismissedAtEpochMillis))
+        // 재울림 해제도 같은 실행의 이동 시작으로 묶어 최초 한 번만 전송한다.
+        insertMovement(AlarmMovementOutboxEntity(localExecutionId = ringing.localExecutionId,
+            deduplicationKey = "start", action = AlarmMovementAction.START_MOVEMENT, occurredAtEpochMillis = dismissedAtEpochMillis))
     }
 
     /** 두 종료 결과가 경합해도 실행당 처음 저장된 결과만 보존한다. */
@@ -164,6 +169,53 @@ abstract class AlarmOccurrenceSyncDao {
         require(kind == AlarmOccurrenceOutboxKind.ARRIVED || kind == AlarmOccurrenceOutboxKind.FORCE_ENDED)
         val ringing = checkNotNull(getRinging(ownerAccountId, localRingingId))
         insertEvent(event(ringing.localExecutionId, localRingingId, "terminal", kind, occurredAtEpochMillis))
+        val terminal = getEvents(ownerAccountId, ringing.localExecutionId).first { it.deduplicationKey == "terminal" }
+        insertMovement(AlarmMovementOutboxEntity(localExecutionId = ringing.localExecutionId,
+            deduplicationKey = "terminal", occurredAtEpochMillis = checkNotNull(terminal.occurredAtEpochMillis),
+            action = if (terminal.kind == AlarmOccurrenceOutboxKind.ARRIVED) AlarmMovementAction.ARRIVE else AlarmMovementAction.GIVE_UP))
+    }
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun insertMovement(event: AlarmMovementOutboxEntity)
+
+    @Query("SELECT * FROM alarm_movement_outbox WHERE state != 'SENT' ORDER BY id")
+    abstract fun observeUnsentMovements(): Flow<List<AlarmMovementOutboxEntity>>
+
+    @Query("""
+        SELECT m.* FROM alarm_movement_outbox m JOIN alarm_occurrence_sync e
+            ON e.local_execution_id = m.local_execution_id
+        WHERE e.owner_account_id = :ownerAccountId AND m.state != 'SENT' ORDER BY m.id
+    """)
+    abstract suspend fun getUnsentMovements(ownerAccountId: String): List<AlarmMovementOutboxEntity>
+
+    @Query("""
+        SELECT m.* FROM alarm_movement_outbox m JOIN alarm_occurrence_sync e
+            ON e.local_execution_id = m.local_execution_id
+        WHERE e.owner_account_id = :ownerAccountId AND m.local_execution_id = :executionId ORDER BY m.id
+    """)
+    abstract suspend fun getMovements(ownerAccountId: String, executionId: String): List<AlarmMovementOutboxEntity>
+
+    @Query("""
+        UPDATE alarm_movement_outbox SET state = :state, attempt_count = :attempt,
+            next_attempt_at = :retryAt, last_error_code = :code
+        WHERE id = :id AND state != 'SENT' AND local_execution_id IN
+            (SELECT local_execution_id FROM alarm_occurrence_sync WHERE owner_account_id = :ownerAccountId)
+    """)
+    abstract suspend fun saveMovementDelivery(ownerAccountId: String, id: Long, state: AlarmOccurrenceOutboxState,
+        attempt: Int, retryAt: Long? = null, code: String? = null): Int
+
+    /** 대상 모임 확정과 부모 행 완료를 원자적으로 저장한다. 재시작 후 성공한 모임은 재전송하지 않는다. */
+    @Transaction
+    open suspend fun completeMovementTargets(ownerAccountId: String, eventId: Long, roomIds: List<Long>) {
+        val parent = getUnsentMovements(ownerAccountId).firstOrNull { it.id == eventId } ?: return
+        check(parent.roomId == null)
+        roomIds.distinct().forEach { roomId ->
+            require(roomId > 0)
+            insertMovement(parent.copy(id = 0, roomId = roomId,
+                deduplicationKey = "${parent.deduplicationKey}:room:$roomId", state = AlarmOccurrenceOutboxState.PENDING,
+                attemptCount = 0, nextAttemptAtEpochMillis = null, lastErrorCode = null))
+        }
+        check(saveMovementDelivery(ownerAccountId, parent.id, AlarmOccurrenceOutboxState.SENT, parent.attemptCount) == 1)
     }
 
     @Query("""

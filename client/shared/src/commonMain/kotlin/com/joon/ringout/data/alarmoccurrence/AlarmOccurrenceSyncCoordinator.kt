@@ -27,6 +27,7 @@ internal class AlarmOccurrenceSyncCoordinator(
         val network = MutableStateFlow(NetworkStatus.Unknown)
         val observers = listOf(
             launch { dao.observeUnsentEvents().collect { wakeups.trySend(Unit) } },
+            launch { dao.observeUnsentMovements().collect { wakeups.trySend(Unit) } },
             launch { authSession.identity.collect { wakeups.trySend(Unit) } },
             launch { authSession.state.collect { wakeups.trySend(Unit) } },
             launch { networkMonitor.status.collect { network.value = it; wakeups.trySend(Unit) } },
