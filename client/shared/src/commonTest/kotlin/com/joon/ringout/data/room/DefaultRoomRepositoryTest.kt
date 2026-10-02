@@ -147,6 +147,215 @@ class DefaultRoomRepositoryTest {
     }
 
     @Test
+    fun `회원 관리 조회는 MEMBER200 응답과 서버 순서를 그대로 반환한다`() = runTest {
+        var requestCount = 0
+        val client = clientFor { request ->
+            requestCount += 1
+            assertEquals(HttpMethod.Get, request.method)
+            assertEquals("/api/v1/rooms/7/members", request.url.encodedPath)
+            assertEquals("Bearer access", request.headers[HttpHeaders.Authorization])
+            assertTrue(request.body !is TextContent)
+            respond(
+                content = """{"isSuccess":true,"code":"MEMBER200","message":"성공","result":{"members":[{"userId":11,"nickname":"방장","profileImageUrl":"/images/owner.png","joinedAt":"2026-09-20T10:30:00","membershipRole":"OWNER"},{"userId":10,"nickname":"회원","profileImageUrl":null,"joinedAt":"2026-09-21T14:20:00","membershipRole":"MEMBER"}]}}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+
+        val members = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+            .getMembersForManagement(7)
+
+        assertEquals(1, requestCount)
+        assertEquals(listOf(11L, 10L), members.map { it.userId })
+        assertEquals(listOf(RoomMembershipRole.OWNER, RoomMembershipRole.MEMBER), members.map { it.membershipRole })
+        assertEquals("${ApiConfig.BASE_URL}/images/owner.png", members.first().profileImageUrl)
+        assertEquals("2026-09-20T10:30:00", members.first().joinedAt)
+        client.close()
+    }
+
+    @Test
+    fun `회원 관리 조회의 빈 목록은 성공하고 null result와 잘못된 코드는 실패한다`() = runTest {
+        val emptyClient = clientFor {
+            respond(
+                """{"isSuccess":true,"code":"MEMBER200","message":"성공","result":{"members":[]}}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+        val nullResultClient = clientFor {
+            respond(
+                """{"isSuccess":true,"code":"MEMBER200","message":"성공","result":null}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+        val wrongCodeClient = clientFor {
+            respond(
+                """{"isSuccess":true,"code":"ROOM200","message":"성공","result":{"members":[]}}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+
+        assertTrue(repository(emptyClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+            .getMembersForManagement(7).isEmpty())
+        assertFailsWith<RoomRepositoryException> {
+            repository(nullResultClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                .getMembersForManagement(7)
+        }
+        assertFailsWith<RoomRepositoryException> {
+            repository(wrongCodeClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                .getMembersForManagement(7)
+        }
+        emptyClient.close()
+        nullResultClient.close()
+        wrongCodeClient.close()
+    }
+
+    @Test
+    fun `회원 추방은 정확한 userId를 전송하고 null result를 성공으로 처리한다`() = runTest {
+        val client = clientFor { request ->
+            assertEquals(HttpMethod.Post, request.method)
+            assertEquals("/api/v1/rooms/7/kick", request.url.encodedPath)
+            assertEquals("Bearer access", request.headers[HttpHeaders.Authorization])
+            val json = ApiJson.parseToJsonElement((request.body as TextContent).text).jsonObject
+            assertEquals("10", json["userId"]?.jsonPrimitive?.content)
+            respond(
+                """{"isSuccess":true,"code":"ROOM200","message":"성공","result":null}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+
+        repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+            .kickMember(roomId = 7, userId = 10)
+
+        client.close()
+    }
+
+    @Test
+    fun `관리 조회와 추방의 HTTP 오류와 업무 실패를 RoomRepositoryException으로 전달한다`() = runTest {
+        val businessGetClient = clientFor {
+            respond(
+                """{"isSuccess":false,"code":"MEMBER403","message":"방장 권한이 필요합니다.","result":null}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+        val httpGetClient = clientFor {
+            respond(
+                """{"isSuccess":false,"code":"MEMBER403","message":"방장 권한이 필요합니다.","result":null}""",
+                status = HttpStatusCode.Forbidden,
+                headers = jsonHeaders,
+            )
+        }
+        val businessKickClient = clientFor {
+            respond(
+                """{"isSuccess":false,"code":"ROOM400","message":"현재 참여자가 아닙니다.","result":null}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+        val httpKickClient = clientFor {
+            respond(
+                """{"isSuccess":false,"code":"ROOM400","message":"현재 참여자가 아닙니다.","result":null}""",
+                status = HttpStatusCode.BadRequest,
+                headers = jsonHeaders,
+            )
+        }
+        val tokens = AuthTokens("access", "refresh")
+
+        val businessGetError = assertFailsWith<RoomRepositoryException> {
+            repository(businessGetClient, tokens, AuthSessionState.Authenticated).getMembersForManagement(7)
+        }
+        val httpGetError = assertFailsWith<RoomRepositoryException> {
+            repository(httpGetClient, tokens, AuthSessionState.Authenticated).getMembersForManagement(7)
+        }
+        val businessKickError = assertFailsWith<RoomRepositoryException> {
+            repository(businessKickClient, tokens, AuthSessionState.Authenticated).kickMember(7, 10)
+        }
+        val httpKickError = assertFailsWith<RoomRepositoryException> {
+            repository(httpKickClient, tokens, AuthSessionState.Authenticated).kickMember(7, 10)
+        }
+
+        assertEquals("MEMBER403", businessGetError.code)
+        assertEquals(200, businessGetError.statusCode)
+        assertEquals("MEMBER403", httpGetError.code)
+        assertEquals(403, httpGetError.statusCode)
+        assertEquals("ROOM400", businessKickError.code)
+        assertEquals(200, businessKickError.statusCode)
+        assertEquals("ROOM400", httpKickError.code)
+        assertEquals(400, httpKickError.statusCode)
+        listOf(businessGetClient, httpGetClient, businessKickClient, httpKickClient).forEach { it.close() }
+    }
+
+    @Test
+    fun `회원 관리 API는 비양수 ID를 거부하고 취소를 보존한다`() = runTest {
+        val unusedClient = clientFor { error("잘못된 식별자로 요청을 보내면 안 됩니다.") }
+        val authenticatedRepository = repository(
+            unusedClient,
+            AuthTokens("access", "refresh"),
+            AuthSessionState.Authenticated,
+        )
+        assertFailsWith<RoomRepositoryException> { authenticatedRepository.getMembersForManagement(0) }
+        assertFailsWith<RoomRepositoryException> { authenticatedRepository.kickMember(7, 0) }
+        unusedClient.close()
+
+        val cancelledClient = clientFor { throw CancellationException("요청 취소") }
+        val cancelledRepository = repository(
+            cancelledClient,
+            AuthTokens("access", "refresh"),
+            AuthSessionState.Authenticated,
+        )
+        assertFailsWith<CancellationException> { cancelledRepository.getMembersForManagement(7) }
+        assertFailsWith<CancellationException> { cancelledRepository.kickMember(7, 10) }
+        cancelledClient.close()
+    }
+
+    @Test
+    fun `추방 요청은 AUTH401이면 토큰을 갱신하고 한 번 재시도한다`() = runTest {
+        var kickRequestCount = 0
+        var reissueRequestCount = 0
+        val storage = TestTokenStorage(AuthTokens("old-access", "old-refresh"))
+        val authSession = session(AuthSessionState.Authenticated)
+        val client = clientFor { request ->
+            when (request.url.encodedPath) {
+                "/api/v1/rooms/7/kick" -> {
+                    kickRequestCount += 1
+                    when (request.headers[HttpHeaders.Authorization]) {
+                        "Bearer old-access" -> respond(
+                            """{"isSuccess":false,"code":"AUTH401","message":"토큰 만료","result":null}""",
+                            status = HttpStatusCode.Unauthorized,
+                            headers = jsonHeaders,
+                        )
+                        "Bearer new-access" -> respond(
+                            """{"isSuccess":true,"code":"ROOM200","message":"성공","result":null}""",
+                            status = HttpStatusCode.OK,
+                            headers = jsonHeaders,
+                        )
+                        else -> error("예상하지 않은 Authorization 헤더입니다.")
+                    }
+                }
+                "/api/v1/auth/reissue" -> {
+                    reissueRequestCount += 1
+                    respond(
+                        """{"isSuccess":true,"code":"COMMON200","message":"성공","result":{"accessToken":"new-access","refreshToken":"new-refresh"}}""",
+                        status = HttpStatusCode.OK,
+                        headers = jsonHeaders,
+                    )
+                }
+                else -> error("예상하지 않은 요청입니다: ${request.url.encodedPath}")
+            }
+        }
+
+        DefaultRoomRepository(client, storage, authSession).kickMember(7, 10)
+
+        assertEquals(2, kickRequestCount)
+        assertEquals(1, reissueRequestCount)
+        client.close()
+    }
+
+    @Test
     fun `비로그인 성공 응답의 미참여 상태를 반영하고 앱 세션은 변경하지 않는다`() = runTest {
         val session = session(AuthSessionState.Authenticated)
         val tokens = AuthTokens("invalid-access", "refresh")

@@ -3,12 +3,19 @@ package com.joon.ringout.presentation.roommembermanagement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -46,43 +53,78 @@ internal fun RoomMemberManagementScreen(
                 isLoading = true,
             )
 
-            uiState.errorMessage != null -> RoomMemberManagementStatus(
-                message = uiState.errorMessage,
-                modifier = Modifier.weight(1f),
-                onRetry = onRetry,
-            )
-
             !uiState.canManageMembers -> RoomMemberManagementStatus(
-                message = "방장만 회원을 관리할 수 있어요.",
+                message = uiState.errorMessage ?: "방장만 회원을 관리할 수 있어요.",
                 modifier = Modifier.weight(1f),
+                onRetry = if (uiState.canRetryLoad) onRetry else null,
             )
-
-            uiState.members.isEmpty() -> RoomMemberManagementStatus(
-                message = "표시할 회원이 없어요.",
-                modifier = Modifier.weight(1f),
-            )
-
-            else -> LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-            ) {
-                items(uiState.members, key = { it.id }) { member ->
-                    RoomMemberRow(
-                        member = member,
-                        canRemove = uiState.canRemoveMembers && !member.isOwner,
-                        onRemoveClick = { onRemoveMemberClick(member.id) },
+            else -> Column(modifier = Modifier.weight(1f)) {
+                val message = uiState.refreshErrorMessage ?: uiState.removeErrorMessage
+                if (message != null || uiState.isRefreshingMembers) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        if (message != null) {
+                            Text(
+                                text = message,
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        } else {
+                            Text(
+                                text = "회원 목록을 갱신하고 있어요.",
+                                modifier = Modifier.weight(1f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        if (uiState.isRefreshingMembers) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        }
+                        if (uiState.refreshErrorMessage != null) {
+                            TextButton(onClick = onRetry) {
+                                Text("다시 시도")
+                            }
+                        }
+                    }
+                }
+                if (uiState.members.isEmpty()) {
+                    RoomMemberManagementStatus(
+                        message = "표시할 회원이 없어요.",
+                        modifier = Modifier.weight(1f),
                     )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+                    ) {
+                        items(uiState.members, key = { it.id }) { member ->
+                            RoomMemberRow(
+                                member = member,
+                                canRemove = uiState.canRemoveMembers && !member.isOwner,
+                                onRemoveClick = { onRemoveMemberClick(member.id) },
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 
     uiState.selectedMember
-        ?.takeIf { uiState.canRemoveMembers && !it.isOwner && !uiState.isLoading && uiState.errorMessage == null }
+        ?.takeIf {
+            uiState.canRemoveMembers && !it.isOwner && !uiState.isLoading &&
+                !uiState.isRefreshingMembers && uiState.errorMessage == null
+        }
         ?.let { member ->
             RoomMemberRemoveDialog(
                 nickname = member.nickname,
-                onDismiss = onDismissRemove,
+                isRemoving = uiState.isRemoving,
+                onDismiss = { if (!uiState.isRemoving) onDismissRemove() },
                 onConfirm = onConfirmRemove,
             )
         }
