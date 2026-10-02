@@ -40,11 +40,11 @@ class RoomMemberManagementViewModelTest {
         assertTrue(state.canRemoveMembers)
         assertFalse(state.isLoading)
         assertNull(state.errorMessage)
-        assertEquals(listOf("11", "10", "12"), state.members.map { it.id })
-        assertEquals(listOf("방장", "같은 닉네임", "같은 닉네임"), state.members.map { it.nickname })
-        assertEquals("https://cdn.example.com/member.png", state.members[1].profileImageUrl)
-        assertEquals(listOf(true, false, false), state.members.map { it.isOwner })
-        assertEquals(listOf("2026-09-16", "2026-09-17", "2026-09-18"), state.members.map { it.joinedDate })
+        assertEquals(listOf("10", "12"), state.members.map { it.id })
+        assertEquals(listOf("같은 닉네임", "같은 닉네임"), state.members.map { it.nickname })
+        assertEquals("https://cdn.example.com/member.png", state.members[0].profileImageUrl)
+        assertEquals(listOf(false, false), state.members.map { it.isOwner })
+        assertEquals(listOf("2026-09-17", "2026-09-18"), state.members.map { it.joinedDate })
     }
 
     @Test
@@ -132,13 +132,13 @@ class RoomMemberManagementViewModelTest {
 
         assertEquals(listOf(7L to 10L), requests)
         assertTrue(viewModel.uiState.value.isRemoving)
-        assertEquals(listOf("11", "10", "12"), viewModel.uiState.value.members.map { it.id })
+        assertEquals(listOf("10", "12"), viewModel.uiState.value.members.map { it.id })
 
         pendingKick.complete(Unit)
         runCurrent()
 
         assertEquals(listOf(7L to 10L), requests)
-        assertEquals(listOf("11", "12"), viewModel.uiState.value.members.map { it.id })
+        assertEquals(listOf("12"), viewModel.uiState.value.members.map { it.id })
         assertEquals(2, loadRequests)
         assertTrue(viewModel.uiState.value.canRemoveMembers)
         assertFalse(viewModel.uiState.value.isRemoving)
@@ -165,7 +165,7 @@ class RoomMemberManagementViewModelTest {
         runCurrent()
 
         assertEquals(1, kicks)
-        assertEquals(listOf("11", "12"), viewModel.uiState.value.members.map { it.id })
+        assertEquals(listOf("12"), viewModel.uiState.value.members.map { it.id })
         assertFalse(viewModel.uiState.value.canRemoveMembers)
         assertTrue(viewModel.uiState.value.refreshErrorMessage.orEmpty().contains("추방"))
 
@@ -204,7 +204,7 @@ class RoomMemberManagementViewModelTest {
 
         assertEquals(1, kicks)
         assertEquals(2, loads)
-        assertEquals(listOf("11", "12"), viewModel.uiState.value.members.map { it.id })
+        assertEquals(listOf("12"), viewModel.uiState.value.members.map { it.id })
         assertTrue(viewModel.uiState.value.removeErrorMessage.orEmpty().contains("확인할 수 없"))
         assertTrue(viewModel.uiState.value.canRemoveMembers)
     }
