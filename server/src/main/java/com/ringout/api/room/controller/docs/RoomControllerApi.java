@@ -9,6 +9,7 @@ import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
+import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomRecordsResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -167,6 +168,50 @@ public interface RoomControllerApi {
         )
     })
     ResponseEntity<CustomResponse<RoomDetailResponse>> getRoom(
+        @Parameter(hidden = true) CustomUserDetails customUserDetails,
+        @Parameter(description = "조회할 모임 방 식별자", required = true, example = "1") Long roomId
+    );
+
+    @Operation(
+        summary = "회원 관리용 모임 회원 조회",
+        description = """
+            인증된 방장(OWNER)만 현재 참여 중인 회원 목록을 조회할 수 있습니다. 탈퇴하거나 추방된 회원은 제외합니다.
+            닉네임은 첫 글자가 한글 완성형이면 한글 그룹, ASCII 영문이면 영문 그룹, 그 외이면 기타 그룹으로 분류하고 한글·영문·기타 순으로 정렬합니다.
+            같은 그룹에서는 Java String.compareTo(UTF-16 코드 단위)로 전체 닉네임을 비교하므로, 대문자는 소문자보다 앞에 옵니다. 한·영 혼합 닉네임은 첫 글자 그룹을 따릅니다.
+            """,
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "모임 회원 조회 성공", content = @Content(
+            mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess":true,"code":"MEMBER200","message":"모임 회원 조회에 성공했습니다.","result":{"members":[{"userId":1,"nickname":"가나다","profileImageUrl":null,"joinedAt":"2026-09-20T10:30:00","membershipRole":"OWNER"},{"userId":2,"nickname":"라마바","profileImageUrl":"https://example.com/profiles/2.png","joinedAt":"2026-09-21T14:20:00","membershipRole":"MEMBER"}]}}
+                """))),
+        @ApiResponse(responseCode = "400", description = "roomId를 Long으로 변환할 수 없음", content = @Content(
+            mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess":false,"code":"COMMON400","message":"잘못된 요청입니다.","result":null}
+                """))),
+        @ApiResponse(responseCode = "401", description = "인증 실패, 만료된 Access Token 또는 토큰의 사용자 정보가 없는 경우", content = @Content(
+            mediaType = "application/json", examples = {
+                @ExampleObject(name = "unauthorized", value = """
+                    {"isSuccess":false,"code":"AUTH401","message":"인증되지 않은 사용자입니다.","result":null}
+                    """),
+                @ExampleObject(name = "expiredAccessToken", value = """
+                    {"isSuccess":false,"code":"AUTH401","message":"액세스 토큰이 만료되었습니다.","result":null}
+                    """),
+                @ExampleObject(name = "authenticatedUserNotFound", value = """
+                    {"isSuccess":false,"code":"ROOM401","message":"인증되지 않은 사용자입니다.","result":null}
+                    """)
+            })),
+        @ApiResponse(responseCode = "403", description = "방장이 아닌 사용자", content = @Content(
+            mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess":false,"code":"MEMBER403","message":"회원 관리 권한이 없습니다.","result":null}
+                """))),
+        @ApiResponse(responseCode = "404", description = "존재하지 않거나 삭제된 모임 방", content = @Content(
+            mediaType = "application/json", examples = @ExampleObject(value = """
+                {"isSuccess":false,"code":"ROOM404","message":"존재하지 않는 모임 방입니다.","result":null}
+                """)))
+    })
+    ResponseEntity<CustomResponse<RoomMembersResponse>> getMembersForManagement(
         @Parameter(hidden = true) CustomUserDetails customUserDetails,
         @Parameter(description = "조회할 모임 방 식별자", required = true, example = "1") Long roomId
     );

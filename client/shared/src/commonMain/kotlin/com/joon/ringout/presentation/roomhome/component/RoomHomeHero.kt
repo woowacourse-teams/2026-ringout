@@ -14,6 +14,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.RectangleShape
@@ -21,6 +25,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.domain.room.RoomMembershipRole
+import com.joon.ringout.presentation.roomhome.RoomHomeMenuItem
 import com.joon.ringout.presentation.roomhome.roomHomeColors
 import com.joon.ringout.presentation.roomlist.component.RoomImage
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
@@ -30,11 +36,13 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 internal fun RoomHomeHero(
     room: RoomUiModel,
+    membershipRole: RoomMembershipRole?,
     onBackClick: () -> Unit,
-    onMenuClick: () -> Unit,
+    onMenuItemSelected: (RoomHomeMenuItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = roomHomeColors()
+    var isMenuExpanded by remember(room.id) { mutableStateOf(false) }
 
     Box(modifier = modifier.fillMaxWidth().aspectRatio(RoomHomeHeroAspectRatio)) {
         RoomImage(room = room, modifier = Modifier.fillMaxSize(), shape = RectangleShape)
@@ -60,15 +68,32 @@ internal fun RoomHomeHero(
                     tint = colors.heroContent,
                 )
             }
-            Box(
-                modifier = Modifier.size(48.dp).clickable(role = Role.Button, onClick = onMenuClick),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(RoomHomeMoreIconResource),
-                    contentDescription = "모임 메뉴",
-                    modifier = Modifier.size(33.dp),
-                    tint = colors.heroContent,
+            Box {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(
+                            enabled = membershipRole != null,
+                            role = Role.Button,
+                            onClick = { isMenuExpanded = true },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(RoomHomeMoreIconResource),
+                        contentDescription = "모임 메뉴",
+                        modifier = Modifier.size(33.dp),
+                        tint = colors.heroContent,
+                    )
+                }
+                RoomHomeDropdownMenu(
+                    expanded = isMenuExpanded,
+                    membershipRole = membershipRole,
+                    onDismissRequest = { isMenuExpanded = false },
+                    onItemSelected = { item ->
+                        isMenuExpanded = false
+                        onMenuItemSelected(item)
+                    },
                 )
             }
         }
@@ -79,7 +104,12 @@ internal fun RoomHomeHero(
 @Composable
 private fun RoomHomeHeroPreview() {
     RingoutTheme {
-        RoomHomeHero(room = RoomDetailPreviewRoom, onBackClick = {}, onMenuClick = {})
+        RoomHomeHero(
+            room = RoomDetailPreviewRoom,
+            membershipRole = RoomMembershipRole.OWNER,
+            onBackClick = {},
+            onMenuItemSelected = {},
+        )
     }
 }
 

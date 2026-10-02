@@ -9,6 +9,7 @@ import com.ringout.api.room.dto.request.RoomUpdateRequest;
 import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
+import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomRecordsResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.service.RoomRecordService;
@@ -59,6 +60,18 @@ public class RoomController implements RoomControllerApi {
 
         return ResponseEntity.status(RoomSuccessStatus.ROOM_DETAIL_FOUND.getHttpStatus())
             .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_DETAIL_FOUND, response));
+    }
+
+    @Override
+    @GetMapping("/{roomId}/members")
+    public ResponseEntity<CustomResponse<RoomMembersResponse>> getMembersForManagement(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @PathVariable Long roomId
+    ) {
+        RoomMembersResponse response = roomService.getMembersForManagement(customUserDetails.getUserId(), roomId);
+
+        return ResponseEntity.status(RoomSuccessStatus.ROOM_MEMBERS_FOUND.getHttpStatus())
+            .body(CustomResponse.onSuccess(RoomSuccessStatus.ROOM_MEMBERS_FOUND, response));
     }
 
     @Override

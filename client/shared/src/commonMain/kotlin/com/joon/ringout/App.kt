@@ -33,6 +33,7 @@ import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roomhome.blocksNavigationBack
 import com.joon.ringout.presentation.roomlist.RoomListViewModel
 import com.joon.ringout.presentation.roomlist.model.RoomMutationType
 import com.joon.ringout.presentation.onboarding.OnboardingRoute
@@ -269,13 +270,24 @@ private fun RingoutAppContent(
         onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
     )
 
+    val roomHomeMenuAction = if (displayedRoute is AppRoute.RoomHome) {
+        viewModelScopes
+            .get(displayedRoute, RoomHomeViewModel::class)
+            .uiState
+            .collectAsStateWithLifecycle()
+            .value
+            .menuActionState
+    } else {
+        null
+    }
     RingoutNavHost(
         navigationState = navigationState,
         displayedRoute = displayedRoute,
         viewModelStoreProvider = viewModelScopes.storeProvider,
         modifier = Modifier.fillMaxSize(),
         isBackBlocked =
-            displayedRoute is AppRoute.AlarmRinging ||
+                displayedRoute is AppRoute.AlarmRinging ||
+                roomHomeMenuAction?.blocksNavigationBack == true ||
                 alarmEditorNavigation?.isBackBlocked(displayedRoute) == true ||
                 authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true,
         onBack = { route ->
@@ -291,6 +303,12 @@ private fun RingoutAppContent(
                 AppRoute.RoomCreate -> viewModelScopes
                     .get(route, RoomCreateViewModel::class)
                     .onBack { navigationState.popBackStack(route) }
+                is AppRoute.RoomMemberManagement -> {
+                    viewModelScopes
+                        .get(AppRoute.RoomHome(route.roomId), RoomHomeViewModel::class)
+                        .refreshRoomDetails()
+                    navigationState.popBackStack(route)
+                }
                 is AppRoute.ActiveAlarmTracking -> navigationState.navigate(AppRoute.Home)
                 is AppRoute.AlarmRinging -> Unit
                 else -> navigationState.popBackStack(route)

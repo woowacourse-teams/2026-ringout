@@ -24,6 +24,7 @@ private fun RoomMemberManagementInteractivePreview() {
                     it.id in removedMemberIds
                 },
                 canManageMembers = true,
+                canRemoveMembers = true,
                 selectedMemberId = selectedMemberId,
             ),
             onBackClick = {},

@@ -5,6 +5,7 @@ import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.domain.missionhistory.weekDates
 import com.joon.ringout.domain.missionhistory.yearMonth
 import com.joon.ringout.domain.room.roomRecordsDate
+import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 
 internal enum class RoomHomeTab { Info, Records }
@@ -55,6 +56,7 @@ internal data class RoomHomeOngoingActivityUiModel(
 
 internal data class RoomHomeUiState(
     val room: RoomUiModel? = null,
+    val membershipRole: RoomMembershipRole? = null,
     val members: List<RoomHomeMemberUiModel> = emptyList(),
     val areMembersLoaded: Boolean = false,
     val nextScheduleText: String? = null,
@@ -67,4 +69,5 @@ internal data class RoomHomeUiState(
     val calendarMonth: MissionYearMonth = recordsState.selectedDate.yearMonth,
     val isCalendarVisible: Boolean = false,
     val ongoingActivity: RoomHomeOngoingActivityUiModel? = null,
+    val menuActionState: RoomHomeMenuActionState? = null,
 )

@@ -19,6 +19,7 @@ import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomSummary
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
@@ -152,6 +153,36 @@ class DefaultRoomRepository(
         }
     }
 
+
+    override suspend fun deleteRoom(roomId: Long) {
+        performRoomDeleteAction(roomId, path = "/api/v1/rooms/$roomId")
+    }
+
+    override suspend fun leaveRoom(roomId: Long) {
+        performRoomDeleteAction(roomId, path = "/api/v1/rooms/$roomId/members")
+    }
+
+    private suspend fun performRoomDeleteAction(roomId: Long, path: String) {
+        if (roomId <= 0L) {
+            throw RoomRepositoryException(
+                statusCode = HttpStatusCode.BadRequest.value,
+                code = "COMMON400",
+                message = "모임 ID를 확인해 주세요.",
+            )
+        }
+        ensurePostAuthenticated()
+        try {
+            val response = authenticatedRequests.execute { accessToken ->
+                httpClient.delete(ApiConfig.url(path)) {
+                    bearerAuth(accessToken)
+                }
+            }
+            response.decodeRoomActionOrThrow()
+        } catch (error: ApiException) {
+            throw error.toRoomRepositoryException()
+        }
+    }
+
     private suspend fun ensurePostAuthenticated() {
         val requestIdentity = authSession.identity.value
         val tokens = tokenStorage.read()
@@ -196,6 +227,19 @@ private fun ApiException.toRoomRepositoryException(): RoomRepositoryException = 
     result = result?.toString(),
     cause = this,
 )
+
+private suspend fun HttpResponse.decodeRoomActionOrThrow() {
+    val body = decodeOrThrow<JsonElement>()
+    if (!body.isSuccess) {
+        throw RoomRepositoryException(
+            statusCode = status.value,
+            code = body.code,
+            message = body.message,
+        )
+    }
+    check(status == HttpStatusCode.OK) { "모임 요청에 실패했어요." }
+    check(body.code == "ROOM200") { body.message }
+}
 
 private suspend fun HttpResponse.decodeMembershipOrThrow(
     emptyResultMessage: String,

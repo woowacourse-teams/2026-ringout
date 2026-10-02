@@ -25,6 +25,8 @@ import com.joon.ringout.presentation.roomedit.RoomEditViewModel
 import com.joon.ringout.presentation.roomedit.model.RoomEditDraft
 import com.joon.ringout.presentation.roomhome.RoomHomeRoute
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roommembermanagement.RoomMemberManagementRoute
+import com.joon.ringout.presentation.roommembermanagement.RoomMemberManagementViewModel
 import com.joon.ringout.presentation.roomlist.model.RoomMutationSource
 import androidx.compose.ui.graphics.ImageBitmap
 
@@ -119,22 +121,60 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     }
     entry<AppRoute.RoomHome>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         val roomHomeViewModel = viewModelScopes.get(route, RoomHomeViewModel::class)
+        val roomListViewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
         RoomHomeRoute(
             viewModel = roomHomeViewModel,
             roomId = route.roomId,
             authSessionState = authSessionState,
             sessionIdentity = sessionIdentity,
             onBackClick = { navigationState.popBackStack(route) },
-            onMenuClick = {},
+            onEditRoomClick = { navigationState.navigate(AppRoute.RoomEdit(route.roomId)) },
+            onManageMembersClick = { navigationState.navigate(AppRoute.RoomMemberManagement(route.roomId)) },
+            onMenuActionSucceeded = { completion ->
+                if (completion.sessionIdentity === sessionIdentity) {
+                    when (completion.actionType) {
+                        com.joon.ringout.presentation.roomhome.RoomHomeActionType.Delete ->
+                            roomListViewModel.onRoomDeleted(completion.roomId, completion.sessionIdentity)
+                        com.joon.ringout.presentation.roomhome.RoomHomeActionType.Leave -> {
+                            roomListViewModel.onRoomLeft(completion.roomId, completion.sessionIdentity)
+                            if (navigationState.isCurrentRoute(route)) navigationState.navigate(AppRoute.Home)
+                        }
+                    }
+                }
+            },
+            onMenuActionHomeClick = { completion ->
+                if (
+                    completion.sessionIdentity === sessionIdentity &&
+                    navigationState.isCurrentRoute(route)
+                ) {
+                    navigationState.navigate(AppRoute.Home)
+                }
+            },
+            onMenuActionNeedsListRefresh = { roomListViewModel.onRetryRooms() },
             onRetry = roomHomeViewModel::onRetry,
+        )
+    }
+    entry<AppRoute.RoomMemberManagement>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        val roomHomeViewModel = viewModelScopes.get(AppRoute.RoomHome(route.roomId), RoomHomeViewModel::class)
+        RoomMemberManagementRoute(
+            viewModel = viewModelScopes.get(route, RoomMemberManagementViewModel::class),
+            roomId = route.roomId,
+            authSessionState = authSessionState,
+            sessionIdentity = sessionIdentity,
+            onBackClick = {
+                roomHomeViewModel.refreshRoomDetails()
+                navigationState.popBackStack(route)
+            },
         )
     }
     entry<AppRoute.RoomEdit>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         val roomListViewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
         val roomListUiState = roomListViewModel.uiState
+        val roomHomeViewModel = viewModelScopes.get(AppRoute.RoomHome(route.roomId), RoomHomeViewModel::class)
         RoomEditRoute(
             roomId = route.roomId,
-            originalRoom = roomListUiState.allRooms.firstOrNull { it.id == route.roomId },
+            originalRoom = roomListUiState.allRooms.firstOrNull { it.id == route.roomId }
+                ?: roomHomeViewModel.uiState.value.room?.takeIf { it.id == route.roomId },
             isLoading = roomListViewModel.isRoomListUninitialized || roomListUiState.isLoadingAllRooms,
             loadError = roomListUiState.allRoomsErrorMessage,
             viewModel = viewModelScopes.get(route, RoomEditViewModel::class),

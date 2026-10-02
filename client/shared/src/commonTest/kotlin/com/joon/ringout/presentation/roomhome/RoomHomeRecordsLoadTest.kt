@@ -20,6 +20,40 @@ import kotlin.time.Instant
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomHomeRecordsLoadTest {
     @Test
+    fun `상세 갱신에서 참여 해제를 확인하면 늦은 기록 응답과 주간 프로필을 제거한다`() = runTest {
+        var joined = true
+        var late: Continuation<RoomRecords>? = null
+        val session = AuthSession().apply { startNewSession() }
+        val vm = RoomHomeViewModel(
+            initialState = RoomHomeUiState(recordsState = RoomHomeRecordsUiState(selectedDate = day)),
+            coroutineScope = this,
+            authSession = session,
+            loadRoom = { id -> RoomMembershipDetails(
+                room = RoomSummary(id, "모임", "소개", null, listOf("MONDAY"), "08:00", 1, joined, "2026-10-01T00:00:00"),
+                membershipRole = RoomMembershipRole.MEMBER,
+                members = listOf(RoomMemberDetails(2, "남은 회원")),
+            ) },
+            loadRecords = { _, date -> if (date == day) suspendCoroutine { late = it } else response() },
+        )
+        vm.enter(session)
+        runCurrent()
+        assertTrue(vm.uiState.value.recordsState.participantProfiles.isNotEmpty())
+        joined = false
+        vm.refreshRoomDetails()
+        runCurrent()
+        late!!.resume(response())
+        runCurrent()
+
+        val state = vm.uiState.value.recordsState
+        assertFalse(state.canViewRecords)
+        assertFalse(state.isLoading)
+        assertFalse(state.isDataLoaded)
+        assertTrue(state.records.isEmpty())
+        assertTrue(state.participantCounts.isEmpty())
+        assertTrue(state.participantProfiles.isEmpty())
+    }
+
+    @Test
     fun `주간 최초 조회 후 날짜와 탭 변경 및 조회한 주로 복귀할 때 캐시만 표시한다`() = runTest {
         val requests = mutableListOf<Pair<Long, MissionDate>>()
         val session = AuthSession().apply { startNewSession() }

@@ -662,7 +662,187 @@ class DefaultRoomRepositoryTest {
         memberCreateClient.close()
         okBodyWrongStatusClient.close()
     }
+
+    @Test
+    fun `모임 삭제와 탈퇴는 DELETE 요청에 Bearer 토큰과 경로만 담고 null result 성공을 허용한다`() = runTest {
+        val cases = listOf(
+            RoomActionCase("delete", "/api/v1/rooms/7"),
+            RoomActionCase("leave", "/api/v1/rooms/7/members"),
+        )
+
+        cases.forEach { case ->
+            var requestCount = 0
+            val client = clientFor { request ->
+                requestCount += 1
+                assertEquals(HttpMethod.Delete, request.method)
+                assertEquals(case.path, request.url.encodedPath)
+                assertEquals("Bearer access", request.headers[HttpHeaders.Authorization])
+                assertTrue(request.url.parameters.isEmpty())
+                assertTrue(request.body !is TextContent)
+                respond(
+                    content = """{"isSuccess":true,"code":"ROOM200","message":"성공","result":null}""",
+                    status = HttpStatusCode.OK,
+                    headers = jsonHeaders,
+                )
+            }
+            val repository = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+
+            when (case.name) {
+                "delete" -> repository.deleteRoom(7)
+                "leave" -> repository.leaveRoom(7)
+            }
+
+            assertEquals(1, requestCount)
+            client.close()
+        }
+    }
+
+    @Test
+    fun `잘못된 모임 ID와 인증 또는 토큰이 없으면 삭제와 탈퇴 HTTP 요청을 보내지 않는다`() = runTest {
+        var requestCount = 0
+        val client = clientFor {
+            requestCount += 1
+            respond("""{"isSuccess":true,"code":"ROOM200","message":"성공","result":null}""", headers = jsonHeaders)
+        }
+        val authenticatedWithoutToken = repository(client, null, AuthSessionState.Authenticated)
+        val unauthenticated = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Unauthenticated)
+        val authenticated = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+
+        assertFailsWith<RoomRepositoryException> { authenticatedWithoutToken.deleteRoom(1) }
+        assertFailsWith<RoomRepositoryException> { authenticatedWithoutToken.leaveRoom(1) }
+        assertFailsWith<RoomRepositoryException> { unauthenticated.deleteRoom(1) }
+        assertFailsWith<RoomRepositoryException> { unauthenticated.leaveRoom(1) }
+        assertFailsWith<RoomRepositoryException> { authenticated.deleteRoom(0) }
+        assertFailsWith<RoomRepositoryException> { authenticated.leaveRoom(-1) }
+
+        assertEquals(0, requestCount)
+        client.close()
+    }
+
+    @Test
+    fun `삭제와 탈퇴 HTTP 오류는 서버 오류 정보를 Domain 예외에 보존한다`() = runTest {
+        val cases = listOf(
+            RoomActionCase("delete", "/api/v1/rooms/7"),
+            RoomActionCase("leave", "/api/v1/rooms/7/members"),
+        )
+
+        cases.forEach { case ->
+            val client = clientFor { request ->
+                assertEquals(case.path, request.url.encodedPath)
+                respond(
+                    content = """{"isSuccess":false,"code":"ROOM403","message":"권한 없음","result":null}""",
+                    status = HttpStatusCode.Forbidden,
+                    headers = jsonHeaders,
+                )
+            }
+            val repository = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+
+            val error = assertFailsWith<RoomRepositoryException> {
+                when (case.name) {
+                    "delete" -> repository.deleteRoom(7)
+                    else -> repository.leaveRoom(7)
+                }
+            }
+
+            assertEquals(403, error.statusCode)
+            assertEquals("ROOM403", error.code)
+            assertEquals("권한 없음", error.message)
+            client.close()
+        }
+    }
+
+    @Test
+    fun `삭제와 탈퇴 API 업무 실패 응답과 잘못된 성공 코드를 성공으로 처리하지 않는다`() = runTest {
+        val businessFailureClient = clientFor {
+            respond(
+                content = """{"isSuccess":false,"code":"ROOM409","message":"참여 상태가 변경됐어요.","result":null}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+        val wrongCodeClient = clientFor {
+            respond(
+                content = """{"isSuccess":true,"code":"ROOM201","message":"성공","result":null}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+        val wrongStatusClient = clientFor {
+            respond(
+                content = """{"isSuccess":true,"code":"ROOM200","message":"성공","result":null}""",
+                status = HttpStatusCode.Created,
+                headers = jsonHeaders,
+            )
+        }
+
+        val businessError = assertFailsWith<RoomRepositoryException> {
+            repository(businessFailureClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated).leaveRoom(7)
+        }
+        assertEquals(200, businessError.statusCode)
+        assertEquals("ROOM409", businessError.code)
+        assertFailsWith<IllegalStateException> {
+            repository(wrongCodeClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated).deleteRoom(7)
+        }
+        assertFailsWith<IllegalStateException> {
+            repository(wrongStatusClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated).deleteRoom(7)
+        }
+
+        businessFailureClient.close()
+        wrongCodeClient.close()
+        wrongStatusClient.close()
+    }
+
+    @Test
+    fun `삭제는 AUTH401이면 토큰을 재발급하고 새 access token으로 한 번 재시도한다`() = runTest {
+        var deleteRequestCount = 0
+        var reissueRequestCount = 0
+        val storage = TestTokenStorage(AuthTokens("old-access", "old-refresh"))
+        val session = session(AuthSessionState.Authenticated)
+        val client = clientFor { request ->
+            when (request.url.encodedPath) {
+                "/api/v1/rooms/7" -> {
+                    deleteRequestCount += 1
+                    when (request.headers[HttpHeaders.Authorization]) {
+                        "Bearer old-access" -> respond(
+                            content = """{"isSuccess":false,"code":"AUTH401","message":"액세스 토큰이 만료되었습니다.","result":null}""",
+                            status = HttpStatusCode.Unauthorized,
+                            headers = jsonHeaders,
+                        )
+                        "Bearer new-access" -> respond(
+                            content = """{"isSuccess":true,"code":"ROOM200","message":"성공","result":null}""",
+                            status = HttpStatusCode.OK,
+                            headers = jsonHeaders,
+                        )
+                        else -> error("예상하지 않은 Authorization 헤더입니다: ${request.headers[HttpHeaders.Authorization]}")
+                    }
+                }
+                "/api/v1/auth/reissue" -> {
+                    reissueRequestCount += 1
+                    respond(
+                        content = """{"isSuccess":true,"code":"COMMON200","message":"성공","result":{"accessToken":"new-access","refreshToken":"new-refresh"}}""",
+                        status = HttpStatusCode.OK,
+                        headers = jsonHeaders,
+                    )
+                }
+                else -> error("예상하지 않은 요청입니다: ${request.url.encodedPath}")
+            }
+        }
+
+        DefaultRoomRepository(client, storage, session).deleteRoom(7)
+
+        assertEquals(2, deleteRequestCount)
+        assertEquals(1, reissueRequestCount)
+        assertEquals(AuthTokens("new-access", "new-refresh"), storage.read())
+        assertEquals(AuthSessionState.Authenticated, session.state.value)
+        client.close()
+    }
+
 }
+
+private data class RoomActionCase(
+    val name: String,
+    val path: String,
+)
 
 private data class AuthCase(
     val state: AuthSessionState,

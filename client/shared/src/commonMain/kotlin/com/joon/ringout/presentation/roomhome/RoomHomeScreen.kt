@@ -17,14 +17,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.joon.ringout.RingoutTheme
 import com.joon.ringout.LocalRingoutThemeMode
+import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.calendarDates
 import com.joon.ringout.presentation.records.component.RecordsMonthDialog
 import com.joon.ringout.domain.room.roomRecordsDate
 import com.joon.ringout.presentation.records.recordsDayUiState
+import com.joon.ringout.presentation.roomhome.component.RoomHomeActionDialog
 import com.joon.ringout.presentation.roomhome.component.RoomHomeDescription
 import com.joon.ringout.presentation.roomhome.component.RoomHomeHeader
 import com.joon.ringout.presentation.roomhome.component.RoomHomeHero
@@ -40,7 +41,14 @@ import com.joon.ringout.presentation.roomhome.component.RoomHomeTabs
 internal fun RoomHomeScreen(
     uiState: RoomHomeUiState,
     onBackClick: () -> Unit,
-    onMenuClick: () -> Unit,
+    onEditRoomClick: () -> Unit = {},
+    onDeleteRoomClick: () -> Unit = {},
+    onManageMembersClick: () -> Unit = {},
+    onLeaveRoomClick: () -> Unit = {},
+    onCancelMenuAction: () -> Unit = {},
+    onConfirmMenuAction: () -> Unit = {},
+    onRetryMenuAction: () -> Unit = {},
+    onMenuActionHomeClick: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     onRetry: () -> Unit = {},
     onTabSelected: (RoomHomeTab) -> Unit = {},
@@ -90,8 +98,16 @@ internal fun RoomHomeScreen(
                 item(key = "hero") {
                     RoomHomeHero(
                         room = room,
+                        membershipRole = uiState.membershipRole,
                         onBackClick = onBackClick,
-                        onMenuClick = onMenuClick,
+                        onMenuItemSelected = { item ->
+                            when (item) {
+                                RoomHomeMenuItem.Edit -> onEditRoomClick()
+                                RoomHomeMenuItem.Delete -> onDeleteRoomClick()
+                                RoomHomeMenuItem.ManageMembers -> onManageMembersClick()
+                                RoomHomeMenuItem.Leave -> onLeaveRoomClick()
+                            }
+                        },
                     )
                 }
                 item(key = "header") {
@@ -171,13 +187,29 @@ internal fun RoomHomeScreen(
             onRetry = onRefresh,
         )
     }
+
+    uiState.menuActionState
+        ?.takeUnless { it is RoomHomeMenuActionState.Completed && it.actionType == RoomHomeActionType.Leave }
+        ?.let { actionState ->
+        RoomHomeActionDialog(
+            state = actionState,
+            onCancel = onCancelMenuAction,
+            onConfirm = onConfirmMenuAction,
+            onRetry = onRetryMenuAction,
+            onManageMembers = {
+                onCancelMenuAction()
+                onManageMembersClick()
+            },
+            onGoHome = onMenuActionHomeClick,
+        )
+    }
 }
 
 @Preview(name = "모임 홈 · 다크", widthDp = 402, heightDp = 949)
 @Composable
 private fun RoomHomeScreenDarkPreview() {
     RingoutTheme(ThemeMode.Dark) {
-        RoomHomeScreen(RoomHomePreviewState, onBackClick = {}, onMenuClick = {})
+        RoomHomeScreen(RoomHomePreviewState, onBackClick = {})
     }
 }
 
@@ -185,7 +217,7 @@ private fun RoomHomeScreenDarkPreview() {
 @Composable
 private fun RoomHomeScreenLightPreview() {
     RingoutTheme(ThemeMode.Light) {
-        RoomHomeScreen(RoomHomePreviewState, onBackClick = {}, onMenuClick = {})
+        RoomHomeScreen(RoomHomePreviewState, onBackClick = {})
     }
 }
 
@@ -196,7 +228,6 @@ private fun RoomHomeScreenLongCountdownPreview() {
         RoomHomeScreen(
             RoomHomePreviewState.copy(nextScheduleText = "내일 오후 06:00", remainingTimeText = "1일 12시간"),
             onBackClick = {},
-            onMenuClick = {},
         )
     }
 }
@@ -213,7 +244,6 @@ private fun RoomHomeScreenCompactPreview() {
                 },
             ),
             onBackClick = {},
-            onMenuClick = {},
         )
     }
 }
@@ -225,7 +255,6 @@ private fun RoomHomeScreenEmptyPreview() {
         RoomHomeScreen(
             RoomHomePreviewState.copy(members = emptyList(), nextScheduleText = null, remainingTimeText = null),
             onBackClick = {},
-            onMenuClick = {},
         )
     }
 }
@@ -234,7 +263,7 @@ private fun RoomHomeScreenEmptyPreview() {
 @Composable
 private fun RoomHomeScreenLoadingPreview() {
     RingoutTheme {
-        RoomHomeScreen(RoomHomeUiState(isLoading = true), onBackClick = {}, onMenuClick = {})
+        RoomHomeScreen(RoomHomeUiState(isLoading = true), onBackClick = {})
     }
 }
 
@@ -245,7 +274,6 @@ private fun RoomHomeScreenErrorPreview() {
         RoomHomeScreen(
             RoomHomeUiState(errorMessage = "모임 정보를 불러오지 못했어요.", canRetry = true),
             onBackClick = {},
-            onMenuClick = {},
             onRetry = {},
         )
     }

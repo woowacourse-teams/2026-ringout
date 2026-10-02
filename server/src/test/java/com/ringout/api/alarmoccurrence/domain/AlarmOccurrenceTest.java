@@ -3,6 +3,8 @@ package com.ringout.api.alarmoccurrence.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.ringout.api.alarmmovement.domain.MovementAction;
+import com.ringout.api.alarmmovement.domain.MovementStatus;
 import com.ringout.api.alarmoccurrence.status.AlarmOccurrenceErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import java.time.LocalDateTime;
@@ -238,6 +240,60 @@ class AlarmOccurrenceTest {
             // then
             assertOrderInvalid(thrown);
             assertThat(occurrence.getEndType()).isNull();
+        }
+    }
+
+    @Nested
+    class 이동_상태_전이 {
+
+        @Test
+        void 이동을_시작하면_시작_시각을_기록하고_경과_시간에_따라_상태를_계산한다() {
+            // given
+            AlarmOccurrence occurrence = startOccurrence();
+            LocalDateTime movementStartedAt = STARTED_AT.plusMinutes(3);
+
+            // when
+            MovementStatus changedStatus = occurrence.changeMovement(MovementAction.START_MOVEMENT, movementStartedAt);
+
+            // then
+            assertThat(changedStatus).isEqualTo(MovementStatus.MOVEMENT_STARTED);
+            assertThat(occurrence.getMovementStartedAt()).isEqualTo(movementStartedAt);
+            assertThat(occurrence.getMovementStatus(movementStartedAt.plusMinutes(1).plusSeconds(59)))
+                .isEqualTo(MovementStatus.MOVEMENT_STARTED);
+            assertThat(occurrence.getMovementStatus(movementStartedAt.plusMinutes(2)))
+                .isEqualTo(MovementStatus.MOVING);
+        }
+
+        @Test
+        void 도착_행동이면_도착_종료_상태와_시각을_기록한다() {
+            // given
+            AlarmOccurrence occurrence = startOccurrence();
+            LocalDateTime arrivedAt = STARTED_AT.plusMinutes(25);
+
+            // when
+            MovementStatus changedStatus = occurrence.changeMovement(MovementAction.ARRIVE, arrivedAt);
+
+            // then
+            assertThat(changedStatus).isEqualTo(MovementStatus.ARRIVED);
+            assertThat(occurrence.getEndType()).isEqualTo(OccurrenceEndType.ARRIVED);
+            assertThat(occurrence.getEndedAt()).isEqualTo(arrivedAt);
+            assertThat(occurrence.getMovementStatus(arrivedAt.plusMinutes(1))).isEqualTo(MovementStatus.ARRIVED);
+        }
+
+        @Test
+        void 포기_행동이면_강제_종료_상태와_시각을_기록한다() {
+            // given
+            AlarmOccurrence occurrence = startOccurrence();
+            LocalDateTime gaveUpAt = STARTED_AT.plusMinutes(10);
+
+            // when
+            MovementStatus changedStatus = occurrence.changeMovement(MovementAction.GIVE_UP, gaveUpAt);
+
+            // then
+            assertThat(changedStatus).isEqualTo(MovementStatus.GAVE_UP);
+            assertThat(occurrence.getEndType()).isEqualTo(OccurrenceEndType.FORCE_ENDED);
+            assertThat(occurrence.getEndedAt()).isEqualTo(gaveUpAt);
+            assertThat(occurrence.getMovementStatus(gaveUpAt.plusMinutes(1))).isEqualTo(MovementStatus.GAVE_UP);
         }
     }
 

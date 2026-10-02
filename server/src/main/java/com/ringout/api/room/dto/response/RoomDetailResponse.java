@@ -2,6 +2,7 @@ package com.ringout.api.room.dto.response;
 
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomUser;
+import com.ringout.api.common.util.NicknameComparator;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -28,7 +29,7 @@ public record RoomDetailResponse(
     public static RoomDetailResponse from(Room room, Long currentUserId, List<RoomUser> roomUsers, String imageUrl) {
         List<RoomMemberResponse> members = roomUsers.stream()
             .map(RoomMemberResponse::from)
-            .sorted(Comparator.comparing(RoomMemberResponse::nickname, RoomDetailResponse::compareNickname))
+            .sorted(NicknameComparator.comparing(RoomMemberResponse::nickname))
             .collect(LinkedHashMap<Long, RoomMemberResponse>::new,
                 (uniqueMembers, member) -> uniqueMembers.putIfAbsent(member.userId(), member),
                 Map::putAll)
@@ -55,24 +56,4 @@ public record RoomDetailResponse(
         );
     }
 
-    private static int compareNickname(String left, String right) {
-        int groupComparison = Integer.compare(nicknameGroup(left), nicknameGroup(right));
-        return groupComparison != 0 ? groupComparison : left.compareTo(right);
-    }
-
-    private static int nicknameGroup(String nickname) {
-        if (nickname == null || nickname.isEmpty()) {
-            return 2;
-        }
-
-        char firstCharacter = nickname.charAt(0);
-        if (firstCharacter >= '\uAC00' && firstCharacter <= '\uD7A3') {
-            return 0;
-        }
-        if ((firstCharacter >= 'A' && firstCharacter <= 'Z')
-            || (firstCharacter >= 'a' && firstCharacter <= 'z')) {
-            return 1;
-        }
-        return 2;
-    }
 }

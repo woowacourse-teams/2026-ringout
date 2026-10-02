@@ -26,7 +26,7 @@ public interface AlarmMovementControllerApi {
         summary = "이동 행동 처리",
         description = """
             path roomId의 활성 모임에 현재 참여 중인 인증 사용자가 알람 실행의 이동 행동을 처리합니다.
-            alarmId는 AlarmOccurrence 식별자이며 action은 START_MOVEMENT, GIVE_UP, ARRIVE 중 하나입니다.
+            alarmOccurrenceId는 알람 실행 API가 발급한 AlarmOccurrence UUID 식별자이며 action은 START_MOVEMENT, GIVE_UP, ARRIVE 중 하나입니다.
             응답 status는 요청 처리 후 MOVEMENT_STARTED, GAVE_UP, ARRIVED 중 해당 상태입니다.
             """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
@@ -49,12 +49,12 @@ public interface AlarmMovementControllerApi {
         ),
         @ApiResponse(
             responseCode = "400",
-            description = "필수 입력 누락 또는 값 검증 실패; 본문 누락·잘못된 JSON·enum·Long 변환 오류는 COMMON400",
+            description = "필수 입력 누락 또는 값 검증 실패; 본문 누락·잘못된 JSON·enum 변환 오류는 COMMON400",
             content = @Content(mediaType = "application/json", examples = {
-                @ExampleObject(name = "alarmIdRequired", value = """
+                @ExampleObject(name = "alarmOccurrenceIdRequired", value = """
                     {"isSuccess": false, "code": "MOVEMENT400", "message": "알람 실행 ID가 필요합니다.", "result": null}
                     """),
-                @ExampleObject(name = "alarmIdMustBePositive", value = """
+                @ExampleObject(name = "alarmOccurrenceIdInvalid", value = """
                     {"isSuccess": false, "code": "MOVEMENT400", "message": "알람 실행 ID가 올바르지 않습니다.", "result": null}
                     """),
                 @ExampleObject(name = "actionRequired", value = """
@@ -79,10 +79,15 @@ public interface AlarmMovementControllerApi {
         ),
         @ApiResponse(
             responseCode = "403",
-            description = "요청한 roomId의 현재 참여자가 아님",
-            content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
-                {"isSuccess": false, "code": "MOVEMENT403", "message": "해당 모임의 회원이 아닙니다.", "result": null}
-                """))
+            description = "요청한 roomId의 현재 참여자가 아니거나, 대상 알람 실행의 소유자가 아님",
+            content = @Content(mediaType = "application/json", examples = {
+                @ExampleObject(name = "notRoomMember", value = """
+                    {"isSuccess": false, "code": "MOVEMENT403", "message": "해당 모임의 회원이 아닙니다.", "result": null}
+                    """),
+                @ExampleObject(name = "notAlarmOccurrenceOwner", value = """
+                    {"isSuccess": false, "code": "MOVEMENT403", "message": "해당 알람에 대한 이동 상태를 변경할 권한이 없습니다.", "result": null}
+                    """)
+            })
         ),
         @ApiResponse(
             responseCode = "404",
@@ -113,15 +118,10 @@ public interface AlarmMovementControllerApi {
         ),
         @ApiResponse(
             responseCode = "500",
-            description = "이동 상태 레코드 누락 또는 예상하지 못한 서버 오류",
-            content = @Content(mediaType = "application/json", examples = {
-                @ExampleObject(name = "movementRecordMissing", value = """
-                    {"isSuccess": false, "code": "MOVEMENT500", "message": "이동 상태를 처리할 수 없습니다.", "result": null}
-                    """),
-                @ExampleObject(name = "unexpectedError", value = """
+            description = "예상하지 못한 서버 오류",
+            content = @Content(mediaType = "application/json", examples = @ExampleObject(name = "unexpectedError", value = """
                     {"isSuccess": false, "code": "COMMON500", "message": "서버 에러, 관리자에게 문의 바랍니다.", "result": "예외 메시지"}
-                    """)
-            })
+                    """))
         )
     })
     ResponseEntity<CustomResponse<AlarmMovementResponse>> changeMovement(
@@ -130,12 +130,12 @@ public interface AlarmMovementControllerApi {
         @PathVariable Long roomId,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
-            description = "알람 실행 ID와 수행할 이동 행동",
+            description = "알람 실행 UUID와 수행할 이동 행동",
             content = @Content(
                 mediaType = "application/json",
                 schema = @Schema(implementation = AlarmMovementRequest.class),
                 examples = @ExampleObject(value = """
-                    {"alarmId": 135, "action": "START_MOVEMENT"}
+                    {"alarmOccurrenceId":"5c9e1f7a-3b2d-4a6c-8e0f-1a2b3c4d5e6f", "action":"START_MOVEMENT"}
                     """)
             )
         )
@@ -146,7 +146,7 @@ public interface AlarmMovementControllerApi {
         summary = "모임 회원 이동 상태 조회",
         description = """
             인증된 현재 모임 참여자의 상태를 조회합니다. 목록은 탈퇴·추방되지 않은 활성 참여자만 포함하며 닉네임 첫 글자 기준 한글(가–힣), 영문(A–Z, a–z), 그 외 문자 순으로 정렬하고 각 그룹은 문자열 오름차순으로 정렬합니다. 영문 대소문자는 구분합니다.
-            각 회원은 자신의 가장 최근 알람 실행 기준 상태를 반환합니다. 알람 실행이 없으면 IDLE, 알람 실행은 있으나 이동 시작 전이면 ALARM_TRIGGERED입니다. 이동 시작 후 2분 미만이면 MOVEMENT_STARTED, 2분 이상이면 MOVING이며 종료 상태는 GAVE_UP 또는 ARRIVED입니다. 필요한 이동 상태 레코드가 없거나 종료 시각 데이터가 서로 충돌하면 500 오류를 반환합니다.
+            각 회원은 서버 기준 오늘 00:00 이상 다음 날 00:00 미만에 실제 알람이 시작된 실행만 대상으로 상태를 반환합니다. 대상 실행 중 startedAt이 가장 최근인 것을 선택하며, 시작 시각이 같으면 ID가 큰 실행을 선택합니다. 오늘 알람 실행이 없으면 IDLE, 알람 실행은 있으나 이동 시작 전이면 ALARM_TRIGGERED입니다. 이동 시작 후 2분 미만이면 MOVEMENT_STARTED, 2분 이상이면 MOVING이며 종료 상태는 GAVE_UP 또는 ARRIVED입니다.
             """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
@@ -206,21 +206,6 @@ public interface AlarmMovementControllerApi {
             content = @Content(mediaType = "application/json", examples = @ExampleObject(value = """
                 {"isSuccess": false, "code": "ROOM404", "message": "존재하지 않는 모임 방입니다.", "result": null}
                 """))
-        ),
-        @ApiResponse(
-            responseCode = "500",
-            description = "알람 실행의 이동 상태 레코드가 누락·불일치하거나 예상하지 못한 서버 오류",
-            content = @Content(mediaType = "application/json", examples = {
-                @ExampleObject(name = "movementRecordMissing", value = """
-                    {"isSuccess": false, "code": "MOVEMENT500", "message": "이동 상태를 처리할 수 없습니다.", "result": null}
-                    """),
-                @ExampleObject(name = "terminalStateInconsistent", value = """
-                    {"isSuccess": false, "code": "MOVEMENT500", "message": "이동 상태를 조회할 수 없습니다.", "result": null}
-                    """),
-                @ExampleObject(name = "unexpectedError", value = """
-                    {"isSuccess": false, "code": "COMMON500", "message": "서버 에러, 관리자에게 문의 바랍니다.", "result": "예외 메시지"}
-                    """)
-            })
         )
     })
     ResponseEntity<CustomResponse<MemberMovementsResponse>> getMemberMovements(

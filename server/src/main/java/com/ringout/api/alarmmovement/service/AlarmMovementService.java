@@ -1,17 +1,16 @@
 package com.ringout.api.alarmmovement.service;
 
-import com.ringout.api.alarmmovement.domain.AlarmMovement;
 import com.ringout.api.alarmmovement.domain.MovementAction;
 import com.ringout.api.alarmmovement.domain.MovementStatus;
 import com.ringout.api.alarmmovement.dto.request.AlarmMovementRequest;
 import com.ringout.api.alarmmovement.dto.response.AlarmMovementResponse;
 import com.ringout.api.alarmmovement.dto.response.MemberMovementResponse;
 import com.ringout.api.alarmmovement.dto.response.MemberMovementsResponse;
-import com.ringout.api.alarmmovement.repository.AlarmMovementRepository;
 import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
 import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.common.util.NicknameComparator;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.repository.RoomRepository;
@@ -19,11 +18,12 @@ import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
 import com.ringout.api.room.service.RoomActivityService;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,7 +37,6 @@ public class AlarmMovementService {
     private final RoomRepository roomRepository;
     private final RoomUserRepository roomUserRepository;
     private final AlarmOccurrenceRepository alarmOccurrenceRepository;
-    private final AlarmMovementRepository alarmMovementRepository;
     private final RoomActivityService roomActivityService;
 
     private final Clock clock;
@@ -47,13 +46,13 @@ public class AlarmMovementService {
         validateRequest(request);
         Room room = findActiveRoomForCurrentMember(userId, roomId);
 
-        AlarmOccurrence alarmOccurrence = alarmOccurrenceRepository.findActiveById(request.alarmId())
+        AlarmOccurrence alarmOccurrence = alarmOccurrenceRepository.findActiveByOccurrenceUuidForUpdate(
+                request.alarmOccurrenceId())
             .orElseThrow(() -> new GeneralException(AlarmMovementErrorStatus.ALARM_NOT_FOUND));
-        AlarmMovement alarmMovement = findAlarmMovement(alarmOccurrence, request.alarmId());
-
-        MovementStatus movementStatus = alarmMovement.change(request.action(), LocalDateTime.now(clock));
+        validateAlarmOccurrenceOwner(alarmOccurrence, userId);
+        MovementStatus movementStatus = alarmOccurrence.changeMovement(request.action(), LocalDateTime.now(clock));
         roomActivityService.recordMovementActivity(room, LocalDateTime.now(clock));
-        logMovementStatusChanged(userId, roomId, request.alarmId(), request.action(), movementStatus);
+        logMovementStatusChanged(userId, roomId, request.alarmOccurrenceId(), request.action(), movementStatus);
 
         return new AlarmMovementResponse(movementStatus);
     }
@@ -65,14 +64,13 @@ public class AlarmMovementService {
         validateCurrentRoomMemberForMovementStatus(userId, roomId);
 
         List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
-        Map<Long, AlarmOccurrence> latestAlarmOccurrenceByUserId = findLatestAlarmOccurrenceByUserId(roomId);
-        Map<AlarmOccurrence, AlarmMovement> movementByAlarmOccurrence = findMovementByAlarmOccurrence(
-            latestAlarmOccurrenceByUserId.values());
-
+        LocalDate currentDate = LocalDate.now(clock);
+        Map<Long, AlarmOccurrence> latestAlarmOccurrenceByUserId = findLatestAlarmOccurrenceByUserId(roomId,
+            currentDate);
         List<MemberMovementResponse> members = roomUsers.stream()
             .map(roomUser -> toMemberMovementResponse(roomUser,
-                latestAlarmOccurrenceByUserId.get(roomUser.getUser().getId()), movementByAlarmOccurrence))
-            .sorted(memberNicknameComparator())
+                latestAlarmOccurrenceByUserId.get(roomUser.getUser().getId())))
+            .sorted(NicknameComparator.comparing(MemberMovementResponse::nickname))
             .toList();
 
         return new MemberMovementsResponse(members);
@@ -108,72 +106,32 @@ public class AlarmMovementService {
         }
     }
 
-    private Map<Long, AlarmOccurrence> findLatestAlarmOccurrenceByUserId(Long roomId) {
+    private Map<Long, AlarmOccurrence> findLatestAlarmOccurrenceByUserId(Long roomId, LocalDate date) {
         Map<Long, AlarmOccurrence> latestAlarmOccurrenceByUserId = new LinkedHashMap<>();
-        alarmOccurrenceRepository.findActiveByRoomIdOrderByIdDesc(roomId)
+        alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
+                roomId, date.atStartOfDay(), date.plusDays(1).atStartOfDay())
             .forEach(alarmOccurrence -> latestAlarmOccurrenceByUserId.putIfAbsent(
                 alarmOccurrence.getUser().getId(), alarmOccurrence));
         return latestAlarmOccurrenceByUserId;
     }
 
-    private Map<AlarmOccurrence, AlarmMovement> findMovementByAlarmOccurrence(
-        Iterable<AlarmOccurrence> alarmOccurrences) {
-        List<AlarmOccurrence> alarmOccurrenceList = java.util.stream.StreamSupport.stream(
-                alarmOccurrences.spliterator(), false)
-            .toList();
-        if (alarmOccurrenceList.isEmpty()) {
-            return Map.of();
-        }
-        return alarmMovementRepository.findActiveByAlarmOccurrenceIn(alarmOccurrenceList).stream()
-            .collect(java.util.stream.Collectors.toMap(AlarmMovement::getAlarmOccurrence, alarmMovement -> alarmMovement));
-    }
-
-    private MemberMovementResponse toMemberMovementResponse(RoomUser roomUser, AlarmOccurrence alarmOccurrence,
-        Map<AlarmOccurrence, AlarmMovement> movementByAlarmOccurrence) {
+    private MemberMovementResponse toMemberMovementResponse(RoomUser roomUser, AlarmOccurrence alarmOccurrence) {
         if (alarmOccurrence == null) {
             return new MemberMovementResponse(roomUser.getUser().getId(), roomUser.getUser().getNickname().getValue(),
                 MovementStatus.IDLE);
         }
 
-        AlarmMovement alarmMovement = movementByAlarmOccurrence.get(alarmOccurrence);
-        if (alarmMovement == null) {
-            log.error("AlarmMovement record is missing. alarmOccurrenceId={}", alarmOccurrence.getId());
-            throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_RECORD_MISSING);
-        }
-        if (alarmMovement.getGaveUpAt() != null && alarmMovement.getArrivedAt() != null) {
-            log.error("AlarmMovement terminal states conflict. alarmOccurrenceId={}", alarmOccurrence.getId());
-            throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_TERMINAL_STATE_INCONSISTENT);
-        }
-
         return new MemberMovementResponse(roomUser.getUser().getId(), roomUser.getUser().getNickname().getValue(),
-            alarmMovement.getMovementStatus(LocalDateTime.now(clock)));
+            alarmOccurrence.getMovementStatus(LocalDateTime.now(clock)));
     }
 
-    private Comparator<MemberMovementResponse> memberNicknameComparator() {
-        return Comparator.comparingInt((MemberMovementResponse member) -> nicknameGroup(member.nickname()))
-            .thenComparing(MemberMovementResponse::nickname);
-    }
-
-    private int nicknameGroup(String nickname) {
-        char firstCharacter = nickname.charAt(0);
-        if (firstCharacter >= '가' && firstCharacter <= '힣') {
-            return 0;
+    private void validateAlarmOccurrenceOwner(AlarmOccurrence alarmOccurrence, Long userId) {
+        if (!alarmOccurrence.isOwnedBy(userId)) {
+            throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ACTION_FORBIDDEN);
         }
-        if ((firstCharacter >= 'A' && firstCharacter <= 'Z') || (firstCharacter >= 'a' && firstCharacter <= 'z')) {
-            return 1;
-        }
-        return 2;
     }
 
-    private AlarmMovement findAlarmMovement(AlarmOccurrence alarmOccurrence, Long alarmOccurrenceId) {
-        return alarmMovementRepository.findByAlarmOccurrence(alarmOccurrence)
-            .orElseThrow(() -> {
-                log.error("AlarmMovement record is missing. alarmOccurrenceId={}", alarmOccurrenceId);
-                return new GeneralException(AlarmMovementErrorStatus.MOVEMENT_RECORD_MISSING);
-            });
-    }
-
-    private void logMovementStatusChanged(Long userId, Long roomId, Long alarmOccurrenceId, MovementAction action,
+    private void logMovementStatusChanged(Long userId, Long roomId, String alarmOccurrenceId, MovementAction action,
         MovementStatus movementStatus) {
         log.atInfo()
             .addKeyValue("event", "movement_status_changed")
@@ -187,8 +145,8 @@ public class AlarmMovementService {
 
     private void validateRequest(AlarmMovementRequest request) {
         validateRequestExists(request);
-        validateAlarmOccurrenceIdExists(request.alarmId());
-        validateAlarmOccurrenceIdIsPositive(request.alarmId());
+        validateAlarmOccurrenceIdExists(request.alarmOccurrenceId());
+        validateAlarmOccurrenceIdFormat(request.alarmOccurrenceId());
         validateMovementActionExists(request.action());
     }
 
@@ -198,14 +156,18 @@ public class AlarmMovementService {
         }
     }
 
-    private void validateAlarmOccurrenceIdExists(Long alarmOccurrenceId) {
+    private void validateAlarmOccurrenceIdExists(String alarmOccurrenceId) {
         if (alarmOccurrenceId == null) {
             throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ALARM_OCCURRENCE_ID_REQUIRED);
         }
     }
 
-    private void validateAlarmOccurrenceIdIsPositive(Long alarmOccurrenceId) {
-        if (alarmOccurrenceId <= 0) {
+    private void validateAlarmOccurrenceIdFormat(String alarmOccurrenceId) {
+        try {
+            if (!UUID.fromString(alarmOccurrenceId).toString().equalsIgnoreCase(alarmOccurrenceId)) {
+                throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ALARM_OCCURRENCE_ID_INVALID);
+            }
+        } catch (IllegalArgumentException exception) {
             throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ALARM_OCCURRENCE_ID_INVALID);
         }
     }

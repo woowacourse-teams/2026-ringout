@@ -1,5 +1,8 @@
 package com.ringout.api.alarmoccurrence.domain;
 
+import com.ringout.api.alarmmovement.domain.MovementAction;
+import com.ringout.api.alarmmovement.domain.MovementStatus;
+import com.ringout.api.alarmmovement.status.AlarmMovementErrorStatus;
 import com.ringout.api.alarmoccurrence.status.AlarmOccurrenceErrorStatus;
 import com.ringout.api.common.BaseEntity;
 import com.ringout.api.common.response.error.GeneralException;
@@ -67,6 +70,9 @@ public class AlarmOccurrence extends BaseEntity {
     @Column(name = "started_at", nullable = false)
     private LocalDateTime startedAt;
 
+    @Column(name = "movement_started_at")
+    private LocalDateTime movementStartedAt;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "end_type", length = 20)
     private OccurrenceEndType endType;
@@ -110,6 +116,32 @@ public class AlarmOccurrence extends BaseEntity {
         return user.getId().equals(userId);
     }
 
+    public MovementStatus changeMovement(MovementAction action, LocalDateTime actionAt) {
+        validateMovementNotEnded();
+
+        return switch (action) {
+            case START_MOVEMENT -> startMovement(actionAt);
+            case GIVE_UP -> giveUp(actionAt);
+            case ARRIVE -> arrive(actionAt);
+        };
+    }
+
+    public MovementStatus getMovementStatus(LocalDateTime referenceTime) {
+        if (endType == OccurrenceEndType.FORCE_ENDED) {
+            return MovementStatus.GAVE_UP;
+        }
+        if (endType == OccurrenceEndType.ARRIVED) {
+            return MovementStatus.ARRIVED;
+        }
+        if (movementStartedAt == null) {
+            return MovementStatus.ALARM_TRIGGERED;
+        }
+        if (!movementStartedAt.plusMinutes(2).isAfter(referenceTime)) {
+            return MovementStatus.MOVING;
+        }
+        return MovementStatus.MOVEMENT_STARTED;
+    }
+
     public void ringRepeat(String eventId, LocalDateTime ringingAt) {
         if (findRepeatRinging(eventId).isPresent()) {
             return;
@@ -143,6 +175,25 @@ public class AlarmOccurrence extends BaseEntity {
         throw new GeneralException(AlarmOccurrenceErrorStatus.ALARM_OCCURRENCE_ALREADY_ENDED);
     }
 
+    private MovementStatus startMovement(LocalDateTime actionAt) {
+        if (movementStartedAt != null) {
+            throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ALREADY_STARTED);
+        }
+        validateNotBefore(actionAt, startedAt);
+        movementStartedAt = actionAt;
+        return MovementStatus.MOVEMENT_STARTED;
+    }
+
+    private MovementStatus giveUp(LocalDateTime actionAt) {
+        end(OccurrenceEndType.FORCE_ENDED, actionAt);
+        return MovementStatus.GAVE_UP;
+    }
+
+    private MovementStatus arrive(LocalDateTime actionAt) {
+        end(OccurrenceEndType.ARRIVED, actionAt);
+        return MovementStatus.ARRIVED;
+    }
+
     private AlarmRinging initialRinging() {
         return ringings.stream()
             .filter(AlarmRinging::isInitial)
@@ -165,6 +216,15 @@ public class AlarmOccurrence extends BaseEntity {
     private void validateNotEnded() {
         if (endType != null) {
             throw new GeneralException(AlarmOccurrenceErrorStatus.ALARM_OCCURRENCE_ALREADY_ENDED);
+        }
+    }
+
+    private void validateMovementNotEnded() {
+        if (endType == OccurrenceEndType.FORCE_ENDED) {
+            throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ALREADY_GAVE_UP);
+        }
+        if (endType == OccurrenceEndType.ARRIVED) {
+            throw new GeneralException(AlarmMovementErrorStatus.MOVEMENT_ALREADY_ARRIVED);
         }
     }
 }

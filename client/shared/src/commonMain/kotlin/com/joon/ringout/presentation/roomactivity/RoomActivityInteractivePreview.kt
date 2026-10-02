@@ -32,7 +32,6 @@ private fun RoomActivityInteractivePreview() {
                         ongoingActivity = RoomHomeOngoingActivityUiModel(state.activityDate, participantCount = 3),
                     ),
                     onBackClick = {},
-                    onMenuClick = {},
                     onActivityClick = { roomId, date ->
                         state = state.copy(roomId = roomId, activityDate = date)
                         showingActivity = true

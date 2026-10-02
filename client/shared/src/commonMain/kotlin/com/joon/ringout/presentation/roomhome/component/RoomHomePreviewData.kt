@@ -34,6 +34,7 @@ internal val RoomHomePreviewRecordsByDate = mapOf(
 
 /** 네트워크와 무관한 Preview 전용 데이터. 실제 앱의 목록이나 상태에는 주입하지 않는다. */
 internal val RoomHomePreviewState = RoomHomeUiState(
+    membershipRole = com.joon.ringout.domain.room.RoomMembershipRole.OWNER,
     room = RoomUiModel(
         id = "preview-room-home",
         name = "아침 러닝가는 사람들",
