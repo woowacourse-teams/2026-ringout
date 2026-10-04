@@ -160,6 +160,8 @@ class DefaultRoomRepository(
             response.decodeRoomActionOrThrow()
         } catch (error: CancellationException) {
             throw error
+        } catch (error: ApiException) {
+            throw error.toRoomRepositoryException()
         }
     }
     
