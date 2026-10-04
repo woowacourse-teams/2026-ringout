@@ -192,3 +192,23 @@ internal val RingoutMigration9To10 = Migration(9, 10) { connection ->
     connection.executeSQL("CREATE INDEX IF NOT EXISTS index_alarm_occurrence_outbox_local_ringing_id ON alarm_occurrence_outbox (local_ringing_id)")
     connection.executeSQL("CREATE INDEX IF NOT EXISTS index_alarm_occurrence_outbox_state_next_attempt_at ON alarm_occurrence_outbox (state, next_attempt_at)")
 }
+
+/** 완료된 과거 알람을 새 이동 상태로 재전송하지 않는다. 도입 후 발생한 이벤트만 저장한다. */
+internal val RingoutMigration10To11 = Migration(10, 11) { connection ->
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_movement_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            local_execution_id TEXT NOT NULL,
+            deduplication_key TEXT NOT NULL,
+            action TEXT NOT NULL,
+            room_id INTEGER,
+            occurred_at INTEGER NOT NULL,
+            state TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            next_attempt_at INTEGER,
+            last_error_code TEXT,
+            FOREIGN KEY(local_execution_id) REFERENCES alarm_occurrence_sync(local_execution_id) ON UPDATE NO ACTION ON DELETE NO ACTION
+        )
+    """.trimIndent())
+    connection.executeSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_alarm_movement_outbox_local_execution_id_deduplication_key ON alarm_movement_outbox (local_execution_id, deduplication_key)")
+}

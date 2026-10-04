@@ -55,6 +55,7 @@ app:
   file:
     image:
       profile-directory: ${AWS_S3_PROFILE_IMAGE_DIRECTORY:}
+      room-directory: ${AWS_S3_ROOM_IMAGE_DIRECTORY:}
   aws:
     s3:
       bucket: ${AWS_S3_BUCKET:}

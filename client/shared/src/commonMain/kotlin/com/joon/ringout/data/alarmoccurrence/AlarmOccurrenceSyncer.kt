@@ -1,5 +1,8 @@
 package com.joon.ringout.data.alarmoccurrence
 
+import com.joon.ringout.data.alarmmovement.AlarmMovementSyncer
+import com.joon.ringout.data.alarmmovement.DefaultAlarmMovementRepository
+import com.joon.ringout.domain.alarmmovement.AlarmMovementRepository
 import com.joon.ringout.data.network.ApiException
 import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrence
 import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceEvent
@@ -29,6 +32,9 @@ internal class AlarmOccurrenceSyncer(
     private val repositoryFactory: (AlarmOccurrenceAccount) -> AlarmOccurrenceRepository = { account ->
         DefaultAlarmOccurrenceRepository(httpClient, tokenStorage, authSession, account)
     },
+    private val movementRepositoryFactory: (AlarmOccurrenceAccount) -> AlarmMovementRepository = { account ->
+        DefaultAlarmMovementRepository(httpClient, tokenStorage, authSession, account)
+    },
 ) {
     private var unauthorizedSession: Any? = null
 
@@ -44,6 +50,13 @@ internal class AlarmOccurrenceSyncer(
                 val next = drainExecution(account, executionId, repository)
                 if (next != null) nextRetryAt = nextRetryAt?.let { minOf(it, next) } ?: next
             }
+            val movementRetry = AlarmMovementSyncer(dao, movementRepositoryFactory(account), now,
+                checkAccount = { checkAccount(account) },
+                onUnauthorized = {
+                    unauthorizedSession = account.sessionIdentity
+                    throw AlarmOccurrenceAccountChanged()
+                }).flush(account.ownerAccountId)
+            if (movementRetry != null) nextRetryAt = nextRetryAt?.let { minOf(it, movementRetry) } ?: movementRetry
         } catch (_: AlarmOccurrenceAccountChanged) {
             // 응답이 유실된 것처럼 남긴다. 원래 계정으로 돌아오면 같은 식별자로 재전송한다.
             return@withLock null
