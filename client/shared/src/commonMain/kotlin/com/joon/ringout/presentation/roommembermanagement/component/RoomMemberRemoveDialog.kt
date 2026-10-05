@@ -1,6 +1,11 @@
 package com.joon.ringout.presentation.roommembermanagement.component
 
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,6 +23,7 @@ import com.joon.ringout.presentation.common.component.ConfirmationDialogLayout
 @Composable
 internal fun RoomMemberRemoveDialog(
     nickname: String,
+    isRemoving: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
@@ -41,9 +47,12 @@ internal fun RoomMemberRemoveDialog(
         description = description.text,
         confirmLabel = "추방하기",
         confirmColor = MaterialTheme.colorScheme.primary,
-        cancelLabel = "취소",
-        onDismiss = onDismiss,
+        cancelLabel = if (isRemoving) null else "취소",
+        onDismiss = { if (!isRemoving) onDismiss() },
         onConfirm = onConfirm,
+        confirmEnabled = !isRemoving,
+        dismissOnBackPress = !isRemoving,
+        dismissOnClickOutside = !isRemoving,
         modifier = modifier,
         layout = ConfirmationDialogLayout(
             maxWidth = 334.dp,
@@ -55,6 +64,20 @@ internal fun RoomMemberRemoveDialog(
             descriptionMaxLines = Int.MAX_VALUE,
         ),
         annotatedDescription = description,
+        content = if (isRemoving) {
+            {
+                Column(
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Text(text = "회원을 추방하고 있어요.")
+                }
+            }
+        } else {
+            null
+        },
     )
 }
 
@@ -88,6 +111,19 @@ private fun RoomMemberRemoveDialogLongNicknamePreview() {
     RingoutTheme {
         RoomMemberRemoveDialog(
             nickname = "아주긴닉네임으로모임에참여한회원입니다",
+            onDismiss = {},
+            onConfirm = {},
+        )
+    }
+}
+
+@Preview(name = "회원 추방 진행 중")
+@Composable
+private fun RoomMemberRemoveDialogProgressPreview() {
+    RingoutTheme {
+        RoomMemberRemoveDialog(
+            nickname = RoomMemberManagementPreviewMembers.first().nickname,
+            isRemoving = true,
             onDismiss = {},
             onConfirm = {},
         )

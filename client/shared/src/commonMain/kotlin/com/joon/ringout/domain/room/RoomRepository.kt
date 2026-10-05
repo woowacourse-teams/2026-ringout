@@ -7,6 +7,10 @@ interface RoomRepository {
 
     suspend fun getRoom(roomId: Long): RoomMembershipDetails
 
+    suspend fun getMembersForManagement(roomId: Long): List<RoomManagementMember>
+
+    suspend fun kickMember(roomId: Long, userId: Long)
+    
     suspend fun getRoomRecords(roomId: Long, date: MissionDate): RoomRecords
 
     suspend fun createRoom(input: RoomCreateInput): RoomMembershipDetails

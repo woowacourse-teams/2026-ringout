@@ -14,6 +14,7 @@ import com.joon.ringout.domain.room.RoomRecords
 import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomMembershipRole
+import com.joon.ringout.domain.room.RoomManagementMember
 import com.joon.ringout.domain.room.RoomRepository
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomSummary
@@ -30,6 +31,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
 
@@ -90,6 +92,79 @@ class DefaultRoomRepository(
         }
     }
 
+    override suspend fun getMembersForManagement(roomId: Long): List<RoomManagementMember> {
+        if (roomId <= 0L) {
+            throw RoomRepositoryException(
+                statusCode = HttpStatusCode.BadRequest.value,
+                code = "COMMON400",
+                message = "모임 ID를 확인해 주세요.",
+            )
+        }
+        ensureGetAuthenticated()
+        try {
+            val response = authenticatedRequests.execute { accessToken ->
+                httpClient.get(ApiConfig.url("/api/v1/rooms/$roomId/members")) {
+                    bearerAuth(accessToken)
+                }
+            }
+            val body = response.decodeOrThrow<JsonElement>()
+            if (!body.isSuccess) {
+                throw RoomRepositoryException(
+                    statusCode = response.status.value,
+                    code = body.code,
+                    message = body.message,
+                )
+            }
+            if (response.status != HttpStatusCode.OK || body.code != "MEMBER200") {
+                throw RoomRepositoryException(
+                    statusCode = response.status.value,
+                    code = body.code,
+                    message = body.message.ifBlank { "회원 목록 응답이 올바르지 않아요." },
+                )
+            }
+            val result = body.result ?: throw invalidManagementResponse()
+            return try {
+                ApiJson.decodeFromJsonElement<RoomManagementMembersResponseEntity>(result).toDomain()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: SerializationException) {
+                throw invalidManagementResponse(error)
+            } catch (error: IllegalArgumentException) {
+                throw invalidManagementResponse(error)
+            } catch (error: IllegalStateException) {
+                throw invalidManagementResponse(error)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: ApiException) {
+            throw error.toRoomRepositoryException()
+        }
+    }
+
+    override suspend fun kickMember(roomId: Long, userId: Long) {
+        if (roomId <= 0L || userId <= 0L) {
+            throw RoomRepositoryException(
+                statusCode = HttpStatusCode.BadRequest.value,
+                code = "COMMON400",
+                message = "모임 또는 회원 ID를 확인해 주세요.",
+            )
+        }
+        ensurePostAuthenticated()
+        try {
+            val response = authenticatedRequests.execute { accessToken ->
+                httpClient.post(ApiConfig.url("/api/v1/rooms/$roomId/kick")) {
+                    bearerAuth(accessToken)
+                    setBody(RoomKickRequestEntity(userId))
+                }
+            }
+            response.decodeRoomActionOrThrow()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: ApiException) {
+            throw error.toRoomRepositoryException()
+        }
+    }
+    
     override suspend fun getRoomRecords(roomId: Long, date: MissionDate): RoomRecords {
         require(roomId > 0L) { "모임 ID를 확인해 주세요." }
         ensureGetAuthenticated()
@@ -226,6 +301,13 @@ private fun ApiException.toRoomRepositoryException(): RoomRepositoryException = 
     message = apiMessage,
     result = result?.toString(),
     cause = this,
+)
+
+private fun invalidManagementResponse(cause: Throwable? = null) = RoomRepositoryException(
+    statusCode = HttpStatusCode.OK.value,
+    code = "ROOM_MEMBER_RESPONSE_INVALID",
+    message = "회원 정보를 불러오지 못했어요. 다시 시도해 주세요.",
+    cause = cause,
 )
 
 private suspend fun HttpResponse.decodeRoomActionOrThrow() {
