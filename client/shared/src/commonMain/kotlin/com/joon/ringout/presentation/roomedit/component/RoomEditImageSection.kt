@@ -34,6 +34,7 @@ internal fun RoomEditImageSection(
     room: RoomUiModel,
     selectedImage: ImageBitmap?,
     onChangeClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(20.dp)
@@ -70,6 +71,7 @@ internal fun RoomEditImageSection(
                 .clip(RoundedCornerShape(topEnd = 20.dp, bottomStart = 8.dp))
                 .semantics { contentDescription = "모임 대표 이미지 변경" }
                 .clickable(
+                    enabled = enabled,
                     role = Role.Button,
                     onClickLabel = "모임 대표 이미지 변경",
                     onClick = onChangeClick,

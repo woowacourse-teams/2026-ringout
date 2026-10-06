@@ -32,6 +32,7 @@ import com.joon.ringout.presentation.navigation.authGraph
 import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
+import com.joon.ringout.presentation.roomedit.RoomEditViewModel
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
 import com.joon.ringout.presentation.roomhome.blocksNavigationBack
 import com.joon.ringout.presentation.roomlist.RoomListViewModel
@@ -214,6 +215,37 @@ private fun RingoutAppContent(
     } else {
         null
     }
+    val roomEditRoute = displayedRoute as? AppRoute.RoomEdit
+    val roomEditViewModel = roomEditRoute?.let {
+        viewModelScopes.get(it, RoomEditViewModel::class)
+    }
+    val roomEditSuccessfulUpdate = roomEditViewModel?.uiState?.successfulUpdate
+    LaunchedEffect(
+        roomEditViewModel,
+        roomEditRoute,
+        roomEditSuccessfulUpdate?.completionId,
+        authSessionState,
+        authSessionIdentity,
+    ) {
+        val route = roomEditRoute ?: return@LaunchedEffect
+        val viewModel = roomEditViewModel ?: return@LaunchedEffect
+        val completionId = roomEditSuccessfulUpdate?.completionId ?: return@LaunchedEffect
+        val completion = viewModel.consumeSuccessfulUpdate(completionId) ?: return@LaunchedEffect
+        if (
+            !navigationState.isCurrentRoute(route) ||
+            authSessionState != AuthSessionState.Authenticated ||
+            completion.sessionIdentity !== authSessionIdentity ||
+            completion.result.roomId.toString() != route.roomId
+        ) return@LaunchedEffect
+
+        val homeRoute = AppRoute.RoomHome(route.roomId)
+        if (navigationState.backStack.dropLast(1).lastOrNull() != homeRoute) return@LaunchedEffect
+        viewModelScopes.get(homeRoute, RoomHomeViewModel::class)
+            .onRoomUpdated(completion.result, completion.sessionIdentity)
+        viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
+            .onRoomUpdated(completion.result, completion.sessionIdentity)
+        navigationState.popBackStack(route)
+    }
     AuthSessionCoordinator(
         authRepository = appContainer.authRepository,
         authSession = appContainer.authSession,
@@ -288,6 +320,7 @@ private fun RingoutAppContent(
         isBackBlocked =
                 displayedRoute is AppRoute.AlarmRinging ||
                 roomHomeMenuAction?.blocksNavigationBack == true ||
+                roomEditViewModel?.uiState?.isSaving == true ||
                 alarmEditorNavigation?.isBackBlocked(displayedRoute) == true ||
                 authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true,
         onBack = { route ->
@@ -303,6 +336,11 @@ private fun RingoutAppContent(
                 AppRoute.RoomCreate -> viewModelScopes
                     .get(route, RoomCreateViewModel::class)
                     .onBack { navigationState.popBackStack(route) }
+                is AppRoute.RoomEdit -> {
+                    if (!viewModelScopes.get(route, RoomEditViewModel::class).uiState.isSaving) {
+                        navigationState.popBackStack(route)
+                    }
+                }
                 is AppRoute.RoomMemberManagement -> {
                     viewModelScopes
                         .get(AppRoute.RoomHome(route.roomId), RoomHomeViewModel::class)
@@ -350,8 +388,6 @@ private fun RingoutAppContent(
                 onRoomCreateDraft = { source, input ->
                     socialRoomListViewModel?.createRoom(source, input)
                 },
-                // 모임 수정 초안은 후속 서버 연동 전까지 로컬 콜백 경계로 유지한다.
-                onRoomEditDraft = { _, _ -> },
             )
             alarmRuntimeGraph(
                 navigationState = navigationState,

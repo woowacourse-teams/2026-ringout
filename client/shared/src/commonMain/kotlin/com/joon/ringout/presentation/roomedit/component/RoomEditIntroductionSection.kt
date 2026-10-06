@@ -31,15 +31,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.roomcreate.RoomIntroductionValidation
-import com.joon.ringout.presentation.roomcreate.validateRoomIntroduction
+import com.joon.ringout.presentation.roomedit.model.RoomEditDescriptionValidation
+import com.joon.ringout.presentation.roomedit.model.validateRoomEditDescription
 import kotlinx.coroutines.launch
 
 @Composable
 internal fun RoomEditIntroductionSection(
     value: String,
-    validation: RoomIntroductionValidation,
+    validation: RoomEditDescriptionValidation,
     onValueChange: (String) -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
@@ -48,7 +49,6 @@ internal fun RoomEditIntroductionSection(
     val fieldShape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
     val validationMessage = when {
         validation.isValid -> null
-        !validation.isNotBlank -> "모임 소개를 입력해주세요"
         !validation.isLengthValid -> "모임 소개는 최대 300자까지 입력할 수 있어요"
         else -> null
     }
@@ -65,6 +65,7 @@ internal fun RoomEditIntroductionSection(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
+            enabled = enabled,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(300.dp)
@@ -113,7 +114,7 @@ private fun RoomEditIntroductionSectionInitialPreview() {
     RingoutTheme(ThemeMode.Dark) {
         RoomEditIntroductionSection(
             value = "함께 달리며 건강한 습관을 만들어요.",
-            validation = validateRoomIntroduction("함께 달리며 건강한 습관을 만들어요."),
+            validation = validateRoomEditDescription("함께 달리며 건강한 습관을 만들어요."),
             onValueChange = {},
             modifier = Modifier.padding(16.dp),
         )
@@ -127,7 +128,7 @@ private fun RoomEditIntroductionSectionValidPreview() {
     RingoutTheme(ThemeMode.Light) {
         RoomEditIntroductionSection(
             value = value,
-            validation = validateRoomIntroduction(value),
+            validation = validateRoomEditDescription(value),
             onValueChange = {},
             modifier = Modifier.padding(16.dp),
         )

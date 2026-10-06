@@ -24,6 +24,8 @@ import com.joon.ringout.ThemeMode
 internal fun RoomEditUnavailableScreen(
     isLoading: Boolean,
     message: String?,
+    canRetry: Boolean = true,
+    isBackEnabled: Boolean = true,
     onBackClick: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -33,7 +35,7 @@ internal fun RoomEditUnavailableScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        RoomEditHeader(onBackClick = onBackClick)
+        RoomEditHeader(onBackClick = onBackClick, enabled = isBackEnabled)
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -54,8 +56,10 @@ internal fun RoomEditUnavailableScreen(
                         color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyLarge,
                     )
-                    Button(onClick = onRetry) {
-                        Text("다시 불러오기")
+                    if (canRetry) {
+                        Button(onClick = onRetry) {
+                            Text("다시 불러오기")
+                        }
                     }
                 }
             }
