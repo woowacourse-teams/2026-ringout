@@ -8,7 +8,6 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-API_PATH = 'shared/src/commonMain/kotlin/com/joon/ringout/data/network/ApiConfig.kt'
 ANDROID_PATH = 'androidApp/build.gradle.kts'
 IOS_PATH = 'iosApp/iosApp.xcodeproj/project.pbxproj'
 PRODUCTION_API = 'https://api.ringout.my'
@@ -34,11 +33,8 @@ def source(path):
 
 def prepare(platform):
     require_main()
-    api, count = re.subn(r'^\s*const val BASE_URL = "[^"]+"',
-                        f'    const val BASE_URL = "{PRODUCTION_API}"', source(API_PATH), flags=re.M)
-    if count != 1:
-        raise ValueError('Expected exactly one API base URL declaration')
-    (ROOT / API_PATH).write_text(api)
+    from api_config import require_production_url
+    require_production_url()
     if platform == 'android':
         text = source(ANDROID_PATH)
         pattern = r'^(\s*versionCode\s*=\s*)([0-9]+)(\s*)$'

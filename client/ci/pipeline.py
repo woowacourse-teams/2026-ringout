@@ -316,11 +316,8 @@ def package_aab():
     verify_signature(aab, require_env("ANDROID_KEYSTORE_PATH"), require_env("ANDROID_KEY_ALIAS"), cert)
     metadata = release_metadata()
     if require_env("GITHUB_REF") == "refs/heads/main":
-        from production_config import API_PATH, PRODUCTION_API
-        api = (CLIENT_ROOT / API_PATH).read_text()
-        if not re.search(r'^\s*const val BASE_URL = "' + re.escape(PRODUCTION_API) + '"', api, re.M):
-            raise CIError("운영 API 설정이 아닙니다.")
-        metadata["apiBaseUrl"] = PRODUCTION_API
+        from api_config import verify_generated
+        metadata["apiBaseUrl"] = verify_generated(CLIENT_ROOT, production=True)
     metadata["firebaseProjectId"] = firebase_project_id
     artifact = (f"ringout-{metadata['channel']}-aab-{metadata['versionCode']}-"
                 f"{metadata['commit'][:12]}-attempt{metadata['runAttempt']}")

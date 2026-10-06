@@ -78,20 +78,17 @@ class ProductionCDTest(unittest.TestCase):
                     config.require_main()
 
     def test_운영_준비를_반복해도_빌드번호를_두번_올리지_않는다(self):
-        committed = {config.API_PATH: 'object ApiConfig {\n    const val BASE_URL = "https://dev-api.ringout.my"\n}',
-                     config.ANDROID_PATH: 'versionCode = 20\n', config.IOS_PATH: 'CURRENT_PROJECT_VERSION = 20;\n'}
+        committed = {config.ANDROID_PATH: 'versionCode = 20\n', config.IOS_PATH: 'CURRENT_PROJECT_VERSION = 20;\n'}
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for path in committed:
                 (root/path).parent.mkdir(parents=True, exist_ok=True)
-            with patch.object(config, 'ROOT', root), patch.object(config, 'source', side_effect=committed.__getitem__), patch.object(config, 'require_main'):
+            with patch.object(config, 'ROOT', root), patch.object(config, 'source', side_effect=committed.__getitem__), patch.object(config, 'require_main'), patch.dict(os.environ, {'RINGOUT_API_BASE_URL': config.PRODUCTION_API}):
                 for platform in ('android', 'ios'):
                     config.prepare(platform)
                     config.prepare(platform)
                 self.assertIn('versionCode = 21', (root/config.ANDROID_PATH).read_text())
                 self.assertIn('CURRENT_PROJECT_VERSION = 21;', (root/config.IOS_PATH).read_text())
-                self.assertIn('"https://api.ringout.my"', (root/config.API_PATH).read_text())
-                self.assertNotIn('dev-api', (root/config.API_PATH).read_text())
 
     def test_기존_운영_릴리스를_보존하고_중복_배포는_상태를_되돌리지_않는다(self):
         active = {'status': 'completed', 'versionCodes': ['10']}

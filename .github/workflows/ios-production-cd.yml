@@ -45,6 +45,8 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 90
     environment: ios-production
+    env:
+      RINGOUT_API_BASE_URL: ${{ vars.RINGOUT_API_BASE_URL || 'https://api.ringout.my' }}
     steps:
       - name: Checkout source code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -111,6 +113,7 @@ jobs:
             archive
       - name: Verify signed archive and production Firebase
         run: |
+          python3 ci/api_config.py --production
           app="$RUNNER_TEMP/Ringout.xcarchive/Products/Applications/Ringout.app"
           python3 ci/verify_ios_firebase.py \
             --production --source iosApp/iosApp/GoogleService-Info.plist \

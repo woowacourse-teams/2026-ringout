@@ -10,7 +10,27 @@
 
 ## 빌드 입력과 버전
 
-`ci/production_config.py`는 CI의 임시 checkout에서만 커밋된 원본(`git show HEAD:...`)을 기준으로 운영 입력을 준비한다. 로컬 소스의 기본 개발 설정과 버전은 변경하지 않는다.
+API 주소는 빌드 환경변수 `RINGOUT_API_BASE_URL`로 전달한다. Gradle `:shared:generateApiConfig`가 공통 Kotlin 설정을 `shared/build/generated/apiConfig/`에 생성하고 Android/iOS가 함께 사용한다. `ApiConfig.kt` 소스를 CI에서 치환하지 않는다. 입력값 변경은 Gradle task 입력으로 추적하므로 재빌드 시 갱신된다.
+
+GitHub Environment variables에 다음 값을 지정할 수 있다(Secret이 아닌 Variable). 등록하지 않으면 워크플로의 동일한 기본값을 사용한다.
+
+| Environment | `RINGOUT_API_BASE_URL` |
+| --- | --- |
+| `internal`, `ios-internal` | `https://dev-api.ringout.my` |
+| `production`, `ios-production` | `https://api.ringout.my` |
+
+운영 준비 및 생성 설정 검증은 운영 주소 외의 값이나 누락을 거부한다. iOS의 Xcode → Gradle 실행에도 환경변수가 전달된다. 앱 실행 시 환경변수를 조회하는 방식이 아니므로 주소를 바꾸면 앱을 다시 빌드해야 한다.
+
+로컬 빌드는 환경변수를 지정하지 않으면 개발 주소를 사용한다. 예:
+
+```bash
+RINGOUT_API_BASE_URL=https://api.ringout.my ./gradlew :androidApp:assembleDebug
+RINGOUT_API_BASE_URL=https://api.ringout.my xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
+
+Xcode Run Scheme의 런타임 환경변수는 빌드 설정 주입을 대신하지 않는다. 위처럼 빌드 프로세스에 환경변수를 전달한다.
+
+`ci/production_config.py`는 CI의 임시 checkout에서 커밋된 원본(`git show HEAD:...`)을 기준으로 운영 빌드 번호만 준비한다. 로컬 소스의 버전은 변경하지 않는다.
 
 | 항목 | develop | main |
 | --- | --- | --- |
