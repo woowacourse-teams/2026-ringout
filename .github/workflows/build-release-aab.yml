@@ -8,6 +8,7 @@ on:
       - '.github/workflows/android-ci.yml'
       - '.github/workflows/build-release-aab.yml'
       - '.github/workflows/android-internal-cd.yml'
+      - '.github/workflows/android-production-cd.yml'
       - '.github/actions/**'
   # Recovery only. Normal builds start automatically after a protected-branch merge.
   workflow_dispatch:
@@ -36,6 +37,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Prepare production API and reserved build number
+        if: github.ref == 'refs/heads/main'
+        run: python3 ci/production_config.py android
       - name: Select AAB channel
         run: python3 ci/pipeline.py channel
       - name: Set up Corretto JDK 21

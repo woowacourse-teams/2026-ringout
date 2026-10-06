@@ -1,4 +1,4 @@
-"""Wait for the iOS CI push run of this exact develop commit before TestFlight CD."""
+"""Wait for the iOS CI push run of the exact target commit before iOS CD."""
 
 import json
 import os
@@ -14,10 +14,10 @@ POLL_SECONDS = 20
 MAX_WAIT_SECONDS = 90 * 60
 
 
-def decision(runs: list[dict], sha: str, repository: str) -> tuple[str, str]:
+def decision(runs: list[dict], sha: str, repository: str, branch: str = "develop") -> tuple[str, str]:
     matching = [run for run in runs if (
         run.get("head_sha") == sha
-        and run.get("head_branch") == "develop"
+        and run.get("head_branch") == branch
         and run.get("event") == "push"
         and (run.get("head_repository") or {}).get("full_name") == repository
     )]
@@ -31,8 +31,8 @@ def decision(runs: list[dict], sha: str, repository: str) -> tuple[str, str]:
     return "skip", f"iOS CI concluded {run.get('conclusion')}: {run.get('html_url', '')}"
 
 
-def fetch_runs(repository: str, sha: str, token: str) -> list[dict]:
-    query = urlencode({"branch": "develop", "event": "push", "head_sha": sha, "per_page": 100})
+def fetch_runs(repository: str, sha: str, token: str, branch: str = "develop") -> list[dict]:
+    query = urlencode({"branch": branch, "event": "push", "head_sha": sha, "per_page": 100})
     url = f"https://api.github.com/repos/{repository}/actions/workflows/ios-ci.yml/runs?{query}"
     request = Request(url, headers={
         "Accept": "application/vnd.github+json",
@@ -44,8 +44,9 @@ def fetch_runs(repository: str, sha: str, token: str) -> list[dict]:
 
 
 def main() -> int:
-    if os.environ.get("GITHUB_REF") != "refs/heads/develop" or os.environ.get("GITHUB_EVENT_NAME") != "push":
-        raise ValueError("TestFlight CD only accepts develop push events")
+    branch = os.environ.get("GITHUB_REF", "").removeprefix("refs/heads/")
+    if branch not in ("develop", "main") or os.environ.get("GITHUB_EVENT_NAME") != "push":
+        raise ValueError("TestFlight CD only accepts develop/main push events")
     sha = os.environ["GITHUB_SHA"]
     repository = os.environ["GITHUB_REPOSITORY"]
     if not re.fullmatch(r"[0-9a-f]{40}", sha) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
@@ -54,7 +55,7 @@ def main() -> int:
     token = os.environ["GITHUB_TOKEN"]
     deadline = time.monotonic() + MAX_WAIT_SECONDS
     while time.monotonic() < deadline:
-        result, detail = decision(fetch_runs(repository, sha, token), sha, repository)
+        result, detail = decision(fetch_runs(repository, sha, token, branch), sha, repository, branch)
         if result != "wait":
             with output.open("a", encoding="utf-8") as stream:
                 stream.write(f"eligible={'true' if result == 'deploy' else 'false'}\n")
@@ -62,7 +63,7 @@ def main() -> int:
             return 0
         print(f"TestFlight CD gate: {detail}; checking again in {POLL_SECONDS}s", flush=True)
         time.sleep(POLL_SECONDS)
-    raise TimeoutError("Timed out waiting for iOS CI on this develop commit")
+    raise TimeoutError("Timed out waiting for iOS CI on this commit")
 
 
 if __name__ == "__main__":

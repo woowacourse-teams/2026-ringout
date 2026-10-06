@@ -1,4 +1,4 @@
-"""Gate a develop AAB run and publish its verified artifact to Play internal testing."""
+"""Shared AAB gate and verification; default publishing targets Play internal testing."""
 
 import argparse
 import base64
@@ -51,10 +51,10 @@ def request_json(url, token, method="GET", body=None, content_type="application/
         raise CDError(f"API 요청 실패: HTTP {error.code} ({method} {url.split('?')[0]})") from error
 
 
-def choose_run(runs, sha, repository):
+def choose_run(runs, sha, repository, branch="develop"):
     candidates = [run for run in runs if (
         run.get("head_sha") == sha
-        and run.get("head_branch") == "develop"
+        and run.get("head_branch") == branch
         and run.get("event") == "push"
         and (run.get("head_repository") or {}).get("full_name") == repository
     )]
@@ -66,25 +66,30 @@ def choose_run(runs, sha, repository):
     return ("deploy" if run.get("conclusion") == "success" else "fail"), run
 
 
-def gate():
-    if os.environ.get("GITHUB_EVENT_NAME") != "push" or os.environ.get("GITHUB_REF") != "refs/heads/develop":
-        raise CDError("Android 내부 테스트 CD는 develop push에서만 실행할 수 있습니다.")
+def gate(branch="develop"):
+    production = branch == "main"
+    if os.environ.get("GITHUB_EVENT_NAME") != "push" or os.environ.get("GITHUB_REF") != f"refs/heads/{branch}":
+        raise CDError("Android CD는 대상 브랜치의 push에서만 실행할 수 있습니다.")
     sha = required("GITHUB_SHA")
     repository = required("GITHUB_REPOSITORY")
     if not re.fullmatch(r"[0-9a-f]{40}", sha) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise CDError("커밋 또는 저장소 형식이 잘못되었습니다.")
     token = required("GITHUB_TOKEN")
-    query = urlencode({"branch": "develop", "event": "push", "head_sha": sha, "per_page": 100})
+    query = urlencode({"branch": branch, "event": "push", "head_sha": sha, "per_page": 100})
     url = f"{GITHUB_API}/repos/{repository}/actions/workflows/build-release-aab.yml/runs?{query}"
     deadline = time.monotonic() + MAX_WAIT_SECONDS
     while time.monotonic() < deadline:
-        result, run = choose_run(request_json(url, token).get("workflow_runs", []), sha, repository)
+        result, run = choose_run(request_json(url, token).get("workflow_runs", []), sha, repository, branch)
         if result == "deploy":
             code, _ = declared_android_version()
-            artifact_name = f"ringout-internal-aab-{code}-{sha[:12]}-attempt{run['run_attempt']}"
+            if production:
+                from production_config import production_number
+                code = production_number(code)
+            channel = "release" if production else "internal"
+            artifact_name = f"ringout-{channel}-aab-{code}-{sha[:12]}-attempt{run['run_attempt']}"
             with Path(required("GITHUB_OUTPUT")).open("a", encoding="utf-8") as output:
                 output.write(f"run_id={run['id']}\nrun_attempt={run['run_attempt']}\nartifact_name={artifact_name}\n")
-            print(f"같은 develop 커밋의 서명 AAB 빌드 통과: {run['html_url']}")
+            print(f"같은 대상 커밋의 서명 AAB 빌드 통과: {run['html_url']}")
             return
         if result == "fail":
             raise CDError(f"서명 AAB 빌드가 {run.get('conclusion')} 상태로 끝났습니다: {run.get('html_url')}")
@@ -92,7 +97,9 @@ def gate():
     raise CDError("같은 커밋의 서명 AAB 빌드를 기다리다 시간 초과되었습니다.")
 
 
-def verify_artifact(directory, sha, run_id, run_attempt):
+def verify_artifact(directory, sha, run_id, run_attempt, branch="develop"):
+    production = branch == "main"
+    channel = "release" if production else "internal"
     root = Path(directory)
     metadata_files = list(root.glob("*/build-metadata.json"))
     if len(metadata_files) != 1:
@@ -101,21 +108,28 @@ def verify_artifact(directory, sha, run_id, run_attempt):
     metadata = json.loads(metadata_files[0].read_text(encoding="utf-8"))
     expected = {
         "applicationId": APPLICATION_ID,
-        "channel": "internal",
-        "branch": "develop",
+        "channel": channel,
+        "branch": branch,
         "commit": sha,
         "runId": str(run_id),
         "runAttempt": str(run_attempt),
-        "firebaseProjectId": "ringout-8abf2",
+        "firebaseProjectId": "ringout-prod" if production else "ringout-8abf2",
         "uploadCertificateSha256": expected_certificate(),
     }
     for key, value in expected.items():
         if metadata.get(key) != value:
             raise CDError(f"AAB 메타데이터가 기대값과 다릅니다: {key}")
+    if production:
+        expected["apiBaseUrl"] = "https://api.ringout.my"
+        if metadata.get("apiBaseUrl") != expected["apiBaseUrl"]:
+            raise CDError("운영 API 주소가 아닙니다.")
     code, name = declared_android_version()
+    if production:
+        from production_config import production_number
+        code = production_number(code)
     if metadata.get("versionCode") != int(code) or metadata.get("versionName") != name:
-        raise CDError("AAB 버전이 해당 커밋의 Gradle 설정과 다릅니다.")
-    artifact_name = f"ringout-internal-aab-{code}-{sha[:12]}-attempt{run_attempt}"
+        raise CDError("AAB 버전이 해당 커밋의 채널별 버전 정책과 다릅니다.")
+    artifact_name = f"ringout-{channel}-aab-{code}-{sha[:12]}-attempt{run_attempt}"
     aab = folder / f"{artifact_name}.aab"
     if folder.name != artifact_name or not aab.is_file() or aab.stat().st_size == 0:
         raise CDError("AAB 파일명 또는 산출물 이름이 빌드 정보와 다릅니다.")
@@ -135,11 +149,11 @@ def verify_artifact(directory, sha, run_id, run_attempt):
     return aab, metadata
 
 
-def verify():
-    aab, metadata = verify_artifact(required("AAB_DOWNLOAD_DIR"), required("GITHUB_SHA"), required("AAB_RUN_ID"), required("AAB_RUN_ATTEMPT"))
+def verify(branch="develop"):
+    aab, metadata = verify_artifact(required("AAB_DOWNLOAD_DIR"), required("GITHUB_SHA"), required("AAB_RUN_ID"), required("AAB_RUN_ATTEMPT"), branch)
     with Path(required("GITHUB_OUTPUT")).open("a", encoding="utf-8") as output:
         output.write(f"aab_path={aab}\nversion_code={metadata['versionCode']}\nversion_name={metadata['versionName']}\n")
-    print(f"내부 테스트 AAB 검증 완료: {aab.name}")
+    print(f"AAB 검증 완료: {aab.name}")
 
 
 def publish():

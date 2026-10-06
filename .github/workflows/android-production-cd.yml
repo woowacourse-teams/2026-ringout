@@ -1,13 +1,12 @@
-name: Android Internal Play CD
+name: Android Production Play CD
 
 on:
   push:
-    branches: [develop]
+    branches: [main]
     paths:
       - 'client/**'
       - '.github/workflows/android-ci.yml'
       - '.github/workflows/build-release-aab.yml'
-      - '.github/workflows/android-internal-cd.yml'
       - '.github/workflows/android-production-cd.yml'
       - '.github/actions/**'
 
@@ -15,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-play-internal
+  group: android-play-production
   cancel-in-progress: false
 
 defaults:
@@ -45,14 +44,14 @@ jobs:
         id: check
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 ci/android_internal_cd.py gate
+        run: python3 ci/android_production_cd.py gate
 
   publish:
-    name: Publish verified AAB to Play internal testing
+    name: Publish verified AAB to Play production draft
     needs: gate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    environment: internal
+    environment: production
     permissions:
       contents: read
       actions: read
@@ -86,18 +85,18 @@ jobs:
           AAB_DOWNLOAD_DIR: ${{ runner.temp }}/ringout-aab
           AAB_RUN_ID: ${{ needs.gate.outputs.run_id }}
           AAB_RUN_ATTEMPT: ${{ needs.gate.outputs.run_attempt }}
-        run: python3 ci/android_internal_cd.py verify
+        run: python3 ci/android_production_cd.py verify
       - name: Check Google Cloud OIDC settings
         env:
           GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER || secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT || secrets.GCP_SERVICE_ACCOUNT }}
         run: |
           if [[ -z "$GCP_WORKLOAD_IDENTITY_PROVIDER" ]]; then
-            echo '::error::internal Environment에 GCP_WORKLOAD_IDENTITY_PROVIDER variable 또는 secret이 없습니다.'
+            echo '::error::production Environment에 GCP_WORKLOAD_IDENTITY_PROVIDER variable 또는 secret이 없습니다.'
             exit 1
           fi
           if [[ -z "$GCP_SERVICE_ACCOUNT" ]]; then
-            echo '::error::internal Environment에 GCP_SERVICE_ACCOUNT variable 또는 secret이 없습니다.'
+            echo '::error::production Environment에 GCP_SERVICE_ACCOUNT variable 또는 secret이 없습니다.'
             exit 1
           fi
       - name: Authenticate to Google Cloud using GitHub OIDC
@@ -109,9 +108,9 @@ jobs:
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
           create_credentials_file: false
-      - name: Publish verified AAB to Google Play internal track
+      - name: Publish verified AAB to Google Play production draft
         env:
           GOOGLE_PLAY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
           VERIFIED_AAB_PATH: ${{ steps.verify.outputs.aab_path }}
           VERIFIED_VERSION_CODE: ${{ steps.verify.outputs.version_code }}
-        run: python3 ci/android_internal_cd.py publish
+        run: python3 ci/android_production_cd.py publish

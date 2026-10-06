@@ -71,7 +71,7 @@ def validate_pr_route(event):
 def is_client_path(path):
     return path.startswith(b"client/") or path in (
         b".github/workflows/android-ci.yml", b".github/workflows/build-release-aab.yml",
-        b".github/workflows/android-internal-cd.yml",
+        b".github/workflows/android-internal-cd.yml", b".github/workflows/android-production-cd.yml",
     ) or path.startswith(b".github/actions/")
 
 
@@ -315,6 +315,12 @@ def package_aab():
     cert = expected_certificate()
     verify_signature(aab, require_env("ANDROID_KEYSTORE_PATH"), require_env("ANDROID_KEY_ALIAS"), cert)
     metadata = release_metadata()
+    if require_env("GITHUB_REF") == "refs/heads/main":
+        from production_config import API_PATH, PRODUCTION_API
+        api = (CLIENT_ROOT / API_PATH).read_text()
+        if not re.search(r'^\s*const val BASE_URL = "' + re.escape(PRODUCTION_API) + '"', api, re.M):
+            raise CIError("운영 API 설정이 아닙니다.")
+        metadata["apiBaseUrl"] = PRODUCTION_API
     metadata["firebaseProjectId"] = firebase_project_id
     artifact = (f"ringout-{metadata['channel']}-aab-{metadata['versionCode']}-"
                 f"{metadata['commit'][:12]}-attempt{metadata['runAttempt']}")

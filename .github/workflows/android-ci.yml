@@ -9,6 +9,7 @@ on:
       - '.github/workflows/android-ci.yml'
       - '.github/workflows/build-release-aab.yml'
       - '.github/workflows/android-internal-cd.yml'
+      - '.github/workflows/android-production-cd.yml'
       - '.github/actions/**'
 
 permissions:
