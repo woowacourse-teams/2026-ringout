@@ -1,5 +1,7 @@
 package com.joon.ringout.presentation.roomedit
 
+import com.joon.ringout.analytics.ProductAnalyticsRecorder
+import com.joon.ringout.analytics.RoomAnalyticsEvent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -33,6 +35,7 @@ internal class RoomEditViewModel(
     },
     private val authSession: AuthSession = AuthSession(),
     coroutineScope: CoroutineScope? = null,
+    private val analytics: ProductAnalyticsRecorder? = null,
 ) : ViewModel() {
     private val scope = coroutineScope ?: viewModelScope
     private var observedAuthState = authSession.state.value
@@ -315,6 +318,7 @@ internal class RoomEditViewModel(
             isSaveBlocked = false,
             successfulUpdate = completion,
         )
+        runCatching { analytics?.recordRoomEvent(RoomAnalyticsEvent.Updated(RoomMembershipRole.OWNER)) }
     }
 
     private fun RoomEditUiState.toUpdateInput(upload: SelectedRoomImageUpload?): RoomUpdateInput {

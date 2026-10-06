@@ -124,6 +124,7 @@ private fun navigationViewModelFactory(container: AppContainer): ViewModelProvid
                 loadRoom = container.roomRepository::getRoom,
                 updateRoom = container.roomRepository::updateRoom,
                 authSession = container.authSession,
+                analytics = container.productAnalyticsRecorder,
             )
         }
         initializer {

@@ -1,5 +1,11 @@
 package com.joon.ringout.presentation.roomedit
 
+import com.joon.ringout.analytics.AnalyticsEvent
+import com.joon.ringout.analytics.AnalyticsParameterName
+import com.joon.ringout.analytics.AnalyticsParameterValue
+import com.joon.ringout.analytics.ProductAnalyticsRecorder
+import com.joon.ringout.analytics.RoomAnalyticsEvent
+import com.joon.ringout.analytics.roomTestRecorder
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.room.MaxRoomImageBytes
 import com.joon.ringout.domain.room.RoomImageUpload
@@ -105,9 +111,58 @@ class RoomEditViewModelTest {
     }
 
     @Test
+    fun `정상 저장 결과를 적용한 뒤 방장 수정 이벤트를 한 번 기록한다`() = runTest {
+        val events = mutableListOf<AnalyticsEvent>()
+        val pending = CompletableDeferred<RoomUpdateResult>()
+        val viewModel = loadedViewModel(
+            updateRoom = { _, _ -> pending.await() },
+            analytics = roomTestRecorder(events),
+        )
+        viewModel.updateName("저녁 러닝")
+        viewModel.saveChanges()
+        advanceUntilIdle()
+
+        assertTrue(events.isEmpty())
+        pending.complete(RoomUpdateResult(7, "저녁 러닝", "함께 달려요.", null))
+        advanceUntilIdle()
+        viewModel.consumeSuccessfulUpdate(assertNotNull(viewModel.uiState.completionId))
+
+        assertEquals(1, events.size)
+        assertEquals("room_updated", events.single().name.wireName)
+        assertEquals(
+            mapOf(AnalyticsParameterName.MembershipRole to AnalyticsParameterValue.Text("owner")),
+            events.single().parameters,
+        )
+    }
+
+    @Test
+    fun `분석 기록기가 예외를 던져도 정상 저장 완료를 유지한다`() = runTest {
+        val recorder = roomTestRecorder(mutableListOf())
+        val throwingRecorder = object : ProductAnalyticsRecorder by recorder {
+            override fun recordRoomEvent(event: RoomAnalyticsEvent) {
+                error("analytics unavailable")
+            }
+        }
+        val viewModel = loadedViewModel(
+            updateRoom = { roomId, input -> RoomUpdateResult(roomId, input.name!!, input.description, null) },
+            analytics = throwingRecorder,
+        )
+
+        viewModel.updateName("저녁 러닝")
+        viewModel.saveChanges()
+        advanceUntilIdle()
+
+        assertEquals("저녁 러닝", viewModel.uiState.successfulUpdate?.result?.name)
+        assertNull(viewModel.uiState.saveErrorMessage)
+        assertFalse(viewModel.uiState.isSaving)
+    }
+
+    @Test
     fun `사백 오류는 서버 메시지를 보여주고 입력과 저장 가능 상태를 유지한다`() = runTest {
+        val events = mutableListOf<AnalyticsEvent>()
         val viewModel = loadedViewModel(
             updateRoom = { _, _ -> throw RoomRepositoryException(400, "ROOM400", "모임 이름을 확인해 주세요.", "raw-result") },
+            analytics = roomTestRecorder(events),
         )
 
         viewModel.updateName("저녁 러닝")
@@ -117,6 +172,7 @@ class RoomEditViewModelTest {
         assertEquals("저녁 러닝", viewModel.uiState.nameInput)
         assertEquals("모임 이름을 확인해 주세요.", viewModel.uiState.saveErrorMessage)
         assertTrue(viewModel.uiState.canSave)
+        assertTrue(events.isEmpty())
     }
 
     @Test
@@ -152,10 +208,12 @@ class RoomEditViewModelTest {
     @Test
     fun `계정 변경 뒤 늦게 끝난 저장 응답은 완료 이벤트로 남기지 않는다`() = runTest {
         val pending = CompletableDeferred<RoomUpdateResult>()
+        val events = mutableListOf<AnalyticsEvent>()
         val session = authenticatedSession()
         val viewModel = loadedViewModel(
             authSession = session,
             updateRoom = { _, _ -> pending.await() },
+            analytics = roomTestRecorder(events),
         )
 
         viewModel.updateName("저녁 러닝")
@@ -165,6 +223,7 @@ class RoomEditViewModelTest {
         advanceUntilIdle()
 
         assertNull(viewModel.uiState.successfulUpdate)
+        assertTrue(events.isEmpty())
     }
 
     @Test
@@ -193,8 +252,10 @@ class RoomEditViewModelTest {
     fun `네트워크 실패 뒤 재시도해도 선택한 이미지 업로드와 토큰을 유지한다`() = runTest {
         val upload = RoomImageUpload(byteArrayOf(1, 2, 3), "image/png", "room.png")
         val capturedUploads = mutableListOf<RoomImageUpload?>()
+        val events = mutableListOf<AnalyticsEvent>()
         var fail = true
         val viewModel = loadedViewModel(
+            analytics = roomTestRecorder(events),
             updateRoom = { roomId, input ->
                 capturedUploads += input.image
                 if (fail) {
@@ -218,6 +279,8 @@ class RoomEditViewModelTest {
         assertSame(upload, capturedUploads[0])
         assertSame(upload, capturedUploads[1])
         assertNotNull(viewModel.uiState.successfulUpdate)
+        assertEquals(1, events.size)
+        assertEquals("room_updated", events.single().name.wireName)
     }
 
     @Test
@@ -275,11 +338,12 @@ class RoomEditViewModelTest {
 
     private suspend fun TestScope.loadedViewModel(
         authSession: AuthSession = authenticatedSession(),
+        analytics: ProductAnalyticsRecorder? = null,
         updateRoom: suspend (Long, RoomUpdateInput) -> RoomUpdateResult = { roomId, input ->
             RoomUpdateResult(roomId, input.name ?: "아침 러닝", input.description ?: "함께 달려요.", null)
         },
     ): RoomEditViewModel {
-        val viewModel = viewModel(authSession = authSession, updateRoom = updateRoom)
+        val viewModel = viewModel(authSession = authSession, updateRoom = updateRoom, analytics = analytics)
         viewModel.onRouteVisible("7")
         advanceUntilIdle()
         return viewModel
@@ -288,6 +352,7 @@ class RoomEditViewModelTest {
     private fun TestScope.viewModel(
         authSession: AuthSession = authenticatedSession(),
         loadRoom: suspend (Long) -> RoomMembershipDetails = { roomDetails() },
+        analytics: ProductAnalyticsRecorder? = null,
         updateRoom: suspend (Long, RoomUpdateInput) -> RoomUpdateResult = { roomId, input ->
             RoomUpdateResult(roomId, input.name ?: "아침 러닝", input.description ?: "함께 달려요.", null)
         },
@@ -296,6 +361,7 @@ class RoomEditViewModelTest {
         updateRoom = updateRoom,
         authSession = authSession,
         coroutineScope = this,
+        analytics = analytics,
     )
 
     private fun authenticatedSession() = AuthSession().apply { startNewSession() }

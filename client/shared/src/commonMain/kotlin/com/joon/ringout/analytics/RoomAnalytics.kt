@@ -13,6 +13,7 @@ sealed interface RoomAnalyticsEvent {
     data class RecordsViewed(val memberCount: Int?) : RoomAnalyticsEvent
     data class Left(val role: RoomMembershipRole) : RoomAnalyticsEvent
     data class Deleted(val role: RoomMembershipRole) : RoomAnalyticsEvent
+    data class Updated(val role: RoomMembershipRole) : RoomAnalyticsEvent
 }
 
 internal fun RoomAnalyticsEvent.toAnalyticsEvent(): AnalyticsEvent {
@@ -62,6 +63,10 @@ internal fun RoomAnalyticsEvent.toAnalyticsEvent(): AnalyticsEvent {
         is RoomAnalyticsEvent.Deleted -> {
             text(AnalyticsParameterName.MembershipRole, role.name.lowercase())
             AnalyticsEventName.RoomDeleted
+        }
+        is RoomAnalyticsEvent.Updated -> {
+            text(AnalyticsParameterName.MembershipRole, role.name.lowercase())
+            AnalyticsEventName.RoomUpdated
         }
     }
     return AnalyticsEvent(name, parameters)
