@@ -1,5 +1,7 @@
 package com.joon.ringout.presentation.roomhome
 
+import com.joon.ringout.analytics.ProductAnalyticsRecorder
+import com.joon.ringout.analytics.RoomAnalyticsEvent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.joon.ringout.domain.auth.AuthSession
@@ -43,6 +45,7 @@ internal class RoomHomeViewModel(
         throw IllegalStateException("모임 상세 조회를 사용할 수 없어요.")
     },
     private val authSession: AuthSession = AuthSession(),
+    private val analytics: ProductAnalyticsRecorder? = null,
     private val loadRecords: suspend (Long, MissionDate) -> RoomRecords = { _, _ ->
         throw IllegalStateException("모임 기록 조회를 사용할 수 없어요.")
     },
@@ -95,6 +98,28 @@ internal class RoomHomeViewModel(
     )
     val uiState = mutableUiState.asStateFlow()
     private var countdownJob: Job? = null
+
+    internal fun canRecordVisit(roomId: String, identity: Any?): Boolean =
+        activeRoomId == roomId && activeRouteIdentity === identity &&
+            identity != null && authSession.identity.value === identity &&
+            authSession.state.value == AuthSessionState.Authenticated &&
+            uiState.value.room?.id == roomId && uiState.value.room?.isJoined == true &&
+            !uiState.value.isLoading && uiState.value.errorMessage == null && uiState.value.membershipRole != null
+
+    internal fun recordHomeViewed() {
+        val state = uiState.value
+        val room = state.room ?: return
+        val role = state.membershipRole ?: return
+        if (room.isJoined && !state.isLoading && state.errorMessage == null) {
+            recordAnalytics(RoomAnalyticsEvent.HomeViewed(room.participantCount, role))
+        }
+    }
+
+    internal fun recordRecordsViewed() {
+        if (canViewRecords) recordAnalytics(RoomAnalyticsEvent.RecordsViewed(uiState.value.room?.participantCount))
+    }
+
+    private fun recordAnalytics(event: RoomAnalyticsEvent) { runCatching { analytics?.recordRoomEvent(event) } }
 
     fun onRouteVisible(roomId: String, authState: AuthSessionState, identity: Any?) {
         if (
@@ -310,6 +335,7 @@ internal class RoomHomeViewModel(
                         setMenuActionPhase(context, RoomHomeActionPhase.Deleting)
                         deleteRoom(context.roomId)
                         if (!isCurrentMenuAction(context)) return@launch
+                        recordAnalytics(RoomAnalyticsEvent.Deleted(details.membershipRole))
                         invalidateRoomRequest()
                         invalidateRoomDetailsRefresh()
                         setMenuActionCompleted(context)
@@ -355,6 +381,7 @@ internal class RoomHomeViewModel(
                 setMenuActionPhase(context, RoomHomeActionPhase.Leaving)
                 leaveRoom(context.roomId)
                 if (!isCurrentMenuAction(context)) return@launch
+                recordAnalytics(RoomAnalyticsEvent.Left(details.membershipRole))
                 invalidateRoomRequest()
                 invalidateRoomDetailsRefresh()
                 setMenuActionCompleted(context)

@@ -707,7 +707,7 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
     val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
     val occurrenceRecorder = IosAlarmOccurrenceRecorder(getRingoutDatabase().alarmOccurrenceSyncDao(),
         getRingoutDatabase().alarmActivityDao(), dataSource)
-    val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker())
+    val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker(), roomMembership = com.joon.ringout.analytics.createRoomMembershipAnalytics())
     val scheduler = nativeServices.alarmScheduler()
     val eventInbox = nativeServices.alarmMissionEventInbox()
     return IosAlarmRuntime(

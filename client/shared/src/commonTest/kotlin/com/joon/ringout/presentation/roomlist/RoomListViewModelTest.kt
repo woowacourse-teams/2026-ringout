@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.roomlist
 
+import com.joon.ringout.analytics.*
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.room.RoomCreateInput
@@ -244,6 +245,7 @@ class RoomListViewModelTest {
 
     @Test
     fun `이미 가입한 응답이면 목록을 다시 받아 가입 상태를 확인한다`() = runTest {
+        val events = mutableListOf<AnalyticsEvent>()
         var loadCalls = 0
         val viewModel = RoomListViewModel(
             loadRooms = {
@@ -253,6 +255,7 @@ class RoomListViewModelTest {
             },
             joinRoom = { Result.failure(RoomRepositoryException(409, "ROOM409", "이미 가입함")) },
             coroutineScope = this,
+            analytics = roomTestRecorder(events),
         )
         val source = mutationSource(RoomMutationType.Join, roomId = "1")
         viewModel.onRouteVisible(AuthSessionState.Authenticated, identity = Any())
@@ -266,10 +269,12 @@ class RoomListViewModelTest {
         assertEquals("1", viewModel.uiState.joinedRooms.single().id)
         assertEquals("이미 참여 중인 모임이에요. 목록의 가입 상태를 갱신했어요.", viewModel.mutationState.errorMessage)
         assertTrue(viewModel.mutationState.isMembershipConfirmed)
+        assertTrue(events.isEmpty())
     }
 
     @Test
     fun `같은 화면에서 빠르게 가입을 눌러도 POST는 한 번만 실행한다`() = runTest {
+        val events = mutableListOf<AnalyticsEvent>()
         val pendingJoin = CompletableDeferred<Result<RoomMembershipDetails>>()
         var joinCalls = 0
         val viewModel = RoomListViewModel(
@@ -279,6 +284,7 @@ class RoomListViewModelTest {
                 pendingJoin.await()
             },
             coroutineScope = this,
+            analytics = roomTestRecorder(events),
         )
         val source = mutationSource(RoomMutationType.Join, roomId = "1")
         viewModel.onRouteVisible(AuthSessionState.Authenticated, identity = Any())
@@ -289,10 +295,12 @@ class RoomListViewModelTest {
         viewModel.joinRoom(source)
         runCurrent()
 
+        assertTrue(events.isEmpty())
         assertEquals(1, joinCalls)
         pendingJoin.complete(Result.success(membershipDetails(roomId = 1L, role = RoomMembershipRole.MEMBER)))
         runCurrent()
         assertTrue(viewModel.mutationState.isSuccessful)
+        assertEquals(listOf(AnalyticsEventName.RoomJoined), events.map { it.name })
     }
 
     @Test

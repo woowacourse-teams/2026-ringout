@@ -1,5 +1,7 @@
 package com.joon.ringout.presentation.roomlist
 
+import com.joon.ringout.analytics.ProductAnalyticsRecorder
+import com.joon.ringout.analytics.RoomAnalyticsEvent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -32,6 +34,7 @@ class RoomListViewModel(
     },
     private val authSession: AuthSession? = null,
     coroutineScope: CoroutineScope? = null,
+    private val analytics: ProductAnalyticsRecorder? = null,
 ) : ViewModel() {
     private val scope = coroutineScope ?: viewModelScope
 
@@ -50,6 +53,22 @@ class RoomListViewModel(
     private var roomsJob: Job? = null
     private var mutationJob: Job? = null
     private var visibleMutationEntryId: Long? = null
+
+    internal fun recordListViewed(state: AuthSessionState) = recordAnalytics(RoomAnalyticsEvent.ListViewed(
+        state, uiState.joinedRooms.size.takeIf { hasReceivedSession && !uiState.isLoadingAllRooms &&
+            !uiState.isRefreshingAllRooms && uiState.allRoomsErrorMessage == null &&
+            uiState.allRoomsRefreshErrorMessage == null && state == AuthSessionState.Authenticated },
+    ))
+
+    internal fun recordDetailViewed(room: RoomUiModel): Boolean {
+        if (!hasReceivedSession || uiState.isLoadingAllRooms || uiState.allRooms.none { it == room }) return false
+        if (authSession != null && (lastSessionKey?.identity !== authSession.identity.value ||
+                lastSessionKey?.state != authSession.state.value)) return false
+        recordAnalytics(RoomAnalyticsEvent.DetailViewed(room.participantCount))
+        return true
+    }
+
+    private fun recordAnalytics(event: RoomAnalyticsEvent) { runCatching { analytics?.recordRoomEvent(event) } }
 
     internal val isRoomListUninitialized: Boolean
         get() = !hasReceivedSession
@@ -175,6 +194,10 @@ class RoomListViewModel(
                 val room = details.room.toRoomUiModel()
                 invalidateRoomsRequest()
                 upsertRoom(room)
+                recordAnalytics(when (source.type) {
+                    RoomMutationType.Create -> RoomAnalyticsEvent.Created(details.room.activityDays.distinct().size)
+                    RoomMutationType.Join -> RoomAnalyticsEvent.Joined(details.room.memberCount)
+                })
                 mutationState = RoomMutationUiState(
                     operationId = operationId,
                     source = source,

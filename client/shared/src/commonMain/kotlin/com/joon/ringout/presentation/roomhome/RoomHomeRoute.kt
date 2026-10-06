@@ -1,5 +1,7 @@
 package com.joon.ringout.presentation.roomhome
 
+import androidx.compose.runtime.remember
+import com.joon.ringout.analytics.RoomAnalyticsVisit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,6 +31,19 @@ internal fun RoomHomeRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(viewModel, roomId, authSessionState, sessionIdentity) {
         viewModel.onRouteVisible(roomId, authSessionState, sessionIdentity)
+    }
+    val homeVisit = remember(viewModel, roomId, sessionIdentity) { RoomAnalyticsVisit() }
+    val recordsVisit = remember(viewModel, roomId, sessionIdentity, uiState.selectedTab) { RoomAnalyticsVisit() }
+    LaunchedEffect(uiState.room, uiState.isLoading, uiState.errorMessage, uiState.membershipRole,
+        uiState.selectedTab, uiState.recordsState.canViewRecords, authSessionState, sessionIdentity) {
+        if (viewModel.canRecordVisit(roomId, sessionIdentity) && authSessionState == AuthSessionState.Authenticated && uiState.room?.id == roomId &&
+            uiState.room?.isJoined == true && uiState.membershipRole != null &&
+            !uiState.isLoading && uiState.errorMessage == null) {
+            homeVisit.recordOnce { viewModel.recordHomeViewed() }
+            if (uiState.selectedTab == RoomHomeTab.Records && uiState.recordsState.canViewRecords) {
+                recordsVisit.recordOnce { viewModel.recordRecordsViewed() }
+            }
+        }
     }
     LaunchedEffect(viewModel, uiState.menuActionState) {
         when (val actionState = uiState.menuActionState) {

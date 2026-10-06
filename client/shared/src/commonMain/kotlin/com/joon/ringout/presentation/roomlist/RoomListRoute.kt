@@ -1,5 +1,7 @@
 package com.joon.ringout.presentation.roomlist
 
+import androidx.compose.runtime.remember
+import com.joon.ringout.analytics.RoomAnalyticsVisit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,8 +26,12 @@ internal fun RoomListRoute(
 ) {
     var isLoginDialogVisible by rememberSaveable { mutableStateOf(false) }
 
+    val analyticsVisit = remember(viewModel, sessionIdentity) { RoomAnalyticsVisit() }
     LaunchedEffect(viewModel, authSessionState, sessionIdentity) {
         viewModel.onRouteVisible(authSessionState, sessionIdentity)
+        if (authSessionState != AuthSessionState.Restoring) {
+            analyticsVisit.recordOnce { viewModel.recordListViewed(authSessionState) }
+        }
     }
 
     RoomListScreen(

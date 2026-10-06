@@ -15,6 +15,26 @@ import kotlin.test.assertNull
 
 class IosAlarmAnalyticsTest {
     @Test
+    fun `미션 재시도와 완료는 계정 변경 후에도 시작 당시 참여 정보를 전송한다`() = withUsageStore { usage ->
+        val tracker = RecordingIosAnalyticsTracker()
+        val storage = MemoryRoomAnalyticsStorage()
+        val membership = RoomMembershipAnalytics(storage, { "a" }, { 0 })
+        membership.replace("a", 0, setOf(1, 2))
+        IosAlarmAnalytics(tracker, usage, { 0 }, membership).recordMissionStarted("root", 0)
+        membership.update("a", 1, false)
+        val recreated = IosAlarmAnalytics(tracker, usage, { 1000 },
+            RoomMembershipAnalytics(storage, { "b" }, { 0 }))
+        recreated.recordMissionStarted("root:retry-1", 1)
+        recreated.recordMissionCompleted("root:retry-1", 1, 0)
+        assertEquals(3, tracker.events.size)
+        tracker.events.forEach {
+            assertEquals("joined", it.textParameter("room_membership_state"))
+            assertEquals(2L, it.numberParameter("joined_room_count"))
+            assertEquals(1L, it.numberParameter("use_index"))
+        }
+    }
+
+    @Test
     fun `재설정은 생성 인덱스 없이 공통 설정값만 기록한다`() = withAnalytics { analytics, tracker ->
         analytics.recordAlarmUpdated(
             request = iosAlarmRequest("alarm-1").copy(

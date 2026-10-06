@@ -7,6 +7,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.joon.ringout.data.alarmactivity.RoomAlarmActivityRepository
+import com.joon.ringout.analytics.createRoomMembershipAnalytics
+import com.joon.ringout.data.room.AnalyticsRoomRepository
 import com.joon.ringout.analytics.createProductAnalyticsRecorder
 import com.joon.ringout.data.auth.DefaultAuthRepository
 import com.joon.ringout.data.auth.local.createSecureTokenStorage
@@ -59,10 +61,11 @@ class AndroidAppContainer(
             tokenStorage = tokenStorage,
             authSession = authSession,
         )
-    override val roomRepository = DefaultRoomRepository(
-        httpClient = httpClient,
-        tokenStorage = tokenStorage,
-        authSession = authSession,
+    override val roomRepository: com.joon.ringout.domain.room.RoomRepository = AnalyticsRoomRepository(
+        delegate = DefaultRoomRepository(httpClient, tokenStorage, authSession),
+        analytics = createRoomMembershipAnalytics(context),
+        tokens = tokenStorage,
+        session = authSession,
     )
     override val destinationRepository =
         DefaultDestinationRepository(

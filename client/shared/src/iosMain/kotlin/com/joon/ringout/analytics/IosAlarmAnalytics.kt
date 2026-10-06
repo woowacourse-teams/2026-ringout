@@ -23,6 +23,7 @@ internal class IosAlarmAnalytics(
     private val tracker: IosAnalyticsTracker,
     private val usageStore: IosAnalyticsUsageStore = IosAnalyticsUsageStore(),
     private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val roomMembership: RoomMembershipAnalytics? = null,
 ) : IosAlarmAnalyticsRecorder {
     private val forceEndHoldAttempts = mutableMapOf<String, Int>()
 
@@ -88,11 +89,15 @@ internal class IosAlarmAnalytics(
         occurrenceId: String,
         retryAttempt: Int,
     ) = safelyRecord {
+        val existingUse = usageStore.findUseIndex(occurrenceId)
         val useIndex = usageStore.getOrCreateUseIndex(occurrenceId) ?: return@safelyRecord
+        val roomSnapshot = roomMembership?.startMission(useIndex, existingUse == null && retryAttempt == 0)
+            ?: RoomMembershipSnapshot()
         if (!usageStore.claimEvent(DestinationMissionStarted, occurrenceId)) return@safelyRecord
         tracker.log(
             analyticsEvent(
                 name = DestinationMissionStarted,
+                roomSnapshot = roomSnapshot,
                 numberParameters = mapOf(
                     UseIndex to useIndex,
                     RetryAttempt to retryAttempt.coerceAtLeast(0).toLong(),
@@ -225,6 +230,7 @@ internal class IosAlarmAnalytics(
         val useIndex = usageStore.findUseIndex(occurrenceId) ?: return@safelyRecord
         if (!usageStore.claimEvent(name, occurrenceId)) return@safelyRecord
         val elapsedMillis = (nowEpochMillis() - startedAtEpochMillis).coerceAtLeast(0L)
+        val roomSnapshot = roomMembership?.mission(useIndex) ?: RoomMembershipSnapshot()
         tracker.log(
             analyticsEvent(
                 name = name,
@@ -233,6 +239,7 @@ internal class IosAlarmAnalytics(
                     RetryAttempt to retryAttempt.coerceAtLeast(0).toLong(),
                 ),
                 textParameters = mapOf(ElapsedBucket to elapsedBucket(elapsedMillis)),
+                roomSnapshot = roomSnapshot,
             ),
         )
     }
@@ -311,9 +318,14 @@ private fun analyticsEvent(
     name: String,
     numberParameters: Map<String, Long> = emptyMap(),
     textParameters: Map<String, String> = emptyMap(),
+    roomSnapshot: RoomMembershipSnapshot? = null,
 ): IosAnalyticsEventDto = IosAnalyticsEventDto(
     name = name,
     parameters = buildList {
+        roomSnapshot?.let {
+            add(IosAnalyticsParameterDto(name = "room_membership_state", textValue = it.state))
+            it.count?.let { count -> add(IosAnalyticsParameterDto(name = "joined_room_count", numberValue = count.toLong())) }
+        }
         numberParameters.forEach { (parameterName, value) ->
             add(IosAnalyticsParameterDto(name = parameterName, numberValue = value))
         }

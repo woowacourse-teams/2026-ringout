@@ -30,6 +30,8 @@ enum class AnalyticsAuthProvider(
 }
 
 interface ProductAnalyticsRecorder : OnboardingAnalyticsRecorder {
+    fun recordRoomEvent(event: RoomAnalyticsEvent) = Unit
+
     fun recordDestinationCreated(
         destinationId: Long,
         loginState: AnalyticsLoginState,
@@ -75,6 +77,8 @@ internal class DefaultProductAnalyticsRecorder(
     private val tracker: AnalyticsTracker,
     private val usageStore: ProductAnalyticsUsageStore,
 ) : ProductAnalyticsRecorder {
+    override fun recordRoomEvent(event: RoomAnalyticsEvent) = safelyRecord { tracker.log(event.toAnalyticsEvent()) }
+
     override fun recordOnboardingStarted(stepCount: Int) = safelyRecord {
         val event = onboardingAnalyticsEvent(AnalyticsEventName.TutorialBegin, stepCount)
         if (usageStore.claimOnboardingEvent(event.name)) tracker.log(event)
