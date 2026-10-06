@@ -18,15 +18,15 @@ def require_main():
         raise ValueError('Production CD accepts main push runs only; recover using Re-run jobs')
 
 
-def production_number(number):
-    value = int(number) + 1
-    if not 1 < value <= 2_100_000_000:
+def validate_build_number(number):
+    value = int(number)
+    if not 0 < value <= 2_100_000_000:
         raise ValueError('Production build number must fit the Play versionCode range')
     return str(value)
 
 
 def source(path):
-    # Read committed inputs, so rerunning preparation cannot increment twice.
+    # Read committed inputs, so reruns use the same declared version.
     return subprocess.run(['git', 'show', f'HEAD:client/{path}'], cwd=ROOT,
                           check=True, capture_output=True, text=True).stdout
 
@@ -44,7 +44,7 @@ def prepare(platform):
     values = re.findall(pattern, text, re.M)
     if not values or len({value[1] for value in values}) != 1:
         raise ValueError('Expected one consistent committed build number')
-    number = production_number(values[0][1])
+    number = validate_build_number(values[0][1])
     text = re.sub(pattern, lambda m: m[1] + number + m[3], text, flags=re.M)
     (ROOT / (ANDROID_PATH if platform == 'android' else IOS_PATH)).write_text(text)
     print(f'Production configuration prepared: {platform}, build {number}, API {PRODUCTION_API}')
