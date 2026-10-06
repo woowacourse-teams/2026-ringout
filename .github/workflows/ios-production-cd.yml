@@ -1,14 +1,14 @@
-name: iOS Internal TestFlight CD
+name: iOS Production App Store CD
 
 on:
   push:
-    branches: [develop]
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-internal-testflight-${{ github.ref }}
+  group: ios-production-app-store-${{ github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -38,15 +38,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: python3 ci/ios_cd_gate.py
 
-  internal-testflight:
-    name: Archive and upload to internal TestFlight
+  production-app-store:
+    name: Archive and upload App Store build
     if: needs.gate.outputs.eligible == 'true'
     needs: gate
     runs-on: macos-26
     timeout-minutes: 90
-    environment: ios-internal
+    environment: ios-production
     env:
-      RINGOUT_API_BASE_URL: ${{ vars.RINGOUT_API_BASE_URL || 'https://dev-api.ringout.my' }}
+      RINGOUT_API_BASE_URL: ${{ vars.RINGOUT_API_BASE_URL || 'https://api.ringout.my' }}
     steps:
       - name: Checkout source code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,6 +64,10 @@ jobs:
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           cache-read-only: true
+      - name: Prepare production API, build number, and Firebase
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: python3 ci/production_config.py ios
       - name: Prepare and validate signing inputs
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
@@ -107,11 +111,12 @@ jobs:
             DEVELOPMENT_TEAM=475GWW72JW \
             RINGOUT_CI_PROFILE_UUID="$IOS_PROFILE_UUID" \
             archive
-      - name: Verify signed archive and development Firebase
+      - name: Verify signed archive and production Firebase
         run: |
+          python3 ci/api_config.py --production
           app="$RUNNER_TEMP/Ringout.xcarchive/Products/Applications/Ringout.app"
           python3 ci/verify_ios_firebase.py \
-            --source iosApp/iosApp/GoogleService-Info.plist \
+            --production --source iosApp/iosApp/GoogleService-Info.plist \
             --app "$app"
           codesign --verify --deep --strict "$app"
           xcodebuild \
@@ -125,7 +130,7 @@ jobs:
             --app "$app"
           security cms -D -i "$app/embedded.mobileprovision" > "$RUNNER_TEMP/embedded-profile.plist"
           test "$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/embedded-profile.plist")" = "$IOS_PROFILE_UUID"
-      - name: Upload internal-only build to App Store Connect
+      - name: Upload App Store build without review submission
         env:
           APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -137,6 +142,12 @@ jobs:
             -authenticationKeyPath "$IOS_API_KEY_PATH" \
             -authenticationKeyID "$APP_STORE_CONNECT_KEY_ID" \
             -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID"
+      - name: Record uploaded version and commit
+        run: |
+          python3 ci/verify_ios_version.py \
+            --settings "$RUNNER_TEMP/ringout-ios-release-settings.json" \
+            --app "$RUNNER_TEMP/Ringout.xcarchive/Products/Applications/Ringout.app" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: $GITHUB_SHA. App Store Connect upload completed; processing, review submission and release must be checked manually." >> "$GITHUB_STEP_SUMMARY"
       - name: Remove temporary signing assets
         if: always()
         run: |
@@ -144,5 +155,5 @@ jobs:
           if [[ -n "${IOS_PROFILE_UUID:-}" ]]; then
             rm -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$IOS_PROFILE_UUID.mobileprovision"
           fi
-          rm -f iosApp/Configuration/RingoutSecrets.xcconfig
+          rm -f iosApp/Configuration/RingoutSecrets.xcconfig iosApp/iosApp/GoogleService-Info.plist
           rm -rf "$RUNNER_TEMP/ringout-ios-internal"

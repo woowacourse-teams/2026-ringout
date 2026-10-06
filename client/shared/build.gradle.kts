@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.net.URI
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -8,6 +9,40 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.ksp)
     alias(libs.plugins.androidx.room3)
+}
+
+abstract class GenerateApiConfig : DefaultTask() {
+    @get:Input
+    abstract val baseUrl: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val url = baseUrl.get().trim().trimEnd('/')
+        val uri = URI(url)
+        require(uri.scheme in listOf("https", "http") && !uri.host.isNullOrBlank() &&
+            uri.rawUserInfo == null && uri.rawQuery == null && uri.rawFragment == null &&
+            uri.rawPath.isNullOrEmpty() && url.matches(Regex("[A-Za-z0-9:/._~-]+"))) {
+            "RINGOUT_API_BASE_URL must be an HTTP(S) origin without credentials, path, query or fragment"
+        }
+        val file = outputDirectory.file("com/joon/ringout/data/network/ApiBuildConfig.kt").get().asFile
+        file.parentFile.mkdirs()
+        file.writeText("""
+            package com.joon.ringout.data.network
+
+            internal object ApiBuildConfig {
+                const val BASE_URL = "$url"
+            }
+        """.trimIndent() + "\n")
+    }
+}
+
+val generateApiConfig = tasks.register<GenerateApiConfig>("generateApiConfig") {
+    baseUrl.set(providers.environmentVariable("RINGOUT_API_BASE_URL")
+        .orElse("https://dev-api.ringout.my"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/apiConfig/commonMain/kotlin"))
 }
 
 kotlin {
@@ -38,6 +73,9 @@ kotlin {
     }
     
     sourceSets {
+        commonMain {
+            kotlin.srcDir(generateApiConfig.flatMap { it.outputDirectory })
+        }
         androidMain.dependencies {
             implementation(libs.androidx.work.runtime)
             implementation(libs.androidx.activity.compose)

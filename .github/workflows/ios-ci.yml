@@ -2,17 +2,12 @@ name: iOS CI
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
     types: [opened, synchronize, reopened]
     paths:
       - 'client/iosApp/**'
       - 'client/shared/**'
-      - 'client/ci/verify_ios_firebase.py'
-      - 'client/ci/ios_internal.py'
-      - 'client/ci/verify_ios_version.py'
-      - 'client/ci/ios_cd_gate.py'
-      - 'client/ci/test_ios_cd_gate.py'
-      - 'client/ci/test_ios_internal.py'
+      - 'client/ci/**'
       - 'client/gradle/**'
       - 'client/gradlew'
       - 'client/build.gradle.kts'
@@ -20,8 +15,9 @@ on:
       - 'client/gradle.properties'
       - '.github/workflows/ios-ci.yml'
       - '.github/workflows/ios-internal-cd.yml'
+      - '.github/workflows/ios-production-cd.yml'
   push:
-    branches: [develop]
+    branches: [develop, main]
 
 permissions:
   contents: read
@@ -57,7 +53,7 @@ jobs:
       - name: Print Xcode version
         run: xcodebuild -version
       - name: Test iOS CI/CD helper checks
-        run: python3 -B -m unittest discover -s ci -p 'test_ios*.py' -v
+        run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
       - name: Test shared Kotlin code on iOS simulator
         run: ./gradlew :shared:iosSimulatorArm64Test --no-daemon --stacktrace
       - name: Build unsigned iOS simulator app

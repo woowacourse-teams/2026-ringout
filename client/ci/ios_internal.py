@@ -1,4 +1,4 @@
-"""Prepare and validate the credentials for an internal TestFlight build."""
+"""Prepare and validate signing inputs for internal and production iOS uploads."""
 
 import base64
 import binascii
@@ -24,7 +24,7 @@ REQUIRED_XCCONFIG_KEYS = (
 def decode_secret(name: str, path: Path) -> None:
     value = os.environ.get(name, "")
     if not value:
-        raise ValueError(f"Missing ios-internal secret: {name}")
+        raise ValueError(f"Missing iOS signing secret: {name}")
     try:
         data = base64.b64decode("".join(value.split()), validate=True)
     except (ValueError, binascii.Error) as error:
@@ -74,7 +74,7 @@ def validate_xcconfig(path: Path) -> None:
         raise ValueError(f"RingoutSecrets.xcconfig is missing: {', '.join(missing)}")
 
 
-def export_options(profile_uuid: str, path: Path) -> None:
+def export_options(profile_uuid: str, path: Path, production: bool = False) -> None:
     options = {
         "method": "app-store-connect",
         "destination": "upload",
@@ -83,7 +83,7 @@ def export_options(profile_uuid: str, path: Path) -> None:
         "teamID": TEAM_ID,
         "provisioningProfiles": {BUNDLE_ID: profile_uuid},
         "manageAppVersionAndBuildNumber": False,
-        "testFlightInternalTestingOnly": True,
+        "testFlightInternalTestingOnly": not production,
     }
     with path.open("wb") as stream:
         plistlib.dump(options, stream)
@@ -91,6 +91,10 @@ def export_options(profile_uuid: str, path: Path) -> None:
 
 def main() -> int:
     try:
+        production = os.environ.get("GITHUB_REF") == "refs/heads/main"
+        if production:
+            from production_config import require_main
+            require_main()
         runner_temp = Path(os.environ["RUNNER_TEMP"])
         env_path = Path(os.environ["GITHUB_ENV"])
         workspace = Path(os.environ["GITHUB_WORKSPACE"])
@@ -103,14 +107,14 @@ def main() -> int:
 
         for name in ("APPLE_CERTIFICATE_PASSWORD", "APP_STORE_CONNECT_KEY_ID", "APP_STORE_CONNECT_ISSUER_ID"):
             if not os.environ.get(name):
-                raise ValueError(f"Missing ios-internal secret: {name}")
+                raise ValueError(f"Missing iOS signing secret: {name}")
         decode_secret("APPLE_CERTIFICATE_P12_BASE64", cert_path)
         decode_secret("APPLE_PROVISIONING_PROFILE_BASE64", profile_path)
         decode_secret("APP_STORE_CONNECT_API_KEY_BASE64", api_key_path)
         decode_secret("RINGOUT_IOS_SECRETS_XCCONFIG_BASE64", xcconfig_path)
         validate_xcconfig(xcconfig_path)
         _, profile_uuid = validate_profile(profile_path)
-        export_options(profile_uuid, export_path)
+        export_options(profile_uuid, export_path, production)
 
         values = {
             "IOS_CERTIFICATE_PATH": cert_path,
@@ -122,7 +126,7 @@ def main() -> int:
         with env_path.open("a", encoding="utf-8") as stream:
             for key, value in values.items():
                 print(f"{key}={value}", file=stream)
-        print("Validated internal TestFlight signing inputs")
+        print("Validated iOS signing inputs")
     except (OSError, ValueError, KeyError, plistlib.InvalidFileException, subprocess.CalledProcessError) as error:
         print(f"iOS internal build preparation failed: {error}", file=sys.stderr)
         return 1

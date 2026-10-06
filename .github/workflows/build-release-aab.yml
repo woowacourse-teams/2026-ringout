@@ -8,6 +8,7 @@ on:
       - '.github/workflows/android-ci.yml'
       - '.github/workflows/build-release-aab.yml'
       - '.github/workflows/android-internal-cd.yml'
+      - '.github/workflows/android-production-cd.yml'
       - '.github/actions/**'
   # Recovery only. Normal builds start automatically after a protected-branch merge.
   workflow_dispatch:
@@ -31,11 +32,16 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: ${{ github.ref_name == 'main' && 'production' || 'internal' }}
+    env:
+      RINGOUT_API_BASE_URL: ${{ vars.RINGOUT_API_BASE_URL || (github.ref_name == 'main' && 'https://api.ringout.my' || 'https://dev-api.ringout.my') }}
     steps:
       - name: Checkout the triggering commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Validate production API and prepare reserved build number
+        if: github.ref == 'refs/heads/main'
+        run: python3 ci/production_config.py android
       - name: Select AAB channel
         run: python3 ci/pipeline.py channel
       - name: Set up Corretto JDK 21
