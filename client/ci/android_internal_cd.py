@@ -47,8 +47,21 @@ def request_json(url, token, method="GET", body=None, content_type="application/
         with urlopen(request, timeout=timeout) as response:
             return json.load(response)
     except HTTPError as error:
-        # Do not print response bodies: they can contain request or account details.
-        raise CDError(f"API 요청 실패: HTTP {error.code} ({method} {url.split('?')[0]})") from error
+        # Keep only the diagnostic message, never the entire response or headers.
+        detail = ""
+        try:
+            payload = json.loads(error.read(65536))
+            message = None
+            if isinstance(payload, dict):
+                api_error = payload.get("error")
+                message = (api_error if isinstance(api_error, dict) else payload).get("message")
+            if isinstance(message, str):
+                message = message.replace(token, "[REDACTED]") if token else message
+                message = re.sub(r"[\w.+-]+@[\w.-]+", "[REDACTED_EMAIL]", message)
+                detail = " — " + " ".join(message.split())[:2000]
+        except (ValueError, OSError):
+            pass
+        raise CDError(f"API 요청 실패: HTTP {error.code} ({method} {url.split('?')[0]}){detail}") from error
 
 
 def choose_run(runs, sha, repository, branch="develop"):
