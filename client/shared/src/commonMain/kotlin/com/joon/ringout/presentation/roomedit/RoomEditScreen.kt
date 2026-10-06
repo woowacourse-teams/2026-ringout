@@ -54,7 +54,7 @@ internal fun RoomEditScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .imePadding(),
     ) {
-        RoomEditHeader(onBackClick = onBackClick)
+        RoomEditHeader(onBackClick = onBackClick, enabled = !uiState.isSaving)
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -79,6 +79,7 @@ internal fun RoomEditScreen(
                         room = original,
                         selectedImage = selectedImage,
                         onChangeClick = onImageChangeClick,
+                        enabled = !uiState.isSaving,
                     )
                     imageError?.let { message ->
                         Text(
@@ -92,12 +93,21 @@ internal fun RoomEditScreen(
                     value = uiState.nameInput,
                     validation = uiState.nameInputValidation,
                     onValueChange = onNameChange,
+                    enabled = !uiState.isSaving,
                 )
                 RoomEditIntroductionSection(
                     value = uiState.introductionInput,
                     validation = uiState.introductionInputValidation,
                     onValueChange = onIntroductionChange,
+                    enabled = !uiState.isSaving,
                 )
+                uiState.saveErrorMessage?.let { message ->
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
         Box(
@@ -108,6 +118,7 @@ internal fun RoomEditScreen(
         ) {
             RoomEditSaveButton(
                 enabled = uiState.canSave && isImagePreviewAvailable,
+                isSaving = uiState.isSaving,
                 onClick = onSaveClick,
                 modifier = Modifier.widthIn(max = 560.dp),
             )

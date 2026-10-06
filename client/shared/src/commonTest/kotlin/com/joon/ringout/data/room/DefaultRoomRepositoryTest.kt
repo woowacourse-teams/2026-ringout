@@ -11,8 +11,10 @@ import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.room.RoomRecordEvent
 import com.joon.ringout.domain.room.RoomCreateInput
+import com.joon.ringout.domain.room.RoomImageUpload
 import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomRepositoryException
+import com.joon.ringout.domain.room.RoomUpdateInput
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
@@ -23,10 +25,16 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
+import io.ktor.utils.io.ByteChannel
+import io.ktor.utils.io.readRemaining
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.readByteArray
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -38,6 +46,248 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DefaultRoomRepositoryTest {
+    @Test
+    fun `모임 수정은 변경된 텍스트와 원본 이미지 파일 그리고 removeImage false를 멀티파트로 전송한다`() = runTest {
+        val fixture = RoomUpdateFixture()
+
+        val result = fixture.repository.updateRoom(
+            roomId = 7,
+            input = RoomUpdateInput(
+                name = "새 모임",
+                description = "",
+                image = RoomImageUpload("original-image-bytes".encodeToByteArray(), "image/png", "room.png"),
+            ),
+        )
+
+        assertEquals("/api/v1/rooms/7", fixture.patchPaths.single())
+        assertEquals("Bearer access", fixture.patchAuthorizations.single())
+        assertTrue(fixture.patchContentTypes.single().startsWith("multipart/form-data; boundary="))
+        val body = fixture.patchBodies.single()
+        assertMultipartPart(body, "name", "새 모임")
+        assertMultipartPart(body, "description", "")
+        assertMultipartPart(body, "removeImage", "false")
+        assertTrue(body.contains("name=\"image\""))
+        assertTrue(body.contains("filename=\"room.png\""))
+        assertTrue(body.contains("Content-Type: image/png", ignoreCase = true))
+        assertTrue(body.contains("original-image-bytes"))
+        assertEquals(7L, result.roomId)
+        assertEquals("서버 수정 이름", result.name)
+        assertEquals(null, result.description)
+        assertEquals("${ApiConfig.BASE_URL}/images/rooms/updated.png", result.imageUrl)
+        fixture.client.close()
+    }
+
+    @Test
+    fun `모임 수정은 생략한 텍스트 필드를 넣지 않고 빈 소개와 removeImage false를 전송한다`() = runTest {
+        val fixture = RoomUpdateFixture()
+
+        fixture.repository.updateRoom(7, RoomUpdateInput(description = ""))
+
+        val body = fixture.patchBodies.single()
+        assertMultipartPart(body, "description", "")
+        assertMultipartPart(body, "removeImage", "false")
+        assertFalse(body.contains("name=\"name\""))
+        assertFalse(body.contains("name=\"image\""))
+        fixture.client.close()
+    }
+
+    @Test
+    fun `모임 이름만 수정해도 removeImage false를 한 번 전송한다`() = runTest {
+        val fixture = RoomUpdateFixture()
+
+        fixture.repository.updateRoom(7, RoomUpdateInput(name = "새 모임"))
+
+        val body = fixture.patchBodies.single()
+        assertMultipartPart(body, "name", "새 모임")
+        assertMultipartPart(body, "removeImage", "false")
+        assertFalse(body.contains("name=\"description\""))
+        assertFalse(body.contains("name=\"image\""))
+        fixture.client.close()
+    }
+
+    @Test
+    fun `모임 소개만 수정해도 removeImage false를 한 번 전송한다`() = runTest {
+        val fixture = RoomUpdateFixture()
+
+        fixture.repository.updateRoom(7, RoomUpdateInput(description = "새 소개"))
+
+        val body = fixture.patchBodies.single()
+        assertMultipartPart(body, "description", "새 소개")
+        assertMultipartPart(body, "removeImage", "false")
+        assertFalse(body.contains("name=\"name\""))
+        assertFalse(body.contains("name=\"image\""))
+        fixture.client.close()
+    }
+
+    @Test
+    fun `이미지만 교체해도 removeImage false와 이미지 정보를 전송한다`() = runTest {
+        val fixture = RoomUpdateFixture()
+        val upload = RoomImageUpload("replacement-image".encodeToByteArray(), "image/jpeg", "replacement.jpg")
+
+        fixture.repository.updateRoom(7, RoomUpdateInput(image = upload))
+
+        val body = fixture.patchBodies.single()
+        assertMultipartPart(body, "removeImage", "false")
+        assertTrue(body.contains("name=\"image\""))
+        assertTrue(body.contains("filename=\"replacement.jpg\""))
+        assertTrue(body.contains("Content-Type: image/jpeg", ignoreCase = true))
+        assertTrue(body.contains("replacement-image"))
+        assertFalse(body.contains("name=\"name\""))
+        assertFalse(body.contains("name=\"description\""))
+        fixture.client.close()
+    }
+
+    @Test
+    fun `모임 수정은 비로그인 토큰 없음 잘못된 입력에서 요청하지 않는다`() = runTest {
+        var calls = 0
+        val client = clientFor { calls += 1; error("요청하면 안 됨") }
+        val authenticated = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+        val unauthenticated = repository(client)
+        val missingToken = repository(client, state = AuthSessionState.Authenticated)
+
+        assertFalse(RoomUpdateInput().hasChanges)
+        assertFailsWith<RoomRepositoryException> { authenticated.updateRoom(0, RoomUpdateInput(name = "새 모임")) }
+        assertFailsWith<RoomRepositoryException> { authenticated.updateRoom(7, RoomUpdateInput()) }
+        assertFailsWith<RoomRepositoryException> { unauthenticated.updateRoom(7, RoomUpdateInput(name = "새 모임")) }
+        assertFailsWith<RoomRepositoryException> { missingToken.updateRoom(7, RoomUpdateInput(name = "새 모임")) }
+        assertEquals(0, calls)
+        client.close()
+    }
+
+    @Test
+    fun `모임 수정은 성공 응답의 상태 코드 성공 코드 result와 roomId를 엄격하게 검증한다`() = runTest {
+        val invalidResponses = listOf(
+            Triple(HttpStatusCode.Created, "ROOM200", updateRoomResultJson()),
+            Triple(HttpStatusCode.OK, "ROOM201", updateRoomResultJson()),
+            Triple(HttpStatusCode.OK, "ROOM200", "null"),
+            Triple(HttpStatusCode.OK, "ROOM200", updateRoomResultJson(roomId = 8)),
+        )
+
+        invalidResponses.forEach { (status, code, resultJson) ->
+            val client = clientFor {
+                respond(
+                    """{"isSuccess":true,"code":"$code","message":"성공","result":$resultJson}""",
+                    status = status,
+                    headers = jsonHeaders,
+                )
+            }
+
+            assertFailsWith<Exception> {
+                repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                    .updateRoom(7, RoomUpdateInput(name = "새 모임"))
+            }
+            client.close()
+        }
+    }
+
+    @Test
+    fun `모임 수정의 HTTP 오류와 업무 실패는 RoomRepositoryException으로 전달한다`() = runTest {
+        val businessClient = clientFor {
+            respond(
+                """{"isSuccess":false,"code":"ROOM403","message":"방장 권한이 필요합니다.","result":null}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+        val httpClient = clientFor {
+            respond(
+                """{"isSuccess":false,"code":"ROOM404","message":"모임을 찾을 수 없습니다.","result":null}""",
+                status = HttpStatusCode.NotFound,
+                headers = jsonHeaders,
+            )
+        }
+
+        val businessError = assertFailsWith<RoomRepositoryException> {
+            repository(businessClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                .updateRoom(7, RoomUpdateInput(name = "새 모임"))
+        }
+        val httpError = assertFailsWith<RoomRepositoryException> {
+            repository(httpClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                .updateRoom(7, RoomUpdateInput(name = "새 모임"))
+        }
+
+        assertEquals(200, businessError.statusCode)
+        assertEquals("ROOM403", businessError.code)
+        assertEquals(404, httpError.statusCode)
+        assertEquals("ROOM404", httpError.code)
+        businessClient.close()
+        httpClient.close()
+    }
+
+    @Test
+    fun `모임 수정은 토큰 재발급 후 같은 멀티파트 내용을 다시 전송한다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val storage = TestTokenStorage(AuthTokens("old-access", "refresh"))
+        val bodies = mutableListOf<String>()
+        var patchRequestCount = 0
+        var reissueRequestCount = 0
+        val client = clientFor { request ->
+            when (request.url.encodedPath) {
+                "/api/v1/rooms/7" -> {
+                    patchRequestCount += 1
+                    bodies += request.readBodyText()
+                    when (request.headers[HttpHeaders.Authorization]) {
+                        "Bearer old-access" -> respond(
+                            """{"isSuccess":false,"code":"AUTH401","message":"액세스 토큰이 만료되었습니다.","result":null}""",
+                            status = HttpStatusCode.Unauthorized,
+                            headers = jsonHeaders,
+                        )
+                        "Bearer new-access" -> respond(
+                            """{"isSuccess":true,"code":"ROOM200","message":"성공","result":${updateRoomResultJson()}}""",
+                            status = HttpStatusCode.OK,
+                            headers = jsonHeaders,
+                        )
+                        else -> error("예상하지 않은 Authorization 헤더입니다: ${request.headers[HttpHeaders.Authorization]}")
+                    }
+                }
+                "/api/v1/auth/reissue" -> {
+                    reissueRequestCount += 1
+                    respond(
+                        """{"isSuccess":true,"code":"COMMON200","message":"성공","result":{"accessToken":"new-access","refreshToken":"new-refresh"}}""",
+                        status = HttpStatusCode.OK,
+                        headers = jsonHeaders,
+                    )
+                }
+                else -> error("예상하지 않은 요청입니다: ${request.url.encodedPath}")
+            }
+        }
+
+        DefaultRoomRepository(client, storage, session).updateRoom(
+            7,
+            RoomUpdateInput(
+                name = "새 모임",
+                image = RoomImageUpload("retry-image".encodeToByteArray(), "image/jpeg", "retry.jpg"),
+            ),
+        )
+
+        assertEquals(2, patchRequestCount)
+        assertEquals(1, reissueRequestCount)
+        assertEquals(AuthTokens("new-access", "new-refresh"), storage.read())
+        assertTrue(bodies.all { it.contains("새 모임") && it.contains("retry-image") })
+        bodies.forEach { assertMultipartPart(it, "removeImage", "false") }
+        client.close()
+    }
+
+    @Test
+    fun `모임 수정 응답 전에 계정이 바뀌면 결과를 반환하지 않는다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val storage = TestTokenStorage(AuthTokens("access", "refresh"))
+        val client = clientFor {
+            session.startNewSession()
+            respond(
+                """{"isSuccess":true,"code":"ROOM200","message":"성공","result":${updateRoomResultJson()}}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+
+        assertFailsWith<IllegalStateException> {
+            DefaultRoomRepository(client, storage, session)
+                .updateRoom(7, RoomUpdateInput(name = "새 모임"))
+        }
+        client.close()
+    }
+
     @Test
     fun `모임 기록은 인증 헤더와 선택 날짜로 조회하고 여섯 이벤트와 빈 회원을 변환한다`() = runTest {
         val events = RoomRecordEvent.entries.map { event ->
@@ -1059,6 +1309,53 @@ private data class AuthCase(
     val authorization: String?,
 )
 
+private class RoomUpdateFixture {
+    val patchPaths = mutableListOf<String>()
+    val patchAuthorizations = mutableListOf<String?>()
+    val patchContentTypes = mutableListOf<String>()
+    val patchBodies = mutableListOf<String>()
+    val client = clientFor { request ->
+        assertEquals(HttpMethod.Patch, request.method)
+        patchPaths += request.url.encodedPath
+        patchAuthorizations += request.headers[HttpHeaders.Authorization]
+        patchContentTypes += request.body.contentType.toString()
+        patchBodies += request.readBodyText()
+        respond(
+            """{"isSuccess":true,"code":"ROOM200","message":"성공","result":${updateRoomResultJson()}}""",
+            status = HttpStatusCode.OK,
+            headers = jsonHeaders,
+        )
+    }
+    val repository = DefaultRoomRepository(
+        client,
+        TestTokenStorage(AuthTokens("access", "refresh")),
+        session(AuthSessionState.Authenticated),
+    )
+}
+
+private suspend fun HttpRequestData.readBodyText(): String = coroutineScope {
+    val channel = ByteChannel()
+    val writer = launch {
+        (body as OutgoingContent.WriteChannelContent).writeTo(channel)
+        channel.close()
+    }
+    val bytes = channel.readRemaining().readByteArray()
+    writer.join()
+    bytes.decodeToString()
+}
+
+private fun assertMultipartPart(body: String, name: String, value: String) {
+    val marker = "name=\"$name\""
+    val nameIndex = body.indexOf(marker)
+    assertTrue(nameIndex >= 0, "멀티파트에 $name 파트가 있어야 합니다.")
+    assertEquals(nameIndex, body.lastIndexOf(marker), "멀티파트에 $name 파트는 한 번만 있어야 합니다.")
+    val valueStart = body.indexOf("\r\n\r\n", startIndex = nameIndex) + 4
+    assertTrue(valueStart >= 4, "멀티파트 $name 파트에 값 구분자가 있어야 합니다.")
+    val valueEnd = body.indexOf("\r\n--", startIndex = valueStart)
+    assertTrue(valueEnd >= 0, "멀티파트 $name 파트 끝을 찾을 수 있어야 합니다.")
+    assertEquals(value, body.substring(valueStart, valueEnd), "멀티파트 $name 파트 값이 일치해야 합니다.")
+}
+
 private fun clientFor(handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData): HttpClient =
     HttpClient(MockEngine(handler)) { configureRingoutHttpClient() }
 
@@ -1116,3 +1413,6 @@ private fun detailSuccessBody(
     role: String = "MEMBER",
     code: String = "ROOM200",
 ) = """{"isSuccess":true,"code":"$code","message":"성공","result":{"roomId":$roomId,"name":"상세 응답 이름","description":null,"imageUrl":"/images/rooms/detail.png","activityDays":["MONDAY","WEDNESDAY"],"activityTime":"08:15","memberCount":3,"membershipRole":"$role","createdAt":"2026-10-01T08:30:00","members":[{"userId":11,"nickname":"두 번째","profileImageUrl":"/images/profile/member-11.png"},{"userId":10,"nickname":"첫 번째","profileImageUrl":null}]}}"""
+
+private fun updateRoomResultJson(roomId: Long = 7) =
+    """{"roomId":$roomId,"name":"서버 수정 이름","description":null,"imageUrl":"/images/rooms/updated.png"}"""

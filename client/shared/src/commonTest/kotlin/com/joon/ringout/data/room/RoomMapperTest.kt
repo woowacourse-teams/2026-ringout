@@ -48,6 +48,27 @@ class RoomMapperTest {
     }
 
     @Test
+    fun `수정 응답은 네 필드만 Domain 결과로 변환하고 이미지 주소를 정규화한다`() {
+        val result = RoomUpdateResponseEntity(
+            roomId = 7,
+            name = "수정된 모임",
+            description = "",
+            imageUrl = "/images/rooms/updated.png",
+        ).toDomain()
+
+        assertEquals(7L, result.roomId)
+        assertEquals("수정된 모임", result.name)
+        assertEquals("", result.description)
+        assertEquals("${ApiConfig.BASE_URL}/images/rooms/updated.png", result.imageUrl)
+    }
+
+    @Test
+    fun `수정 응답의 null과 기본 이미지는 이미지 없음으로 변환한다`() {
+        assertNull(RoomUpdateResponseEntity(7, "수정된 모임", null, null).toDomain().imageUrl)
+        assertNull(RoomUpdateResponseEntity(7, "수정된 모임", null, "/images/default-room.png").toDomain().imageUrl)
+    }
+
+    @Test
     fun `상세 회원의 순서와 프로필 이미지 주소를 Domain 모델에 옮긴다`() {
         val details = RoomMembershipResponseEntity(
             roomId = 7,

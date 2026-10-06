@@ -15,6 +15,7 @@ import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomScheduleClock
 import com.joon.ringout.domain.room.RoomRecords
+import com.joon.ringout.domain.room.RoomUpdateResult
 import com.joon.ringout.presentation.roomlist.model.toRoomUiModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -295,6 +296,33 @@ internal class RoomHomeViewModel(
                 // 화면 복귀 시의 보조 갱신이 실패해도 이미 표시한 상세 상태는 보존한다.
             }
         }
+    }
+
+    internal fun onRoomUpdated(result: RoomUpdateResult, sessionIdentity: Any) {
+        if (
+            activeRoomId?.toLongOrNull() != result.roomId ||
+            activeRouteAuthState != AuthSessionState.Authenticated ||
+            activeRouteIdentity !== sessionIdentity ||
+            !isLiveSession(AuthSessionState.Authenticated, sessionIdentity)
+        ) return
+
+        invalidateRoomRequest()
+        invalidateRoomDetailsRefresh()
+        mutableUiState.update { state ->
+            val currentRoom = state.room
+            if (currentRoom?.id != result.roomId.toString()) {
+                state
+            } else {
+                state.copy(
+                    room = currentRoom.copy(
+                        representativeImage = result.imageUrl,
+                        name = result.name,
+                        description = result.description.orEmpty(),
+                    ),
+                ).withCurrentSchedule(clock)
+            }
+        }
+        refreshRoomDetails()
     }
 
     private fun beginDeleteRetry(previous: MenuActionContext) {

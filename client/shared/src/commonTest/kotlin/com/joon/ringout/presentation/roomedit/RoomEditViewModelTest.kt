@@ -1,181 +1,386 @@
 package com.joon.ringout.presentation.roomedit
 
-import com.joon.ringout.presentation.roomedit.model.RoomEditImageChange
-import com.joon.ringout.presentation.roomlist.model.RoomUiModel
+import com.joon.ringout.analytics.AnalyticsEvent
+import com.joon.ringout.analytics.AnalyticsParameterName
+import com.joon.ringout.analytics.AnalyticsParameterValue
+import com.joon.ringout.analytics.ProductAnalyticsRecorder
+import com.joon.ringout.analytics.RoomAnalyticsEvent
+import com.joon.ringout.analytics.roomTestRecorder
+import com.joon.ringout.domain.auth.AuthSession
+import com.joon.ringout.domain.room.MaxRoomImageBytes
+import com.joon.ringout.domain.room.RoomImageUpload
+import com.joon.ringout.domain.room.RoomMemberDetails
+import com.joon.ringout.domain.room.RoomMembershipDetails
+import com.joon.ringout.domain.room.RoomMembershipRole
+import com.joon.ringout.domain.room.RoomRepositoryException
+import com.joon.ringout.domain.room.RoomSummary
+import com.joon.ringout.domain.room.RoomUpdateInput
+import com.joon.ringout.domain.room.RoomUpdateResult
+import com.joon.ringout.presentation.roomedit.model.validateRoomEditDescription
+import com.joon.ringout.presentation.roomedit.model.validateRoomEditName
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class RoomEditViewModelTest {
     @Test
-    fun `원본이 도착하면 편집 입력 기본값으로 채우고 저장은 막는다`() {
-        val viewModel = RoomEditViewModel()
-        viewModel.initialize("room-1", null)
-
-        assertEquals("", viewModel.uiState.nameInput)
-        assertEquals("", viewModel.uiState.introductionInput)
-        assertFalse(viewModel.uiState.isOriginalLoaded)
-        assertFalse(viewModel.uiState.canSave)
-        assertNull(viewModel.createDraft())
-
-        viewModel.initialize("room-1", sampleRoom())
-
-        assertTrue(viewModel.uiState.isOriginalLoaded)
-        assertEquals("아침러닝", viewModel.uiState.nameInput)
-        assertEquals("함께 달리며 달려요.", viewModel.uiState.introductionInput)
-        assertEquals("아침러닝", viewModel.uiState.effectiveName)
-        assertEquals("함께 달리며 달려요.", viewModel.uiState.effectiveIntroduction)
-        assertFalse(viewModel.uiState.canSave)
-    }
-
-    @Test
-    fun `원본은 한 번 고정되고 같은 모임 데이터 재전달이 편집값을 덮지 않는다`() {
-        val viewModel = RoomEditViewModel()
-        viewModel.initialize("room-1", sampleRoom())
-        viewModel.updateName("새모임")
-        viewModel.updateIntroduction("새 소개입니다.")
-
-        viewModel.initialize(
-            "room-1",
-            sampleRoom().copy(name = "서버에서 다시 온 이름", description = "서버에서 다시 온 소개입니다."),
+    fun `방장 상세를 한 번 조회해 원본으로 채우고 변경 전 저장을 막는다`() = runTest {
+        var loadCount = 0
+        val viewModel = viewModel(
+            loadRoom = {
+                loadCount += 1
+                roomDetails()
+            },
         )
 
-        assertEquals("아침러닝", viewModel.uiState.original?.name)
-        assertEquals("새모임", viewModel.uiState.nameInput)
-        assertEquals("새 소개입니다.", viewModel.uiState.introductionInput)
+        viewModel.onRouteVisible("7")
+        advanceUntilIdle()
+        viewModel.onRouteVisible("7")
+        advanceUntilIdle()
+
+        assertEquals(1, loadCount)
+        assertEquals("아침 러닝", viewModel.uiState.nameInput)
+        assertEquals("함께 달려요.", viewModel.uiState.introductionInput)
+        assertFalse(viewModel.uiState.canSave)
+        assertNull(viewModel.uiState.loadErrorMessage)
     }
 
     @Test
-    fun `편집 입력값을 모두 지우면 빈 값으로 처리하고 저장하지 못한다`() {
-        val viewModel = initializedViewModel()
-        viewModel.updateName("새모임")
-        viewModel.updateIntroduction("새 소개입니다.")
-        assertTrue(viewModel.uiState.hasChanges)
+    fun `이름 검증은 내부 공백을 허용하고 이모지는 막는다`() {
+        val valid = validateRoomEditName("  아침 러닝 2  ")
+        val invalid = validateRoomEditName("러닝🙂")
 
-        viewModel.updateName("")
+        assertTrue(valid.isValid)
+        assertEquals("아침 러닝 2", valid.normalizedValue)
+        assertFalse(invalid.isValid)
+        assertFalse(invalid.hasOnlyAllowedCharacters)
+    }
+
+    @Test
+    fun `이름 검증은 다듬은 한 글자와 스물한 글자 및 문장부호를 막는다`() {
+        assertFalse(validateRoomEditName("  가  ").isLengthValid)
+        assertFalse(validateRoomEditName("가".repeat(21)).isLengthValid)
+        assertFalse(validateRoomEditName("러닝!").hasOnlyAllowedCharacters)
+    }
+
+    @Test
+    fun `소개는 빈 값을 허용하고 이모지는 UTF16 길이 기준으로 삼백자를 넘기면 막는다`() {
+        assertTrue(validateRoomEditDescription("").isValid)
+        assertTrue(validateRoomEditDescription("🙂".repeat(150)).isValid)
+        assertFalse(validateRoomEditDescription("🙂".repeat(151)).isValid)
+    }
+
+    @Test
+    fun `저장은 변경 필드와 원본 이미지 업로드 객체를 그대로 전달하고 완료는 한 번만 소비한다`() = runTest {
+        var capturedInput: RoomUpdateInput? = null
+        val upload = RoomImageUpload(byteArrayOf(1, 2, 3), "image/png", "room.png")
+        val viewModel = loadedViewModel(
+            updateRoom = { roomId, input ->
+                capturedInput = input
+                RoomUpdateResult(roomId, input.name ?: "아침 러닝", input.description, "https://cdn.test/room.png")
+            },
+        )
+
+        viewModel.updateName(" 저녁 러닝 ")
         viewModel.updateIntroduction("")
+        viewModel.onImageSelected(3L, upload)
+        viewModel.saveChanges()
+        advanceUntilIdle()
 
-        assertEquals("", viewModel.uiState.effectiveName)
-        assertEquals("", viewModel.uiState.effectiveIntroduction)
-        assertTrue(viewModel.uiState.hasChanges)
+        val input = assertNotNull(capturedInput)
+        assertEquals("저녁 러닝", input.name)
+        assertEquals("", input.description)
+        assertSame(upload, input.image)
+        assertFalse(input.removeImage)
+        val completionId = assertNotNull(viewModel.uiState.completionId)
+        val completion = assertNotNull(viewModel.consumeSuccessfulUpdate(completionId))
+        assertEquals(7L, completion.result.roomId)
+        assertNull(viewModel.consumeSuccessfulUpdate(completionId))
         assertFalse(viewModel.uiState.canSave)
-        assertNull(viewModel.createDraft())
     }
 
     @Test
-    fun `이름만 수정한 초안은 이름을 정규화하고 미수정 소개와 이미지를 유지한다`() {
-        val viewModel = initializedViewModel()
-        viewModel.updateName("  새모임  ")
+    fun `정상 저장 결과를 적용한 뒤 방장 수정 이벤트를 한 번 기록한다`() = runTest {
+        val events = mutableListOf<AnalyticsEvent>()
+        val pending = CompletableDeferred<RoomUpdateResult>()
+        val viewModel = loadedViewModel(
+            updateRoom = { _, _ -> pending.await() },
+            analytics = roomTestRecorder(events),
+        )
+        viewModel.updateName("저녁 러닝")
+        viewModel.saveChanges()
+        advanceUntilIdle()
 
-        val draft = viewModel.createDraft()
+        assertTrue(events.isEmpty())
+        pending.complete(RoomUpdateResult(7, "저녁 러닝", "함께 달려요.", null))
+        advanceUntilIdle()
+        viewModel.consumeSuccessfulUpdate(assertNotNull(viewModel.uiState.completionId))
 
-        assertEquals("room-1", draft?.roomId)
-        assertEquals("새모임", draft?.name)
-        assertEquals("함께 달리며 달려요.", draft?.introduction)
-        assertEquals(RoomEditImageChange.Unchanged, draft?.imageChange)
+        assertEquals(1, events.size)
+        assertEquals("room_updated", events.single().name.wireName)
+        assertEquals(
+            mapOf(AnalyticsParameterName.MembershipRole to AnalyticsParameterValue.Text("owner")),
+            events.single().parameters,
+        )
     }
 
     @Test
-    fun `정규화된 원본과 같은 이름은 변경으로 세지 않지만 소개 편집은 저장할 수 있다`() {
-        val viewModel = initializedViewModel()
-        viewModel.updateName("  아침러닝  ")
-        assertFalse(viewModel.uiState.nameChanged)
-        assertFalse(viewModel.uiState.canSave)
+    fun `분석 기록기가 예외를 던져도 정상 저장 완료를 유지한다`() = runTest {
+        val recorder = roomTestRecorder(mutableListOf())
+        val throwingRecorder = object : ProductAnalyticsRecorder by recorder {
+            override fun recordRoomEvent(event: RoomAnalyticsEvent) {
+                error("analytics unavailable")
+            }
+        }
+        val viewModel = loadedViewModel(
+            updateRoom = { roomId, input -> RoomUpdateResult(roomId, input.name!!, input.description, null) },
+            analytics = throwingRecorder,
+        )
 
-        viewModel.updateIntroduction("새 소개입니다. ")
+        viewModel.updateName("저녁 러닝")
+        viewModel.saveChanges()
+        advanceUntilIdle()
 
+        assertEquals("저녁 러닝", viewModel.uiState.successfulUpdate?.result?.name)
+        assertNull(viewModel.uiState.saveErrorMessage)
+        assertFalse(viewModel.uiState.isSaving)
+    }
+
+    @Test
+    fun `사백 오류는 서버 메시지를 보여주고 입력과 저장 가능 상태를 유지한다`() = runTest {
+        val events = mutableListOf<AnalyticsEvent>()
+        val viewModel = loadedViewModel(
+            updateRoom = { _, _ -> throw RoomRepositoryException(400, "ROOM400", "모임 이름을 확인해 주세요.", "raw-result") },
+            analytics = roomTestRecorder(events),
+        )
+
+        viewModel.updateName("저녁 러닝")
+        viewModel.saveChanges()
+        advanceUntilIdle()
+
+        assertEquals("저녁 러닝", viewModel.uiState.nameInput)
+        assertEquals("모임 이름을 확인해 주세요.", viewModel.uiState.saveErrorMessage)
         assertTrue(viewModel.uiState.canSave)
-        assertEquals("아침러닝", viewModel.createDraft()?.name)
-        assertEquals("새 소개입니다. ", viewModel.createDraft()?.introduction)
+        assertTrue(events.isEmpty())
     }
 
     @Test
-    fun `공백만 입력한 이름이나 소개는 다른 변경이 있어도 저장을 막는다`() {
-        val nameViewModel = initializedViewModel()
-        nameViewModel.updateName(" ")
-        nameViewModel.onImageSelected(1L)
-        assertTrue(nameViewModel.uiState.hasChanges)
-        assertFalse(nameViewModel.uiState.canSave)
-        assertNull(nameViewModel.createDraft())
+    fun `오백 오류는 고정 안내를 보여주고 재시도할 수 있게 입력을 보존한다`() = runTest {
+        val viewModel = loadedViewModel(
+            updateRoom = { _, _ -> throw RoomRepositoryException(500, "ROOM500", "stack detail") },
+        )
 
-        val introductionViewModel = initializedViewModel()
-        introductionViewModel.updateIntroduction("\n ")
-        introductionViewModel.updateName("새모임")
-        assertFalse(introductionViewModel.uiState.canSave)
-        assertNull(introductionViewModel.createDraft())
-    }
+        viewModel.updateIntroduction("새 소개")
+        viewModel.saveChanges()
+        advanceUntilIdle()
 
-    @Test
-    fun `소개만 수정하면 이름 원문을 보존하고 소개는 입력 원문을 전달한다`() {
-        val viewModel = initializedViewModel()
-        viewModel.updateIntroduction("  매일 같이 달려요.\n")
-
-        val draft = viewModel.createDraft()
-
-        assertEquals("아침러닝", draft?.name)
-        assertEquals("  매일 같이 달려요.\n", draft?.introduction)
-    }
-
-    @Test
-    fun `이미지 선택은 토큰으로 변경을 표현하고 preview 유실 시 저장을 취소한다`() {
-        val viewModel = initializedViewModel()
-        viewModel.onImageSelected(12L)
-
+        assertEquals("새 소개", viewModel.uiState.introductionInput)
+        assertEquals("서버 문제로 모임 정보를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.", viewModel.uiState.saveErrorMessage)
         assertTrue(viewModel.uiState.canSave)
-        assertEquals(RoomEditImageChange.Replace(12L), viewModel.createDraft()?.imageChange)
-
-        viewModel.onImagePreviewLost(11L)
-        assertEquals(12L, viewModel.uiState.imageSelectionToken)
-        viewModel.onImagePreviewLost(12L)
-
-        assertFalse(viewModel.uiState.hasChanges)
-        assertFalse(viewModel.uiState.canSave)
-        assertNull(viewModel.createDraft())
     }
 
     @Test
-    fun `다른 모임을 초기화하면 이전 모임의 입력 상태를 노출하지 않는다`() {
-        val viewModel = initializedViewModel()
-        viewModel.updateName("새모임")
+    fun `권한 오류는 안내를 유지하고 추가 편집 뒤에도 저장을 막는다`() = runTest {
+        val viewModel = loadedViewModel(
+            updateRoom = { _, _ -> throw RoomRepositoryException(403, "COMMON403", "금지") },
+        )
 
-        viewModel.initialize("room-2", sampleRoom("room-2").copy(name = "다른모임"))
+        viewModel.updateName("저녁 러닝")
+        viewModel.saveChanges()
+        advanceUntilIdle()
+        viewModel.updateName("밤 러닝")
 
-        assertEquals("room-2", viewModel.uiState.roomId)
-        assertEquals("다른모임", viewModel.uiState.nameInput)
-        assertEquals("함께 달리며 달려요.", viewModel.uiState.introductionInput)
-        assertEquals("다른모임", viewModel.uiState.effectiveName)
+        assertEquals("모임을 수정할 수 있는 방장 권한이 없어요.", viewModel.uiState.saveErrorMessage)
         assertFalse(viewModel.uiState.canSave)
     }
 
     @Test
-    fun `유효하지 않은 원본 필드도 유효한 새 값으로 고치기 전에는 저장할 수 없다`() {
-        val viewModel = RoomEditViewModel()
-        viewModel.initialize("room-1", sampleRoom().copy(name = "아침 러닝"))
-        viewModel.updateIntroduction("소개 변경")
+    fun `계정 변경 뒤 늦게 끝난 저장 응답은 완료 이벤트로 남기지 않는다`() = runTest {
+        val pending = CompletableDeferred<RoomUpdateResult>()
+        val events = mutableListOf<AnalyticsEvent>()
+        val session = authenticatedSession()
+        val viewModel = loadedViewModel(
+            authSession = session,
+            updateRoom = { _, _ -> pending.await() },
+            analytics = roomTestRecorder(events),
+        )
 
-        assertFalse(viewModel.uiState.canSave)
-        assertNull(viewModel.createDraft())
+        viewModel.updateName("저녁 러닝")
+        viewModel.saveChanges()
+        session.startNewSession()
+        pending.complete(RoomUpdateResult(7, "저녁 러닝", "함께 달려요.", null))
+        advanceUntilIdle()
 
-        viewModel.updateName("아침러닝")
+        assertNull(viewModel.uiState.successfulUpdate)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `저장 중 연속 저장은 패치를 한 번만 보낸다`() = runTest {
+        val pending = CompletableDeferred<RoomUpdateResult>()
+        var saveCount = 0
+        val viewModel = loadedViewModel(
+            updateRoom = { roomId, input ->
+                saveCount += 1
+                pending.await()
+                RoomUpdateResult(roomId, input.name ?: "아침 러닝", input.description, null)
+            },
+        )
+
+        viewModel.updateName("저녁 러닝")
+        viewModel.saveChanges()
+        viewModel.saveChanges()
+        advanceUntilIdle()
+
+        assertEquals(1, saveCount)
+        pending.complete(RoomUpdateResult(7, "저녁 러닝", "함께 달려요.", null))
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `네트워크 실패 뒤 재시도해도 선택한 이미지 업로드와 토큰을 유지한다`() = runTest {
+        val upload = RoomImageUpload(byteArrayOf(1, 2, 3), "image/png", "room.png")
+        val capturedUploads = mutableListOf<RoomImageUpload?>()
+        val events = mutableListOf<AnalyticsEvent>()
+        var fail = true
+        val viewModel = loadedViewModel(
+            analytics = roomTestRecorder(events),
+            updateRoom = { roomId, input ->
+                capturedUploads += input.image
+                if (fail) {
+                    fail = false
+                    throw IllegalStateException("network")
+                }
+                RoomUpdateResult(roomId, input.name ?: "아침 러닝", input.description, "new-url")
+            },
+        )
+
+        viewModel.onImageSelected(4L, upload)
+        viewModel.saveChanges()
+        advanceUntilIdle()
+        assertEquals(4L, viewModel.uiState.imageSelectionToken)
         assertTrue(viewModel.uiState.canSave)
-        assertEquals("아침러닝", viewModel.createDraft()?.name)
+
+        viewModel.saveChanges()
+        advanceUntilIdle()
+
+        assertEquals(2, capturedUploads.size)
+        assertSame(upload, capturedUploads[0])
+        assertSame(upload, capturedUploads[1])
+        assertNotNull(viewModel.uiState.successfulUpdate)
+        assertEquals(1, events.size)
+        assertEquals("room_updated", events.single().name.wireName)
     }
 
-    private fun initializedViewModel(): RoomEditViewModel = RoomEditViewModel().also {
-        it.initialize("room-1", sampleRoom())
+    @Test
+    fun `방장이 아니면 원본을 노출하지 않고 재시도 없는 권한 안내를 보여준다`() = runTest {
+        val viewModel = viewModel(loadRoom = { roomDetails(role = RoomMembershipRole.MEMBER) })
+
+        viewModel.onRouteVisible("7")
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.isOriginalLoaded)
+        assertEquals("모임을 수정할 수 있는 방장 권한이 없어요.", viewModel.uiState.loadErrorMessage)
+        assertFalse(viewModel.uiState.canRetryLoad)
     }
 
-    private fun sampleRoom(id: String = "room-1") = RoomUiModel(
-        id = id,
-        representativeImage = null,
-        name = "아침러닝",
-        description = "함께 달리며 달려요.",
-        createdAt = "2026-09-15T09:00:00",
-        activityDays = listOf("월", "수", "금"),
-        activityTimeText = "오전 8:00",
-        participantCount = 3,
-        isJoined = true,
+    @Test
+    fun `이미지만 수정하면 유효하지 않은 원본 이름과 긴 원본 소개가 있어도 저장할 수 있다`() = runTest {
+        var capturedInput: RoomUpdateInput? = null
+        val upload = RoomImageUpload(byteArrayOf(9), "image/png", "room.png")
+        val viewModel = viewModel(
+            loadRoom = {
+                roomDetails().copy(
+                    room = roomDetails().room.copy(
+                        name = "나쁜🙂이름",
+                        description = "🙂".repeat(151),
+                    ),
+                )
+            },
+            updateRoom = { roomId, input ->
+                capturedInput = input
+                RoomUpdateResult(roomId, input.name ?: "나쁜🙂이름", input.description ?: "🙂".repeat(151), "new-url")
+            },
+        )
+        viewModel.onRouteVisible("7")
+        advanceUntilIdle()
+
+        viewModel.onImageSelected(1L, upload)
+        viewModel.saveChanges()
+        advanceUntilIdle()
+
+        val input = assertNotNull(capturedInput)
+        assertTrue(input.hasChanges)
+        assertNull(input.name)
+        assertNull(input.description)
+        assertSame(upload, input.image)
+    }
+
+    @Test
+    fun `모임 이미지 업로드는 5MB 경계까지 허용하고 초과하면 거부한다`() {
+        RoomImageUpload(ByteArray(MaxRoomImageBytes.toInt()), "image/jpeg", "room.jpg")
+
+        assertFailsWith<IllegalArgumentException> {
+            RoomImageUpload(ByteArray(MaxRoomImageBytes.toInt() + 1), "image/jpeg", "room.jpg")
+        }
+    }
+
+    private suspend fun TestScope.loadedViewModel(
+        authSession: AuthSession = authenticatedSession(),
+        analytics: ProductAnalyticsRecorder? = null,
+        updateRoom: suspend (Long, RoomUpdateInput) -> RoomUpdateResult = { roomId, input ->
+            RoomUpdateResult(roomId, input.name ?: "아침 러닝", input.description ?: "함께 달려요.", null)
+        },
+    ): RoomEditViewModel {
+        val viewModel = viewModel(authSession = authSession, updateRoom = updateRoom, analytics = analytics)
+        viewModel.onRouteVisible("7")
+        advanceUntilIdle()
+        return viewModel
+    }
+
+    private fun TestScope.viewModel(
+        authSession: AuthSession = authenticatedSession(),
+        loadRoom: suspend (Long) -> RoomMembershipDetails = { roomDetails() },
+        analytics: ProductAnalyticsRecorder? = null,
+        updateRoom: suspend (Long, RoomUpdateInput) -> RoomUpdateResult = { roomId, input ->
+            RoomUpdateResult(roomId, input.name ?: "아침 러닝", input.description ?: "함께 달려요.", null)
+        },
+    ) = RoomEditViewModel(
+        loadRoom = loadRoom,
+        updateRoom = updateRoom,
+        authSession = authSession,
+        coroutineScope = this,
+        analytics = analytics,
+    )
+
+    private fun authenticatedSession() = AuthSession().apply { startNewSession() }
+
+    private fun roomDetails(
+        role: RoomMembershipRole = RoomMembershipRole.OWNER,
+    ) = RoomMembershipDetails(
+        room = RoomSummary(
+            id = 7,
+            name = "아침 러닝",
+            description = "함께 달려요.",
+            imageUrl = null,
+            activityDays = listOf("MONDAY", "WEDNESDAY", "FRIDAY"),
+            activityTime = "08:00",
+            memberCount = 1,
+            isJoined = true,
+            createdAt = "2026-09-15T09:00:00",
+        ),
+        membershipRole = role,
+        members = listOf(RoomMemberDetails(1, "방장")),
     )
 }

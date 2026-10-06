@@ -13,6 +13,7 @@ internal enum class AnalyticsEventName(
     RoomRecordsViewed("room_records_viewed"),
     RoomLeft("room_left"),
     RoomDeleted("room_deleted"),
+    RoomUpdated("room_updated"),
     TutorialBegin("tutorial_begin"),
     OnboardingStepViewed("onboarding_step_viewed"),
     OnboardingSubmit("onboarding_submit"),

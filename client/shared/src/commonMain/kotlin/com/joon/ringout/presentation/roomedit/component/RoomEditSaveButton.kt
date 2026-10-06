@@ -21,6 +21,7 @@ import com.joon.ringout.ringoutColors
 @Composable
 internal fun RoomEditSaveButton(
     enabled: Boolean,
+    isSaving: Boolean = false,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -40,7 +41,7 @@ internal fun RoomEditSaveButton(
         ),
     ) {
         Text(
-            text = "저장",
+            text = if (isSaving) "저장 중" else "저장",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
         )
     }

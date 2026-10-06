@@ -8,6 +8,7 @@ import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomManagementMember
 import com.joon.ringout.domain.room.RoomSummary
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.room.RoomUpdateResult
 
 internal fun RoomEntity.toDomain(): RoomSummary = RoomSummary(
     id = roomId,
@@ -80,6 +81,13 @@ internal fun RoomManagementMembersResponseEntity.toDomain(): List<RoomManagement
         )
     }
 }
+
+internal fun RoomUpdateResponseEntity.toDomain(): RoomUpdateResult = RoomUpdateResult(
+    roomId = roomId,
+    name = name,
+    description = description,
+    imageUrl = imageUrl.toRoomImageUrl(),
+)
 
 internal fun String?.toRoomImageUrl(): String? {
     val value = this?.trim()?.takeIf(String::isNotEmpty) ?: return null

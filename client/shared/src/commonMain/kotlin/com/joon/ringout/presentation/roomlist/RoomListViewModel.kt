@@ -12,6 +12,7 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomRepositoryException
+import com.joon.ringout.domain.room.RoomUpdateResult
 import com.joon.ringout.presentation.roomlist.model.RoomListUiState
 import com.joon.ringout.presentation.roomlist.model.RoomMutationSource
 import com.joon.ringout.presentation.roomlist.model.RoomMutationSuccess
@@ -136,6 +137,26 @@ class RoomListViewModel(
         val roomIdString = roomId.toString()
         val allRooms = uiState.allRooms.map { room ->
             if (room.id == roomIdString) room.copy(isJoined = false) else room
+        }
+        uiState = uiState.copy(allRooms = allRooms, joinedRooms = allRooms.filter(RoomUiModel::isJoined))
+        requestRooms()
+    }
+
+    internal fun onRoomUpdated(result: RoomUpdateResult, sessionIdentity: Any) {
+        if (!isCurrentActionSession(sessionIdentity)) return
+        val roomIdString = result.roomId.toString()
+
+        invalidateRoomsRequest()
+        val allRooms = uiState.allRooms.map { room ->
+            if (room.id == roomIdString) {
+                room.copy(
+                    representativeImage = result.imageUrl,
+                    name = result.name,
+                    description = result.description.orEmpty(),
+                )
+            } else {
+                room
+            }
         }
         uiState = uiState.copy(allRooms = allRooms, joinedRooms = allRooms.filter(RoomUiModel::isJoined))
         requestRooms()

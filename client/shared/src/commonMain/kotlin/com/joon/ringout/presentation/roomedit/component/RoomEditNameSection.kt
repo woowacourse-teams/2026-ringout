@@ -33,15 +33,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.roomcreate.RoomNameValidation
-import com.joon.ringout.presentation.roomcreate.validateRoomName
+import com.joon.ringout.presentation.roomedit.model.RoomEditNameValidation
+import com.joon.ringout.presentation.roomedit.model.validateRoomEditName
 import kotlinx.coroutines.launch
 
 @Composable
 internal fun RoomEditNameSection(
     value: String,
-    validation: RoomNameValidation,
+    validation: RoomEditNameValidation,
     onValueChange: (String) -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
@@ -61,6 +62,7 @@ internal fun RoomEditNameSection(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
+            enabled = enabled,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
@@ -106,7 +108,7 @@ internal fun RoomEditNameSection(
                 hasInput = value.isNotEmpty(),
             )
             RoomEditValidationIndicator(
-                label = "한글, 영문, 숫자 사용 가능",
+                label = "한글, 영문, 숫자, 공백 사용 가능",
                 isSatisfied = validation.hasOnlyAllowedCharacters,
                 hasInput = value.isNotEmpty(),
             )
@@ -120,7 +122,7 @@ private fun RoomEditNameSectionInitialPreview() {
     RingoutTheme(ThemeMode.Light) {
         RoomEditNameSection(
             value = "아침러닝",
-            validation = validateRoomName("아침러닝"),
+            validation = validateRoomEditName("아침러닝"),
             onValueChange = {},
             modifier = Modifier.padding(16.dp),
         )
@@ -133,7 +135,7 @@ private fun RoomEditNameSectionValidPreview() {
     RingoutTheme(ThemeMode.Dark) {
         RoomEditNameSection(
             value = "새러닝모임",
-            validation = validateRoomName("새러닝모임"),
+            validation = validateRoomEditName("새러닝모임"),
             onValueChange = {},
             modifier = Modifier.padding(16.dp),
         )

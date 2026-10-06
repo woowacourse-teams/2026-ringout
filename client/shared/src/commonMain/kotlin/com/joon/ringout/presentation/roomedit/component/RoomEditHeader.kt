@@ -27,6 +27,7 @@ import com.joon.ringout.ThemeMode
 @Composable
 internal fun RoomEditHeader(
     onBackClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val arrowColor = MaterialTheme.colorScheme.onSurface
@@ -38,6 +39,7 @@ internal fun RoomEditHeader(
     ) {
         IconButton(
             onClick = onBackClick,
+            enabled = enabled,
             modifier = Modifier
                 .size(44.dp)
                 .semantics { contentDescription = "뒤로 가기" },

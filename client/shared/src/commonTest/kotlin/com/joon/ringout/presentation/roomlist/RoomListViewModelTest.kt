@@ -9,6 +9,7 @@ import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomSummary
+import com.joon.ringout.domain.room.RoomUpdateResult
 import com.joon.ringout.presentation.roomlist.model.RoomMutationSource
 import com.joon.ringout.presentation.roomlist.model.RoomMutationType
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
@@ -394,6 +395,120 @@ class RoomListViewModelTest {
     }
 
     @Test
+    fun `모임 수정 결과는 목록의 표시 정보만 바꾸고 갱신 실패에도 유지한다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        var calls = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                calls += 1
+                if (calls == 1) Result.success(listOf(previewRoom.copy(id = "1")))
+                else Result.failure(IllegalStateException("refresh failed"))
+            },
+            authSession = session,
+            coroutineScope = this,
+        )
+        viewModel.onRouteVisible(session.state.value, session.identity.value)
+        runCurrent()
+
+        viewModel.onRoomUpdated(
+            RoomUpdateResult(
+                roomId = 1L,
+                name = "수정한 모임",
+                description = null,
+                imageUrl = "https://cdn.example.com/updated.png",
+            ),
+            checkNotNull(session.identity.value),
+        )
+        runCurrent()
+
+        val room = viewModel.uiState.allRooms.single()
+        assertEquals(2, calls)
+        assertEquals("수정한 모임", room.name)
+        assertEquals("", room.description)
+        assertEquals("https://cdn.example.com/updated.png", room.representativeImage)
+        assertEquals(previewRoom.participantCount, room.participantCount)
+        assertTrue(room.isJoined)
+        assertEquals(listOf(room), viewModel.uiState.joinedRooms)
+        assertEquals(RoomListRefreshErrorMessage, viewModel.uiState.allRoomsRefreshErrorMessage)
+    }
+
+    @Test
+    fun `모임 수정 전에 시작된 목록 응답은 수정 결과를 덮어쓰지 않는다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val staleResponse = CompletableDeferred<Result<List<RoomUiModel>>>()
+        var calls = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                calls += 1
+                when (calls) {
+                    1 -> Result.success(listOf(previewRoom.copy(id = "1", name = "처음 모임")))
+                    2 -> withContext(NonCancellable) { staleResponse.await() }
+                    else -> Result.failure(IllegalStateException("refresh failed"))
+                }
+            },
+            authSession = session,
+            coroutineScope = this,
+        )
+        viewModel.onRouteVisible(session.state.value, session.identity.value)
+        runCurrent()
+        viewModel.onRetryRooms()
+        runCurrent()
+
+        viewModel.onRoomUpdated(
+            RoomUpdateResult(
+                roomId = 1L,
+                name = "수정한 모임",
+                description = "수정한 소개",
+                imageUrl = null,
+            ),
+            checkNotNull(session.identity.value),
+        )
+        staleResponse.complete(Result.success(listOf(previewRoom.copy(id = "1", name = "오래된 모임"))))
+        runCurrent()
+
+        assertEquals(3, calls)
+        assertEquals("수정한 모임", viewModel.uiState.allRooms.single().name)
+        assertEquals("수정한 소개", viewModel.uiState.allRooms.single().description)
+    }
+
+    @Test
+    fun `목록 캐시가 비어도 모임 수정 결과는 오래된 목록 응답을 무효화하고 다시 조회한다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val staleResponse = CompletableDeferred<Result<List<RoomUiModel>>>()
+        var calls = 0
+        val refreshedRoom = previewRoom.copy(id = "1", name = "서버 확인 모임")
+        val viewModel = RoomListViewModel(
+            loadRooms = {
+                calls += 1
+                if (calls == 1) {
+                    withContext(NonCancellable) { staleResponse.await() }
+                } else {
+                    Result.success(listOf(refreshedRoom))
+                }
+            },
+            authSession = session,
+            coroutineScope = this,
+        )
+        viewModel.onRouteVisible(session.state.value, session.identity.value)
+        runCurrent()
+
+        viewModel.onRoomUpdated(
+            RoomUpdateResult(
+                roomId = 1L,
+                name = "수정한 모임",
+                description = "수정한 소개",
+                imageUrl = null,
+            ),
+            checkNotNull(session.identity.value),
+        )
+        staleResponse.complete(Result.success(listOf(previewRoom.copy(id = "1", name = "오래된 모임"))))
+        runCurrent()
+
+        assertEquals(2, calls)
+        assertEquals(listOf(refreshedRoom), viewModel.uiState.allRooms)
+    }
+
+    @Test
     fun `다른 계정에서 완료된 삭제 결과는 모임 목록을 바꾸지 않는다`() = runTest {
         val session = AuthSession().apply { startNewSession() }
         val originalIdentity = checkNotNull(session.identity.value)
@@ -412,6 +527,35 @@ class RoomListViewModelTest {
         viewModel.onRoomDeleted(1L, originalIdentity)
 
         assertEquals(listOf("1"), viewModel.uiState.allRooms.map(RoomUiModel::id))
+    }
+
+    @Test
+    fun `다른 계정에서 완료된 수정 결과는 모임 목록을 바꾸지 않는다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val originalIdentity = checkNotNull(session.identity.value)
+        val room = previewRoom.copy(id = "1", name = "처음 모임")
+        val viewModel = RoomListViewModel(
+            loadRooms = { Result.success(listOf(room)) },
+            authSession = session,
+            coroutineScope = this,
+        )
+        viewModel.onRouteVisible(session.state.value, originalIdentity)
+        runCurrent()
+        session.startNewSession()
+        viewModel.onAuthSessionChanged(session.state.value, session.identity.value)
+        runCurrent()
+
+        viewModel.onRoomUpdated(
+            RoomUpdateResult(
+                roomId = 1L,
+                name = "수정한 모임",
+                description = "수정한 소개",
+                imageUrl = null,
+            ),
+            originalIdentity,
+        )
+
+        assertEquals("처음 모임", viewModel.uiState.allRooms.single().name)
     }
 
     private companion object {

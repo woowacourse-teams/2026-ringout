@@ -1,15 +1,28 @@
 package com.joon.ringout.presentation.roomhome
 
+import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
-import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.room.RoomMemberDetails
+import com.joon.ringout.domain.room.RoomMembershipDetails
+import com.joon.ringout.domain.room.RoomMembershipRole
+import com.joon.ringout.domain.room.RoomSummary
+import com.joon.ringout.domain.room.RoomUpdateResult
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class RoomHomeViewModelTest {
     @Test
     fun `처음 화면을 열면 날짜를 다시 선택하지 않아도 주입한 날짜의 기록과 달성 인원을 표시한다`() {
@@ -200,6 +213,110 @@ class RoomHomeViewModelTest {
         assertFalse(state.recordsState.isDataLoaded)
     }
 
+    @Test
+    fun `모임 수정 결과는 현재 모임의 표시 정보만 바꾸고 보조 상세 실패에도 유지한다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        var calls = 0
+        val viewModel = RoomHomeViewModel(
+            coroutineScope = this,
+            authSession = session,
+            loadRoom = {
+                calls += 1
+                if (calls == 1) membershipDetails(roomId = 1L, memberCount = 7)
+                else throw IllegalStateException("refresh failed")
+            },
+        )
+        viewModel.onRouteVisible("1", session.state.value, session.identity.value)
+        runCurrent()
+
+        viewModel.onRoomUpdated(
+            RoomUpdateResult(
+                roomId = 1L,
+                name = "수정한 모임",
+                description = null,
+                imageUrl = "https://cdn.example.com/updated.png",
+            ),
+            checkNotNull(session.identity.value),
+        )
+        runCurrent()
+
+        val state = viewModel.uiState.value
+        assertEquals(2, calls)
+        assertEquals("수정한 모임", state.room?.name)
+        assertEquals("", state.room?.description)
+        assertEquals("https://cdn.example.com/updated.png", state.room?.representativeImage)
+        assertEquals(7, state.room?.participantCount)
+        assertEquals(RoomMembershipRole.OWNER, state.membershipRole)
+        assertEquals(listOf("방장"), state.members.map(RoomHomeMemberUiModel::nickname))
+    }
+
+    @Test
+    fun `모임 수정 전에 시작된 상세 응답은 수정 결과를 덮어쓰지 않는다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val staleResponse = CompletableDeferred<RoomMembershipDetails>()
+        var calls = 0
+        val viewModel = RoomHomeViewModel(
+            coroutineScope = this,
+            authSession = session,
+            loadRoom = {
+                calls += 1
+                when (calls) {
+                    1 -> membershipDetails(roomId = 1L, name = "처음 모임")
+                    2 -> withContext(NonCancellable) { staleResponse.await() }
+                    else -> throw IllegalStateException("refresh failed")
+                }
+            },
+        )
+        viewModel.onRouteVisible("1", session.state.value, session.identity.value)
+        runCurrent()
+        viewModel.refreshRoomDetails()
+        runCurrent()
+
+        viewModel.onRoomUpdated(
+            RoomUpdateResult(
+                roomId = 1L,
+                name = "수정한 모임",
+                description = "수정한 소개",
+                imageUrl = null,
+            ),
+            checkNotNull(session.identity.value),
+        )
+        staleResponse.complete(membershipDetails(roomId = 1L, name = "오래된 모임"))
+        runCurrent()
+
+        assertEquals(3, calls)
+        assertEquals("수정한 모임", viewModel.uiState.value.room?.name)
+        assertEquals("수정한 소개", viewModel.uiState.value.room?.description)
+    }
+
+    @Test
+    fun `다른 계정에서 완료된 모임 수정 결과는 홈 상태를 바꾸지 않는다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val originalIdentity = checkNotNull(session.identity.value)
+        val viewModel = RoomHomeViewModel(
+            coroutineScope = this,
+            authSession = session,
+            loadRoom = { membershipDetails(roomId = 1L, name = "처음 모임") },
+        )
+        viewModel.onRouteVisible("1", session.state.value, originalIdentity)
+        runCurrent()
+        session.startNewSession()
+        viewModel.onAuthSessionChanged(session.state.value, session.identity.value)
+        runCurrent()
+
+        viewModel.onRoomUpdated(
+            RoomUpdateResult(
+                roomId = 1L,
+                name = "수정한 모임",
+                description = "수정한 소개",
+                imageUrl = null,
+            ),
+            originalIdentity,
+        )
+
+        assertNull(viewModel.uiState.value.room)
+    }
+
     private fun assertHiddenRecords(state: RoomHomeRecordsUiState) {
         assertFalse(state.canViewRecords)
         assertTrue(state.records.isEmpty())
@@ -264,5 +381,28 @@ class RoomHomeViewModelTest {
             achievedMemberCount = 0,
         )
         val recordsByDate = mapOf(decemberDate to decemberRecords, januaryDate to januaryRecords)
+
+        fun membershipDetails(
+            roomId: Long,
+            name: String = "아침 모임",
+            description: String? = "회원끼리 아침 목표를 함께 실천하는 모임",
+            imageUrl: String? = null,
+            memberCount: Int = 1,
+            role: RoomMembershipRole = RoomMembershipRole.OWNER,
+        ) = RoomMembershipDetails(
+            room = RoomSummary(
+                id = roomId,
+                name = name,
+                description = description,
+                imageUrl = imageUrl,
+                activityDays = listOf("MONDAY", "WEDNESDAY", "FRIDAY"),
+                activityTime = "06:00",
+                memberCount = memberCount,
+                isJoined = true,
+                createdAt = "2026-09-01T06:00:00",
+            ),
+            membershipRole = role,
+            members = listOf(RoomMemberDetails(userId = 10L, nickname = "방장")),
+        )
     }
 }

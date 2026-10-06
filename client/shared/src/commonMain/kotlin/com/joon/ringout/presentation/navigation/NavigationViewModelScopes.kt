@@ -119,7 +119,14 @@ private fun navigationViewModelFactory(container: AppContainer): ViewModelProvid
             )
         }
         initializer { RoomCreateViewModel() }
-        initializer { RoomEditViewModel() }
+        initializer {
+            RoomEditViewModel(
+                loadRoom = container.roomRepository::getRoom,
+                updateRoom = container.roomRepository::updateRoom,
+                authSession = container.authSession,
+                analytics = container.productAnalyticsRecorder,
+            )
+        }
         initializer {
             RoomMemberManagementViewModel(
                 loadMembers = container.roomRepository::getMembersForManagement,
