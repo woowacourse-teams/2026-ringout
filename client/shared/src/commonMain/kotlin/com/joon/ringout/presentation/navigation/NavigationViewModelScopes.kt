@@ -87,6 +87,7 @@ private fun navigationViewModelFactory(container: AppContainer): ViewModelProvid
         initializer { HomeViewModel() }
         initializer {
             RoomListViewModel(
+                analytics = container.productAnalyticsRecorder,
                 loadRooms = {
                     try {
                         Result.success(container.roomRepository.getRooms().map(RoomSummary::toRoomUiModel))
@@ -128,6 +129,7 @@ private fun navigationViewModelFactory(container: AppContainer): ViewModelProvid
         }
         initializer {
             RoomHomeViewModel(
+                analytics = container.productAnalyticsRecorder,
                 loadRoom = container.roomRepository::getRoom,
                 loadRecords = container.roomRepository::getRoomRecords,
                 deleteRoom = container.roomRepository::deleteRoom,

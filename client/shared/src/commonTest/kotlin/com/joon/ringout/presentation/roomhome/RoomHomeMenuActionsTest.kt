@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.roomhome
 
+import com.joon.ringout.analytics.*
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.room.RoomMemberDetails
 import com.joon.ringout.domain.room.RoomMembershipDetails
@@ -84,10 +85,12 @@ class RoomHomeMenuActionsTest {
 
     @Test
     fun `삭제는 재확인 뒤 한 번만 요청하고 완료 이벤트도 한 번만 소비한다`() = runTest {
+        val events = mutableListOf<AnalyticsEvent>()
         val session = AuthSession().apply { startNewSession() }
         var deleteCalls = 0
         val viewModel = RoomHomeViewModel(
             coroutineScope = this,
+            analytics = roomTestRecorder(events),
             loadRoom = { roomId -> details(roomId, RoomMembershipRole.OWNER, memberCount = 1) },
             deleteRoom = { deleteCalls += 1 },
             authSession = session,
@@ -107,6 +110,8 @@ class RoomHomeMenuActionsTest {
         assertEquals(RoomHomeActionType.Delete, completed.actionType)
         assertEquals(7L, viewModel.consumeMenuActionCompletion(completed.operationId)?.roomId)
         assertNull(viewModel.consumeMenuActionCompletion(completed.operationId))
+        assertEquals(listOf(AnalyticsEventName.RoomDeleted), events.map { it.name })
+        assertEquals(AnalyticsParameterValue.Text("owner"), events.single().parameters[AnalyticsParameterName.MembershipRole])
     }
 
     @Test

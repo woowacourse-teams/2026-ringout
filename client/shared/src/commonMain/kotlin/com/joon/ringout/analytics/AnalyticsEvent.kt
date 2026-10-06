@@ -5,6 +5,14 @@ import com.joon.ringout.alarm.AlarmScheduleRequest
 internal enum class AnalyticsEventName(
     val wireName: String,
 ) {
+    RoomListViewed("room_list_viewed"),
+    RoomDetailViewed("room_detail_viewed"),
+    RoomCreated("room_created"),
+    RoomJoined("room_joined"),
+    RoomHomeViewed("room_home_viewed"),
+    RoomRecordsViewed("room_records_viewed"),
+    RoomLeft("room_left"),
+    RoomDeleted("room_deleted"),
     TutorialBegin("tutorial_begin"),
     OnboardingStepViewed("onboarding_step_viewed"),
     OnboardingSubmit("onboarding_submit"),
@@ -32,6 +40,11 @@ internal enum class AnalyticsEventName(
 internal enum class AnalyticsParameterName(
     val wireName: String,
 ) {
+    JoinedRoomCount("joined_room_count"),
+    MemberCount("member_count"),
+    MembershipRole("membership_role"),
+    EntrySource("entry_source"),
+    RoomMembershipState("room_membership_state"),
     FlowName("flow_name"),
     FlowVersion("flow_version"),
     StepCount("step_count"),

@@ -9,6 +9,27 @@ import kotlin.test.assertTrue
 
 class AlarmAnalyticsTest {
     @Test
+    fun `미션 재시도와 완료 이벤트는 시작 당시 모임 참여 수를 공유한다`() {
+        val tracker = RecordingAnalyticsTracker()
+        val storage = MemoryRoomAnalyticsStorage()
+        val membership = RoomMembershipAnalytics(storage, { "a" }, { 0 })
+        membership.replace("a", 0, setOf(1, 2))
+        val usage = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences())
+        AlarmAnalytics(tracker, usage, { 0 }, membership).recordMissionStarted("root", 0)
+        membership.update("a", 1, false)
+        val recreated = AlarmAnalytics(tracker, usage, { 1000 },
+            RoomMembershipAnalytics(storage, { "b" }, { 0 }))
+        recreated.recordMissionStarted("root:retry-1", 1)
+        recreated.recordMissionCompleted("root:retry-1", 1, 0)
+        assertEquals(3, tracker.events.size)
+        tracker.events.forEach {
+            assertEquals("joined", it.text(AnalyticsParameterName.RoomMembershipState))
+            assertEquals(2L, it.number(AnalyticsParameterName.JoinedRoomCount))
+            assertEquals(1L, it.number(AnalyticsParameterName.UseIndex))
+        }
+    }
+
+    @Test
     fun `생성과 재설정은 동일한 설정 계약을 사용하고 재설정에는 생성 인덱스가 없다`() {
         val tracker = RecordingAnalyticsTracker()
         val analytics = AlarmAnalytics(
@@ -353,7 +374,7 @@ class AlarmAnalyticsTest {
     }
 
     @Test
-    fun payloadUsesOnlyTheApprovedParameterNames() {
+    fun `이벤트에는 승인된 파라미터만 포함한다`() {
         val tracker = RecordingAnalyticsTracker()
         val analytics = AlarmAnalytics(
             tracker = tracker,
@@ -374,6 +395,8 @@ class AlarmAnalyticsTest {
         )
 
         val approvedNames = setOf(
+            AnalyticsParameterName.RoomMembershipState,
+            AnalyticsParameterName.JoinedRoomCount,
             AnalyticsParameterName.CreationIndex,
             AnalyticsParameterName.SettingsSchemaVersion,
             AnalyticsParameterName.LimitMinutes,

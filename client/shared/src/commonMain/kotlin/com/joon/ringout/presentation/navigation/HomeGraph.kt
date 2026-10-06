@@ -116,6 +116,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             onBackClick = { navigationState.popBackStack(route) },
             onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onJoinRoom = onJoinRoom,
+            onDetailViewed = roomListViewModel::recordDetailViewed,
             onRetryRooms = roomListViewModel::onRetryRooms,
         )
     }

@@ -8,11 +8,13 @@ internal class AlarmAnalytics internal constructor(
     private val tracker: AnalyticsTracker,
     private val usageStore: AnalyticsUsageStore,
     private val nowEpochMillis: () -> Long,
+    private val roomMembership: RoomMembershipAnalytics? = null,
 ) {
     constructor(context: Context) : this(
         tracker = FirebaseAnalyticsTracker(context),
         usageStore = AnalyticsUsageStore(context),
         nowEpochMillis = System::currentTimeMillis,
+        roomMembership = createRoomMembershipAnalytics(context),
     )
 
     fun recordAlarmCreated(
@@ -156,8 +158,11 @@ internal class AlarmAnalytics internal constructor(
         retryAttempt: Int,
         scheduleType: AnalyticsScheduleType? = null,
     ) = safelyRecord {
+        val existingUse = usageStore.findUseIndex(occurrenceId)
         val useIndex = usageStore.getOrCreateUseIndex(occurrenceId)
             ?: return@safelyRecord
+        val roomSnapshot = roomMembership?.startMission(useIndex, existingUse == null && retryAttempt == 0)
+            ?: RoomMembershipSnapshot()
         if (
             !usageStore.claimEvent(
                 eventName = AnalyticsEventName.DestinationMissionStarted,
@@ -170,6 +175,7 @@ internal class AlarmAnalytics internal constructor(
             AnalyticsEvent(
                 name = AnalyticsEventName.DestinationMissionStarted,
                 parameters = buildMap {
+                    putAll(roomSnapshot.parameters())
                     put(
                         AnalyticsParameterName.UseIndex,
                         AnalyticsParameterValue.Number(useIndex),
@@ -310,7 +316,7 @@ internal class AlarmAnalytics internal constructor(
                         AnalyticsParameterValue.Number(retryAttempt.coerceAtLeast(0).toLong()),
                     AnalyticsParameterName.ElapsedBucket to
                         AnalyticsParameterValue.Text(analyticsElapsedBucket(elapsedMillis)),
-                ),
+                ) + (roomMembership?.mission(useIndex) ?: RoomMembershipSnapshot()).parameters(),
             ),
         )
     }

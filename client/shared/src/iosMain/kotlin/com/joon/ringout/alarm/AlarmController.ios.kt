@@ -27,7 +27,7 @@ actual fun rememberAlarmController(
         RoomAlarmDataSource(getRingoutDatabase().alarmDao())
     }
     val analytics = remember(nativeServices) {
-        IosAlarmAnalytics(nativeServices.analyticsTracker())
+        IosAlarmAnalytics(nativeServices.analyticsTracker(), roomMembership = com.joon.ringout.analytics.createRoomMembershipAnalytics())
     }
     val store = remember(dataSource, nativeServices) {
         val scheduler = nativeServices.alarmScheduler()

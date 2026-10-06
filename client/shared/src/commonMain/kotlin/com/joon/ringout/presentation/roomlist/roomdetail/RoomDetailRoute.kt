@@ -1,5 +1,7 @@
 package com.joon.ringout.presentation.roomlist.roomdetail
 
+import androidx.compose.runtime.remember
+import com.joon.ringout.analytics.RoomAnalyticsVisit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -28,7 +30,17 @@ internal fun RoomDetailRoute(
     onJoinRoom: (RoomMutationSource) -> Unit,
     onRetryRooms: () -> Unit,
     modifier: Modifier = Modifier,
+    onDetailViewed: (RoomUiModel) -> Boolean = { false },
 ) {
+    LaunchedEffect(onRouteVisible, authSessionState, sessionIdentity) {
+        onRouteVisible(authSessionState, sessionIdentity)
+    }
+    val analyticsVisit = remember(sessionIdentity) { RoomAnalyticsVisit() }
+    LaunchedEffect(room, isLoading, authSessionState, sessionIdentity) {
+        if (room != null && !room.isJoined && !isLoading && authSessionState != AuthSessionState.Restoring) {
+            analyticsVisit.recordWhen { onDetailViewed(room) }
+        }
+    }
     val sourceEntryId = rememberSaveable(room?.id) { RoomMutationEntryIds.next() }
     val source = room?.let {
         RoomMutationSource(
@@ -36,9 +48,6 @@ internal fun RoomDetailRoute(
             type = RoomMutationType.Join,
             roomId = it.id,
         )
-    }
-    LaunchedEffect(onRouteVisible, authSessionState, sessionIdentity) {
-        onRouteVisible(authSessionState, sessionIdentity)
     }
     LaunchedEffect(source?.entryId, authSessionState, sessionIdentity) {
         source?.let { onMutationSourceVisible(it.entryId) }
