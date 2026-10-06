@@ -96,8 +96,8 @@ def gate(branch="develop"):
         if result == "deploy":
             code, _ = declared_android_version()
             if production:
-                from production_config import validate_build_number
-                code = validate_build_number(code)
+                from production_config import production_number
+                code = production_number(code)
             channel = "release" if production else "internal"
             artifact_name = f"ringout-{channel}-aab-{code}-{sha[:12]}-attempt{run['run_attempt']}"
             with Path(required("GITHUB_OUTPUT")).open("a", encoding="utf-8") as output:
@@ -138,8 +138,8 @@ def verify_artifact(directory, sha, run_id, run_attempt, branch="develop"):
             raise CDError("운영 API 주소가 아닙니다.")
     code, name = declared_android_version()
     if production:
-        from production_config import validate_build_number
-        code = validate_build_number(code)
+        from production_config import production_number
+        code = production_number(code)
     if metadata.get("versionCode") != int(code) or metadata.get("versionName") != name:
         raise CDError("AAB 버전이 해당 커밋의 채널별 버전 정책과 다릅니다.")
     artifact_name = f"ringout-{channel}-aab-{code}-{sha[:12]}-attempt{run_attempt}"
