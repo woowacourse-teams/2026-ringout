@@ -9,6 +9,31 @@ import kotlin.test.assertTrue
 
 class AlarmAnalyticsTest {
     @Test
+    fun `모든 미션 결과는 시작 당시 전체 및 부분 확인 시각을 전송한다`() {
+        val usage = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences())
+        var now = 100L
+        val tracker = RecordingAnalyticsTracker()
+        val membership = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { now })
+        membership.replace("a", 0, setOf(1))
+        now = 200
+        membership.update("a", 2, true)
+        val analytics = AlarmAnalytics(tracker, usage, { now }, membership)
+        listOf("completed", "expired", "force_ended").forEach { id ->
+            analytics.recordMissionStarted(id, 0)
+        }
+        now = 300
+        membership.update("a", 2, false)
+        analytics.recordMissionCompleted("completed", 0, 200)
+        analytics.recordMissionExpired("expired", 0, 200)
+        analytics.recordMissionForceEnded("force_ended", 0, 200)
+        assertEquals(6, tracker.events.size)
+        tracker.events.forEach {
+            assertEquals(100L, it.number(AnalyticsParameterName.RoomListCheckedAtMillis))
+            assertEquals(200L, it.number(AnalyticsParameterName.RoomMembershipObservedAtMillis))
+        }
+    }
+
+    @Test
     fun `미션 재시도와 완료 이벤트는 시작 당시 모임 참여 수를 공유한다`() {
         val tracker = RecordingAnalyticsTracker()
         val storage = MemoryRoomAnalyticsStorage()
@@ -25,6 +50,8 @@ class AlarmAnalyticsTest {
         tracker.events.forEach {
             assertEquals("joined", it.text(AnalyticsParameterName.RoomMembershipState))
             assertEquals(2L, it.number(AnalyticsParameterName.JoinedRoomCount))
+            assertEquals(0L, it.number(AnalyticsParameterName.RoomListCheckedAtMillis))
+            assertEquals(0L, it.number(AnalyticsParameterName.RoomMembershipObservedAtMillis))
             assertEquals(1L, it.number(AnalyticsParameterName.UseIndex))
         }
     }

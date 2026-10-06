@@ -45,6 +45,8 @@ internal enum class AnalyticsParameterName(
     MembershipRole("membership_role"),
     EntrySource("entry_source"),
     RoomMembershipState("room_membership_state"),
+    RoomListCheckedAtMillis("room_list_checked_at_ms"),
+    RoomMembershipObservedAtMillis("room_membership_observed_at_ms"),
     FlowName("flow_name"),
     FlowVersion("flow_version"),
     StepCount("step_count"),

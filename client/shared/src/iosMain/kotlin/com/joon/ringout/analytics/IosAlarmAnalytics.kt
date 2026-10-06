@@ -322,9 +322,11 @@ private fun analyticsEvent(
 ): IosAnalyticsEventDto = IosAnalyticsEventDto(
     name = name,
     parameters = buildList {
-        roomSnapshot?.let {
-            add(IosAnalyticsParameterDto(name = "room_membership_state", textValue = it.state))
-            it.count?.let { count -> add(IosAnalyticsParameterDto(name = "joined_room_count", numberValue = count.toLong())) }
+        roomSnapshot?.parameters()?.forEach { (name, value) ->
+            add(when (value) {
+                is AnalyticsParameterValue.Text -> IosAnalyticsParameterDto(name = name.wireName, textValue = value.value)
+                is AnalyticsParameterValue.Number -> IosAnalyticsParameterDto(name = name.wireName, numberValue = value.value)
+            })
         }
         numberParameters.forEach { (parameterName, value) ->
             add(IosAnalyticsParameterDto(name = parameterName, numberValue = value))
