@@ -11,14 +11,21 @@ internal interface RoomAnalyticsStorage {
 }
 
 @Serializable
-internal data class RoomMembershipSnapshot(val state: String = "unknown", val count: Int? = null) {
+internal data class RoomMembershipSnapshot(
+    val state: String = "unknown",
+    val count: Int? = null,
+    val listCheckedAt: Long? = null,
+    val observedAt: Long? = null,
+) {
     fun parameters(): Map<AnalyticsParameterName, AnalyticsParameterValue> = buildMap {
         put(AnalyticsParameterName.RoomMembershipState, AnalyticsParameterValue.Text(state))
         count?.let { put(AnalyticsParameterName.JoinedRoomCount, AnalyticsParameterValue.Number(it.toLong())) }
+        listCheckedAt?.let { put(AnalyticsParameterName.RoomListCheckedAtMillis, AnalyticsParameterValue.Number(it)) }
+        observedAt?.let { put(AnalyticsParameterName.RoomMembershipObservedAtMillis, AnalyticsParameterValue.Number(it)) }
     }
 }
 
-/** 계정 캐시는 24시간까지만 사용하고, 미션 스냅샷은 첫 시작 이후 변경하지 않는다. */
+/** 계정별 마지막 확인 상태를 유지하고, 미션 스냅샷은 첫 시작 이후 변경하지 않는다. */
 internal class RoomMembershipAnalytics(
     private val storage: RoomAnalyticsStorage,
     private val currentOwner: () -> String?,
@@ -29,16 +36,28 @@ internal class RoomMembershipAnalytics(
     fun replace(owner: String, expectedRevision: Long, joinedIds: Set<Long>) = safely(Unit) {
         val previous = cache(owner)
         if ((previous?.revision ?: 0L) != expectedRevision) return@safely
-        save(owner, MembershipCache(joinedIds, true, now(), expectedRevision + 1))
+        val observedAt = now()
+        save(owner, MembershipCache(
+            ids = joinedIds,
+            complete = true,
+            revision = expectedRevision + 1,
+            listCheckedAt = observedAt,
+            observedAt = observedAt,
+        ))
     }
 
     fun update(owner: String, roomId: Long, joined: Boolean, expectedRevision: Long? = null) = safely(Unit) {
         val previous = cache(owner)
         if (expectedRevision != null && (previous?.revision ?: 0L) != expectedRevision) return@safely
-        val fresh = previous?.takeIf { isFresh(it.checkedAt) }
-        val ids = fresh?.ids.orEmpty().let { if (joined) it + roomId else it - roomId }
-        // 부분 변경은 전체 목록의 확인 시각을 갱신하지 않는다.
-        save(owner, MembershipCache(ids, fresh?.complete == true, fresh?.checkedAt ?: now(), (previous?.revision ?: 0) + 1))
+        val ids = previous?.ids.orEmpty().let { if (joined) it + roomId else it - roomId }
+        // 부분 응답으로 전체 목록의 확인 시각을 갱신하지 않는다.
+        save(owner, MembershipCache(
+            ids = ids,
+            complete = previous?.complete == true,
+            revision = (previous?.revision ?: 0) + 1,
+            listCheckedAt = previous?.fullListCheckedAt(),
+            observedAt = now(),
+        ))
     }
 
     fun current(): RoomMembershipSnapshot = safely(RoomMembershipSnapshot()) { currentUnlocked() }
@@ -58,15 +77,19 @@ internal class RoomMembershipAnalytics(
     private fun currentUnlocked(): RoomMembershipSnapshot {
         val owner = currentOwner() ?: return RoomMembershipSnapshot()
         if (owner == GuestOwner) return RoomMembershipSnapshot("not_joined", 0)
-        val cached = cache(owner)?.takeIf { isFresh(it.checkedAt) } ?: return RoomMembershipSnapshot()
+        val cached = cache(owner) ?: return RoomMembershipSnapshot()
         return when {
-            cached.complete -> RoomMembershipSnapshot(if (cached.ids.isEmpty()) "not_joined" else "joined", cached.ids.size)
-            cached.ids.isNotEmpty() -> RoomMembershipSnapshot("joined")
+            cached.complete -> RoomMembershipSnapshot(
+                state = if (cached.ids.isEmpty()) "not_joined" else "joined",
+                count = cached.ids.size,
+                listCheckedAt = cached.fullListCheckedAt(),
+                observedAt = cached.observedAt,
+            )
+            cached.ids.isNotEmpty() -> RoomMembershipSnapshot("joined", observedAt = cached.observedAt)
             else -> RoomMembershipSnapshot()
         }
     }
 
-    private fun isFresh(at: Long) = now() - at in 0..MaxAgeMillis
     private fun cache(owner: String) = read<MembershipCache>("account:$owner")
     private fun save(owner: String, cache: MembershipCache) = storage.write("account:$owner", Json.encodeToString(cache))
     private inline fun <reified T> read(key: String): T? = storage.read(key)?.let { Json.decodeFromString<T>(it) }
@@ -75,9 +98,18 @@ internal class RoomMembershipAnalytics(
 
     companion object {
         const val GuestOwner = "guest"
-        const val MaxAgeMillis = 24 * 60 * 60 * 1_000L
     }
 }
 
 @Serializable
-private data class MembershipCache(val ids: Set<Long>, val complete: Boolean, val checkedAt: Long, val revision: Long)
+private data class MembershipCache(
+    val ids: Set<Long>,
+    val complete: Boolean,
+    // 이전 저장 형식 호환용. 부분 캐시의 checkedAt은 마지막 확인 시각이 아니므로 사용하지 않는다.
+    val checkedAt: Long? = null,
+    val revision: Long,
+    val listCheckedAt: Long? = null,
+    val observedAt: Long? = null,
+) {
+    fun fullListCheckedAt(): Long? = if (complete) listCheckedAt ?: checkedAt else null
+}

@@ -35,7 +35,7 @@ class AnalyticsRoomRepositoryTest {
         repository.leaveRoom(7)
         response.complete(listOf(summary()))
         loading.await()
-        assertEquals(RoomMembershipSnapshot("not_joined", 0), cache.current())
+        assertEquals(RoomMembershipSnapshot("not_joined", 0, 0, 0), cache.current())
     }
 
     @Test
