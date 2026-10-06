@@ -17,6 +17,8 @@ interface RoomRepository {
 
     suspend fun joinRoom(roomId: Long): RoomMembershipDetails
 
+    suspend fun updateRoom(roomId: Long, input: RoomUpdateInput): RoomUpdateResult
+
     suspend fun deleteRoom(roomId: Long)
 
     suspend fun leaveRoom(roomId: Long)

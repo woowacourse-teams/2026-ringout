@@ -18,16 +18,24 @@ import com.joon.ringout.domain.room.RoomManagementMember
 import com.joon.ringout.domain.room.RoomRepository
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomSummary
+import com.joon.ringout.domain.room.RoomUpdateInput
+import com.joon.ringout.domain.room.RoomUpdateResult
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.decodeFromString
@@ -228,6 +236,64 @@ class DefaultRoomRepository(
         }
     }
 
+    override suspend fun updateRoom(roomId: Long, input: RoomUpdateInput): RoomUpdateResult {
+        if (roomId <= 0L) {
+            throw RoomRepositoryException(
+                statusCode = HttpStatusCode.BadRequest.value,
+                code = "COMMON400",
+                message = "모임 ID를 확인해 주세요.",
+            )
+        }
+        if (!input.hasChanges) {
+            throw RoomRepositoryException(
+                statusCode = HttpStatusCode.BadRequest.value,
+                code = "ROOM400",
+                message = "수정할 내용을 입력해 주세요.",
+            )
+        }
+        ensurePostAuthenticated()
+        val requestIdentity = checkNotNull(authSession.identity.value) {
+            "로그인이 필요한 기능이에요."
+        }
+        try {
+            val response = authenticatedRequests.execute { accessToken ->
+                check(authSession.identity.value === requestIdentity) { "로그인 상태가 바뀌었어요." }
+                val multipart = input.toMultipartContent()
+                httpClient.patch(ApiConfig.url("/api/v1/rooms/$roomId")) {
+                    bearerAuth(accessToken)
+                    contentType(multipart.contentType)
+                    setBody(multipart)
+                }
+            }
+            check(authSession.state.value == AuthSessionState.Authenticated && authSession.identity.value === requestIdentity) {
+                "로그인 상태가 바뀌었어요."
+            }
+            val body = response.decodeOrThrow<JsonElement>()
+            if (!body.isSuccess) {
+                throw RoomRepositoryException(
+                    statusCode = response.status.value,
+                    code = body.code,
+                    message = body.message,
+                )
+            }
+            if (response.status != HttpStatusCode.OK || body.code != "ROOM200") {
+                throw RoomRepositoryException(
+                    statusCode = response.status.value,
+                    code = body.code,
+                    message = body.message.ifBlank { "모임 수정 응답이 올바르지 않아요." },
+                )
+            }
+            val result = checkNotNull(body.result) { "모임 수정 응답이 비어 있어요." }
+            val updated = ApiJson.decodeFromJsonElement<RoomUpdateResponseEntity>(result).toDomain()
+            check(updated.roomId == roomId) { "수정한 모임 ID가 요청과 달라요." }
+            return updated
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: ApiException) {
+            throw error.toRoomRepositoryException()
+        }
+    }
+
 
     override suspend fun deleteRoom(roomId: Long) {
         performRoomDeleteAction(roomId, path = "/api/v1/rooms/$roomId")
@@ -292,6 +358,18 @@ class DefaultRoomRepository(
         }
     }
 }
+
+private fun RoomUpdateInput.toMultipartContent(): MultiPartFormDataContent = MultiPartFormDataContent(formData {
+    name?.let { append("name", it) }
+    description?.let { append("description", it) }
+    append("removeImage", removeImage.toString())
+    image?.let { upload ->
+        append("image", upload.bytes, Headers.build {
+            append(HttpHeaders.ContentType, upload.contentType)
+            append(HttpHeaders.ContentDisposition, "filename=\"${upload.fileName}\"")
+        })
+    }
+})
 
 private const val RoomUnauthorizedCode = "ROOM401"
 
