@@ -1,7 +1,6 @@
 package com.joon.ringout.presentation.mypage.component
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,21 +28,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
-import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.mypage_logged_in_profile
 
 @Composable
 fun MyPageLoggedInAccountStatus(
     nickname: String,
     email: String,
-    onEditClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onEditClick: (() -> Unit)? = null,
+    profileImageUrl: String? = null,
 ) {
     val colors = myPageColors()
+    val defaultProfile = painterResource(MyPageDefaultProfileImageResource)
 
     Row(
         modifier = modifier
@@ -54,15 +53,26 @@ fun MyPageLoggedInAccountStatus(
         Box(
             modifier = Modifier
                 .size(LoggedInProfileImageSize)
-                .clip(CircleShape)
-                .background(MaterialTheme.ringoutColors.profileIconLoggedInBackground),
+                .clip(CircleShape),
         ) {
-            Image(
-                painter = painterResource(Res.drawable.mypage_logged_in_profile),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (profileImageUrl.isNullOrBlank()) {
+                Image(
+                    painter = defaultProfile,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                AsyncImage(
+                    model = profileImageUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    placeholder = defaultProfile,
+                    error = defaultProfile,
+                    fallback = defaultProfile,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
         Spacer(Modifier.width(LoggedInProfileTextSpacing))
         Column(
@@ -95,23 +105,25 @@ fun MyPageLoggedInAccountStatus(
                 ),
             )
         }
-        Box(
-            modifier = Modifier
-                .size(LoggedInEditTouchTargetSize)
-                .offset(x = LoggedInEditTouchTargetOffset)
-                .clickable(
-                    role = Role.Button,
-                    onClickLabel = "프로필 수정",
-                    onClick = onEditClick,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                painter = painterResource(MyPageEditProfileIconResource),
-                contentDescription = null,
-                modifier = Modifier.size(LoggedInEditIconSize),
-                colorFilter = ColorFilter.tint(colors.primaryText),
-            )
+        if (onEditClick != null) {
+            Box(
+                modifier = Modifier
+                    .size(LoggedInEditTouchTargetSize)
+                    .offset(x = LoggedInEditTouchTargetOffset)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "프로필 수정",
+                        onClick = onEditClick,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(MyPageEditProfileIconResource),
+                    contentDescription = null,
+                    modifier = Modifier.size(LoggedInEditIconSize),
+                    colorFilter = ColorFilter.tint(colors.primaryText),
+                )
+            }
         }
     }
 }

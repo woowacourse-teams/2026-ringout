@@ -16,6 +16,10 @@ import zipfile
 
 CLIENT_ROOT = Path(__file__).resolve().parents[1]
 APPLICATION_ID = "com.joon.ringout"
+FIREBASE_PROJECT_BY_REF = {
+    "refs/heads/develop": "ringout-8abf2",
+    "refs/heads/main": "ringout-prod",
+}
 MAX_VERSION_CODE = 2_100_000_000
 R8_FILES = ("mapping.txt", "configuration.txt", "seeds.txt", "usage.txt", "resources.txt")
 SIGNING_SECRETS = (
@@ -66,7 +70,8 @@ def validate_pr_route(event):
 
 def is_client_path(path):
     return path.startswith(b"client/") or path in (
-        b".github/workflows/client-ci.yml", b".github/workflows/build-release-aab.yml",
+        b".github/workflows/android-ci.yml", b".github/workflows/build-release-aab.yml",
+        b".github/workflows/android-internal-cd.yml", b".github/workflows/android-production-cd.yml",
     ) or path.startswith(b".github/actions/")
 
 
@@ -102,24 +107,12 @@ def check_gate(changes_result, client_changed, quality_result):
     raise CIError("필요한 클라이언트 검증이 성공하지 않았습니다.")
 
 
-def version_code(base, run_number):
-    if not re.fullmatch(r"[0-9]+", base) or not re.fullmatch(r"[0-9]+", run_number):
-        raise CIError("APP_VERSION_CODE_BASE와 GITHUB_RUN_NUMBER는 정수여야 합니다.")
-    value = int(base) + int(run_number)
-    if int(run_number) < 1 or not 1 <= value <= MAX_VERSION_CODE:
-        raise CIError("versionCode는 1~2100000000 범위여야 합니다.")
-    return value
-
-
 def select_build():
     branch = require_env("GITHUB_REF")
-    if branch not in ("refs/heads/develop", "refs/heads/main"):
-        raise CIError("서명 AAB는 develop 또는 main에서만 생성할 수 있습니다.")
-    code = version_code(require_env("APP_VERSION_CODE_BASE"), require_env("GITHUB_RUN_NUMBER"))
+    expected_firebase_project(branch)
     channel = "internal" if branch == "refs/heads/develop" else "release"
-    for key, value in (("APP_VERSION_CODE", code), ("AAB_CHANNEL", channel)):
-        github_value("GITHUB_ENV", key, value)
-    print(f"AAB 채널: {channel}, versionCode: {code}")
+    github_value("GITHUB_ENV", "AAB_CHANNEL", channel)
+    print(f"AAB 채널: {channel}")
 
 
 def decode_secret(name):
@@ -132,7 +125,15 @@ def decode_secret(name):
     return value
 
 
-def validate_google_services(data):
+def expected_firebase_project(branch=None):
+    branch = branch or require_env("GITHUB_REF")
+    try:
+        return FIREBASE_PROJECT_BY_REF[branch]
+    except KeyError:
+        raise CIError("서명 AAB는 develop 또는 main에서만 생성할 수 있습니다.") from None
+
+
+def validate_google_services(data, expected_project_id=None):
     try:
         document = json.loads(data)
         project = document["project_info"]
@@ -147,6 +148,13 @@ def validate_google_services(data):
             raise ValueError()
     except (ValueError, KeyError, TypeError, IndexError):
         raise CIError("Firebase 설정이 유효하지 않거나 검증용 파일입니다. com.joon.ringout 설정을 확인하세요.") from None
+    if expected_project_id is not None and project["project_id"] != expected_project_id:
+        raise CIError(f"Firebase 프로젝트가 브랜치와 일치하지 않습니다. 예상: {expected_project_id}")
+    return {
+        "project_id": project["project_id"],
+        "google_app_id": client["client_info"]["mobilesdk_app_id"],
+        "project_number": str(project["project_number"]),
+    }
 
 
 def expected_certificate(root=CLIENT_ROOT):
@@ -170,7 +178,7 @@ def prepare_signing():
             raise CIError(f"배포용 빌드에는 실제 설정이 필요합니다: {name}")
     keystore = decode_secret("ANDROID_KEYSTORE_BASE64")
     google_services = decode_secret("GOOGLE_SERVICES_JSON_BASE64")
-    validate_google_services(google_services)
+    validate_google_services(google_services, expected_firebase_project())
     directory = signing_directory()
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     key_path = directory / "upload.jks"
@@ -237,6 +245,21 @@ def verify_ci_configuration(root=CLIENT_ROOT):
         raise CIError("PR 빌드에 Firebase 검증용 설정이 적용되지 않았습니다.")
 
 
+def verify_release_firebase_configuration(root=CLIENT_ROOT, config_path=None):
+    config_path = Path(config_path) if config_path else Path(require_env("GOOGLE_SERVICES_JSON_PATH"))
+    expected = validate_google_services(config_path.read_bytes(), expected_firebase_project())
+    path = root / "androidApp/build/generated/res/processReleaseGoogleServices/values/values.xml"
+    values = {entry.get("name"): entry.text for entry in ET.parse(path).getroot()}
+    for resource, expected_value in (
+        ("project_id", expected["project_id"]),
+        ("google_app_id", expected["google_app_id"]),
+        ("gcm_defaultSenderId", expected["project_number"]),
+    ):
+        if values.get(resource) != expected_value:
+            raise CIError(f"빌드된 Firebase 설정이 브랜치와 일치하지 않습니다: {resource}")
+    return expected["project_id"]
+
+
 def verify_signature(aab, keystore, alias, expected):
     # The upload keystore is the explicit trust anchor, including self-signed upload keys.
     # -strict and the alias reject unsigned entries and entries signed by other keys.
@@ -253,6 +276,15 @@ def verify_signature(aab, keystore, alias, expected):
         raise CIError("AAB 서명 인증서가 승인된 업로드 인증서와 다릅니다.")
 
 
+def declared_android_version(root=CLIENT_ROOT):
+    build_script = (root / "androidApp/build.gradle.kts").read_text(encoding="utf-8")
+    code = re.findall(r'^\s*versionCode\s*=\s*([0-9]+)\s*$', build_script, re.M)
+    name = re.findall(r'^\s*versionName\s*=\s*"([^"\n]+)"\s*$', build_script, re.M)
+    if len(code) != 1 or len(name) != 1 or not 1 <= int(code[0]) <= MAX_VERSION_CODE:
+        raise CIError("androidApp/build.gradle.kts의 versionCode·versionName을 확인할 수 없습니다.")
+    return code[0], name[0]
+
+
 def release_metadata(root=CLIENT_ROOT):
     manifests = list((root / "androidApp/build/intermediates/merged_manifests/release").glob("*/AndroidManifest.xml"))
     if len(manifests) != 1:
@@ -261,8 +293,9 @@ def release_metadata(root=CLIENT_ROOT):
     android = "{http://schemas.android.com/apk/res/android}"
     if manifest.get("package") != APPLICATION_ID:
         raise CIError("빌드한 앱의 applicationId가 다릅니다.")
-    if manifest.get(android + "versionCode") != require_env("APP_VERSION_CODE"):
-        raise CIError("빌드한 앱의 versionCode가 CI 발급값과 다릅니다.")
+    code, name = declared_android_version(root)
+    if manifest.get(android + "versionCode") != code or manifest.get(android + "versionName") != name:
+        raise CIError("빌드한 앱의 버전이 androidApp/build.gradle.kts 설정과 다릅니다.")
     return {
         "applicationId": APPLICATION_ID,
         "versionCode": int(manifest.get(android + "versionCode")),
@@ -278,9 +311,14 @@ def release_metadata(root=CLIENT_ROOT):
 def package_aab():
     aab = find_aab()
     r8 = verify_r8()
+    firebase_project_id = verify_release_firebase_configuration()
     cert = expected_certificate()
     verify_signature(aab, require_env("ANDROID_KEYSTORE_PATH"), require_env("ANDROID_KEY_ALIAS"), cert)
     metadata = release_metadata()
+    if require_env("GITHUB_REF") == "refs/heads/main":
+        from api_config import verify_generated
+        metadata["apiBaseUrl"] = verify_generated(CLIENT_ROOT, production=True)
+    metadata["firebaseProjectId"] = firebase_project_id
     artifact = (f"ringout-{metadata['channel']}-aab-{metadata['versionCode']}-"
                 f"{metadata['commit'][:12]}-attempt{metadata['runAttempt']}")
     destination = CLIENT_ROOT / "build/ci/artifacts"
@@ -301,14 +339,14 @@ def package_aab():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("changes", "gate", "version", "prepare-signing", "verify-r8", "verify-unsigned", "package", "cleanup"))
+    parser.add_argument("command", choices=("changes", "gate", "channel", "prepare-signing", "verify-r8", "verify-unsigned", "package", "cleanup"))
     command = parser.parse_args().command
     if command == "changes":
         detect_changes()
     elif command == "gate":
         check_gate(require_env("CHANGES_RESULT"), require_env("CLIENT_CHANGED"), require_env("QUALITY_RESULT"))
-        print("Client CI 검증을 통과했습니다.")
-    elif command == "version":
+        print("Android CI 검증을 통과했습니다.")
+    elif command == "channel":
         select_build()
     elif command == "prepare-signing":
         prepare_signing()

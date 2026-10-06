@@ -58,6 +58,7 @@ internal fun AlarmScheduleRequest.toAlarmWithRepeatDays(
             alarmSoundName = alarmSoundName,
             alarmSoundUri = alarmSoundUri,
             enabled = enabled,
+            scheduleVersion = scheduleVersion,
         ),
         repeatDays = repeatDays,
     )
@@ -94,6 +95,7 @@ internal fun AlarmWithRepeatDays.toSavedAlarmSchedule(): SavedAlarmSchedule {
         targetDistanceKm = alarm.targetDistanceKm,
         alarmSoundName = alarm.alarmSoundName,
         alarmSoundUri = alarm.alarmSoundUri,
+        scheduleVersion = alarm.scheduleVersion,
     ).validateForStorage()
 
     return SavedAlarmSchedule(

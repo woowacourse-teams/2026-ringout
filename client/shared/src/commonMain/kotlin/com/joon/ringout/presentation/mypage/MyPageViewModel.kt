@@ -9,6 +9,7 @@ import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.StampMonthChangeDirection
 import com.joon.ringout.domain.auth.AuthRepository
+import com.joon.ringout.domain.member.MemberProfile
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
@@ -30,7 +31,11 @@ class MyPageViewModel(
     coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
     var uiState by mutableStateOf(
-        MyPageUiState(selectedMonth = MyPageCalendarMonth(initialMonth)),
+        MyPageUiState(
+            selectedMonth = MyPageCalendarMonth(initialMonth),
+            accountStatus = memberRepository.getCachedProfile()?.toAccountStatus() ?: MyPageAccountStatus.Loading,
+            profileImageUrl = memberRepository.getCachedProfileImage()?.url,
+        ),
     )
         private set
 
@@ -39,6 +44,8 @@ class MyPageViewModel(
     private var calendarRequestId = 0L
     private var profileLoadJob: Job? = null
     private var profileRequestId = 0L
+    private var profileImageLoadJob: Job? = null
+    private var profileImageRequestId = 0L
     private var accountActionJob: Job? = null
     private var accountActionRequestId = 0L
     private var nextAccountActionEventId = 0L
@@ -79,21 +86,36 @@ class MyPageViewModel(
 
     fun onSessionRestoring() {
         cancelProfileLoad()
-        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading)
+        cancelProfileImageLoad()
+        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading, profileImageUrl = null)
     }
 
     fun onAuthenticated() {
         loadProfile()
+        loadProfileImage()
     }
 
     fun onLoggedOut() {
         cancelProfileLoad()
-        uiState = uiState.copy(accountStatus = MyPageAccountStatus.LoggedOut)
+        cancelProfileImageLoad()
+        uiState = uiState.copy(accountStatus = MyPageAccountStatus.LoggedOut, profileImageUrl = null)
     }
 
     fun retryAccount() {
         if (uiState.accountStatus != MyPageAccountStatus.Error) return
         loadProfile()
+        loadProfileImage()
+    }
+
+    fun refreshProfileFromCache() {
+        memberRepository.getCachedProfile()?.let { profile ->
+            cancelProfileLoad()
+            uiState = uiState.copy(accountStatus = profile.toAccountStatus())
+        }
+        memberRepository.getCachedProfileImage()?.let { image ->
+            cancelProfileImageLoad()
+            uiState = uiState.copy(profileImageUrl = image.url)
+        }
     }
 
     fun onNicknameUpdated(nickname: String) {
@@ -196,6 +218,11 @@ class MyPageViewModel(
     }
 
     private fun loadProfile() {
+        memberRepository.getCachedProfile()?.let { profile ->
+            cancelProfileLoad()
+            uiState = uiState.copy(accountStatus = profile.toAccountStatus())
+            return
+        }
         profileLoadJob?.cancel()
         val currentRequestId = ++profileRequestId
         uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading)
@@ -204,10 +231,7 @@ class MyPageViewModel(
                 val profile = memberRepository.getProfile()
                 if (currentRequestId != profileRequestId) return@launch
                 uiState = uiState.copy(
-                    accountStatus = MyPageAccountStatus.LoggedIn(
-                        nickname = profile.nickname,
-                        email = profile.email?.takeIf { it.isNotBlank() } ?: MissingEmailMessage,
-                    ),
+                    accountStatus = profile.toAccountStatus(),
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -217,6 +241,36 @@ class MyPageViewModel(
                 }
             }
         }
+    }
+
+    private fun loadProfileImage() {
+        cancelProfileImageLoad()
+        val cachedImage = memberRepository.getCachedProfileImage()
+        uiState = uiState.copy(profileImageUrl = cachedImage?.url)
+        if (cachedImage != null) return
+
+        val requestId = profileImageRequestId
+        profileImageLoadJob = scope.launch {
+            try {
+                val image = memberRepository.getProfileImage()
+                if (requestId == profileImageRequestId) {
+                    uiState = uiState.copy(profileImageUrl = image.url)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // 사진 조회 실패는 계정 정보 표시를 막지 않는다. 다음 진입에서 다시 조회한다.
+                if (requestId == profileImageRequestId) {
+                    uiState = uiState.copy(profileImageUrl = null)
+                }
+            }
+        }
+    }
+
+    private fun cancelProfileImageLoad() {
+        profileImageRequestId++
+        profileImageLoadJob?.cancel()
+        profileImageLoadJob = null
     }
 
     private fun cancelProfileLoad() {
@@ -313,3 +367,8 @@ private val MyPageAccountAction.defaultErrorMessage: String
     }
 
 private const val MissingEmailMessage = "이메일 정보 없음"
+
+private fun MemberProfile.toAccountStatus() = MyPageAccountStatus.LoggedIn(
+    nickname = nickname,
+    email = email?.takeIf { it.isNotBlank() } ?: MissingEmailMessage,
+)

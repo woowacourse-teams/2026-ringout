@@ -4,35 +4,46 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.dto.request.UpdateNicknameRequest;
 import com.ringout.api.user.dto.response.UpdateNicknameResponse;
 import com.ringout.api.user.dto.response.UserResponse;
 import com.ringout.api.user.repository.UserRepository;
+import com.ringout.api.user.repository.UserWithdrawalRepository;
 import com.ringout.api.user.status.UserErrorStatus;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
-
+    // TODO: 테스트 실패 방지를 위해 임의로 imageFileService를 추가했습니다. 추후 담당자가 확인 후 수정해주세요.
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private UserWithdrawalRepository userWithdrawalRepository;
+
+    @Mock
+    private ImageFileService imageFileService;
 
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository);
+        userService = new UserService(userRepository, userWithdrawalRepository, imageFileService);
     }
 
     @Test
@@ -133,21 +144,45 @@ class UserServiceTest {
             "user@example.com",
             LocalDateTime.now()
         );
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        ReflectionTestUtils.setField(user, "id", userId);
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.of(user));
+        when(userWithdrawalRepository.findOwnedImageFileIds(userId)).thenReturn(List.of(10L));
+        when(userWithdrawalRepository.findOrphanedImageFileIds(List.of(10L)))
+            .thenReturn(List.of(10L));
 
         userService.withdraw(userId);
 
-        verify(userRepository).delete(user);
+        verify(userWithdrawalRepository).deleteAllByUserId(userId);
+        verify(imageFileService).deleteAllByIds(List.of(10L));
     }
 
     @Test
     void 존재하지_않는_회원은_탈퇴할_수_없다() {
         Long userId = 1L;
-        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        when(userRepository.findByIdForUpdate(userId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> userService.withdraw(userId))
             .isInstanceOf(GeneralException.class)
             .extracting("code")
             .isEqualTo(UserErrorStatus.USER_NOT_FOUND);
+    }
+
+    @Test
+    void 인증된_회원과_조회된_회원이_다르면_탈퇴할_수_없다() {
+        Long authenticatedUserId = 1L;
+        User otherUser = User.register(
+            SocialProvider.KAKAO,
+            "other-provider-id",
+            "other@example.com",
+            LocalDateTime.now()
+        );
+        ReflectionTestUtils.setField(otherUser, "id", 2L);
+        when(userRepository.findByIdForUpdate(authenticatedUserId)).thenReturn(Optional.of(otherUser));
+
+        assertThatThrownBy(() -> userService.withdraw(authenticatedUserId))
+            .isInstanceOf(GeneralException.class)
+            .extracting("code")
+            .isEqualTo(UserErrorStatus.USER_NOT_FOUND);
+        verifyNoInteractions(userWithdrawalRepository, imageFileService);
     }
 }

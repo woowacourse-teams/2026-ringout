@@ -21,34 +21,64 @@ import ringout.shared.generated.resources.pretendard_medium
 import ringout.shared.generated.resources.pretendard_thin
 
 private val RingoutOrange = Color(0xFFFF6D2E)
-private val RingoutLightBackground = Color(0xFFF5F5F5)
 private val RingoutLightContent = Color(0xFF111827)
 
 internal val LocalRingoutThemeMode = staticCompositionLocalOf { ThemeMode.Dark }
 
 @Immutable
 data class RingoutExtendedColors(
+    val dialog: RingoutDialogColors,
+    val navigationInactiveContent: Color,
     val primaryActionContent: Color,
     val onboardingDescriptionContent: Color,
     val elevatedSurface: Color,
     val profileIconLoggedInBackground: Color,
     val profileIconLoggedOutBackground: Color,
+    val roomCardBackground: Color,
+)
+
+@Immutable
+data class RingoutDialogColors(
+    val surface: Color,
+    val title: Color,
+    val description: Color,
+    val cancel: Color,
+    val actionContent: Color,
+    val shadow: Color,
+    val actionShadow: Color,
+)
+
+// 확인 다이얼로그는 앱 테마와 관계없이 밝은 표면을 사용한다.
+private val RingoutConfirmationDialogColors = RingoutDialogColors(
+    surface = Color.White,
+    title = Color(0xFF1F2937),
+    description = Color(0xFF6B7280),
+    cancel = Color(0xFF808080),
+    actionContent = Color.White,
+    shadow = Color(0x21000000),
+    actionShadow = Color(0x404338CA),
 )
 
 private val RingoutLightExtendedColors = RingoutExtendedColors(
+    navigationInactiveContent = Color(0xFF6B7280),
+    dialog = RingoutConfirmationDialogColors,
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.Black,
     elevatedSurface = Color(0xFFF5F5F6),
     profileIconLoggedInBackground = Color(0xFFF95E25),
     profileIconLoggedOutBackground = Color(0xFF888787),
+    roomCardBackground = Color(0xFFF5F5F6),
 )
 
 private val RingoutDarkExtendedColors = RingoutExtendedColors(
+    navigationInactiveContent = Color(0xFFA7A9B0),
+    dialog = RingoutConfirmationDialogColors,
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.White,
     elevatedSurface = Color(0xFF22242A),
     profileIconLoggedInBackground = Color(0xFFF95E25),
     profileIconLoggedOutBackground = Color(0xFF888787),
+    roomCardBackground = Color(0xFF171717)
 )
 
 private val LocalRingoutExtendedColors = staticCompositionLocalOf {
@@ -68,7 +98,7 @@ private val RingoutLightColorScheme = lightColorScheme(
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFE0E7E0),
     onSecondaryContainer = Color(0xFF191D19),
-    background = RingoutLightBackground,
+    background = Color.White,
     onBackground = RingoutLightContent,
     surface = Color.White,
     onSurface = RingoutLightContent,

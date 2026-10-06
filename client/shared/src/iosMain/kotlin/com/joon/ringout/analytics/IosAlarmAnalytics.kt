@@ -3,6 +3,8 @@ package com.joon.ringout.analytics
 import com.joon.ringout.platform.IosAnalyticsEventDto
 import com.joon.ringout.platform.IosAnalyticsParameterDto
 import com.joon.ringout.platform.IosAnalyticsTracker
+import com.joon.ringout.alarm.AlarmScheduleRequest
+import platform.Foundation.NSLock
 import platform.Foundation.NSUserDefaults
 import kotlin.time.Clock
 
@@ -21,25 +23,53 @@ internal class IosAlarmAnalytics(
     private val tracker: IosAnalyticsTracker,
     private val usageStore: IosAnalyticsUsageStore = IosAnalyticsUsageStore(),
     private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val roomMembership: RoomMembershipAnalytics? = null,
 ) : IosAlarmAnalyticsRecorder {
     private val forceEndHoldAttempts = mutableMapOf<String, Int>()
 
     fun recordAlarmCreated(
-        alarmId: String,
-        repeatEnabled: Boolean,
-        repeatDayCount: Int,
+        request: AlarmScheduleRequest,
+        context: AlarmSettingsAnalyticsContext,
+    ) = recordAlarmSave(
+        name = DestinationAlarmCreated,
+        request = request,
+        context = context,
+        claimCreationIndex = { usageStore.claimAlarmCreation(request.id) },
+    )
+
+    fun recordAlarmUpdated(
+        request: AlarmScheduleRequest,
+        context: AlarmSettingsAnalyticsContext,
+    ) = recordAlarmSave(
+        name = DestinationAlarmUpdated,
+        request = request,
+        context = context,
+        claimCreationIndex = null,
+    )
+
+    private fun recordAlarmSave(
+        name: String,
+        request: AlarmScheduleRequest,
+        context: AlarmSettingsAnalyticsContext,
+        claimCreationIndex: (() -> Long?)?,
     ) = safelyRecord {
-        val creationIndex = usageStore.claimAlarmCreation(alarmId) ?: return@safelyRecord
-        val normalizedRepeatDayCount = if (repeatEnabled) repeatDayCount.coerceIn(0, 7) else 0
+        val payload = normalizeAlarmSettingsAnalytics(request, context)
+            ?: return@safelyRecord
+        val creationIndex = claimCreationIndex?.invoke()
+        if (claimCreationIndex != null && creationIndex == null) return@safelyRecord
         tracker.log(
             analyticsEvent(
-                name = DestinationAlarmCreated,
-                numberParameters = mapOf(
-                    CreationIndex to creationIndex,
-                    RepeatDayCount to normalizedRepeatDayCount.toLong(),
-                ),
+                name = name,
+                numberParameters = buildMap {
+                    creationIndex?.let { put(CreationIndex, it) }
+                    put(SettingsSchemaVersion, SettingsSchemaVersionValue)
+                    put(LimitMinutes, payload.limitMinutes.toLong())
+                    put(RepeatDayCount, payload.repeatDayCount.toLong())
+                },
                 textParameters = mapOf(
-                    ScheduleType to if (normalizedRepeatDayCount > 0) Weekly else Once,
+                    ScheduleType to payload.scheduleType.wireName,
+                    AlarmTime to payload.alarmTime,
+                    RepeatDays to payload.repeatDays,
                 ),
             ),
         )
@@ -59,11 +89,15 @@ internal class IosAlarmAnalytics(
         occurrenceId: String,
         retryAttempt: Int,
     ) = safelyRecord {
+        val existingUse = usageStore.findUseIndex(occurrenceId)
         val useIndex = usageStore.getOrCreateUseIndex(occurrenceId) ?: return@safelyRecord
+        val roomSnapshot = roomMembership?.startMission(useIndex, existingUse == null && retryAttempt == 0)
+            ?: RoomMembershipSnapshot()
         if (!usageStore.claimEvent(DestinationMissionStarted, occurrenceId)) return@safelyRecord
         tracker.log(
             analyticsEvent(
                 name = DestinationMissionStarted,
+                roomSnapshot = roomSnapshot,
                 numberParameters = mapOf(
                     UseIndex to useIndex,
                     RetryAttempt to retryAttempt.coerceAtLeast(0).toLong(),
@@ -196,6 +230,7 @@ internal class IosAlarmAnalytics(
         val useIndex = usageStore.findUseIndex(occurrenceId) ?: return@safelyRecord
         if (!usageStore.claimEvent(name, occurrenceId)) return@safelyRecord
         val elapsedMillis = (nowEpochMillis() - startedAtEpochMillis).coerceAtLeast(0L)
+        val roomSnapshot = roomMembership?.mission(useIndex) ?: RoomMembershipSnapshot()
         tracker.log(
             analyticsEvent(
                 name = name,
@@ -204,6 +239,7 @@ internal class IosAlarmAnalytics(
                     RetryAttempt to retryAttempt.coerceAtLeast(0).toLong(),
                 ),
                 textParameters = mapOf(ElapsedBucket to elapsedBucket(elapsedMillis)),
+                roomSnapshot = roomSnapshot,
             ),
         )
     }
@@ -216,6 +252,16 @@ internal class IosAlarmAnalytics(
 internal class IosAnalyticsUsageStore(
     private val preferences: NSUserDefaults = NSUserDefaults.standardUserDefaults,
 ) : ProductAnalyticsUsageStore {
+    override fun claimOnboardingEvent(eventName: AnalyticsEventName): Boolean {
+        require(eventName == AnalyticsEventName.TutorialBegin || eventName == AnalyticsEventName.TutorialComplete)
+        OnboardingClaimLock.lock()
+        return try {
+            claimEvent(eventName.wireName, "first_alarm")
+        } finally {
+            OnboardingClaimLock.unlock()
+        }
+    }
+
     fun claimAlarmCreation(alarmId: String): Long? {
         val claimedKey = key("created", alarmId)
         if (preferences.objectForKey(claimedKey) != null) return null
@@ -272,9 +318,16 @@ private fun analyticsEvent(
     name: String,
     numberParameters: Map<String, Long> = emptyMap(),
     textParameters: Map<String, String> = emptyMap(),
+    roomSnapshot: RoomMembershipSnapshot? = null,
 ): IosAnalyticsEventDto = IosAnalyticsEventDto(
     name = name,
     parameters = buildList {
+        roomSnapshot?.parameters()?.forEach { (name, value) ->
+            add(when (value) {
+                is AnalyticsParameterValue.Text -> IosAnalyticsParameterDto(name = name.wireName, textValue = value.value)
+                is AnalyticsParameterValue.Number -> IosAnalyticsParameterDto(name = name.wireName, numberValue = value.value)
+            })
+        }
         numberParameters.forEach { (parameterName, value) ->
             add(IosAnalyticsParameterDto(name = parameterName, numberValue = value))
         }
@@ -295,6 +348,7 @@ private fun elapsedBucket(elapsedMillis: Long): String = when {
 }
 
 private const val DestinationAlarmCreated = "destination_alarm_created"
+private const val DestinationAlarmUpdated = "destination_alarm_updated"
 private const val DestinationAlarmRingingStarted = "destination_alarm_ringing_started"
 private const val DestinationMissionStarted = "destination_mission_started"
 private const val DestinationMissionCompleted = "destination_mission_completed"
@@ -305,6 +359,10 @@ private const val ForceEndHoldCancelled = "force_end_hold_cancelled"
 private const val ForceEndHoldCompleted = "force_end_hold_completed"
 
 private const val CreationIndex = "creation_index"
+private const val SettingsSchemaVersion = "settings_schema_version"
+private const val LimitMinutes = "limit_minutes"
+private const val AlarmTime = "alarm_time"
+private const val RepeatDays = "repeat_days"
 private const val UseIndex = "use_index"
 private const val RetryAttempt = "retry_attempt"
 private const val ScheduleType = "schedule_type"
@@ -314,3 +372,6 @@ private const val HoldDurationMillis = "hold_duration_ms"
 
 private const val Once = "once"
 private const val Weekly = "weekly"
+private const val SettingsSchemaVersionValue = 2L
+
+private val OnboardingClaimLock = NSLock()

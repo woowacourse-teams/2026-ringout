@@ -5,7 +5,7 @@ import androidx.navigation3.runtime.serialization.NavBackStackSerializer
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsTracker
 import com.joon.ringout.analytics.DefaultProductAnalyticsRecorder
-import com.joon.ringout.analytics.ProductAnalyticsUsageStore
+import com.joon.ringout.analytics.InMemoryProductAnalyticsUsageStore
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.AuthTerm
@@ -35,6 +35,115 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthNavigationTest {
+    @Test
+    fun `소셜에서 로그인한 기존 회원은 인증 완료 후 소셜로 돌아온다`() = runTest {
+        val fixture = AuthNavigationFixture(backgroundScope)
+        fixture.state.navigate(AppRoute.Social)
+        fixture.state.navigate(AppRoute.Login)
+        fixture.login.beginGoogleSignIn()
+        fixture.login.handleGoogleAccessTokenResult(GoogleAccessTokenResult.Success("access-token"))
+        runCurrent()
+
+        assertTrue(fixture.navigation.onAuthenticated(AppRoute.Login))
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), fixture.state.backStack.toList())
+        assertFalse(fixture.signup.uiState.hasPendingSignup)
+    }
+
+    @Test
+    fun `소셜에서 시작한 회원가입 완료 후 소셜로 돌아온다`() = runTest {
+        val fixture = AuthNavigationFixture(backgroundScope)
+        fixture.state.navigate(AppRoute.Social)
+        fixture.state.navigate(AppRoute.Login)
+        fixture.authRepository.loginOutcome = SocialLoginOutcome.SignupRequired("signup-token")
+        fixture.login.beginGoogleSignIn()
+        fixture.login.handleGoogleAccessTokenResult(GoogleAccessTokenResult.Success("access-token"))
+        runCurrent()
+        val completion = assertIs<LoginCompletion.SignupRequired>(fixture.login.uiState.completion)
+
+        assertTrue(
+            fixture.navigation.onSignupRequired(
+                displayedRoute = AppRoute.Login,
+                signupToken = completion.signupToken,
+                provider = completion.provider,
+            ),
+        )
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
+        runCurrent()
+
+        assertTrue(fixture.navigation.onSignupCompleted(AppRoute.TermsAgreement))
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), fixture.state.backStack.toList())
+    }
+
+    @Test
+    fun `모임 상세에서 로그인 완료 후 같은 모임 소개 화면으로 돌아온다`() = runTest {
+        val fixture = AuthNavigationFixture(backgroundScope)
+        val roomDetail = AppRoute.RoomDetail("room-42")
+        fixture.state.navigate(roomDetail)
+        fixture.state.navigate(AppRoute.Login)
+        fixture.login.beginGoogleSignIn()
+        fixture.login.handleGoogleAccessTokenResult(GoogleAccessTokenResult.Success("access-token"))
+        runCurrent()
+
+        assertTrue(fixture.navigation.onAuthenticated(AppRoute.Login))
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social, roomDetail), fixture.state.backStack.toList())
+        assertFalse(fixture.signup.uiState.hasPendingSignup)
+    }
+
+    @Test
+    fun `모임 상세에서 시작한 회원가입 완료 후 같은 모임 소개 화면으로 돌아온다`() = runTest {
+        val fixture = AuthNavigationFixture(backgroundScope)
+        val roomDetail = AppRoute.RoomDetail("room-42")
+        fixture.state.navigate(roomDetail)
+        fixture.state.navigate(AppRoute.Login)
+        fixture.authRepository.loginOutcome = SocialLoginOutcome.SignupRequired("signup-token")
+        fixture.login.beginGoogleSignIn()
+        fixture.login.handleGoogleAccessTokenResult(GoogleAccessTokenResult.Success("access-token"))
+        runCurrent()
+        val completion = assertIs<LoginCompletion.SignupRequired>(fixture.login.uiState.completion)
+
+        assertTrue(
+            fixture.navigation.onSignupRequired(
+                AppRoute.Login,
+                completion.signupToken,
+                completion.provider,
+            ),
+        )
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
+        runCurrent()
+
+        assertTrue(fixture.navigation.onSignupCompleted(AppRoute.TermsAgreement))
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social, roomDetail), fixture.state.backStack.toList())
+    }
+
+    @Test
+    fun `모임 상세에서 약관 가입이 취소되면 로그인과 상세 출처가 유지된다`() = runTest {
+        val fixture = AuthNavigationFixture(backgroundScope)
+        val roomDetail = AppRoute.RoomDetail("room-42")
+        fixture.state.navigate(roomDetail)
+        fixture.state.navigate(AppRoute.Login)
+        fixture.navigation.onSignupRequired(
+            AppRoute.Login,
+            "signup-token",
+            AnalyticsAuthProvider.Google,
+        )
+
+        fixture.navigation.onBack(
+            AppRoute.TermsAgreement,
+            AppRoute.TermsAgreement,
+            AuthSessionState.Unauthenticated,
+        )
+
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, roomDetail, AppRoute.Login),
+            fixture.state.backStack.toList(),
+        )
+        assertFalse(fixture.signup.uiState.hasPendingSignup)
+    }
+
     @Test
     fun `신규 회원은 로그인 결과로 약관에 진입하고 가입 완료 후 홈으로 돌아온다`() = runTest {
         val fixture = AuthNavigationFixture(backgroundScope)
@@ -107,7 +216,7 @@ class AuthNavigationTest {
         assertEquals(AppRoute.MyPage, fixture.state.requestedRoute)
 
         fixture.enterTerms("new-token")
-        fixture.signup.signup(setOf(TermId.Service))
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
         runCurrent()
 
         assertEquals(listOf("new-token"), fixture.authRepository.signupTokens)
@@ -152,7 +261,7 @@ class AuthNavigationTest {
         fixture.enterTerms()
         val signupGate = CompletableDeferred<Unit>()
         fixture.authRepository.signupGate = signupGate
-        fixture.signup.signup(setOf(TermId.Service))
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
         runCurrent()
         assertTrue(fixture.signup.uiState.isSaving)
 
@@ -264,7 +373,7 @@ class AuthNavigationTest {
         assertFalse(
             fixture.navigation.onSignupRequired(AppRoute.Login, "stale-token", completion.provider),
         )
-        fixture.signup.signup(setOf(TermId.Service))
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
         runCurrent()
 
         assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
@@ -275,7 +384,7 @@ class AuthNavigationTest {
     fun `알람에 가린 가입 완료는 유지하고 완료 후 늦은 약관 콜백은 무시한다`() = runTest {
         val fixture = AuthNavigationFixture(backgroundScope)
         fixture.enterTerms()
-        fixture.signup.signup(setOf(TermId.Service))
+        fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
         runCurrent()
         val completedEventId = assertNotNull(fixture.signup.uiState.completedEventId)
 
@@ -353,7 +462,7 @@ private class AuthNavigationFixture(
     val authRepository = NavigationAuthRepository()
     private val analytics = DefaultProductAnalyticsRecorder(
         tracker = AnalyticsTracker {},
-        usageStore = ProductAnalyticsUsageStore { null },
+        usageStore = InMemoryProductAnalyticsUsageStore(),
     )
     val login = LoginViewModel(
         authRepository = authRepository,

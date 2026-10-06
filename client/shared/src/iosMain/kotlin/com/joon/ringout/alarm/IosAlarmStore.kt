@@ -20,30 +20,33 @@ internal class IosAlarmStore(
         IosAlarmStoreMutationMutex.withLock {
             request.validateForStorage()
             val previous = dataSource.getById(request.id)
+            val versionedRequest = request.withScheduleVersion(previous?.request)
             val replacement = SavedAlarmSchedule(
-                request = request,
-                enabled = previous?.enabled ?: true,
+                request = versionedRequest,
+                enabled = true,
             )
-            if (!replacement.enabled) {
-                dataSource.replace(replacement)
-                return@withLock
-            }
 
             ensureAlarmAuthorization()
-            if (previous?.enabled == true) {
-                scheduler.cancelAwait(request.id)
-            }
             try {
-                scheduler.scheduleAwait(request)
+                if (previous?.enabled == true) {
+                    dataSource.replace(previous.copy(enabled = false))
+                    scheduler.cancelAwait(request.id)
+                }
+                scheduler.scheduleAwait(versionedRequest)
             } catch (error: Exception) {
+                withContext(NonCancellable) {
+                    scheduler.cancelBestEffort(request.id)
+                }
                 val restoreFailure = previous?.restoreScheduledFailure()
                 if (restoreFailure != null) {
+                    dataSource.restoreDisabledSnapshotBestEffort(previous, request.id)
                     reconciler?.reconcileBestEffort()
                     throw IllegalStateException(
                         "이전 알람 예약 복구에 실패했습니다. 다음 앱 활성화 시 다시 복구합니다.",
                         error,
                     )
                 }
+                dataSource.restoreSnapshotBestEffort(previous, request.id)
                 throw error
             }
             try {
@@ -51,7 +54,12 @@ internal class IosAlarmStore(
             } catch (error: Exception) {
                 withContext(NonCancellable) {
                     scheduler.cancelBestEffort(request.id)
-                    previous?.restoreScheduledBestEffort()
+                    val restoredSchedule = previous?.restoreScheduledFailure()
+                    if (restoredSchedule == null) {
+                        dataSource.restoreSnapshotBestEffort(previous, request.id)
+                    } else {
+                        dataSource.restoreDisabledSnapshotBestEffort(previous, request.id)
+                    }
                     reconciler?.reconcileBestEffort()
                 }
                 throw error
@@ -145,6 +153,34 @@ internal class IosAlarmStore(
         if (!enabled) return null
         return withContext(NonCancellable) {
             runCatching { scheduler.scheduleAwait(request) }.exceptionOrNull()
+        }
+    }
+
+    private suspend fun AlarmDataSource.restoreSnapshotBestEffort(
+        previous: SavedAlarmSchedule?,
+        alarmId: String,
+    ) {
+        withContext(NonCancellable) {
+            runCatching {
+                if (previous == null) {
+                    delete(alarmId)
+                } else {
+                    replace(previous)
+                }
+            }
+        }
+    }
+
+    private suspend fun AlarmDataSource.restoreDisabledSnapshotBestEffort(
+        previous: SavedAlarmSchedule,
+        alarmId: String,
+    ) {
+        withContext(NonCancellable) {
+            runCatching {
+                replace(previous.copy(enabled = false))
+            }.onFailure {
+                runCatching { setEnabled(alarmId, false) }
+            }
         }
     }
 

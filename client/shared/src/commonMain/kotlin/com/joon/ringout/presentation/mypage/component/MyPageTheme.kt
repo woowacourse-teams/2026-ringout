@@ -15,6 +15,7 @@ internal data class MyPageColors(
     val calendarSurface: Color,
     val calendarBorder: Color,
     val sectionSurface: Color,
+    val accountProfileSurface: Color,
     val toggleTrack: Color,
     val toggleInactiveContent: Color,
 )
@@ -54,6 +55,7 @@ internal fun myPageColors(): MyPageColors =
             calendarSurface = Color(0xFF181A1E),
             calendarBorder = Color(0xFF34363D),
             sectionSurface = Color(0xFF1A1A1A),
+            accountProfileSurface = Color(0xFF22242A),
             toggleTrack = Color(0xFF8C8C8C),
             toggleInactiveContent = Color(0xFFA7A9B0),
         )
@@ -65,6 +67,7 @@ internal fun myPageColors(): MyPageColors =
             calendarSurface = MaterialTheme.colorScheme.surface,
             calendarBorder = MaterialTheme.colorScheme.outline,
             sectionSurface = Color(0xFFF0F0F2),
+            accountProfileSurface = MaterialTheme.colorScheme.surfaceVariant,
             toggleTrack = MaterialTheme.colorScheme.surfaceVariant,
             toggleInactiveContent = MaterialTheme.colorScheme.onSurfaceVariant,
         )

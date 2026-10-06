@@ -22,17 +22,19 @@ fun AppMessageHost(
 ) {
     val messageState = state ?: return
 
-    AlertDialog(
-        modifier = modifier,
-        onDismissRequest = onDismiss,
-        title = { Text(messageState.title) },
-        text = { Text(messageState.message) },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("확인")
-            }
-        },
-    )
+    DialogWithoutRipple {
+        AlertDialog(
+            modifier = modifier,
+            onDismissRequest = onDismiss,
+            title = { Text(messageState.title) },
+            text = { Text(messageState.message) },
+            confirmButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("확인")
+                }
+            },
+        )
+    }
 }
 
 @Preview(name = "App message")

@@ -49,16 +49,40 @@ class DataStoreAppPreferencesRepositoryTest {
     }
 
     @Test
-    fun missingAndUnsupportedThemeValuesDefaultToDark() = withRepository(
+    fun `저장되지 않았거나 지원하지 않는 테마 값은 해결되지 않은 상태로 남는다`() = withRepository(
         prefix = "ringout-theme-fallback-test",
     ) { dataStore, repository ->
-        assertEquals(ThemeMode.Dark, repository.bootstrapState.first().themeMode)
+        assertEquals(null, repository.bootstrapState.first().themeMode)
 
         dataStore.edit { preferences ->
             preferences[stringPreferencesKey("theme.mode")] = "system"
         }
 
+        assertEquals(null, repository.bootstrapState.first().themeMode)
+    }
+
+    @Test
+    fun `저장된 테마 값이 없거나 지원하지 않으면 초기 테마를 저장한다`() = withRepository(
+        prefix = "ringout-theme-initialization-test",
+    ) { dataStore, repository ->
+        repository.initializeThemeModeIfMissing(ThemeMode.Light)
+        assertEquals(ThemeMode.Light, repository.bootstrapState.first().themeMode)
+
+        dataStore.edit { preferences ->
+            preferences[stringPreferencesKey("theme.mode")] = "system"
+        }
+        repository.initializeThemeModeIfMissing(ThemeMode.Dark)
         assertEquals(ThemeMode.Dark, repository.bootstrapState.first().themeMode)
+    }
+
+    @Test
+    fun `유효한 사용자 테마는 초기화로 덮어쓰지 않는다`() = withRepository(
+        prefix = "ringout-theme-initialization-race-test",
+    ) { _, repository ->
+        repository.setThemeMode(ThemeMode.Light)
+        repository.initializeThemeModeIfMissing(ThemeMode.Dark)
+
+        assertEquals(ThemeMode.Light, repository.bootstrapState.first().themeMode)
     }
 
     @Test

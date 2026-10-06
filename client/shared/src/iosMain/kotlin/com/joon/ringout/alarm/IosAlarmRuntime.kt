@@ -4,6 +4,11 @@ import com.joon.ringout.analytics.IosAlarmAnalytics
 import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.data.alarmactivity.AlarmActivityDao
+import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
+import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
+import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecorder
+import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceSyncRuntime
 import com.joon.ringout.platform.IosNativeServices
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
@@ -32,6 +37,9 @@ class IosAlarmRuntime(
     private val locationService: IosMissionLocationService,
     private val ringingHandoffGraceMillis: Long = DefaultRingingHandoffGraceMillis,
     private val runtimeDispatcher: CoroutineDispatcher = Dispatchers.Main,
+    private val activityDao: AlarmActivityDao? = null,
+    private val occurrenceRecorder: IosAlarmOccurrenceRecorder? = null,
+    private val startOccurrenceSync: () -> Unit = {},
 ) {
     private val startMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + runtimeDispatcher)
@@ -92,6 +100,7 @@ class IosAlarmRuntime(
     }
 
     suspend fun start() = startMutex.withLock {
+        startOccurrenceSync()
         scheduler.setStateListener(alarmStateListener)
         eventInbox.setEventListener(missionEventListener)
         locationService.setListener(locationListener)
@@ -139,12 +148,22 @@ class IosAlarmRuntime(
 
             isDismissingRingingAlarm = true
             try {
-                scheduler.stopAwait(ringing.systemAlarmId)
-                eventInbox.recordOpenEventAwait(
-                    alarmId = ringing.alarmId,
-                    occurrenceId = ringing.occurrenceId,
-                    retryAttempt = ringing.retryAttempt,
-                )
+                if (scheduler.stopAwait(ringing.systemAlarmId)) {
+                    eventInbox.recordOpenEventAwait(
+                        alarmId = ringing.alarmId,
+                        occurrenceId = ringing.occurrenceId,
+                        retryAttempt = ringing.retryAttempt,
+                        scheduleVersion = ringing.scheduleVersion,
+                    )
+                } else {
+                    // A late snapshot cannot tell us when the ringing actually stopped.
+                    eventInbox.recordStopEventAwait(
+                        alarmId = ringing.alarmId,
+                        occurrenceId = ringing.occurrenceId,
+                        retryAttempt = ringing.retryAttempt,
+                        scheduleVersion = ringing.scheduleVersion,
+                    )
+                }
                 missionCoordinator.processPendingEvents()
                 if (ringingAlarm.value?.systemAlarmId == expectedSystemAlarmId) {
                     cancelRingingHandoff()
@@ -337,25 +356,54 @@ class IosAlarmRuntime(
                         ?.let { current -> listOf(current) + ids.filterNot { it == current } }
                         ?: ids
                 }
-            for (systemAlarmId in alertingAlarmIds) {
-                val resolved = resolveIosRingingAlarm(
+            // Record all observed alerts, even when only one ringing screen can be shown.
+            // AlarmKit exposes current state, not a complete background firing history.
+            val resolvedAlarms = alertingAlarmIds.mapNotNull { systemAlarmId ->
+                val snapshot = alarms.first { it.alarmId == systemAlarmId }
+                resolveIosRingingAlarm(
                     systemAlarmId = systemAlarmId,
                     dataSource = dataSource,
                     deadlineAlarm = missionCoordinator.deadlineAlarmForSystemId(systemAlarmId),
+                    observedOccurrenceId = snapshot.occurrenceId,
+                    startedAtEpochMillis = snapshot.ringingObservedAtEpochMillis
+                        ?: Clock.System.now().toEpochMilliseconds(),
                 )
-                if (resolved != null) {
-                    cancelRingingHandoff()
-                    if (activeMissionFlow.value?.matches(resolved) == true) {
-                        if (ringingAlarm.value?.systemAlarmId == resolved.systemAlarmId) {
-                            ringingAlarm.value = null
-                        }
-                        return@withLock
-                    }
-                    if (ringingAlarm.value?.systemAlarmId != resolved.systemAlarmId) {
-                        ringingAlarm.value = resolved
+            }
+            try {
+                resolvedAlarms.filter { it.retryAttempt == 0 && it.occurrenceId != null }.forEach { alarm ->
+                    activityDao?.recordInitialRingingSchedule(requireNotNull(alarm.occurrenceId), alarm.alarmTime, alarm.startedAtEpochMillis)
+                }
+                activityDao?.recordObservedRinging(resolvedAlarms.filter { it.occurrenceId != null }.associate { alarm ->
+                    alarm.systemAlarmId to AlarmActivityEntity.rang(
+                        alarmId = alarm.alarmId,
+                        occurrenceId = requireNotNull(alarm.occurrenceId),
+                        timestamp = AlarmActivityTimestamp(alarm.startedAtEpochMillis, iosMissionDate(alarm.startedAtEpochMillis)),
+                        scheduleVersion = alarm.scheduleVersion,
+                    )
+                })
+                for (alarm in resolvedAlarms) {
+                    val snapshot = alarms.first { it.alarmId == alarm.systemAlarmId }
+                    occurrenceRecorder?.recordObserved(alarm, snapshot.ownerAccountId, snapshot.ownerCaptured)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // History storage must not prevent dismissal or mission tracking.
+            }
+            for (resolved in resolvedAlarms) {
+                cancelRingingHandoff()
+                if (activeMissionFlow.value?.matches(resolved) == true) {
+                    if (ringingAlarm.value?.systemAlarmId == resolved.systemAlarmId) {
+                        ringingAlarm.value = null
                     }
                     return@withLock
                 }
+                if (ringingAlarm.value?.systemAlarmId != resolved.systemAlarmId ||
+                    ringingAlarm.value?.occurrenceId != resolved.occurrenceId
+                ) {
+                    ringingAlarm.value = resolved
+                }
+                return@withLock
             }
 
             val startedMission = processPendingMissionEventsOrNull()
@@ -466,6 +514,7 @@ class IosAlarmRuntime(
             alarmId = ringing.alarmId,
             occurrenceId = ringing.occurrenceId,
             retryAttempt = ringing.retryAttempt,
+            scheduleVersion = ringing.scheduleVersion,
         )
         missionCoordinator.processPendingEvents()
     } catch (error: CancellationException) {
@@ -656,7 +705,9 @@ class IosAlarmRuntime(
 
 fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
     val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
-    val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker())
+    val occurrenceRecorder = IosAlarmOccurrenceRecorder(getRingoutDatabase().alarmOccurrenceSyncDao(),
+        getRingoutDatabase().alarmActivityDao(), dataSource)
+    val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker(), roomMembership = com.joon.ringout.analytics.createRoomMembershipAnalytics())
     val scheduler = nativeServices.alarmScheduler()
     val eventInbox = nativeServices.alarmMissionEventInbox()
     return IosAlarmRuntime(
@@ -667,7 +718,7 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
             dataSource = dataSource,
             inbox = eventInbox,
             scheduler = scheduler,
-            outcomeRecorder = RoomIosMissionOutcomeRecorder(),
+            outcomeRecorder = RoomIosMissionOutcomeRecorder(occurrenceRecorder = occurrenceRecorder),
             analytics = analytics,
         ),
         reconciler = IosAlarmReconciler(
@@ -677,6 +728,9 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
             presentationMigrationState = UserDefaultsIosAlarmPresentationMigrationState(),
         ),
         locationService = nativeServices.missionLocationService(),
+        activityDao = getRingoutDatabase().alarmActivityDao(),
+        occurrenceRecorder = occurrenceRecorder,
+        startOccurrenceSync = IosAlarmOccurrenceSyncRuntime::start,
     )
 }
 

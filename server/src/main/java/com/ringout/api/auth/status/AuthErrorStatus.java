@@ -11,7 +11,8 @@ import org.springframework.http.HttpStatus;
 public enum AuthErrorStatus implements BaseErrorCode {
 
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH401", "인증되지 않은 사용자입니다."),
-    ACCESS_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH401", "액세스 토큰이 만료되었습니다.");
+    ACCESS_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH401", "액세스 토큰이 만료되었습니다."),
+    TEST_LOGIN_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AUTH503", "테스트 로그인을 사용할 수 없습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

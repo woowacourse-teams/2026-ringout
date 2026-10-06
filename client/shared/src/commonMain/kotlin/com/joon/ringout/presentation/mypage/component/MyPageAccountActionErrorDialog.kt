@@ -6,6 +6,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
@@ -17,17 +18,19 @@ fun MyPageAccountActionErrorDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    AlertDialog(
-        modifier = modifier,
-        onDismissRequest = onDismiss,
-        title = { Text(action.errorTitle) },
-        text = { Text(message) },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("확인")
-            }
-        },
-    )
+    DialogWithoutRipple {
+        AlertDialog(
+            modifier = modifier,
+            onDismissRequest = onDismiss,
+            title = { Text(action.errorTitle) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("확인")
+                }
+            },
+        )
+    }
 }
 
 private val MyPageAccountAction.errorTitle: String

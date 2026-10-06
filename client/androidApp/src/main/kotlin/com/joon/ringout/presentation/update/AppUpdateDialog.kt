@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 
@@ -36,62 +37,64 @@ internal fun AppUpdateDialog(
     onUpdateClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Dialog(
-        onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Column(
-            modifier = modifier
-                .padding(horizontal = 24.dp)
-                .widthIn(max = 336.dp)
-                .fillMaxWidth()
-                .shadow(12.dp, AppUpdateDialogShape)
-                .background(AppUpdateDialogColors.surface, AppUpdateDialogShape)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+    DialogWithoutRipple {
+        Dialog(
+            onDismissRequest = onDismissRequest,
+            properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
-            Text(
-                text = "업데이트 알림",
-                color = AppUpdateDialogColors.title,
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontSize = 20.sp,
-                    lineHeight = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
-            Text(
-                text = "새로운 버전이 출시되었어요.\n개선된 기능을 사용하기 위해서\n업데이트 해주세요!",
-                modifier = Modifier.padding(top = 12.dp),
-                color = AppUpdateDialogColors.description,
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 16.sp,
-                    lineHeight = 19.2.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
-            )
-            Row(
-                modifier = Modifier
-                    .padding(top = 20.dp)
-                    .width(272.dp)
-                    .height(46.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                modifier = modifier
+                    .padding(horizontal = 24.dp)
+                    .widthIn(max = 336.dp)
+                    .fillMaxWidth()
+                    .shadow(12.dp, AppUpdateDialogShape)
+                    .background(AppUpdateDialogColors.surface, AppUpdateDialogShape)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                AppUpdateActionButton(
-                    text = "취소",
-                    backgroundColor = AppUpdateDialogColors.cancelButton,
-                    onClick = onDismissRequest,
-                    modifier = Modifier.width(99.dp),
+                Text(
+                    text = "업데이트 알림",
+                    color = AppUpdateDialogColors.title,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontSize = 20.sp,
+                        lineHeight = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
                 )
-                AppUpdateActionButton(
-                    text = "업데이트",
-                    backgroundColor = AppUpdateDialogColors.updateButton,
-                    onClick = onUpdateClick,
+                Text(
+                    text = "새로운 버전이 출시되었어요.\n개선된 기능을 사용하기 위해서\n업데이트 해주세요!",
+                    modifier = Modifier.padding(top = 12.dp),
+                    color = AppUpdateDialogColors.description,
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 16.sp,
+                        lineHeight = 19.2.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+                Row(
                     modifier = Modifier
-                        .padding(start = 10.dp)
-                        .width(162.dp),
-                )
+                        .padding(top = 20.dp)
+                        .width(272.dp)
+                        .height(46.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppUpdateActionButton(
+                        text = "취소",
+                        backgroundColor = AppUpdateDialogColors.cancelButton,
+                        onClick = onDismissRequest,
+                        modifier = Modifier.width(99.dp),
+                    )
+                    AppUpdateActionButton(
+                        text = "업데이트",
+                        backgroundColor = AppUpdateDialogColors.updateButton,
+                        onClick = onUpdateClick,
+                        modifier = Modifier
+                            .padding(start = 10.dp)
+                            .width(162.dp),
+                    )
+                }
             }
         }
     }

@@ -13,10 +13,35 @@ import kotlin.test.assertTrue
 
 class AppNavigationStateTest {
     @Test
-    fun guestModeRejectsNewAccountRouteNavigation() {
+    fun `비로그인 모드에서도 로그인 화면을 열고 뒤로 가면 마이페이지로 돌아온다`() {
+        val state = AppNavigationState(guestOnlyMode = true)
+        state.navigate(AppRoute.MyPage)
+        state.navigate(AppRoute.Login)
+        state.navigate(AppRoute.Login)
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login), state.backStack.toList())
+        state.normalizeForGuestMode()
+        assertEquals(AppRoute.Login, state.requestedRoute)
+
+        state.popBackStack(AppRoute.Login)
+        assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack.toList())
+    }
+
+    @Test
+    fun `비로그인 모드에서 로그인 후 약관 화면으로 이동할 수 있다`() {
+        val state = AppNavigationState(guestOnlyMode = true)
+        state.navigate(AppRoute.Login)
+        state.navigate(AppRoute.TermsAgreement)
+        state.normalizeForGuestMode()
+
+        assertEquals(AppRoute.TermsAgreement, state.requestedRoute)
+        state.popBackStack(AppRoute.TermsAgreement)
+        assertEquals(AppRoute.Login, state.requestedRoute)
+    }
+
+    @Test
+    fun `비로그인 모드에서 미지원 닉네임 화면 진입은 마이페이지로 이동한다`() {
         listOf(
-            AppRoute.Login,
-            AppRoute.TermsAgreement,
             AppRoute.NicknameChange,
         ).forEach { accountRoute ->
             val state = AppNavigationState(guestOnlyMode = true)
@@ -32,10 +57,8 @@ class AppNavigationStateTest {
     }
 
     @Test
-    fun guestModeReturnsRestoredAccountRoutesToMyPage() {
+    fun `복원된 미지원 닉네임 화면은 마이페이지로 이동한다`() {
         listOf(
-            AppRoute.Login,
-            AppRoute.TermsAgreement,
             AppRoute.NicknameChange,
         ).forEach { accountRoute ->
             val state = AppNavigationState()
@@ -82,6 +105,50 @@ class AppNavigationStateTest {
             listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange),
             state.backStack.toList(),
         )
+    }
+
+    @Test
+    fun `모임 수정 화면은 현재 호출부 위에 쌓고 뒤로 가면 같은 상세로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomDetail("room-1"))
+        val callerStack = state.backStack.toList()
+        val editRoute = AppRoute.RoomEdit("room-1")
+
+        state.navigate(editRoute)
+        state.navigate(editRoute.copy())
+
+        assertEquals(callerStack + editRoute, state.backStack.toList())
+        assertEquals(editRoute, state.requestedRoute)
+        state.popBackStack(editRoute)
+        assertEquals(callerStack, state.backStack.toList())
+        assertEquals(AppRoute.RoomDetail("room-1"), state.requestedRoute)
+    }
+
+    @Test
+    fun `다른 모임 수정으로 전환하면 호출부를 유지하고 편집 경로를 교체한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomDetail("room-1"))
+        val callerStack = state.backStack.toList()
+
+        state.navigate(AppRoute.RoomEdit("room-1"))
+        state.navigate(AppRoute.RoomEdit("room-2"))
+
+        assertEquals(callerStack + AppRoute.RoomEdit("room-2"), state.backStack.toList())
+    }
+
+    @Test
+    fun `다른 회원 관리로 전환하면 호출부를 유지하고 회원 관리 경로를 교체한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomHome("room-1"))
+        val callerStack = state.backStack.toList()
+
+        state.navigate(AppRoute.RoomMemberManagement("room-1"))
+        state.navigate(AppRoute.RoomMemberManagement("room-2"))
+
+        assertEquals(callerStack + AppRoute.RoomMemberManagement("room-2"), state.backStack.toList())
     }
 
     @Test
@@ -187,6 +254,177 @@ class AppNavigationStateTest {
         state.navigate(AppRoute.MyPage)
         assertEquals(AppRoute.MyPage, state.requestedRoute)
         assertEquals(listOf(AppRoute.Home, AppRoute.MyPage), state.backStack.toList())
+    }
+
+    @Test
+    fun `소셜에서 시작한 로그인과 회원가입은 취소하면 소셜로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+
+        state.navigate(AppRoute.Login)
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.Login),
+            state.backStack.toList(),
+        )
+        state.navigate(AppRoute.TermsAgreement)
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.Login, AppRoute.TermsAgreement),
+            state.backStack.toList(),
+        )
+        state.popBackStack(AppRoute.TermsAgreement)
+        state.popBackStack(AppRoute.Login)
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), state.backStack.toList())
+        assertEquals(AppRoute.Social, state.requestedRoute)
+    }
+
+    @Test
+    fun `소셜에서 시작한 인증 완료는 생성 화면으로 바로 진입하지 않는다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.Login)
+        state.navigate(AppRoute.TermsAgreement)
+
+        state.completeAuthenticationFlow()
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), state.backStack.toList())
+        assertEquals(AppRoute.Social, state.requestedRoute)
+    }
+
+    @Test
+    fun `모임 상세에서 시작한 로그인은 로그인 취소 시 같은 모임으로 돌아온다`() {
+        val state = AppNavigationState()
+        val roomDetail = AppRoute.RoomDetail("room-42")
+        state.navigate(roomDetail)
+
+        state.navigate(AppRoute.Login)
+
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, roomDetail, AppRoute.Login),
+            state.backStack.toList(),
+        )
+        state.popBackStack(AppRoute.Login)
+        assertEquals(roomDetail, state.requestedRoute)
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social, roomDetail), state.backStack.toList())
+    }
+
+    @Test
+    fun `모임 상세에서 약관으로 이동해도 상세 출처를 유지한다`() {
+        val state = AppNavigationState()
+        val roomDetail = AppRoute.RoomDetail("room-42")
+        state.navigate(roomDetail)
+        state.navigate(AppRoute.Login)
+
+        state.navigate(AppRoute.TermsAgreement)
+
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, roomDetail, AppRoute.Login, AppRoute.TermsAgreement),
+            state.backStack.toList(),
+        )
+        state.popBackStack(AppRoute.TermsAgreement)
+        assertEquals(AppRoute.Login, state.requestedRoute)
+        state.popBackStack(AppRoute.Login)
+        assertEquals(roomDetail, state.requestedRoute)
+    }
+
+    @Test
+    fun `모임 상세에서 인증을 마치면 인증 경로만 제거한다`() {
+        val state = AppNavigationState()
+        val roomDetail = AppRoute.RoomDetail("room-42")
+        state.navigate(roomDetail)
+        state.navigate(AppRoute.Login)
+        state.navigate(AppRoute.TermsAgreement)
+
+        state.completeAuthenticationFlow()
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social, roomDetail), state.backStack.toList())
+        assertEquals(roomDetail, state.requestedRoute)
+    }
+
+    @Test
+    fun `생성 성공은 RoomHome을 열고 뒤로 가면 Social로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomCreate)
+
+        assertTrue(state.navigateToRoomHomeFrom(AppRoute.RoomCreate, "41"))
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomHome("41")),
+            state.backStack.toList(),
+        )
+
+        state.popBackStack(AppRoute.RoomHome("41"))
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social), state.backStack.toList())
+        assertEquals(AppRoute.Social, state.requestedRoute)
+    }
+
+    @Test
+    fun `가입 성공은 상세 경로를 RoomHome으로 바꾸고 이전 상세 콜백은 무시한다`() {
+        val state = AppNavigationState()
+        val roomDetail = AppRoute.RoomDetail("7")
+        state.navigate(roomDetail)
+        state.navigate(AppRoute.Login)
+
+        assertFalse(state.navigateToRoomHomeFrom(roomDetail, "7"))
+        state.popBackStack(AppRoute.Login)
+        assertTrue(state.navigateToRoomHomeFrom(roomDetail, "7"))
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomHome("7")),
+            state.backStack.toList(),
+        )
+    }
+
+    @Test
+    fun `가입 모임 바로가기는 상세 경유 없이 RoomHome으로 이동하고 뒤로 가면 Social로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+
+        state.navigate(AppRoute.RoomHome("7"))
+
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomHome("7")),
+            state.backStack.toList(),
+        )
+        state.popBackStack(AppRoute.RoomHome("7"))
+        assertEquals(AppRoute.Social, state.requestedRoute)
+    }
+
+    @Test
+    fun `복원된 RoomHome 경로는 모임 식별자를 유지한다`() {
+        val roomHome = AppRoute.RoomHome("room-41")
+        val backStack = NavBackStack<AppRoute>(AppRoute.Home, AppRoute.Social, roomHome)
+        val serializer = NavBackStackSerializer(AppRoute.serializer())
+        val restored = Json.decodeFromString(serializer, Json.encodeToString(serializer, backStack))
+
+        assertEquals(backStack.toList(), restored.toList())
+        assertEquals(roomHome, restored.last())
+    }
+
+    @Test
+    fun `복원한 모임 상세 경로가 같은 모임 식별자를 유지한다`() {
+        val roomDetail = AppRoute.RoomDetail("room-42")
+        val backStack = NavBackStack<AppRoute>(AppRoute.Home, AppRoute.Social, roomDetail)
+        val serializer = NavBackStackSerializer(AppRoute.serializer())
+        val restored = Json.decodeFromString(serializer, Json.encodeToString(serializer, backStack))
+        val state = AppNavigationState(restored)
+
+        assertEquals(backStack.toList(), state.backStack.toList())
+        assertEquals(roomDetail, state.requestedRoute)
+    }
+
+    @Test
+    fun `모임 상세가 아래에 있어도 현재 모임 인증이 아니면 로그인 경로를 덮어쓰지 않는다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.RoomDetail("room-42"))
+        state.navigate(AppRoute.ActiveAlarmTracking("occurrence-1"))
+
+        state.navigate(AppRoute.Login)
+
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login),
+            state.backStack.toList(),
+        )
     }
 
     @Test

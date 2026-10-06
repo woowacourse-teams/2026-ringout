@@ -1,5 +1,6 @@
 package com.joon.ringout.presentation.home.components
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,7 +15,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -29,13 +34,23 @@ internal fun HomeAlarmListState(
     onAlarmClick: (String) -> Unit,
     onAlarmEnabledChange: (String, Boolean) -> Unit,
     onAlarmDelete: (String) -> Unit,
-    onMyPageClick: () -> Unit,
     onActiveAlarmMissionClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     activeAlarmMission: ActiveAlarmMission? = null,
     onActiveAlarmMissionExpired: () -> Unit = {},
 ) {
     val colors = homeAlarmColors()
+    val listState = rememberLazyListState()
+    val alarmOrder = alarms.map(HomeAlarm::id)
+    // 재정렬 전의 화면 위치를 보존한다. 기본 key 추적이 이전 상단 카드를 따라가면
+    // 위로 이동한 카드가 화면 밖으로 밀리거나 일부 잘릴 수 있다.
+    val previousAlarmOrder = remember { mutableStateOf(alarmOrder) }
+    SideEffect {
+        if (previousAlarmOrder.value != alarmOrder) {
+            listState.requestScrollToItem(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+            previousAlarmOrder.value = alarmOrder
+        }
+    }
     val activeAlarmMissionRemainingSeconds = if (activeAlarmMission != null) {
         rememberActiveAlarmMissionRemainingSeconds(
             mission = activeAlarmMission,
@@ -64,12 +79,12 @@ internal fun HomeAlarmListState(
             ) {
                 AlarmListHeader(
                     nextAlarmDescription = nextAlarmDescription,
-                    onMyPageClick = onMyPageClick,
                 )
 
                 Spacer(Modifier.height(30.dp))
 
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
@@ -95,6 +110,11 @@ internal fun HomeAlarmListState(
                     ) { alarm ->
                         AlarmRow(
                             alarm = alarm,
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = null,
+                                placementSpec = tween(durationMillis = 300),
+                                fadeOutSpec = null,
+                            ),
                             onClick = { onAlarmClick(alarm.id) },
                             onEnabledChange = { enabled ->
                                 onAlarmEnabledChange(alarm.id, enabled)
@@ -109,7 +129,7 @@ internal fun HomeAlarmListState(
                 onClick = onAddAlarm,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 30.dp, bottom = 40.dp),
+                    .padding(end = 30.dp, bottom = 114.dp),
             )
         }
 

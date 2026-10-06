@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -30,11 +31,15 @@ fun OnboardingPageIndicator(
             contentDescription = "현재 페이지 ${selectedPage + 1}, 전체 $pageCount"
         },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(pageCount) { pageIndex ->
             Box(
                 modifier = Modifier
-                    .size(8.dp)
+                    .size(
+                        width = if (pageIndex == selectedPage) 26.dp else 8.dp,
+                        height = if (pageIndex == selectedPage) 10.dp else 8.dp,
+                    )
                     .background(
                         color = if (pageIndex == selectedPage) {
                             MaterialTheme.colorScheme.primary
@@ -52,7 +57,7 @@ fun OnboardingPageIndicator(
 @Composable
 private fun DarkOnboardingPageIndicatorPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
-        OnboardingPageIndicator(pageCount = 4, selectedPage = 0)
+        OnboardingPageIndicator(pageCount = 5, selectedPage = 0)
     }
 }
 
@@ -60,6 +65,6 @@ private fun DarkOnboardingPageIndicatorPreview() {
 @Composable
 private fun LightOnboardingPageIndicatorPreview() {
     RingoutTheme(themeMode = ThemeMode.Light) {
-        OnboardingPageIndicator(pageCount = 4, selectedPage = 3)
+        OnboardingPageIndicator(pageCount = 5, selectedPage = 3)
     }
 }

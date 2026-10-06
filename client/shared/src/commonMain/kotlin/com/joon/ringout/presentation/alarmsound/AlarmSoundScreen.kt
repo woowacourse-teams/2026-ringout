@@ -89,13 +89,6 @@ internal fun resolveInitialAlarmSoundSelection(
         ?: sounds.firstOrNull()
         ?: current
 
-private fun AlarmSoundSelection.sameSoundAs(other: AlarmSoundSelection): Boolean =
-    if (uri == null || other.uri == null) {
-        uri == null && other.uri == null
-    } else {
-        uri == other.uri
-    }
-
 private val PreviewAlarmSounds = listOf(
     AlarmSoundSelection("Ring Ring Ring", null),
     AlarmSoundSelection("새벽 안개", "preview://dawn"),

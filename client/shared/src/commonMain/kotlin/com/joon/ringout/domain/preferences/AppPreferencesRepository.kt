@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.Flow
 interface AppPreferencesRepository {
     val bootstrapState: Flow<AppBootstrapSnapshot>
 
+    suspend fun initializeThemeModeIfMissing(themeMode: ThemeMode)
+
     suspend fun setThemeMode(themeMode: ThemeMode)
 
     suspend fun markOnboardingCompleted()

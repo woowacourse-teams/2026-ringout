@@ -36,8 +36,12 @@ internal class AuthenticatedRequestExecutor(
     suspend fun execute(
         request: suspend (accessToken: String) -> HttpResponse,
     ): HttpResponse {
+        val requestIdentity = authSession.identity.value
         val requestTokens = checkNotNull(tokenStorage.read()) {
             "로그인이 필요한 기능이에요."
+        }
+        check(authSession.identity.value === requestIdentity) {
+            "로그인 상태가 바뀌었어요. 다시 시도해 주세요."
         }
         val response = request(requestTokens.accessToken)
         if (response.status != HttpStatusCode.Unauthorized) {
@@ -60,6 +64,11 @@ internal class AuthenticatedRequestExecutor(
 
             COMMON_UNAUTHORIZED_CODE -> {
                 expireSessionIfUnchanged(requestTokens)
+                throw failure.toException()
+            }
+
+            ROOM_UNAUTHORIZED_CODE -> {
+                requestIdentity?.let { expireSessionIfUnchanged(requestTokens, it) }
                 throw failure.toException()
             }
 
@@ -144,7 +153,7 @@ internal class AuthenticatedRequestExecutor(
                         attempt = attempt,
                         refreshedTokens = AuthTokens(
                             accessToken = result.accessToken,
-                            refreshToken = result.refreshToken,
+                            refreshToken = result.refreshToken ?: attempt.rejectedTokens.refreshToken,
                         ),
                         originalFailure = originalFailure,
                     )
@@ -241,6 +250,20 @@ internal class AuthenticatedRequestExecutor(
         withContext(NonCancellable) {
             tokenStateMutex.withLock {
                 expireSessionLockedIfUnchanged(expectedTokens)
+            }
+        }
+    }
+
+    private suspend fun expireSessionIfUnchanged(expectedTokens: AuthTokens, expectedIdentity: Any) {
+        withContext(NonCancellable) {
+            tokenStateMutex.withLock {
+                if (
+                    tokenStorage.read() == expectedTokens &&
+                    authSession.state.value == AuthSessionState.Authenticated &&
+                    authSession.identity.value === expectedIdentity
+                ) {
+                    expireSessionLocked()
+                }
             }
         }
     }
@@ -342,7 +365,7 @@ internal suspend fun SecureTokenStorage.replaceAuthTokens(
             if (lastRefreshTransition?.tokenStorage === this@replaceAuthTokens) {
                 lastRefreshTransition = null
             }
-            authSession.markAuthenticated()
+            authSession.startNewSession()
         }
     }
 }
@@ -361,3 +384,4 @@ internal suspend fun SecureTokenStorage.removeAuthTokens(authSession: AuthSessio
 
 private const val ACCESS_TOKEN_EXPIRED_CODE = "AUTH401"
 private const val COMMON_UNAUTHORIZED_CODE = "COMMON401"
+private const val ROOM_UNAUTHORIZED_CODE = "ROOM401"

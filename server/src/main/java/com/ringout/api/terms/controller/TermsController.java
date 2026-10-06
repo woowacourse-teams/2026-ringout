@@ -6,6 +6,7 @@ import com.ringout.api.terms.controller.docs.TermsControllerApi;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import com.ringout.api.terms.dto.response.CheckRequiredTermsAgreedResponse;
 import com.ringout.api.terms.dto.response.TermsAgreeResponse;
+import com.ringout.api.terms.dto.response.TermsAgreementsResponse;
 import com.ringout.api.terms.service.TermsService;
 import com.ringout.api.terms.status.TermsSuccessStatus;
 import jakarta.validation.Valid;
@@ -34,6 +35,16 @@ public class TermsController implements TermsControllerApi {
 
         return ResponseEntity.status(TermsSuccessStatus.TERMS_AGREED.getHttpStatus())
             .body(CustomResponse.onSuccess(TermsSuccessStatus.TERMS_AGREED, response));
+    }
+
+    @GetMapping("/agreements")
+    public ResponseEntity<CustomResponse<TermsAgreementsResponse>> getTermsAgreements(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails
+    ) {
+        TermsAgreementsResponse response = termsService.getTermsAgreements(customUserDetails.getUserId());
+
+        return ResponseEntity.status(TermsSuccessStatus.TERMS_AGREEMENTS_FOUND.getHttpStatus())
+            .body(CustomResponse.onSuccess(TermsSuccessStatus.TERMS_AGREEMENTS_FOUND, response));
     }
 
     @GetMapping("/agreements/me")

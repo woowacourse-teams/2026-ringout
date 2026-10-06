@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.joon.ringout.alarm.AlarmScheduleRequest
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
@@ -121,9 +122,14 @@ internal class AlarmEditorNavigation(
         navigationState.popBackStack(route)
     }
 
-    fun onAlarmSoundSelected(displayedRoute: AppRoute, sound: AlarmSoundSelection) {
+    fun onAlarmSoundSelected(
+        displayedRoute: AppRoute,
+        sound: AlarmSoundSelection,
+        analyticsContext: AlarmSettingsAnalyticsContext = AlarmSettingsAnalyticsContext(),
+    ) {
         if (!isActive(AppRoute.AlarmSound, displayedRoute)) return
         alarmSetupViewModel.updateAlarmSound(sound)
+        alarmSetupViewModel.updateAlarmSoundAnalyticsContext(analyticsContext)
         navigationState.popBackStack(AppRoute.AlarmSound)
     }
 

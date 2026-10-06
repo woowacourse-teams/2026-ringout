@@ -3,8 +3,12 @@ package com.joon.ringout.presentation.home
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.SavedAlarmSchedule
 import com.joon.ringout.presentation.home.model.HomeAlarm
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -12,6 +16,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
     @Test
     fun `저장된 알람을 관찰하면 홈 상태에 반영한다`() = runTest {
@@ -64,12 +69,61 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun `알람 삭제를 요청하면 실행 명령을 반환한다`() {
+    fun `삭제를 요청하면 알람을 유지하고 확인 대상을 저장한다`() = runTest {
         val viewModel = HomeViewModel()
+        viewModel.observeAlarms(flowOf(listOf(SavedAlarmSchedule(request, true))))
 
-        val command = viewModel.onAlarmDelete(alarmId = "alarm-1")
+        viewModel.onAlarmDelete(request.id)
 
-        assertEquals(HomeViewModel.Command.DeleteAlarm(alarmId = "alarm-1"), command)
+        assertEquals(request.id, viewModel.uiState.pendingDeleteAlarmId)
+        assertEquals(1, viewModel.uiState.alarms.size)
+    }
+
+    @Test
+    fun `삭제 확인을 취소하면 알람을 유지하고 삭제 명령을 만들지 않는다`() = runTest {
+        val viewModel = HomeViewModel()
+        viewModel.observeAlarms(flowOf(listOf(SavedAlarmSchedule(request, true))))
+        viewModel.onAlarmDelete(request.id)
+
+        viewModel.dismissAlarmDelete()
+
+        assertNull(viewModel.uiState.pendingDeleteAlarmId)
+        assertNull(viewModel.confirmAlarmDelete())
+        assertEquals(1, viewModel.uiState.alarms.size)
+    }
+
+    @Test
+    fun `삭제를 확정하면 선택한 알람의 삭제 명령을 한 번만 반환한다`() = runTest {
+        val viewModel = HomeViewModel()
+        viewModel.observeAlarms(flowOf(listOf(
+            SavedAlarmSchedule(request, true),
+            SavedAlarmSchedule(request.copy(id = "alarm-2"), true),
+        )))
+        viewModel.onAlarmDelete("alarm-2")
+
+        assertEquals(HomeViewModel.Command.DeleteAlarm("alarm-2"), viewModel.confirmAlarmDelete())
+        assertNull(viewModel.uiState.pendingDeleteAlarmId)
+        assertNull(viewModel.confirmAlarmDelete())
+    }
+
+    @Test
+    fun `삭제 확인 중 대상 알람이 사라지면 확인을 닫고 삭제 명령을 만들지 않는다`() = runTest {
+        val viewModel = HomeViewModel()
+        viewModel.observeAlarms(flowOf(listOf(SavedAlarmSchedule(request, true))))
+        viewModel.onAlarmDelete(request.id)
+
+        viewModel.observeAlarms(flowOf(emptyList()))
+
+        assertNull(viewModel.uiState.pendingDeleteAlarmId)
+        assertNull(viewModel.confirmAlarmDelete())
+    }
+
+    @Test
+    fun `존재하지 않는 알람은 삭제 확인을 열지 않는다`() {
+        val viewModel = HomeViewModel()
+        viewModel.onAlarmDelete("missing")
+        assertNull(viewModel.uiState.pendingDeleteAlarmId)
+        assertNull(viewModel.confirmAlarmDelete())
     }
 
     @Test
@@ -107,6 +161,52 @@ class HomeViewModelTest {
 
         assertEquals(request, viewModel.alarmScheduleRequest(alarmId = request.id))
         assertNull(viewModel.alarmScheduleRequest(alarmId = "missing-alarm"))
+    }
+
+    @Test
+    fun `같은 ID의 수정 저장 Flow가 오면 홈 카드 전체와 활성 상태를 최신 값으로 교체한다`() = runTest {
+        val viewModel = HomeViewModel()
+        val savedAlarms = MutableStateFlow(
+            listOf(SavedAlarmSchedule(request = request, enabled = false)),
+        )
+        backgroundScope.launch { viewModel.observeAlarms(savedAlarms) }
+        runCurrent()
+        val edited = request.copy(
+            time = "08:40",
+            selectedDays = listOf("화", "목"),
+            repeatEnabled = true,
+            limitMinutes = 20,
+            destinationName = "집",
+            destinationAddress = "서울특별시 중구 세종대로 110",
+            destinationLatitude = 37.5665,
+            destinationLongitude = 126.978,
+            targetDistanceKm = 1.5,
+            alarmSoundName = "벨",
+            alarmSoundUri = "content://ringout/alarm/bell",
+        )
+
+        savedAlarms.value = listOf(SavedAlarmSchedule(request = edited, enabled = true))
+        runCurrent()
+
+        assertEquals(
+            HomeAlarm(
+                id = edited.id,
+                time = "08:40",
+                days = "화 목",
+                destination = "집",
+                timeLimitMinutes = 20,
+                isEnabled = true,
+                targetAddress = edited.destinationAddress,
+                targetLatitude = edited.destinationLatitude,
+                targetLongitude = edited.destinationLongitude,
+                targetDistanceKm = 1.5,
+                alarmSoundName = "벨",
+                alarmSoundUri = "content://ringout/alarm/bell",
+                selectedDays = listOf("화", "목"),
+                repeatEnabled = true,
+            ),
+            viewModel.uiState.alarms.single(),
+        )
     }
 
     private companion object {

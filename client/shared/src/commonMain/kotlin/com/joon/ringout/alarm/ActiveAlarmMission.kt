@@ -20,6 +20,7 @@ data class ActiveAlarmMission(
     val arrivalRadiusMeters: Double = DefaultArrivalRadiusMeters,
     val alarmSoundUri: String? = null,
     val hasAlarmSoundUri: Boolean = false,
+    val scheduleVersion: Long = 1,
 )
 
 data class ActiveAlarmMissionLocation(

@@ -7,6 +7,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
+import com.joon.ringout.presentation.home.components.AlarmDeleteDialog
 import com.joon.ringout.presentation.home.components.HomeAlarmListState
 import com.joon.ringout.presentation.home.components.HomeEmptyState
 import com.joon.ringout.presentation.home.components.HomeLoadingState
@@ -20,12 +21,20 @@ fun HomeScreen(
     onAlarmClick: (String) -> Unit,
     onAlarmEnabledChange: (String, Boolean) -> Unit,
     onAlarmDelete: (String) -> Unit,
-    onMyPageClick: () -> Unit,
     onActiveAlarmMissionClick: () -> Unit = {},
     modifier: Modifier = Modifier,
     activeAlarmMission: ActiveAlarmMission? = null,
     onActiveAlarmMissionExpired: () -> Unit = {},
+    onAlarmDeleteDismiss: () -> Unit = {},
+    onAlarmDeleteConfirm: () -> Unit = {},
 ) {
+    if (uiState.pendingDeleteAlarmId != null) {
+        AlarmDeleteDialog(
+            onDismiss = onAlarmDeleteDismiss,
+            onConfirm = onAlarmDeleteConfirm,
+        )
+    }
+
     val alarms = uiState.alarms
     if (uiState.isLoading && activeAlarmMission == null) {
         HomeLoadingState(modifier = modifier)
@@ -35,7 +44,6 @@ fun HomeScreen(
     if (alarms.isEmpty() && activeAlarmMission == null) {
         HomeEmptyState(
             onAddAlarm = onAddAlarm,
-            onMyPageClick = onMyPageClick,
             modifier = modifier,
         )
         return
@@ -51,7 +59,6 @@ fun HomeScreen(
         onAlarmClick = onAlarmClick,
         onAlarmEnabledChange = onAlarmEnabledChange,
         onAlarmDelete = onAlarmDelete,
-        onMyPageClick = onMyPageClick,
         onActiveAlarmMissionClick = onActiveAlarmMissionClick,
         modifier = modifier,
         activeAlarmMission = activeAlarmMission,
@@ -74,7 +81,6 @@ private fun DarkLoadingHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }
@@ -89,7 +95,6 @@ private fun DarkEmptyHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }
@@ -104,7 +109,6 @@ private fun LightEmptyHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }
@@ -120,7 +124,6 @@ private fun DarkPopulatedHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }
@@ -136,7 +139,6 @@ private fun LightPopulatedHomeScreenPreview() {
             onAlarmClick = {},
             onAlarmEnabledChange = { _, _ -> },
             onAlarmDelete = {},
-            onMyPageClick = {},
         )
     }
 }

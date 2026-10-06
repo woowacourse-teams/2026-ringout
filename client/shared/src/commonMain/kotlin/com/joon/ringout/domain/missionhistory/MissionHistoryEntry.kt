@@ -17,4 +17,8 @@ data class MissionHistoryEntry(
     val result: MissionResult,
     val completedAt: MissionDate,
     val occurrenceId: String? = null,
+    val ringingStartedAtEpochMillis: Long? = null,
+    val ringingStoppedAtEpochMillis: Long? = null,
+    val missionCompletedAtEpochMillis: Long? = null,
+    val isRingingStartObserved: Boolean = false,
 )

@@ -1,7 +1,6 @@
 package com.joon.ringout.presentation.navigation
 
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,6 +12,12 @@ class AppRouteTest {
         val routes = listOf<AppRoute>(
             AppRoute.Onboarding,
             AppRoute.Home,
+            AppRoute.Social,
+            AppRoute.RoomCreate,
+            AppRoute.RoomDetail("room/서울?name=러닝"),
+            AppRoute.RoomEdit("room/서울?name=러닝"),
+            AppRoute.RoomMemberManagement("room/서울?name=러닝"),
+            AppRoute.Records,
             AppRoute.AddAlarm,
             AppRoute.EditAlarm(alarmId = "alarm/서울?time=07:30&label=\"출근\""),
             AppRoute.Destination(requestId = Long.MAX_VALUE),
@@ -37,6 +42,8 @@ class AppRouteTest {
     fun `필수 식별자가 없는 경로는 복원하지 않는다`() {
         val serializers = listOf(
             AppRoute.EditAlarm.serializer(),
+            AppRoute.RoomEdit.serializer(),
+            AppRoute.RoomMemberManagement.serializer(),
             AppRoute.Destination.serializer(),
             AppRoute.AlarmRinging.serializer(),
             AppRoute.ActiveAlarmTracking.serializer(),

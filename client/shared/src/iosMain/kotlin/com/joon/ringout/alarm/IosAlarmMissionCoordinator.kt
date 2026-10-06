@@ -23,6 +23,11 @@ data class IosAlarmMissionEventDto(
     val action: IosAlarmMissionAction,
     val occurredAtEpochMillis: Long,
     val retryAttempt: Int = 0,
+    val ringingObservedAtEpochMillis: Long? = null,
+    val ringingStoppedAtEpochMillis: Long? = null,
+    val scheduleVersion: Long = 1,
+    val ownerAccountId: String? = null,
+    val ownerCaptured: Boolean = false,
 )
 
 data class IosAlarmMissionEventsResult(
@@ -42,6 +47,7 @@ interface IosAlarmMissionEventInbox {
         alarmId: String,
         occurrenceId: String?,
         retryAttempt: Int,
+        scheduleVersion: Long,
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
@@ -49,6 +55,7 @@ interface IosAlarmMissionEventInbox {
         alarmId: String,
         occurrenceId: String?,
         retryAttempt: Int,
+        scheduleVersion: Long,
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
@@ -179,6 +186,19 @@ class IosAlarmMissionCoordinator(
     }
 
     private suspend fun processEventLocked(event: IosAlarmMissionEventDto): ActiveAlarmMission? {
+        // Persist event timestamps before consuming the durable inbox, including duplicate deliveries.
+        outcomeRecorder.recordRingingTimes(event)
+        // A fallback delivery can start the mission before the native stop timestamp arrives.
+        // Fill the already scheduled retry before the consumed-occurrence check returns early.
+        missionStore.loadDeadlineAlarm()?.takeIf { registration ->
+            event.occurrenceId == registration.sourceOccurrenceId || event.occurrenceId == registration.retryOccurrenceId
+        }?.let { registration ->
+            val interval = registration.missionSeed?.limitMinutes
+                ?: activeMission.value?.takeIf { it.occurrenceId == registration.sourceOccurrenceId }?.limitMinutes
+            if (interval != null) {
+                outcomeRecorder.recordRetryRingingSchedule(registration.retryOccurrenceId, registration.sourceOccurrenceId, interval)
+            }
+        }
         if (missionStore.isConsumed(event.occurrenceId)) {
             inbox.markConsumedAwait(event.eventId)
             return null
@@ -463,6 +483,7 @@ class IosAlarmMissionCoordinator(
         mission: ActiveAlarmMission,
         registration: IosMissionDeadlineAlarm,
     ) {
+        outcomeRecorder.recordRetryRingingSchedule(registration.retryOccurrenceId, mission.occurrenceId, mission.limitMinutes)
         val remainingMillis = (mission.expiresAtEpochMillis -
             Clock.System.now().toEpochMilliseconds()).coerceAtLeast(0L)
         scheduleRetryAlarmLocked(
@@ -483,6 +504,7 @@ class IosAlarmMissionCoordinator(
                 sourceAlarmId = seed.alarmId,
                 occurrenceId = registration.retryOccurrenceId,
                 retryAttempt = registration.retryAttempt,
+                scheduleVersion = seed.scheduleVersion,
                 title = seed.destinationName.ifBlank { "Ringout" },
                 delaySeconds = delaySeconds,
             ),
@@ -546,12 +568,14 @@ class IosAlarmMissionCoordinator(
                 outcomeRecorder.recordSuccess(
                     pending.occurrenceId,
                     pending.completedAt,
+                    pending.completedAtEpochMillis,
                 )
 
             IosPendingMissionOutcome.FAILURE ->
                 outcomeRecorder.recordFailure(
                     pending.occurrenceId,
                     pending.completedAt,
+                    pending.completedAtEpochMillis,
                 )
         }
         missionStore.clearPendingTerminal()
@@ -578,6 +602,7 @@ data class IosRetryMissionSeed(
     val arrivalRadiusMeters: Double,
     val alarmSoundUri: String?,
     val hasAlarmSoundUri: Boolean,
+    val scheduleVersion: Long = 1,
 )
 
 enum class IosPendingMissionOutcome {
@@ -593,8 +618,12 @@ data class IosPendingMissionTerminal(
 )
 
 interface IosMissionOutcomeRecorder {
-    suspend fun recordSuccess(occurrenceId: String, completedAt: String)
-    suspend fun recordFailure(occurrenceId: String, completedAt: String)
+    suspend fun recordRingingTimes(event: IosAlarmMissionEventDto) = Unit
+
+    suspend fun recordRetryRingingSchedule(occurrenceId: String, sourceOccurrenceId: String, intervalMinutes: Int) = Unit
+
+    suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long? = null)
+    suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long? = null)
 }
 
 interface IosActiveAlarmMissionStore {
@@ -641,6 +670,7 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
             expiresAtEpochMillis = expiresAt,
             occurrenceId = occurrenceId,
             retryAttempt = record.getOrNull(12)?.toIntOrNull()?.coerceAtLeast(0) ?: 0,
+            scheduleVersion = record.getOrNull(13)?.toLongOrNull() ?: 1,
             alarmTime = record[6],
             startedAtEpochMillis = startedAt,
             destinationLatitude = latitude,
@@ -667,6 +697,7 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
                 mission.alarmSoundUri.orEmpty(),
                 mission.hasAlarmSoundUri.toString(),
                 mission.retryAttempt.toString(),
+                mission.scheduleVersion.toString(),
             ),
             forKey = KeyActiveMission,
         )
@@ -732,6 +763,7 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
         if (
             record.size != LegacyDeadlineAlarmRecordSize &&
             record.size != DeadlineAlarmRecordSizeV2 &&
+            record.size != DeadlineAlarmRecordSizeV3 &&
             record.size != DeadlineAlarmRecordSize
         ) {
             return null
@@ -750,6 +782,7 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
                     ?.takeIf { it.isFinite() && it > 0 } ?: return null,
                 alarmSoundUri = record[12].takeIf { record[13].toBooleanStrictOrNull() == true },
                 hasAlarmSoundUri = record[13].toBooleanStrictOrNull() ?: return null,
+                scheduleVersion = record.getOrNull(15)?.toLongOrNull() ?: 1,
             )
         } else {
             null
@@ -784,6 +817,7 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
                 registration.missionSeed?.alarmSoundUri.orEmpty(),
                 registration.missionSeed?.hasAlarmSoundUri?.toString().orEmpty(),
                 registration.needsRecoveryCancellation.toString(),
+                registration.missionSeed?.scheduleVersion?.toString().orEmpty(),
             ),
             forKey = KeyDeadlineAlarm,
         )
@@ -842,11 +876,12 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
         const val KeyConsumedOccurrences = "ios.activeMission.consumedOccurrences"
         const val MaxConsumedOccurrences = 200
         const val LegacyActiveMissionRecordSize = 12
-        const val ActiveMissionRecordSize = 13
+        const val ActiveMissionRecordSize = 14
         const val LastLocationRecordSize = 4
         const val LegacyDeadlineAlarmRecordSize = 4
         const val DeadlineAlarmRecordSizeV2 = 14
-        const val DeadlineAlarmRecordSize = 15
+        const val DeadlineAlarmRecordSizeV3 = 15
+        const val DeadlineAlarmRecordSize = 16
         const val LegacyPendingTerminalRecordSize = 2
         const val PendingTerminalRecordSize = 4
     }
@@ -879,6 +914,7 @@ private fun AlarmScheduleRequest.toActiveAlarmMission(
         occurrenceId = event.occurrenceId,
         retryAttempt = event.retryAttempt,
         alarmTime = time,
+        scheduleVersion = event.scheduleVersion,
         startedAtEpochMillis = event.occurredAtEpochMillis,
         destinationLatitude = destinationLatitude,
         destinationLongitude = destinationLongitude,
@@ -890,6 +926,7 @@ private fun AlarmScheduleRequest.toActiveAlarmMission(
 private fun ActiveAlarmMission.toRetryMissionSeed(): IosRetryMissionSeed =
     IosRetryMissionSeed(
         alarmId = alarmId,
+        scheduleVersion = scheduleVersion,
         destinationName = destinationName,
         limitMinutes = limitMinutes,
         alarmTime = alarmTime,
@@ -911,6 +948,7 @@ private fun IosRetryMissionSeed.toActiveAlarmMission(
 ): ActiveAlarmMission =
     ActiveAlarmMission(
         alarmId = alarmId,
+        scheduleVersion = scheduleVersion,
         destinationName = destinationName,
         limitMinutes = limitMinutes,
         expiresAtEpochMillis = event.occurredAtEpochMillis + limitMinutes * MillisPerMinute,
@@ -939,12 +977,14 @@ internal suspend fun IosAlarmMissionEventInbox.recordOpenEventAwait(
     alarmId: String,
     occurrenceId: String?,
     retryAttempt: Int,
+    scheduleVersion: Long = 1,
 ) {
     val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
         recordOpenEvent(
             alarmId = alarmId,
             occurrenceId = occurrenceId,
             retryAttempt = retryAttempt,
+            scheduleVersion = scheduleVersion,
             callback = callback,
         )
     }
@@ -955,12 +995,14 @@ internal suspend fun IosAlarmMissionEventInbox.recordStopEventAwait(
     alarmId: String,
     occurrenceId: String?,
     retryAttempt: Int,
+    scheduleVersion: Long = 1,
 ) {
     val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
         recordStopEvent(
             alarmId = alarmId,
             occurrenceId = occurrenceId,
             retryAttempt = retryAttempt,
+            scheduleVersion = scheduleVersion,
             callback = callback,
         )
     }

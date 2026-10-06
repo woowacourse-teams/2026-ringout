@@ -8,7 +8,7 @@ enum class ThemeMode(
     ;
 
     internal companion object {
-        fun fromPersistedValue(value: String?): ThemeMode =
-            entries.firstOrNull { it.persistedValue == value } ?: Dark
+        fun fromPersistedValue(value: String?): ThemeMode? =
+            entries.firstOrNull { it.persistedValue == value }
     }
 }

@@ -30,6 +30,7 @@ git status --short
 | 이름 | 용도 |
 | --- | --- |
 | `MAPS_API_KEY` | Maps SDK 및 Places API(New). 로컬은 `local.properties`에도 같은 이름으로 설정할 수 있다. |
+| `KAKAO_NATIVE_APP_KEY` | 카카오 네이티브 앱 키. 로컬은 `local.properties`에도 설정할 수 있다. |
 | `ANDROID_KEYSTORE_PATH` | 로컬 릴리스 JKS 경로. CI에서는 복원 후 이 이름으로 전달한다. |
 | `ANDROID_KEYSTORE_PASSWORD` | 키스토어 비밀번호 |
 | `ANDROID_KEY_ALIAS` | 업로드 키 alias |

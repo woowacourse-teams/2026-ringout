@@ -10,15 +10,26 @@ import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.joon.ringout.presentation.roomlist.RoomListViewModel
+import com.joon.ringout.presentation.records.RecordsViewModel
 import com.joon.ringout.di.AppContainer
+import com.joon.ringout.domain.room.RoomSummary
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
+import com.joon.ringout.domain.missionhistory.GetRecordsHistory
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.mypage.currentMissionYearMonth
+import com.joon.ringout.presentation.records.currentRecordsDate
 import com.joon.ringout.presentation.signup.SignupViewModel
+import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
+import com.joon.ringout.presentation.roomedit.RoomEditViewModel
+import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roommembermanagement.RoomMemberManagementViewModel
+import com.joon.ringout.presentation.roomlist.model.toRoomUiModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlin.reflect.KClass
 
@@ -74,6 +85,73 @@ internal class NavigationViewModelScopes(
 private fun navigationViewModelFactory(container: AppContainer): ViewModelProvider.Factory =
     viewModelFactory {
         initializer { HomeViewModel() }
+        initializer {
+            RoomListViewModel(
+                analytics = container.productAnalyticsRecorder,
+                loadRooms = {
+                    try {
+                        Result.success(container.roomRepository.getRooms().map(RoomSummary::toRoomUiModel))
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        Result.failure(error)
+                    }
+                },
+                createRoom = { input ->
+                    try {
+                        Result.success(container.roomRepository.createRoom(input))
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        Result.failure(error)
+                    }
+                },
+                joinRoom = { roomId ->
+                    try {
+                        Result.success(container.roomRepository.joinRoom(roomId))
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        Result.failure(error)
+                    }
+                },
+                authSession = container.authSession,
+            )
+        }
+        initializer { RoomCreateViewModel() }
+        initializer {
+            RoomEditViewModel(
+                loadRoom = container.roomRepository::getRoom,
+                updateRoom = container.roomRepository::updateRoom,
+                authSession = container.authSession,
+                analytics = container.productAnalyticsRecorder,
+            )
+        }
+        initializer {
+            RoomMemberManagementViewModel(
+                loadMembers = container.roomRepository::getMembersForManagement,
+                kickMember = container.roomRepository::kickMember,
+                authSession = container.authSession,
+            )
+        }
+        initializer {
+            RoomHomeViewModel(
+                analytics = container.productAnalyticsRecorder,
+                loadRoom = container.roomRepository::getRoom,
+                loadRecords = container.roomRepository::getRoomRecords,
+                deleteRoom = container.roomRepository::deleteRoom,
+                leaveRoom = container.roomRepository::leaveRoom,
+                authSession = container.authSession,
+            )
+        }
+        initializer {
+            RecordsViewModel(
+                activityRepository = container.alarmActivityRepository,
+                getRecordsHistory = GetRecordsHistory(container.missionHistoryRepository),
+                initialDate = currentRecordsDate(),
+                currentDate = ::currentRecordsDate,
+            )
+        }
         initializer {
             MyPageViewModel(
                 getMissionSuccessDates = GetMissionSuccessDates(container.missionHistoryRepository),

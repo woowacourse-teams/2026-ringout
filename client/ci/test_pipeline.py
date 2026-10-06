@@ -42,8 +42,9 @@ class RoutingTest(unittest.TestCase):
                 ci.check_gate(changes, changed, quality)
 
     def test_client_and_ci_changes_are_detected(self):
-        for path in (b"client/README.md", b"client/shared/test.kt", b".github/workflows/client-ci.yml",
-                     b".github/workflows/build-release-aab.yml", b".github/actions/setup/action.yml"):
+        for path in (b"client/README.md", b"client/shared/test.kt", b".github/workflows/android-ci.yml",
+                     b".github/workflows/build-release-aab.yml", b".github/workflows/android-internal-cd.yml",
+                     b".github/actions/setup/action.yml"):
             self.assertTrue(ci.is_client_path(path), path)
         self.assertFalse(ci.is_client_path(b"server/App.java"))
         self.assertFalse(ci.is_client_path(b"README.md"))
@@ -70,11 +71,16 @@ class RoutingTest(unittest.TestCase):
 
 
 class ConfigurationTest(unittest.TestCase):
-    def test_version_is_shared_across_channels_and_reruns(self):
-        self.assertEqual(ci.version_code("261010004", "42"), 261010046)
-        for base, number in (("", "1"), ("-1", "1"), ("12", "0"), ("2100000000", "1"), ("12", "1.0")):
-            with self.subTest(base=base, number=number), self.assertRaises(ci.CIError):
-                ci.version_code(base, number)
+    def test_channel_selection_does_not_allocate_a_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env_file = Path(directory) / "github-env"
+            env_file.touch()
+            with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/develop", "GITHUB_ENV": str(env_file)}):
+                ci.select_build()
+            self.assertEqual(env_file.read_text(), "AAB_CHANNEL=internal\n")
+            with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/main", "GITHUB_ENV": str(env_file)}):
+                ci.select_build()
+            self.assertEqual(env_file.read_text(), "AAB_CHANNEL=internal\nAAB_CHANNEL=release\n")
 
     def test_google_services_rejects_fixture_and_wrong_app(self):
         fixture = json.loads((ci.CLIENT_ROOT / "ci/google-services.ci.json").read_text())
@@ -88,6 +94,18 @@ class ConfigurationTest(unittest.TestCase):
         valid["client"][0]["client_info"]["android_client_info"]["package_name"] = "other.app"
         with self.assertRaises(ci.CIError):
             ci.validate_google_services(json.dumps(valid).encode())
+
+    def test_signed_build_rejects_firebase_project_from_other_branch(self):
+        fixture = json.loads((ci.CLIENT_ROOT / "ci/google-services.ci.json").read_text())
+        fixture["project_info"]["project_id"] = "ringout-8abf2"
+        fixture["project_info"]["storage_bucket"] = "ringout-8abf2.invalid"
+        fixture["client"][0]["api_key"][0]["current_key"] = "test-config-key"
+        data = json.dumps(fixture).encode()
+        ci.validate_google_services(data, ci.expected_firebase_project("refs/heads/develop"))
+        with self.assertRaises(ci.CIError):
+            ci.validate_google_services(data, ci.expected_firebase_project("refs/heads/main"))
+        with self.assertRaises(ci.CIError):
+            ci.expected_firebase_project("refs/heads/feature")
 
     def test_missing_secret_error_names_key_without_value(self):
         with patch.dict(os.environ, {"MAPS_API_KEY": ""}):
@@ -138,17 +156,24 @@ class ArtifactTest(unittest.TestCase):
             ci.find_aab(self.root)
 
     def test_metadata_matches_built_version(self):
+        source = self.root / "androidApp/build.gradle.kts"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text('versionCode = 42\nversionName = "1.1.0"\n')
         directory = self.root / "androidApp/build/intermediates/merged_manifests/release/processReleaseManifest"
         directory.mkdir(parents=True)
         (directory / "AndroidManifest.xml").write_text(
             '<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
             'package="com.joon.ringout" android:versionCode="42" android:versionName="1.1.0"/>'
         )
-        env = {"APP_VERSION_CODE": "42", "AAB_CHANNEL": "internal", "GITHUB_SHA": "a" * 40,
+        env = {"AAB_CHANNEL": "internal", "GITHUB_SHA": "a" * 40,
                "GITHUB_REF_NAME": "develop", "GITHUB_RUN_ID": "10", "GITHUB_RUN_ATTEMPT": "1"}
         with patch.dict(os.environ, env):
             self.assertEqual(ci.release_metadata(self.root)["versionCode"], 42)
-            with patch.dict(os.environ, {"APP_VERSION_CODE": "43"}), self.assertRaises(ci.CIError):
+            source.write_text('versionCode = 43\nversionName = "1.1.0"\n')
+            with self.assertRaises(ci.CIError):
+                ci.release_metadata(self.root)
+            source.write_text('versionCode = 42\nversionName = "1.2.0"\n')
+            with self.assertRaises(ci.CIError):
                 ci.release_metadata(self.root)
 
     def test_ci_configuration_rejects_real_or_overridden_firebase_inputs(self):
@@ -161,6 +186,28 @@ class ArtifactTest(unittest.TestCase):
         path.write_text('<resources><string name="project_id">ringout-ci-verification</string>'
                         '<string name="google_api_key">CI_VERIFICATION_ONLY</string></resources>')
         ci.verify_ci_configuration(self.root)
+
+    def test_release_configuration_rejects_generated_resources_from_other_project(self):
+        fixture = json.loads((ci.CLIENT_ROOT / "ci/google-services.ci.json").read_text())
+        fixture["project_info"]["project_id"] = "ringout-prod"
+        fixture["project_info"]["storage_bucket"] = "ringout-prod.invalid"
+        fixture["client"][0]["api_key"][0]["current_key"] = "test-config-key"
+        config = self.root / "google-services.json"
+        config.write_text(json.dumps(fixture))
+        directory = self.root / "androidApp/build/generated/res/processReleaseGoogleServices/values"
+        directory.mkdir(parents=True)
+        generated = directory / "values.xml"
+        generated.write_text('<resources><string name="project_id">ringout-8abf2</string>'
+                             '<string name="google_app_id">1:123456789012:android:0000000000000000000000</string>'
+                             '<string name="gcm_defaultSenderId">123456789012</string></resources>')
+        with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/main"}):
+            with self.assertRaises(ci.CIError):
+                ci.verify_release_firebase_configuration(self.root, config)
+            generated.write_text(generated.read_text().replace("ringout-8abf2", "ringout-prod"))
+            self.assertEqual(ci.verify_release_firebase_configuration(self.root, config), "ringout-prod")
+            generated.write_text(generated.read_text().replace("123456789012", "other", 1))
+            with self.assertRaises(ci.CIError):
+                ci.verify_release_firebase_configuration(self.root, config)
 
 
 @unittest.skipUnless(shutil.which("keytool") and shutil.which("jarsigner"), "JDK tools required")
@@ -198,7 +245,7 @@ class SignatureTest(unittest.TestCase):
 
     def test_prepare_checks_private_key_password_and_exports_only_paths(self):
         config = {
-            "project_info": {"project_id": "test-project", "project_number": "123"},
+            "project_info": {"project_id": "ringout-8abf2", "project_number": "123"},
             "client": [{"client_info": {"mobilesdk_app_id": "1:123:android:abcd",
                          "android_client_info": {"package_name": ci.APPLICATION_ID}},
                         "api_key": [{"current_key": "test-config-key"}]}],
@@ -207,12 +254,16 @@ class SignatureTest(unittest.TestCase):
         github_env.touch()
         values = {
             "RUNNER_TEMP": str(self.root), "GITHUB_ENV": str(github_env),
+            "GITHUB_REF": "refs/heads/develop",
             "ANDROID_KEYSTORE_BASE64": base64.b64encode(self.store.read_bytes()).decode(),
             "ANDROID_KEY_ALIAS": "upload", "ANDROID_KEY_PASSWORD": "wrong-password",
             "MAPS_API_KEY": "test-maps-key",
             "GOOGLE_SERVICES_JSON_BASE64": base64.b64encode(json.dumps(config).encode()).decode(),
         }
         with patch.dict(os.environ, values), patch.object(ci, "expected_certificate", return_value=self.fingerprint):
+            with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/main"}), self.assertRaises(ci.CIError):
+                ci.prepare_signing()
+            self.assertFalse((self.root / "ringout-signing").exists())
             with self.assertRaises(ci.CIError):
                 ci.prepare_signing()
             self.assertEqual(github_env.read_text(), "")

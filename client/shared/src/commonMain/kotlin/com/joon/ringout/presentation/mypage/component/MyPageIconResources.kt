@@ -10,3 +10,5 @@ internal expect val MyPageChevronRightIconResource: DrawableResource
 internal expect val MyPageEditProfileIconResource: DrawableResource
 internal expect val MyPageLogoutIconResource: DrawableResource
 internal expect val MyPageDeleteAccountIconResource: DrawableResource
+
+internal expect val MyPageDefaultProfileImageResource: DrawableResource

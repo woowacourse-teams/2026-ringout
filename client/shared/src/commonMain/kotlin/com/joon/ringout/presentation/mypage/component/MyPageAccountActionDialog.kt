@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
@@ -47,94 +48,96 @@ fun MyPageAccountActionDialog(
     val content = action.dialogContent
     val shape = RoundedCornerShape(DialogCornerRadius)
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
-            usePlatformDefaultWidth = false,
-        ),
-    ) {
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(horizontal = DialogScreenPadding),
-            contentAlignment = Alignment.Center,
+    DialogWithoutRipple {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                usePlatformDefaultWidth = false,
+            ),
         ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(max = DialogMaxWidth)
-                    .fillMaxWidth()
-                    .shadow(
-                        elevation = DialogShadowElevation,
-                        shape = shape,
-                        clip = false,
-                        ambientColor = colors.shadow,
-                        spotColor = colors.shadow,
-                    )
-                    .clip(shape)
-                    .background(colors.surface)
-                    .padding(DialogContentPadding)
-                    .semantics {
-                        paneTitle = "${content.title} 확인"
-                    },
-                verticalArrangement = Arrangement.spacedBy(DialogContentSpacing),
+            Box(
+                modifier = modifier
+                    .fillMaxSize()
+                    .padding(horizontal = DialogScreenPadding),
+                contentAlignment = Alignment.Center,
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(DialogInfoSpacing),
-                ) {
-                    Text(
-                        text = content.title,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { heading() },
-                        color = colors.title,
-                        maxLines = 1,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontSize = 20.sp,
-                            lineHeight = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                        ),
-                    )
-                    Text(
-                        text = content.description,
-                        modifier = Modifier.fillMaxWidth(),
-                        color = colors.description,
-                        maxLines = 2,
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            fontSize = 16.sp,
-                            lineHeight = 19.2.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                    )
-                }
-                Row(
                     modifier = Modifier
-                        .align(Alignment.End)
-                        .widthIn(max = ActionRowMaxWidth)
+                        .widthIn(max = DialogMaxWidth)
                         .fillMaxWidth()
-                        .height(ActionTouchHeight),
-                    horizontalArrangement = Arrangement.spacedBy(ActionButtonSpacing),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    MyPageAccountActionButton(
-                        text = "취소",
-                        containerColor = colors.cancel,
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(CancelButtonWeight),
-                    )
-                    MyPageAccountActionButton(
-                        text = content.confirmLabel,
-                        containerColor = when (action) {
-                            MyPageAccountAction.Logout -> colors.logout
-                            MyPageAccountAction.Withdraw -> colors.withdraw
+                        .shadow(
+                            elevation = DialogShadowElevation,
+                            shape = shape,
+                            clip = false,
+                            ambientColor = colors.shadow,
+                            spotColor = colors.shadow,
+                        )
+                        .clip(shape)
+                        .background(colors.surface)
+                        .padding(DialogContentPadding)
+                        .semantics {
+                            paneTitle = "${content.title} 확인"
                         },
-                        onClick = onConfirm,
-                        modifier = Modifier.weight(ConfirmButtonWeight),
-                    )
+                    verticalArrangement = Arrangement.spacedBy(DialogContentSpacing),
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(DialogInfoSpacing),
+                    ) {
+                        Text(
+                            text = content.title,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { heading() },
+                            color = colors.title,
+                            maxLines = 1,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontSize = 20.sp,
+                                lineHeight = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                            ),
+                        )
+                        Text(
+                            text = content.description,
+                            modifier = Modifier.fillMaxWidth(),
+                            color = colors.description,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = 16.sp,
+                                lineHeight = 19.2.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .widthIn(max = ActionRowMaxWidth)
+                            .fillMaxWidth()
+                            .height(ActionTouchHeight),
+                        horizontalArrangement = Arrangement.spacedBy(ActionButtonSpacing),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MyPageAccountActionButton(
+                            text = "취소",
+                            containerColor = colors.cancel,
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(CancelButtonWeight),
+                        )
+                        MyPageAccountActionButton(
+                            text = content.confirmLabel,
+                            containerColor = when (action) {
+                                MyPageAccountAction.Logout -> colors.logout
+                                MyPageAccountAction.Withdraw -> colors.withdraw
+                            },
+                            onClick = onConfirm,
+                            modifier = Modifier.weight(ConfirmButtonWeight),
+                        )
+                    }
                 }
             }
         }

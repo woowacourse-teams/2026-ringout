@@ -9,12 +9,20 @@ internal fun MissionHistoryDto.toDomain(): MissionHistoryEntry = MissionHistoryE
         ?: error("Unsupported mission result: $result"),
     completedAt = MissionDate.parse(completedAt),
     occurrenceId = occurrenceId,
+    ringingStartedAtEpochMillis = ringingStartedAtEpochMillis,
+    ringingStoppedAtEpochMillis = ringingStoppedAtEpochMillis,
+    missionCompletedAtEpochMillis = missionCompletedAtEpochMillis,
+    isRingingStartObserved = isRingingStartObserved,
 )
 
 internal fun MissionHistoryEntry.toDto(): MissionHistoryDto = MissionHistoryDto(
     result = result.persistedValue,
     completedAt = completedAt.iso8601,
     occurrenceId = occurrenceId,
+    ringingStartedAtEpochMillis = ringingStartedAtEpochMillis,
+    ringingStoppedAtEpochMillis = ringingStoppedAtEpochMillis,
+    missionCompletedAtEpochMillis = missionCompletedAtEpochMillis,
+    isRingingStartObserved = isRingingStartObserved,
 )
 
 internal fun MissionHistoryEntity.toDto(): MissionHistoryDto = MissionHistoryDto(

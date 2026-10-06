@@ -1,0 +1,7 @@
+package com.joon.ringout.presentation.roomhome.component
+
+import org.jetbrains.compose.resources.DrawableResource
+
+internal expect val RoomHomeRecordMovingIconResource: DrawableResource
+internal expect val RoomHomeRecordArrivedIconResource: DrawableResource
+internal expect val RoomHomeRecordForceEndedIconResource: DrawableResource

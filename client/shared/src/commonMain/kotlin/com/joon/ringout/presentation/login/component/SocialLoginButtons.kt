@@ -39,8 +39,8 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 internal fun SocialLoginButtons(
     onSocialLoginClick: (SocialLoginProvider) -> Unit,
-    providers: List<SocialLoginProvider> = PlatformSocialLoginProviders,
     modifier: Modifier = Modifier,
+    providers: List<SocialLoginProvider> = PlatformSocialLoginProviders,
     enabled: Boolean = true,
 ) {
     val colors = loginColors()
@@ -152,7 +152,7 @@ private fun appleButtonStyle(colors: LoginColors): SocialLoginButtonStyle = Soci
     borderColor = colors.appleBorder,
     icon = LoginAppleIconResource,
     iconSize = 28.dp,
-    iconSlotSize = 32.dp,
+    iconSlotSize = 28.dp,
 )
 
 private fun googleButtonStyle(colors: LoginColors): SocialLoginButtonStyle = SocialLoginButtonStyle(

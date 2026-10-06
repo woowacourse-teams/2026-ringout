@@ -13,6 +13,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -21,7 +22,11 @@ import lombok.NoArgsConstructor;
 @Getter
 @Entity
 @Table(
-    name = "user_agreement"
+    name = "user_agreement",
+    uniqueConstraints = @UniqueConstraint(
+        name = "uk_user_agreement_user_terms",
+        columnNames = {"user_id", "terms_id"}
+    )
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserAgreement extends BaseEntity {
@@ -31,11 +36,11 @@ public class UserAgreement extends BaseEntity {
   private Long id;
 
   @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "user_id")
+  @JoinColumn(name = "user_id", nullable = false)
   private User user;
 
   @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "terms_id")
+  @JoinColumn(name = "terms_id", nullable = false)
   private Terms terms;
 
   @Embedded

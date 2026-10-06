@@ -5,6 +5,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.MissionLocationPermissionDecision
@@ -16,21 +17,23 @@ internal fun MissionLocationPermissionDialog(
     onDismiss: () -> Unit,
 ) {
     val content = decision?.dialogContent ?: return
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(content.title) },
-        text = { Text(content.message) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(content.confirmLabel)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("취소")
-            }
-        },
-    )
+    DialogWithoutRipple {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(content.title) },
+            text = { Text(content.message) },
+            confirmButton = {
+                TextButton(onClick = onConfirm) {
+                    Text(content.confirmLabel)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("취소")
+                }
+            },
+        )
+    }
 }
 
 private data class MissionLocationPermissionDialogContent(

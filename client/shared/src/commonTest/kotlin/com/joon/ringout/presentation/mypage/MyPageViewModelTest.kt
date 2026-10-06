@@ -3,12 +3,16 @@ package com.joon.ringout.presentation.mypage
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.DestinationSelectionSource
+import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
+import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.StampMonthChangeDirection
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthTerm
 import com.joon.ringout.domain.auth.SocialLoginOutcome
 import com.joon.ringout.domain.member.MemberProfile
+import com.joon.ringout.domain.member.ProfileImageUpload
+import com.joon.ringout.domain.member.MemberProfileImage
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.MissionDate
@@ -19,6 +23,8 @@ import com.joon.ringout.domain.missionhistory.MissionYearMonth
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +41,118 @@ import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MyPageViewModelTest {
+    @Test
+    fun `프로필 저장 후 캐시 갱신은 마이페이지의 사진과 닉네임을 함께 반영한다`() = runTest {
+        val repository = FakeMemberRepository()
+        val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+        repository.storedProfile = MemberProfile("새닉네임", "member@example.com")
+        repository.storedImage = MemberProfileImage("https://example.com/new.jpg")
+        viewModel.refreshProfileFromCache()
+        assertEquals(MyPageAccountStatus.LoggedIn("새닉네임", "member@example.com"), viewModel.uiState.accountStatus)
+        assertEquals("https://example.com/new.jpg", viewModel.uiState.profileImageUrl)
+        assertEquals(0, repository.imageRequestCount)
+    }
+
+    @Test
+    fun `이미지 조회가 늦어도 계정 정보를 표시하고 응답 후 사진을 갱신한다`() = runTest {
+        val pending = CompletableDeferred<MemberProfileImage>()
+        val repository = FakeMemberRepository().apply { imageLoader = { pending.await() } }
+        val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+        viewModel.onAuthenticated()
+        runCurrent()
+        assertEquals(MyPageAccountStatus.LoggedIn("링아웃", "ringout@example.com"), viewModel.uiState.accountStatus)
+        assertNull(viewModel.uiState.profileImageUrl)
+
+        pending.complete(MemberProfileImage("https://example.com/profile.webp"))
+        runCurrent()
+        assertEquals("https://example.com/profile.webp", viewModel.uiState.profileImageUrl)
+    }
+
+    @Test
+    fun `캐시된 사진은 화면 생성 즉시 표시하고 추가 조회하지 않는다`() = runTest {
+        val repository = FakeMemberRepository().apply {
+            storedProfile = MemberProfile("회원", "member@example.com")
+            storedImage = MemberProfileImage("https://example.com/cached.webp")
+        }
+        val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+        assertEquals(repository.storedImage?.url, viewModel.uiState.profileImageUrl)
+        viewModel.onAuthenticated()
+        runCurrent()
+        assertEquals(0, repository.imageRequestCount)
+    }
+
+    @Test
+    fun `사진 조회 실패는 계정 상태를 변경하지 않고 다음 진입에서 다시 조회한다`() = runTest {
+        val repository = FakeMemberRepository().apply { imageLoader = { error("이미지 조회 실패") } }
+        val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+        viewModel.onAuthenticated()
+        runCurrent()
+        assertEquals(MyPageAccountStatus.LoggedIn("링아웃", "ringout@example.com"), viewModel.uiState.accountStatus)
+        assertNull(viewModel.uiState.profileImageUrl)
+
+        repository.imageLoader = { MemberProfileImage("https://example.com/retry.webp") }
+        viewModel.onAuthenticated()
+        runCurrent()
+        assertEquals("https://example.com/retry.webp", viewModel.uiState.profileImageUrl)
+        assertEquals(2, repository.imageRequestCount)
+    }
+
+    @Test
+    fun `로그아웃 후 도착한 이전 사진 응답은 표시하지 않는다`() = runTest {
+        val pending = CompletableDeferred<MemberProfileImage>()
+        val repository = FakeMemberRepository().apply {
+            imageLoader = { withContext(NonCancellable) { pending.await() } }
+        }
+        val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+        viewModel.onAuthenticated()
+        runCurrent()
+        viewModel.onLoggedOut()
+        pending.complete(MemberProfileImage("https://example.com/old.webp"))
+        runCurrent()
+        assertEquals(MyPageAccountStatus.LoggedOut, viewModel.uiState.accountStatus)
+        assertNull(viewModel.uiState.profileImageUrl)
+    }
+
+    @Test
+    fun `세션 복원 중에는 기존 사진을 지운다`() = runTest {
+        val repository = FakeMemberRepository().apply {
+            storedImage = MemberProfileImage("https://example.com/old.webp")
+        }
+        val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+        viewModel.onSessionRestoring()
+        assertNull(viewModel.uiState.profileImageUrl)
+        assertEquals(MyPageAccountStatus.Loading, viewModel.uiState.accountStatus)
+    }
+
+    @Test
+    fun `캐시가 있으면 재생성된 화면도 로딩 없이 계정 정보를 표시한다`() = runTest {
+        val repository = FakeMemberRepository().apply {
+            storedProfile = MemberProfile("저장된닉네임", "cached@example.com")
+        }
+        repeat(2) {
+            val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+            val expected = MyPageAccountStatus.LoggedIn("저장된닉네임", "cached@example.com")
+            assertEquals(expected, viewModel.uiState.accountStatus)
+            viewModel.onAuthenticated()
+            assertEquals(expected, viewModel.uiState.accountStatus)
+            runCurrent()
+        }
+        assertEquals(0, repository.profileRequestCount)
+    }
+
+    @Test
+    fun `캐시가 없는 최초 진입은 조회가 끝날 때까지 로딩을 표시한다`() = runTest {
+        val pending = CompletableDeferred<MemberProfile>()
+        val repository = FakeMemberRepository().apply { profileLoader = { pending.await() } }
+        val viewModel = createViewModel(memberRepository = repository, coroutineScope = this)
+        viewModel.onAuthenticated()
+        runCurrent()
+        assertEquals(MyPageAccountStatus.Loading, viewModel.uiState.accountStatus)
+        pending.complete(MemberProfile("첫조회", null))
+        runCurrent()
+        assertEquals(MyPageAccountStatus.LoggedIn("첫조회", "이메일 정보 없음"), viewModel.uiState.accountStatus)
+    }
+
     @Test
     fun `화면에 진입할 때마다 달력을 다시 불러오고 한 번만 기록한다`() =
         withViewModel { viewModel, repository, analytics ->
@@ -647,6 +765,20 @@ private class FakeMissionHistoryRepository(
 private class FakeMemberRepository(
     private val order: MutableList<String> = mutableListOf(),
 ) : MemberRepository {
+    var storedImage: MemberProfileImage? = null
+    var imageRequestCount = 0
+    var imageLoader: suspend () -> MemberProfileImage = { MemberProfileImage(null) }
+    override fun getCachedProfileImage(): MemberProfileImage? = storedImage
+    override suspend fun uploadProfileImage(image: ProfileImageUpload): MemberProfileImage = error("사용하지 않는 요청입니다.")
+
+    override suspend fun getProfileImage(): MemberProfileImage {
+        imageRequestCount++
+        return imageLoader()
+    }
+
+    var storedProfile: MemberProfile? = null
+    override fun getCachedProfile(): MemberProfile? = storedProfile
+
     var profileRequestCount = 0
     var withdrawRequestCount = 0
     var withdrawGate: CompletableDeferred<Unit>? = null
@@ -707,7 +839,8 @@ private class FakeAuthRepository(
 
 private class RecordingProductAnalyticsRecorder(
     private val order: MutableList<String> = mutableListOf(),
-) : ProductAnalyticsRecorder {
+) : ProductAnalyticsRecorder,
+    OnboardingAnalyticsRecorder by NoOpOnboardingAnalyticsRecorder {
     val calendarViewed = mutableListOf<CalendarViewed>()
     val monthChanged = mutableListOf<MonthChanged>()
     var withdrawalEventCount = 0

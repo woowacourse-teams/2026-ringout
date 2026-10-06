@@ -6,18 +6,32 @@ import com.joon.ringout.data.network.ApiErrorResponse
 import com.joon.ringout.data.network.ApiException
 import com.joon.ringout.data.network.ApiJson
 import com.joon.ringout.data.network.ApiResponse
+import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.SecureTokenStorage
-import com.joon.ringout.domain.member.MemberRepository
+import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.domain.member.MemberProfile
+import com.joon.ringout.domain.member.ProfileImageUpload
+import com.joon.ringout.domain.member.MemberProfileImage
+import com.joon.ringout.domain.member.MemberRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
+import io.ktor.http.contentType
 import io.ktor.client.request.patch
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonElement
@@ -25,10 +39,65 @@ import kotlinx.serialization.json.JsonElement
 class DefaultMemberRepository(
     private val httpClient: HttpClient,
     private val tokenStorage: SecureTokenStorage,
+    private val authSession: AuthSession = getAuthSession(),
+    coroutineScope: CoroutineScope? = null,
 ) : MemberRepository {
-    private val authenticatedRequests = AuthenticatedRequestExecutor(httpClient, tokenStorage)
+    private val authenticatedRequests = AuthenticatedRequestExecutor(httpClient, tokenStorage, authSession)
+    private val cacheScope = coroutineScope ?: CoroutineScope(
+        httpClient.coroutineContext + SupervisorJob(),
+    ).also { scope ->
+        // 장기 구독이 HttpClient.close()의 완료를 막지 않도록 독립 Job을 사용한다.
+        httpClient.coroutineContext[Job]?.invokeOnCompletion { scope.cancel() }
+    }
+    private val profileCache = SessionMemberProfileCache(
+        session = authSession,
+        scope = cacheScope,
+    )
 
-    override suspend fun getProfile(): MemberProfile {
+    private val profileImageCache = SessionProfileImageCache(authSession, cacheScope)
+
+    override fun getCachedProfileImage(): MemberProfileImage? = profileImageCache.peek()
+
+    override suspend fun getProfileImage(): MemberProfileImage = profileImageCache.get {
+        val response = authenticatedRequests.execute { accessToken ->
+            httpClient.get(ApiConfig.url("/api/v1/user/profile-image")) {
+                bearerAuth(accessToken)
+            }
+        }
+        val body = response.decodeOrThrow<GetProfileImageResponse>()
+        check(body.isSuccess) { body.message }
+        val result = checkNotNull(body.result) { "프로필 이미지 조회 응답이 비어 있어요." }
+        MemberProfileImage(result.profileImageUrl?.takeIf { it.isNotBlank() })
+    }
+
+    override suspend fun uploadProfileImage(image: ProfileImageUpload): MemberProfileImage {
+        val identity = authSession.identity.value
+        val response = authenticatedRequests.execute { accessToken ->
+            val multipart = MultiPartFormDataContent(formData {
+                append("image", image.bytes, Headers.build {
+                    append(HttpHeaders.ContentType, image.contentType)
+                    append(HttpHeaders.ContentDisposition, "filename=\"${image.fileName}\"")
+                })
+            })
+            httpClient.post(ApiConfig.url("/api/v1/user/profile-image")) {
+                bearerAuth(accessToken)
+                contentType(multipart.contentType)
+                setBody(multipart)
+            }
+        }
+        val body = response.decodeOrThrow<GetProfileImageResponse>()
+        check(body.isSuccess) { body.message }
+        val url = checkNotNull(body.result?.profileImageUrl?.takeIf { it.isNotBlank() }) {
+            "프로필 이미지 저장 응답이 비어 있어요."
+        }
+        val saved = MemberProfileImage(url)
+        profileImageCache.update(identity, saved)
+        return saved
+    }
+
+    override fun getCachedProfile(): MemberProfile? = profileCache.peek()
+
+    override suspend fun getProfile(): MemberProfile = profileCache.get {
         val response = authenticatedRequests.execute { accessToken ->
             httpClient.get(ApiConfig.url("/api/v1/users/me")) {
                 bearerAuth(accessToken)
@@ -37,13 +106,14 @@ class DefaultMemberRepository(
         val body = response.decodeOrThrow<GetMemberResponse>()
         check(body.isSuccess) { body.message }
         val member = checkNotNull(body.result) { "회원 조회 응답이 비어 있어요." }
-        return MemberProfile(
+        MemberProfile(
             nickname = member.nickname,
             email = member.email,
         )
     }
 
     override suspend fun updateNickname(nickname: String): String {
+        val identity = authSession.identity.value
         val response = authenticatedRequests.execute { accessToken ->
             httpClient.patch(ApiConfig.url("/api/v1/users/me/nickname")) {
                 bearerAuth(accessToken)
@@ -52,10 +122,13 @@ class DefaultMemberRepository(
         }
         val body = response.decodeOrThrow<UpdateNicknameResponse>()
         check(body.isSuccess) { body.message }
-        return checkNotNull(body.result) { "닉네임 수정 응답이 비어 있어요." }.nickname
+        val updatedNickname = checkNotNull(body.result) { "닉네임 수정 응답이 비어 있어요." }.nickname
+        profileCache.updateNickname(identity, updatedNickname)
+        return updatedNickname
     }
 
     override suspend fun withdraw() {
+        val identity = authSession.identity.value
         val response = authenticatedRequests.execute { accessToken ->
             httpClient.delete(ApiConfig.url("/api/v1/users/me")) {
                 bearerAuth(accessToken)
@@ -63,6 +136,8 @@ class DefaultMemberRepository(
         }
         val body = response.decodeOrThrow<JsonElement>()
         check(body.isSuccess) { body.message }
+        profileCache.onWithdrawn(identity)
+        profileImageCache.onWithdrawn(identity)
     }
 }
 
@@ -98,3 +173,8 @@ private suspend inline fun <reified T> HttpResponse.decodeOrThrow(): ApiResponse
         result = errorResponse?.result,
     )
 }
+
+@Serializable
+private data class GetProfileImageResponse(
+    val profileImageUrl: String?,
+)

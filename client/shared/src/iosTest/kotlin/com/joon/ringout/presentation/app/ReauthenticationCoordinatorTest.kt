@@ -9,7 +9,7 @@ import com.joon.ringout.alarm.MissionLocationAuthorizationState
 import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.AnalyticsTracker
 import com.joon.ringout.analytics.DefaultProductAnalyticsRecorder
-import com.joon.ringout.analytics.ProductAnalyticsUsageStore
+import com.joon.ringout.analytics.InMemoryProductAnalyticsUsageStore
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.AuthTerm
@@ -17,6 +17,8 @@ import com.joon.ringout.domain.auth.SocialLoginOutcome
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.domain.member.MemberProfile
+import com.joon.ringout.domain.member.ProfileImageUpload
+import com.joon.ringout.domain.member.MemberProfileImage
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
@@ -204,7 +206,7 @@ class ReauthenticationCoordinatorTest {
 
             assertEquals(AppRoute.TermsAgreement, fixture.state.requestedRoute)
             assertTrue(fixture.signup.uiState.hasPendingSignup)
-            fixture.signup.signup(setOf(TermId.Service))
+            fixture.signup.signup(setOf(TermId.Service, TermId.Privacy))
             drain()
             assertEquals(listOf("new-token"), fixture.authRepository.signupTokens)
             assertNotNull(fixture.signup.uiState.completedEventId)
@@ -241,7 +243,7 @@ private class ReauthenticationFixture(
 ) {
     private val analytics = DefaultProductAnalyticsRecorder(
         tracker = AnalyticsTracker {},
-        usageStore = ProductAnalyticsUsageStore { null },
+        usageStore = InMemoryProductAnalyticsUsageStore(),
     )
     val destinationRepository = ReauthenticationDestinationRepository()
     val authRepository = ReauthenticationAuthRepository()
@@ -348,6 +350,10 @@ private class ReauthenticationDestinationRepository : DestinationRepository {
 }
 
 private object ReauthenticationMemberRepository : MemberRepository {
+    override suspend fun uploadProfileImage(image: ProfileImageUpload): MemberProfileImage = error("사용하지 않는 요청입니다.")
+
+    override suspend fun getProfileImage(): MemberProfileImage = MemberProfileImage(null)
+
     override suspend fun getProfile(): MemberProfile = MemberProfile("기존 닉네임", null)
 
     override suspend fun updateNickname(nickname: String): String = nickname

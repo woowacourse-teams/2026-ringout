@@ -53,6 +53,14 @@ val escapedMapsApiKey = mapsApiKey
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
 
+val kakaoNativeAppKey =
+    localProperties.getProperty("KAKAO_NATIVE_APP_KEY")?.takeIf(String::isNotBlank)
+        ?: providers.environmentVariable("KAKAO_NATIVE_APP_KEY").orNull.orEmpty()
+
+val escapedKakaoNativeAppKey = kakaoNativeAppKey
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
 val releaseKeystorePath =
     providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
 
@@ -64,11 +72,6 @@ val releaseKeyAlias =
 
 val releaseKeyPassword =
     providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
-
-val appVersionCode = providers.environmentVariable("APP_VERSION_CODE").orNull?.let { value ->
-    value.toIntOrNull()?.takeIf { it in 1..2_100_000_000 }
-        ?: throw GradleException("APP_VERSION_CODE must be an integer between 1 and 2100000000.")
-} ?: 261010019
 
 val googleServicesJsonPath = providers.environmentVariable("GOOGLE_SERVICES_JSON_PATH").orNull
 if (ciVerification || !googleServicesJsonPath.isNullOrBlank()) {
@@ -99,6 +102,7 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+    implementation(libs.kakao.user)
     implementation(libs.google.places)
     implementation(libs.google.play.app.update)
     implementation(libs.google.play.app.update.ktx)
@@ -118,9 +122,11 @@ android {
         applicationId = "com.joon.ringout"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = appVersionCode
-        versionName = "1.1.0"
+        versionCode = 261020001
+        versionName = "1.2.0"
         buildConfigField("String", "MAPS_API_KEY", "\"$escapedMapsApiKey\"")
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$escapedKakaoNativeAppKey\"")
+        manifestPlaceholders["kakaoNativeAppKey"] = kakaoNativeAppKey
         manifestPlaceholders["mapsApiKey"] = mapsApiKey
     }
     buildFeatures {
@@ -167,6 +173,7 @@ val validateReleaseConfiguration by tasks.registering(ValidateReleaseConfigurati
     description = "Requires real app configuration and signing credentials outside CI verification."
     missingSettings = if (ciVerification) emptyList() else buildList {
         if (mapsApiKey.isBlank() || mapsApiKey == "CI_VERIFICATION_ONLY") add("MAPS_API_KEY")
+        if (kakaoNativeAppKey.isBlank()) add("KAKAO_NATIVE_APP_KEY")
         if (releaseKeystorePath.isNullOrBlank()) add("ANDROID_KEYSTORE_PATH")
         if (releaseKeystorePassword.isNullOrBlank()) add("ANDROID_KEYSTORE_PASSWORD")
         if (releaseKeyAlias.isNullOrBlank()) add("ANDROID_KEY_ALIAS")

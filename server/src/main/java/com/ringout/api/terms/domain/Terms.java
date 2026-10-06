@@ -21,7 +21,7 @@ import lombok.NoArgsConstructor;
 @Table(
     name = "terms",
     indexes = {
-        @Index(name = "idx_type_version", columnList = "type, version", unique = true)
+        @Index(name = "uk_terms_type_version", columnList = "type, version", unique = true)
     })
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

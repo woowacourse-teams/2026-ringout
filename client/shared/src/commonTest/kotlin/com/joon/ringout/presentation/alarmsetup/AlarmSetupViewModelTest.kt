@@ -212,6 +212,25 @@ class AlarmSetupViewModelTest {
     }
 
     @Test
+    fun `기존 알람 초안을 수정해도 저장 요청 전에는 예약 명령을 만들지 않는다`() {
+        val viewModel = AlarmSetupViewModel()
+        viewModel.startEditing(savedRequest)
+        viewModel.updateMinute(45)
+        viewModel.updateLimitMinutes(20)
+        viewModel.updateAlarmSound(alarmSound.copy(name = "벨"))
+
+        val command = viewModel.onLocationStateChanged(
+            locationState = DefaultMissionLocationState,
+            useSystemPermissionUiOnly = false,
+            canProcessSave = true,
+        )
+
+        assertNull(command)
+        assertFalse(viewModel.uiState.isScheduling)
+        assertNull(viewModel.uiState.pendingSaveRequest)
+    }
+
+    @Test
     fun `저장을 처리할 수 없는 화면에서는 권한 흐름을 시작하지 않는다`() {
         val viewModel = viewModelWithPendingSave()
 

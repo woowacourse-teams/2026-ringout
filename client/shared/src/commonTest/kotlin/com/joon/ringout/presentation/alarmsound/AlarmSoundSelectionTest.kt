@@ -1,8 +1,12 @@
 package com.joon.ringout.presentation.alarmsound
 
+import com.joon.ringout.analytics.AnalyticsAlarmSoundSurface
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class AlarmSoundSelectionTest {
     private val sounds = listOf(
@@ -39,5 +43,42 @@ class AlarmSoundSelectionTest {
         )
 
         assertEquals(sounds.first(), resolved)
+    }
+
+    @Test
+    fun recordsOneBasedPositionAndWhetherTheSelectionChanged() {
+        val initial = sounds[0]
+
+        val unchanged = resolveAlarmSoundDisplaySelection(
+            sounds = sounds,
+            initialSelection = initial,
+            selectedSound = sounds[0],
+            surface = AnalyticsAlarmSoundSurface.OnboardingStep,
+        )
+        val changed = resolveAlarmSoundDisplaySelection(
+            sounds = sounds,
+            initialSelection = initial,
+            selectedSound = sounds[2],
+            surface = AnalyticsAlarmSoundSurface.EditorPicker,
+        )
+
+        assertEquals(1, unchanged?.position)
+        assertEquals(3, unchanged?.listSize)
+        assertFalse(unchanged?.selectionChanged == true)
+        assertEquals(AnalyticsAlarmSoundSurface.EditorPicker, changed?.surface)
+        assertEquals(3, changed?.position)
+        assertTrue(changed?.selectionChanged == true)
+    }
+
+    @Test
+    fun missingSelectedSoundDoesNotInventAListPosition() {
+        assertNull(
+            resolveAlarmSoundDisplaySelection(
+                sounds = sounds,
+                initialSelection = sounds.first(),
+                selectedSound = AlarmSoundSelection("missing", "content://missing"),
+                surface = AnalyticsAlarmSoundSurface.EditorPicker,
+            ),
+        )
     }
 }

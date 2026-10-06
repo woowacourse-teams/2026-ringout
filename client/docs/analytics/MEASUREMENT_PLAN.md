@@ -1,4 +1,6 @@
-# Android 목적지 알람 분석 측정 계획
+# Android/iOS 목적지 알람 분석 측정 계획
+
+첫 알람 온보딩의 Android·iOS 이탈 분석은 [온보딩 측정 계획](./ONBOARDING_MEASUREMENT_PLAN.md)을 참고한다.
 
 ## 1. 목적과 범위
 
@@ -16,7 +18,8 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 
 | 이벤트 | 발생 시점 | 필수 파라미터 | 중복 방지 단위 |
 | --- | --- | --- | --- |
-| `destination_alarm_created` | 새 목적지 알람이 저장되고 예약까지 성공한 직후. 기존 알람 수정은 제외한다. | `creation_index`, `schedule_type`, `repeat_day_count` | 한 번의 새 알람 생성 |
+| `destination_alarm_created` | 새 목적지 알람이 시스템 예약과 Room 저장까지 성공한 직후. 기존 알람 수정은 제외한다. | 공통: `creation_index`, `schedule_type`, `repeat_day_count`, `settings_schema_version`, `limit_minutes`, `alarm_time`, `repeat_days`; Android 추가: `alarm_sound_source`, `alarm_sound_list_confirmed` | 한 번의 새 알람 생성 |
+| `destination_alarm_updated` | 기존 목적지 알람의 변경된 시스템 예약과 Room 저장이 성공한 직후 | 공통: `schedule_type`, `repeat_day_count`, `settings_schema_version`, `limit_minutes`, `alarm_time`, `repeat_days`; Android 추가: `alarm_sound_source`, `alarm_sound_list_confirmed` | 한 번의 재설정 저장 성공. 같은 알람의 다음 성공 재설정은 새 이벤트 |
 | `destination_alarm_ringing_started` | 실제 알람 울림이 시작된 직후 | `retry_attempt` | 한 번의 울림 시도 |
 | `destination_mission_started` | 미션의 `Tracking` 상태가 영속 저장된 직후 | `use_index`, `retry_attempt` | 한 번의 미션 시작 시도 |
 | `destination_mission_completed` | 도착 판정이 성공으로 확정된 직후 | `use_index`, `retry_attempt`, `elapsed_bucket` | 한 번의 성공 상태 전이 |
@@ -37,6 +40,16 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 | `retry_attempt` | 정수(`int_value`) | 0 이상의 정수 | 같은 `use_index`의 시도 번호. 최초 시도는 0이고 다시 울림 후 재시작할 때마다 1씩 증가한다. 재시도는 새 사용으로 세지 않으며 기존 `use_index`를 유지한다. |
 | `schedule_type` | 문자열(`string_value`) | `once`, `weekly` | 생성된 알람의 일정 유형 |
 | `repeat_day_count` | 정수(`int_value`) | `once`는 0, `weekly`는 1~7 | 선택된 반복 요일 수 |
+| `settings_schema_version` | 정수(`int_value`) | `2` | 설정값 계측 계약 버전. 설정 분석 모집단은 이 값이 2인 이벤트로 제한한다. |
+| `limit_minutes` | 정수(`int_value`) | `1`~`30` | 저장에 성공한 목적지 도착 제한 시간(분) |
+| `alarm_time` | 문자열(`string_value`) | `00:00`~`23:59`, `HH:mm` | 사용자가 저장한 로컬 알람 시각. 날짜·timezone·다음 울림 시각은 포함하지 않는다. |
+| `repeat_days` | 문자열(`string_value`) | `none` 또는 `mon,tue,wed,thu,fri,sat,sun`의 고정 순서 조합 | 저장에 성공한 실제 반복 요일. BigQuery에서 쉼표로 분해해 요일별 분포를 계산한다. |
+| `alarm_sound_source` | 문자열(`string_value`, Android 전용) | `system_default`, `device_alarm` | 기본 알람음과 기기 알람 목록 음원의 구분. 이름·URI는 보내지 않는다. |
+| `alarm_sound_list_confirmed` | 정수(`int_value`, Android 전용) | `0`, `1` | 저장한 음원이 실제 표시 목록에서 확정됐는지 여부 |
+| `alarm_sound_surface` | 문자열(`string_value`, Android 전용) | `editor_picker`, `onboarding_step` | 음원 목록이 확정된 화면 |
+| `alarm_sound_position` | 정수(`int_value`, Android 전용) | `1`~`alarm_sound_list_size` | 저장 버튼/온보딩 제출 당시 화면에 표시된 1-based 위치 |
+| `alarm_sound_list_size` | 정수(`int_value`, Android 전용) | `1` 이상 | 같은 화면에 표시된 전체 음원 수 |
+| `alarm_sound_selection_changed` | 정수(`int_value`, Android 전용) | `0`, `1` | 화면 진입 시 선택값과 저장 시 선택값이 달라졌는지 여부 |
 | `elapsed_bucket` | 문자열(`string_value`) | `under_5m`, `5_to_15m`, `15_to_30m`, `over_30m` | 해당 미션 시도가 시작된 뒤 결과 상태 전이까지의 경과 시간 구간. 경계는 각각 5분 미만, 5분 이상 15분 미만, 15분 이상 30분 미만, 30분 이상이다. |
 | `hold_duration_ms` | 정수(`int_value`) | 0 이상의 정수 | 단조 시계로 측정한 현재 홀드 제스처의 시작부터 취소 또는 완료까지의 경과 밀리초. 벽시계 시각이나 미션 진행 시간을 뜻하지 않는다. |
 
@@ -60,8 +73,8 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 
 - 목적지 이름, 별칭, 주소, 검색어
 - 위도·경도, 이동 경로, 도착 거리, 위치 정확도
-- 알람 시각, 정확한 미션 시작·종료 시각을 복제한 파라미터
-- 알람음 이름 또는 URI, 알림 본문, 사용자가 입력한 자유 텍스트
+- 날짜, timezone, 다음 울림 timestamp, 실제 울림/미션 시작·종료 시각을 복제한 파라미터. 사용자가 저장한 로컬 `HH:mm`은 `alarm_time`으로만 허용한다.
+- 알람음 이름, URI 또는 단순 해시, 알림 본문, 사용자가 입력한 자유 텍스트. Android에서는 확정 당시 화면 위치·목록 크기·변경 여부만 허용한다.
 - 원시 `alarmId`, `occurrenceId`, 로컬 데이터베이스 키 또는 이를 단순 해시한 값
 - 이메일, 전화번호, 광고 식별자 등 직접·간접 식별자
 
@@ -129,6 +142,23 @@ Android Manifest에서 Advertising ID 수집과 광고 개인화 신호를 기�
 5. DebugView에서는 이벤트명과 파라미터 타입을 검증하되, 디버그 기기 트래픽은 운영 리포트에서 제외한다.
 6. 첫 리포트는 가장 이른 첫 완료로부터 168시간이 지나고 일별 export가 확정된 뒤 생성한다.
 
+### 7.1 알람 설정 분포 분석
+
+생성 및 재설정 설정값 분석은 `settings_schema_version = 2`이고 해당 파라미터가 존재하는 이벤트만 모집단으로 삼는다. 기존 [retention_7d.sql](./retention_7d.sql)은 `destination_alarm_created`만 읽어 기존 리텐션 의미를 유지한다. 생성과 재설정의 설정 분포는 [alarm_settings_saves.sql](./alarm_settings_saves.sql)에서 `operation`으로 구분한다.
+
+- 이벤트 수와 `user_pseudo_id` 기준 고유 사용자 수를 모두 표시하고 Android/iOS, 앱 버전, 생성/재설정별로 필터링한다. 동일 사용자의 반복 재설정은 실제 행동이므로 이벤트 수에 모두 포함한다.
+- `alarm_time`은 최대 1,440개 값의 고카디널리티 문자열이므로 BigQuery 원시 파라미터 분석을 기본으로 한다. `repeat_days`, `alarm_sound_source`처럼 저카디널리티 값만 GA UI custom dimension 후보로 검토한다.
+- 원시 알람 ID를 보내지 않으므로 특정 알람의 생성값과 재설정값을 연결하거나 변경 전후 차이를 계산하지 않는다. 분석 단위는 저장 성공 시점의 집단 분포와 사용자별 재설정 경험이다.
+- Android 음원 위치는 `alarm_sound_list_confirmed = 1`이고 위치가 목록 범위 안인 이벤트만 분석한다. 위치는 기기 간 같은 음원을 의미하지 않으며, `alarm_sound_surface`, `alarm_sound_selection_changed`, 목록 크기와 함께 해석한다.
+
+계측 릴리스 기록:
+
+| 항목 | 값 |
+| --- | --- |
+| 설정 계측 계약 버전 | `2` |
+| 계측 릴리스 날짜 | `REPLACE_ME_YYYY-MM-DD` |
+| 최소 앱 버전 | `REPLACE_ME` |
+
 ## 8. 출시 전 데이터 품질 점검
 
 - 각 이벤트의 필수 파라미터 누락률이 0%인지 확인한다.
@@ -140,4 +170,65 @@ Android Manifest에서 Advertising ID 수집과 광고 개인화 신호를 기�
 - 정상적인 한 번의 홀드 시도에서 cancelled와 completed가 동시에 기록되지 않는지 확인한다.
 - `force_end_hold_completed`만 있는 테스트 사용자가 강제 종료 경험률 분자에 포함되지 않는지 확인한다.
 - 전송된 `event_params.key`에 주소, 좌표, 이름, 원시 ID 등 금지 키가 없는지 확인한다.
+- 설정 이벤트의 `settings_schema_version = 2` 필수값 누락을 0으로 처리하지 않고 별도 품질 오류로 집계한다.
+- `alarm_time`이 정규식 `^(?:[01][0-9]|2[0-3]):[0-5][0-9]$`을 만족하는지 확인한다. 날짜, timezone, 다음 울림 timestamp가 결합된 값은 거부한다.
+- `repeat_days`가 `none` 또는 고정된 월~일 토큰 순서인지, `repeat_day_count`가 분해된 토큰 수와 일치하는지 확인한다.
+- Android에서 `alarm_sound_list_confirmed = 1`이면 surface가 허용 목록이고 `alarm_sound_position`이 `1..alarm_sound_list_size`인지 확인한다. `0`이면 surface·위치·목록 크기가 없어야 한다.
+- Android와 iOS 공통 파라미터의 wire name·타입이 일치하고, iOS 이벤트에 Android 전용 음원 파라미터가 없는지 확인한다.
 - SQL 결과에서 `3회 이상 사용률 <= 두 번째 사용률 <= 100%`인지 확인한다. 위반 시 인덱스 누락 또는 순서 손상을 조사한다.
+
+## 모임 이용과 미션 참여 상태 (#440)
+
+### 모임 이벤트
+
+| 이벤트 | 시점 | 파라미터 |
+| --- | --- | --- |
+| `room_list_viewed` | 목록 화면 진입 | `login_state`: `logged_in` / `logged_out` / `unknown`, 확인된 `joined_room_count` |
+| `room_detail_viewed` | 가입 전 상세 정상 표시 | `entry_source=room_list`, `member_count` |
+| `room_created` | 생성 API 성공 | `schedule_type`: `once` / `weekly`, `repeat_day_count` |
+| `room_joined` | 가입 API 성공 | `entry_source=room_detail`, 확인된 `member_count` |
+| `room_home_viewed` | 가입한 모임 홈 정상 표시 | `member_count`, `membership_role`: `owner` / `member` |
+| `room_records_viewed` | 기록 탭 진입 | 확인된 `member_count` |
+| `room_left` | 탈퇴 API 성공 | 작업 당시 `membership_role` |
+| `room_deleted` | 삭제 API 성공 | 작업 당시 `membership_role` |
+| `room_updated` | 요청·로그인 세션 및 수정 결과 모임 ID 검증을 통과한 수정 저장 성공 | `membership_role=owner` |
+
+인원·요일 수는 정수, 나머지는 문자열이다. 모임 ID·계정 ID·모임명·닉네임·주소는 전송하지 않는다. 상세 진입과 가입의 출처는 현재 구현된 목록→상세 경로만 표현한다. 가입 시각이 없으므로 참여 기간을 최초 관찰 시각으로 추정하지 않는다.
+
+화면 방문은 해당 Route의 방문 단위로 한 번 기록한다. 재구성·응답 갱신·새로고침·기록 날짜 변경은 새 방문으로 세지 않는다. 화면 재진입이나 정보 탭에서 기록 탭으로 다시 이동하면 새 방문이다. 성공 이벤트는 기존 작업 식별자와 세션 검증을 통과한 API 성공에서만 기록한다. `room_updated`는 수정 저장 성공 요청마다 한 번 기록하며, 여러 입력 항목을 함께 바꿔도 이벤트는 하나다. 다시 실제 변경을 저장해 성공하면 새 이벤트를 기록한다. 룸 ID·계정 ID·입력 원문·이미지 데이터는 전송하지 않는다. 실패·이미 가입한 응답·중복 버튼 입력은 성공 이벤트가 아니다. 분석 전송 실패는 서비스 성공 처리를 막지 않는다.
+
+### 참여 정보의 유효성 및 미션 스냅샷
+
+모임 참여 정보를 계정별 로컬 저장소에 저장한다. 기존 목록·상세 조회 및 생성·가입·탈퇴·삭제 결과를 관찰하며 분석을 위한 추가 API는 호출하지 않는다. 시간 경과로 만료시키지 않고 마지막 확인 상태를 유지한다. 부분 변경은 기존 전체 가입 집합에 반영하되 전체 목록 확인 시각을 갱신하지 않는다. 요청 이후 가입 상태가 변경되었다면 오래된 조회 응답으로 덮어쓰지 않는다.
+
+- 전체 목록에서 가입 모임을 확인: `joined`, 가입 모임 수.
+- 전체 목록에서 가입 모임이 없음: `not_joined`, `0`.
+- 부분 응답에서 가입만 확인: `joined`, 수 생략.
+- 미조회·부분 집합만 확인한 상태에서 알려진 가입 모임이 모두 제거됨·인증 불명·저장소 오류: `unknown`, 수 생략.
+- 명시적으로 로그아웃한 게스트: `not_joined`, `0`.
+
+`destination_mission_started/completed/expired/force_ended`에 문자열 `room_membership_state`와 확인된 경우 정수 `joined_room_count`를 추가한다. 최초 시작에 설치 단위 `use_index`별로 고정하여 저장한다. 같은 미션의 재시도·종료, 도중 탈퇴·계정 변경·프로세스 재시작에서도 동일한 값을 쓴다. 업데이트 이전에 시작하여 저장값이 없는 미션은 `unknown`으로 유지한다. 여러 모임에 가입해도 미션 이벤트를 복제하지 않는다.
+
+이 값은 **미션 시작 당시 앱이 확인한 참여 상태**이며 서버 실시간 상태가 아니다. 다른 기기에서 변경된 참여 정보는 다음 조회 전까지 반영되지 않을 수 있다. `unknown`과 누락은 0으로 치환하지 않는다.
+
+미션 이벤트 4종에는 다음 두 시각을 함께 고정한다. 모두 기기 시계 기준 Unix epoch 밀리초 정수이며, 확인하지 못한 값은 생략한다.
+
+| 파라미터 | 의미 |
+| --- | --- |
+| `room_list_checked_at_ms` | 전체 목록을 마지막으로 확인한 시각. 개별 조회·가입·탈퇴로 갱신하지 않는다. |
+| `room_membership_observed_at_ms` | 전체 목록 또는 개별 모임 조회·변경 성공을 마지막으로 반영한 시각. 전체 목록의 최신성을 보장하지 않는다. |
+
+부분 가입 정보만 있으면 가입 수와 전체 목록 확인 시각은 생략한다. `unknown`과 게스트는 두 시각 모두 생략한다. 기존 전체 캐시의 `checkedAt`은 전체 목록 확인 시각으로만 복원하고, 기존 부분 캐시의 시각은 의미가 불명확하므로 옮기지 않는다. 기존 미션 스냅샷에는 현재 확인 시각을 소급 입력하지 않는다. 시작 이후의 후속 이벤트에서도 시작 때 저장한 시각을 그대로 전송한다.
+
+정보의 오래된 정도는 최초 미션 시작 이벤트 시각과 해당 확인 시각의 차이로 분석한다. 완료 이벤트 시각으로 계산하면 미션 수행 시간까지 섞이므로 시작 이벤트에 연결한다. 전체 목록의 경과 시간과 부분 관찰의 경과 시간을 따로 보고, 시각 누락·기기 시계 오차로 인한 음수 차이는 별도로 분류한다. 오래된 정보도 앱에서 자동으로 `unknown` 처리하지 않으며 분석 시 구간별로 비교한다.
+
+### 집계 기준
+
+- 탐색→가입 전환: 같은 분석 기간에 상세를 본 사용자 중 `room_joined`가 발생한 사용자 비율. 생성 전환은 별도로 집계한다. 모임 ID가 없으므로 특정 모임별 전환으로 해석하지 않는다.
+- 재방문: 첫 홈 방문 이후 다른 날짜에 홈을 방문한 사용자 비율. 같은 날 반복 방문 수와 구분한다.
+- 미션 도착 완료율: 시작 당시 `joined` / `not_joined`별로 고유 미션의 완료 비율을 비교한다. 미션 키는 `user_pseudo_id + use_index`이며 재시도는 분모에 추가하지 않는다. 관찰 기간 종료 직전 시작된 미션은 완료 관찰 시간을 확보한 뒤 포함한다.
+- `unknown`은 비교 집단에서 분리하고 전체 미션 대비 비율을 함께 보고한다. 가입 모임 수 누락도 별도로 유지한다.
+- 가입 전후 동일 설치의 완료율·지속 사용 변화를 함께 확인하되, 참여자와 비참여자의 차이는 모임의 인과 효과를 증명하지 않는다. 계정 간·기기 간 동일 사용자 연결은 이 이벤트로 보장하지 않는다.
+- 홈·기록 탭 방문은 다른 회원의 기록을 실제 읽었다는 의미가 아니다. 날짜 변경·새로고침 클릭은 이번 계측 범위에서 제외한다.
+
+실기기 확인 시 Android/iOS에서 동일 시나리오의 이벤트명·문자열/정수 타입을 비교한다. Firebase DebugView에서 조회 재구성 중복, 가입 실패 시 미발생, 미션 중 탈퇴 후 시작값 유지, 재시작 후 종료값 유지를 확인한다. 콘솔 검증 결과는 빌드·단위 테스트 결과와 별도로 관리한다.

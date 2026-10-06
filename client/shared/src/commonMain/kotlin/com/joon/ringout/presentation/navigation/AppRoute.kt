@@ -22,6 +22,34 @@ internal sealed interface AppRoute : NavKey {
     data object Home : AppRoute
 
     @Serializable
+    @SerialName("social")
+    data object Social : AppRoute
+
+    @Serializable
+    @SerialName("room_create")
+    data object RoomCreate : AppRoute
+
+    @Serializable
+    @SerialName("room_detail")
+    data class RoomDetail(val roomId: String) : AppRoute
+
+    @Serializable
+    @SerialName("room_home")
+    data class RoomHome(val roomId: String) : AppRoute
+
+    @Serializable
+    @SerialName("room_edit")
+    data class RoomEdit(val roomId: String) : AppRoute
+
+    @Serializable
+    @SerialName("room_member_management")
+    data class RoomMemberManagement(val roomId: String) : AppRoute
+
+    @Serializable
+    @SerialName("records")
+    data object Records : AppRoute
+
+    @Serializable
     @SerialName("add_alarm")
     data object AddAlarm : AppRoute
 
@@ -42,8 +70,6 @@ internal sealed interface AppRoute : NavKey {
     @SerialName("my_page")
     data object MyPage : AppRoute
 
-    // TODO(RINGOUT_ACCOUNT): 아래 계정 경로는 다음 로그인 버전에서 그래프에 다시 등록한다.
-    // 현재 비로그인 전용 앱에서는 어떤 활성 UI에서도 이 경로로 이동하지 않는다.
     @Serializable
     @SerialName("nickname_change")
     data object NicknameChange : AppRoute

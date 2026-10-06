@@ -11,7 +11,8 @@ import org.springframework.http.HttpStatus;
 public enum TermsSuccessStatus implements BaseCode {
 
     TERMS_AGREED(HttpStatus.CREATED, "TERMS201", "약관 동의가 저장되었습니다."),
-    REQUIRED_TERMS_AGREEMENT_CHECKED(HttpStatus.OK, "TERMS200", "필수 약관 동의 여부 조회에 성공했습니다.");
+    REQUIRED_TERMS_AGREEMENT_CHECKED(HttpStatus.OK, "TERMS200", "필수 약관 동의 여부 조회에 성공했습니다."),
+    TERMS_AGREEMENTS_FOUND(HttpStatus.OK, "COMMON200", "약관 동의 조회 요청에 성공했습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

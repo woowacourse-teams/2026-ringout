@@ -9,6 +9,7 @@ import com.joon.ringout.alarm.MissionLocationPermissionDecision
 import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.alarm.newAlarmId
 import com.joon.ringout.alarm.permissionDecision
+import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
 import com.joon.ringout.presentation.destination.DestinationSelection
 
 class AlarmSetupViewModel(
@@ -17,6 +18,7 @@ class AlarmSetupViewModel(
     internal sealed interface Command {
         data class ScheduleAlarm(
             val request: AlarmScheduleRequest,
+            val analyticsContext: AlarmSettingsAnalyticsContext = AlarmSettingsAnalyticsContext(),
         ) : Command
 
         data object RequestWhenInUseLocation : Command
@@ -112,7 +114,17 @@ class AlarmSetupViewModel(
 
     fun updateAlarmSound(alarmSound: AlarmSoundSelection) {
         if (isCleared) return
-        uiState = uiState.copy(alarmSound = alarmSound)
+        uiState = uiState.copy(
+            alarmSound = alarmSound,
+            alarmSettingsAnalyticsContext = AlarmSettingsAnalyticsContext(),
+        )
+    }
+
+    internal fun updateAlarmSoundAnalyticsContext(
+        context: AlarmSettingsAnalyticsContext,
+    ) {
+        if (isCleared) return
+        uiState = uiState.copy(alarmSettingsAnalyticsContext = context)
     }
 
     fun requestSave(): Boolean {
@@ -144,7 +156,10 @@ class AlarmSetupViewModel(
             MissionLocationPermissionDecision.READY -> {
                 uiState = uiState.copy(isScheduling = true)
                 resetPermissionFlow()
-                Command.ScheduleAlarm(request)
+                Command.ScheduleAlarm(
+                    request = request,
+                    analyticsContext = uiState.alarmSettingsAnalyticsContext,
+                )
             }
 
             MissionLocationPermissionDecision.EXPLAIN_WHEN_IN_USE ->

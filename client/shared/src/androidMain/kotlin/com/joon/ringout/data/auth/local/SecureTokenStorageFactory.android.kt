@@ -1,9 +1,8 @@
 package com.joon.ringout.data.auth.local
 
-import com.joon.ringout.domain.auth.SecureTokenStorage
 import eu.anifantakis.lib.ksafe.KSafe
 
-internal fun createSecureTokenStorage(context: android.content.Context): SecureTokenStorage =
+internal fun createSecureTokenStorage(context: android.content.Context): KSafeTokenStorage =
     sharedTokenStorage ?: synchronized(tokenStorageLock) {
         sharedTokenStorage ?: KSafeTokenStorage(
             kSafe = KSafe(
@@ -18,4 +17,4 @@ internal fun createSecureTokenStorage(context: android.content.Context): SecureT
 private val tokenStorageLock = Any()
 
 @Volatile
-private var sharedTokenStorage: SecureTokenStorage? = null
+private var sharedTokenStorage: KSafeTokenStorage? = null
