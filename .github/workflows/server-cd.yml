@@ -272,7 +272,8 @@ jobs:
               --name ringout-server \
               --restart unless-stopped \
               --env-file "$APP_ENV_FILE" \
-              --env JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -javaagent:/otel/opentelemetry-javaagent.jar" \
+              --env TZ=Asia/Seoul \
+              --env JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -Duser.timezone=Asia/Seoul -javaagent:/otel/opentelemetry-javaagent.jar" \
               --env OTEL_SERVICE_NAME="$OTEL_SERVICE_NAME" \
               --env OTEL_EXPORTER_OTLP_ENDPOINT="$OTEL_EXPORTER_OTLP_ENDPOINT" \
               --env OTEL_EXPORTER_OTLP_PROTOCOL="$OTEL_EXPORTER_OTLP_PROTOCOL" \
