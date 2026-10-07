@@ -5,6 +5,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSerializable
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
+import com.joon.ringout.domain.missionhistory.MissionDate
 
 @Composable
 internal fun rememberAppNavigationState(): AppNavigationState {
@@ -57,6 +58,14 @@ internal class AppNavigationState(
             AppRoute.RoomCreate -> listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomCreate)
             is AppRoute.RoomDetail -> listOf(AppRoute.Home, AppRoute.Social, route)
             is AppRoute.RoomHome -> listOf(AppRoute.Home, AppRoute.Social, route)
+            is AppRoute.RoomActivity -> when {
+                !route.isValid() -> routes.toList()
+                routes.lastOrNull() == AppRoute.RoomHome(route.roomId) -> routes.toList() + route
+                routes.lastOrNull() is AppRoute.RoomActivity &&
+                    routes.dropLast(1).lastOrNull() == AppRoute.RoomHome(route.roomId) ->
+                    if (routes.lastOrNull() == route) routes.toList() else routes.dropLast(1) + route
+                else -> routes.toList()
+            }
             is AppRoute.RoomEdit -> when {
                 routes.lastOrNull() is AppRoute.RoomEdit -> routes.dropLast(1) + route
                 else -> routes.toList() + route
@@ -150,6 +159,10 @@ internal class AppNavigationState(
         routes.subList(sharedSize, routes.size).clear()
         routes.addAll(destinationStack.drop(sharedSize))
     }
+
+    private fun AppRoute.RoomActivity.isValid(): Boolean =
+        roomId.toLongOrNull()?.let { it > 0L } == true &&
+            runCatching { MissionDate.parse(activityDate) }.getOrNull()?.iso8601 == activityDate
 
     /** 아직 제공하지 않는 닉네임 수정 화면은 마이페이지로 되돌린다. */
     internal fun normalizeForGuestMode() {

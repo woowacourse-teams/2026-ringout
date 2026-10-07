@@ -3,6 +3,7 @@ package com.joon.ringout.presentation.roomhome
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.room.FakeRoomScheduleClock
 import com.joon.ringout.domain.room.RoomMemberDetails
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomMembershipRole
@@ -55,9 +56,11 @@ class RoomHomeLoadTest {
     @Test
     fun `상세 응답을 화면에 표시하고 같은 진입과 탭 날짜 변경은 추가 조회하지 않는다`() = runTest {
         val authSession = AuthSession().apply { startNewSession() }
+        val clock = FakeRoomScheduleClock(elapsedMillis = 8 * 3_600_000L + 15 * 60_000L)
         val roomIds = mutableListOf<Long>()
         val viewModel = RoomHomeViewModel(
             coroutineScope = this,
+            clock = clock,
             loadRoom = { roomId ->
                 roomIds += roomId
                 roomDetails(roomId)
@@ -84,7 +87,8 @@ class RoomHomeLoadTest {
         assertNull(loaded.members.last().profileImageUrl)
         assertTrue(loaded.areMembersLoaded)
         assertFalse(loaded.recordsState.isDataLoaded)
-        assertNull(loaded.ongoingActivity)
+        assertEquals(MissionDate.parse("2026-09-28"), loaded.ongoingActivity?.date)
+        assertEquals(19, loaded.ongoingActivity?.participantCount)
 
         val selectedDate = MissionDate.parse("2026-10-02")
         viewModel.onTabSelected(RoomHomeTab.Records)
@@ -96,6 +100,15 @@ class RoomHomeLoadTest {
         assertEquals(RoomHomeTab.Records, viewModel.uiState.value.selectedTab)
         assertEquals(selectedDate, viewModel.uiState.value.recordsState.selectedDate)
         assertFalse(viewModel.uiState.value.recordsState.isDataLoaded)
+
+        assertEquals(
+            RoomHomeActivityDestination("7", MissionDate.parse("2026-09-28")),
+            viewModel.activityDestination("7", MissionDate.parse("2026-09-28"), identity),
+        )
+        assertNull(viewModel.activityDestination("7", MissionDate.parse("2026-10-02"), identity))
+        clock.elapsedMillis += 60 * 60_000L
+        assertNull(viewModel.activityDestination("7", MissionDate.parse("2026-09-28"), identity))
+        assertNull(viewModel.uiState.value.ongoingActivity)
     }
 
     @Test

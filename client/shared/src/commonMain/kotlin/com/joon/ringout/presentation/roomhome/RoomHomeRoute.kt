@@ -81,6 +81,9 @@ internal fun RoomHomeRoute(
         onNextMonth = viewModel::onNextMonth,
         onDismissCalendar = viewModel::onDismissCalendar,
         onRefresh = viewModel::onRefresh,
-        onActivityClick = onActivityClick,
+        onActivityClick = { requestedRoomId, activityDate ->
+            viewModel.activityDestination(requestedRoomId, activityDate, sessionIdentity)
+                ?.let { destination -> onActivityClick(destination.roomId, destination.activityDate) }
+        },
     )
 }

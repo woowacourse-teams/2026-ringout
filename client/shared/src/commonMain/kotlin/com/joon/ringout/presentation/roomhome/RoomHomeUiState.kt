@@ -49,10 +49,15 @@ internal data class RoomHomeMemberUiModel(
     val isOwner: Boolean = false,
 )
 
-/** 진행 여부와 참여 인원은 외부에서 전달한다. UI가 시각만으로 활동 여부를 추정하지 않는다. */
+/** 활동 시간으로 계산한 진행 여부와 모임 상세의 참여 인원이다. */
 internal data class RoomHomeOngoingActivityUiModel(
     val date: MissionDate,
     val participantCount: Int,
+)
+
+internal data class RoomHomeActivityDestination(
+    val roomId: String,
+    val activityDate: MissionDate,
 )
 
 internal data class RoomHomeUiState(

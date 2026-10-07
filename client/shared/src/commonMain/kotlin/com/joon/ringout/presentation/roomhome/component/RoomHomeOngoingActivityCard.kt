@@ -38,7 +38,7 @@ internal fun RoomHomeOngoingActivityCard(
         verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
     ) {
         Text(
-            "현재 진행중인 일정이 있어요!",
+            "현재 진행 중인 활동이 있어요!",
             color = roomHomeColors().iconContent,
             style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp),
         )
@@ -52,7 +52,7 @@ internal fun RoomHomeOngoingActivityCard(
                 style = MaterialTheme.typography.displayLarge.copy(fontSize = 58.sp, fontWeight = FontWeight.Bold),
             )
             Text(
-                "참여중",
+                "모임 참여 중",
                 color = roomHomeColors().iconContent,
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp),
             )

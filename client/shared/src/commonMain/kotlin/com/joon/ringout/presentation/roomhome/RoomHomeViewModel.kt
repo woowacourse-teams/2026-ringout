@@ -120,6 +120,29 @@ internal class RoomHomeViewModel(
         if (canViewRecords) recordAnalytics(RoomAnalyticsEvent.RecordsViewed(uiState.value.room?.participantCount))
     }
 
+    internal fun activityDestination(
+        roomId: String,
+        activityDate: MissionDate,
+        sessionIdentity: Any?,
+    ): RoomHomeActivityDestination? {
+        val authState = activeRouteAuthState
+        if (
+            activeRoomId != roomId || activeRouteIdentity !== sessionIdentity ||
+            authState != AuthSessionState.Authenticated || !isLiveSession(authState, sessionIdentity)
+        ) return null
+
+        val freshState = uiState.value.withCurrentSchedule(clock)
+        mutableUiState.value = freshState
+        val room = freshState.room ?: return null
+        if (
+            room.id != roomId || !room.isJoined || !freshState.areMembersLoaded ||
+            freshState.membershipRole == null || freshState.isLoading || freshState.errorMessage != null
+        ) return null
+        if (freshState.ongoingActivity?.date != activityDate) return null
+
+        return RoomHomeActivityDestination(roomId, activityDate)
+    }
+
     private fun recordAnalytics(event: RoomAnalyticsEvent) { runCatching { analytics?.recordRoomEvent(event) } }
 
     fun onRouteVisible(roomId: String, authState: AuthSessionState, identity: Any?) {

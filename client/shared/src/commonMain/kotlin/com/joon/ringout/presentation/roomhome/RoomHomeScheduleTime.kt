@@ -3,6 +3,7 @@ package com.joon.ringout.presentation.roomhome
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.plusDays
 import com.joon.ringout.domain.room.CalculateNextRoomSchedule
+import com.joon.ringout.domain.room.CalculateOngoingRoomActivity
 import com.joon.ringout.domain.room.NextRoomSchedule
 import com.joon.ringout.domain.room.RoomActivityDay
 import com.joon.ringout.domain.room.RoomActivitySchedule
@@ -30,13 +31,26 @@ internal fun RoomUiModel.toActivitySchedule(): RoomActivitySchedule? {
 
 internal fun RoomHomeUiState.withCurrentSchedule(clock: RoomScheduleClock): RoomHomeUiState {
     val schedule = room?.toActivitySchedule()
-        ?: return copy(nextScheduleText = null, remainingTimeText = null)
+        ?: return copy(nextScheduleText = null, remainingTimeText = null, ongoingActivity = null)
+    if (schedule.days.isEmpty()) {
+        return copy(nextScheduleText = null, remainingTimeText = null, ongoingActivity = null)
+    }
     val now = clock.now()
     val next = CalculateNextRoomSchedule()(schedule, now, clock)
-        ?: return copy(nextScheduleText = null, remainingTimeText = null)
+    val ongoing = if (
+        room.isJoined && membershipRole != null && areMembersLoaded &&
+        !isLoading && errorMessage == null
+    ) {
+        CalculateOngoingRoomActivity()(schedule, now, clock)
+    } else {
+        null
+    }
     return copy(
-        nextScheduleText = next.description(now.date),
-        remainingTimeText = formatRoomRemainingTime(next.remainingSeconds),
+        nextScheduleText = next?.description(now.date),
+        remainingTimeText = next?.let { formatRoomRemainingTime(it.remainingSeconds) },
+        ongoingActivity = ongoing?.let {
+            RoomHomeOngoingActivityUiModel(it.date, room.participantCount)
+        },
     )
 }
 
