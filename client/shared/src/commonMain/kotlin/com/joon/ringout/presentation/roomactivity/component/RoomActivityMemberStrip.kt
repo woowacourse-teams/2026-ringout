@@ -22,8 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,13 +48,17 @@ internal fun RoomActivityMemberStrip(
         val ordered = members.sortedByDescending { it.isMe }
         val visible = ordered.take(capacity)
         val hidden = ordered.drop(capacity)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(
+                enabled = ordered.isNotEmpty(),
+                role = Role.Button,
+                onClick = { onMembersClick(ordered.map { it.id }) },
+            ),
+            horizontalArrangement = Arrangement.Center,
+        ) {
             visible.forEach { member ->
                 Column(
-                    modifier = Modifier.width(memberWidth).clickable(
-                        role = Role.Button,
-                        onClick = { onMembersClick(listOf(member.id)) },
-                    ).padding(horizontal = 5.dp, vertical = 10.dp),
+                    modifier = Modifier.width(memberWidth).padding(horizontal = 5.dp, vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     RoomActivityMemberAvatar(
@@ -83,9 +85,7 @@ internal fun RoomActivityMemberStrip(
             }
             if (hidden.isNotEmpty()) {
                 Box(
-                    modifier = Modifier.width(50.dp).padding(top = 5.dp).sizeIn(minHeight = 48.dp)
-                        .semantics { contentDescription = "회원 ${hidden.size}명 더 보기" }
-                        .clickable(role = Role.Button, onClick = { onMembersClick(ordered.map { it.id }) }),
+                    modifier = Modifier.width(50.dp).padding(top = 5.dp).sizeIn(minHeight = 48.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Box(

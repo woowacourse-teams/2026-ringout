@@ -11,6 +11,8 @@ import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.common.util.NicknameComparator;
+import com.ringout.api.file.domain.ImageFile;
+import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.repository.RoomRepository;
@@ -38,6 +40,7 @@ public class AlarmMovementService {
     private final RoomUserRepository roomUserRepository;
     private final AlarmOccurrenceRepository alarmOccurrenceRepository;
     private final RoomActivityService roomActivityService;
+    private final ImageFileService imageFileService;
 
     private final Clock clock;
 
@@ -116,13 +119,22 @@ public class AlarmMovementService {
     }
 
     private MemberMovementResponse toMemberMovementResponse(RoomUser roomUser, AlarmOccurrence alarmOccurrence) {
+        String profileImageUrl = resolveProfileImageUrl(roomUser);
         if (alarmOccurrence == null) {
             return new MemberMovementResponse(roomUser.getUser().getId(), roomUser.getUser().getNickname().getValue(),
-                MovementStatus.IDLE);
+                profileImageUrl, MovementStatus.IDLE);
         }
 
         return new MemberMovementResponse(roomUser.getUser().getId(), roomUser.getUser().getNickname().getValue(),
-            alarmOccurrence.getMovementStatus(LocalDateTime.now(clock)));
+            profileImageUrl, alarmOccurrence.getMovementStatus(LocalDateTime.now(clock)));
+    }
+
+    private String resolveProfileImageUrl(RoomUser roomUser) {
+        ImageFile profileImage = roomUser.getUser().getImage();
+        if (profileImage == null) {
+            return null;
+        }
+        return imageFileService.createReadUri(profileImage).toString();
     }
 
     private void validateAlarmOccurrenceOwner(AlarmOccurrence alarmOccurrence, Long userId) {

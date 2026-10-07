@@ -152,6 +152,57 @@ class AppNavigationStateTest {
     }
 
     @Test
+    fun `RoomHome에서 활동 경로를 한 번만 쌓고 종료 후 같은 화면으로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        val roomHome = AppRoute.RoomHome("41")
+        state.navigate(roomHome)
+        val activity = AppRoute.RoomActivity("41", "2026-10-07")
+
+        state.navigate(activity)
+        state.navigate(activity.copy())
+
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social, roomHome, activity), state.backStack.toList())
+        assertEquals(listOf(roomHome, activity), state.retainedRoutes(activity).takeLast(2))
+        assertEquals(listOf(AppRoute.Home, AppRoute.Social, roomHome, activity), state.routesForDisplayedRoute(activity))
+
+        state.popBackStack(activity)
+        assertEquals(roomHome, state.requestedRoute)
+    }
+
+    @Test
+    fun `같은 모임의 활동 날짜 변경은 경로를 교체하고 늦거나 잘못된 경로는 무시한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        val roomHome = AppRoute.RoomHome("41")
+        state.navigate(roomHome)
+        val first = AppRoute.RoomActivity("41", "2026-10-07")
+        state.navigate(first)
+
+        val next = AppRoute.RoomActivity("41", "2026-10-08")
+        state.navigate(next)
+        val currentStack = state.backStack.toList()
+        state.navigate(AppRoute.RoomActivity("42", "2026-10-08"))
+        state.navigate(AppRoute.RoomActivity("41", "2026-02-30"))
+        state.navigate(AppRoute.RoomActivity("0", "2026-10-08"))
+
+        assertEquals(currentStack, state.backStack.toList())
+        assertEquals(next, state.requestedRoute)
+    }
+
+    @Test
+    fun `RoomHome이 최상위가 아니면 활동 화면 진입을 무시한다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomHome("41"))
+        state.navigate(AppRoute.RoomMemberManagement("41"))
+
+        state.navigate(AppRoute.RoomActivity("41", "2026-10-07"))
+
+        assertEquals(AppRoute.RoomMemberManagement("41"), state.requestedRoute)
+    }
+
+    @Test
     fun `식별자 경로는 전체 값 기준 singleTop으로 기존 항목을 유지한다`() {
         val state = AppNavigationState()
         val firstEditor = AppRoute.EditAlarm("alarm-1")

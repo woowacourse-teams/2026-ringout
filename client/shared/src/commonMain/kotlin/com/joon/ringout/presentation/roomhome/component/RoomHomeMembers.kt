@@ -26,13 +26,18 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.joon.ringout.LocalRingoutThemeMode
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.svg.SvgDecoder
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.roomhome.RoomHomeMemberUiModel
 import com.joon.ringout.presentation.roomhome.roomHomeColors
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.room_member_default_avatar
+import ringout.shared.generated.resources.room_default_avartar_dark
+import ringout.shared.generated.resources.room_default_avartar_light
 
 @Composable
 internal fun RoomHomeMembers(
@@ -41,6 +46,11 @@ internal fun RoomHomeMembers(
     isLoaded: Boolean = true,
 ) {
     val colors = roomHomeColors()
+    val defaultAvatarResource = when (LocalRingoutThemeMode.current) {
+        ThemeMode.Dark -> Res.drawable.room_default_avartar_dark
+        ThemeMode.Light -> Res.drawable.room_default_avartar_light
+    }
+    val defaultAvatar = painterResource(defaultAvatarResource)
 
     Column(modifier = modifier.fillMaxWidth().padding(10.dp)) {
         Text(
@@ -75,7 +85,6 @@ internal fun RoomHomeMembers(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        val defaultAvatar = painterResource(Res.drawable.room_member_default_avatar)
                         if (member.profileImageUrl.isNullOrBlank()) {
                             Image(
                                 painter = defaultAvatar,
@@ -93,18 +102,34 @@ internal fun RoomHomeMembers(
                                 error = defaultAvatar,
                             )
                         }
-                        Text(
-                            text = member.nickname,
+                        Row(
                             modifier = Modifier.weight(1f),
-                            color = colors.content,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 18.sp,
-                                lineHeight = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                            ),
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                text = member.nickname,
+                                modifier = Modifier.weight(1f, fill = false),
+                                color = colors.content,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 18.sp,
+                                    lineHeight = 22.sp,
+                                    fontWeight = FontWeight.Bold,
+                                ),
+                            )
+                            if (member.isOwner) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalPlatformContext.current)
+                                        .data(Res.getUri("drawable/room_owner_crown.svg"))
+                                        .decoderFactory(SvgDecoder.Factory())
+                                        .build(),
+                                    contentDescription = "방장",
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -114,7 +139,7 @@ internal fun RoomHomeMembers(
 
 private val PreviewMembers = listOf(
     RoomHomeMemberUiModel(id = "preview-member-1", nickname = "볼링뜨실분다이겨드림"),
-    RoomHomeMemberUiModel(id = "preview-member-2", nickname = "누누와윌럼프"),
+    RoomHomeMemberUiModel(id = "preview-member-2", nickname = "누누와윌럼프", isOwner = true),
     RoomHomeMemberUiModel(id = "preview-member-3", nickname = "북어서여남여동여"),
     RoomHomeMemberUiModel(id = "preview-member-4", nickname = "아아아티스트"),
 )

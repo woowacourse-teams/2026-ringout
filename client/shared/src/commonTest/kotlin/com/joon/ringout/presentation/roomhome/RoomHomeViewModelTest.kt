@@ -25,6 +25,28 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomHomeViewModelTest {
     @Test
+    fun `일반 회원이 조회해도 회원별 권한으로 방장만 표시한다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        val viewModel = RoomHomeViewModel(
+            coroutineScope = this,
+            authSession = session,
+            loadRoom = {
+                membershipDetails(roomId = 1L, role = RoomMembershipRole.MEMBER).copy(
+                    members = listOf(
+                        RoomMemberDetails(10L, "방장", membershipRole = RoomMembershipRole.OWNER),
+                        RoomMemberDetails(11L, "회원", membershipRole = RoomMembershipRole.MEMBER),
+                        RoomMemberDetails(12L, "역할 미제공"),
+                    ),
+                )
+            },
+        )
+        viewModel.onRouteVisible("1", session.state.value, session.identity.value)
+        runCurrent()
+
+        assertEquals(listOf(true, false, false), viewModel.uiState.value.members.map { it.isOwner })
+    }
+
+    @Test
     fun `처음 화면을 열면 날짜를 다시 선택하지 않아도 주입한 날짜의 기록과 달성 인원을 표시한다`() {
         val state = initialState().let { initial ->
             initial.copy(
@@ -235,6 +257,8 @@ class RoomHomeViewModelTest {
                 name = "수정한 모임",
                 description = null,
                 imageUrl = "https://cdn.example.com/updated.png",
+                activityDays = listOf("TUESDAY", "SATURDAY"),
+                activityTime = "19:30",
             ),
             checkNotNull(session.identity.value),
         )
@@ -245,6 +269,8 @@ class RoomHomeViewModelTest {
         assertEquals("수정한 모임", state.room?.name)
         assertEquals("", state.room?.description)
         assertEquals("https://cdn.example.com/updated.png", state.room?.representativeImage)
+        assertEquals(listOf("화", "토"), state.room?.activityDays)
+        assertEquals("오후 7:30", state.room?.activityTimeText)
         assertEquals(7, state.room?.participantCount)
         assertEquals(RoomMembershipRole.OWNER, state.membershipRole)
         assertEquals(listOf("방장"), state.members.map(RoomHomeMemberUiModel::nickname))

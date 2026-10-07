@@ -56,6 +56,7 @@ class NavigationViewModelScopesTest {
             AppRoute.Login to AppRoute.TermsAgreement,
             AppRoute.AddAlarm to AppRoute.AlarmSound,
             AppRoute.EditAlarm("alarm-1") to AppRoute.Destination(1L),
+            AppRoute.RoomHome("41") to AppRoute.RoomActivity("41", "2026-10-07"),
         )
         for ((parent, child) in flows) {
             val fixture = ScopeFixture(StandardTestDispatcher(testScheduler))

@@ -15,6 +15,7 @@ import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomScheduleClock
 import com.joon.ringout.domain.room.RoomRecords
+import com.joon.ringout.presentation.roomlist.model.withUpdatedSchedule
 import com.joon.ringout.domain.room.RoomUpdateResult
 import com.joon.ringout.presentation.roomlist.model.toRoomUiModel
 import kotlinx.coroutines.CancellationException
@@ -118,6 +119,29 @@ internal class RoomHomeViewModel(
 
     internal fun recordRecordsViewed() {
         if (canViewRecords) recordAnalytics(RoomAnalyticsEvent.RecordsViewed(uiState.value.room?.participantCount))
+    }
+
+    internal fun activityDestination(
+        roomId: String,
+        activityDate: MissionDate,
+        sessionIdentity: Any?,
+    ): RoomHomeActivityDestination? {
+        val authState = activeRouteAuthState
+        if (
+            activeRoomId != roomId || activeRouteIdentity !== sessionIdentity ||
+            authState != AuthSessionState.Authenticated || !isLiveSession(authState, sessionIdentity)
+        ) return null
+
+        val freshState = uiState.value.withCurrentSchedule(clock)
+        mutableUiState.value = freshState
+        val room = freshState.room ?: return null
+        if (
+            room.id != roomId || !room.isJoined || !freshState.areMembersLoaded ||
+            freshState.membershipRole == null || freshState.isLoading || freshState.errorMessage != null
+        ) return null
+        if (freshState.ongoingActivity?.date != activityDate) return null
+
+        return RoomHomeActivityDestination(roomId, activityDate)
     }
 
     private fun recordAnalytics(event: RoomAnalyticsEvent) { runCatching { analytics?.recordRoomEvent(event) } }
@@ -314,7 +338,7 @@ internal class RoomHomeViewModel(
                 state
             } else {
                 state.copy(
-                    room = currentRoom.copy(
+                    room = currentRoom.withUpdatedSchedule(result).copy(
                         representativeImage = result.imageUrl,
                         name = result.name,
                         description = result.description.orEmpty(),
@@ -477,6 +501,7 @@ internal class RoomHomeViewModel(
                 id = member.userId.toString(),
                 nickname = member.nickname,
                 profileImageUrl = member.profileImageUrl,
+                isOwner = member.membershipRole == RoomMembershipRole.OWNER,
             )
         }
         if (!room.isJoined) {
@@ -659,6 +684,7 @@ internal class RoomHomeViewModel(
                         id = member.userId.toString(),
                         nickname = member.nickname,
                         profileImageUrl = member.profileImageUrl,
+                        isOwner = member.membershipRole == RoomMembershipRole.OWNER,
                     )
                 }
                 if (!isCurrentRequest(requestId, roomId, identity)) return@launch

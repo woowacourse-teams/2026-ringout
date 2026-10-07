@@ -20,6 +20,8 @@ import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.file.domain.ImageFile;
+import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomUser;
@@ -31,6 +33,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.net.URI;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -66,13 +69,16 @@ class AlarmMovementServiceTest {
     @Mock
     private RoomActivityService roomActivityService;
 
+    @Mock
+    private ImageFileService imageFileService;
+
     private AlarmMovementService alarmMovementService;
 
     @BeforeEach
     void setUp() {
         alarmMovementService = new AlarmMovementService(
             roomRepository, roomUserRepository, alarmOccurrenceRepository, roomActivityService,
-            CLOCK
+            imageFileService, CLOCK
         );
     }
 
@@ -114,6 +120,9 @@ class AlarmMovementServiceTest {
             User startedMember = userWithId(5L, "Bravo");
             User movingMember = userWithId(6L, "charlie");
             User arrivedMember = userWithId(7L, "123");
+            ImageFile startedMemberProfileImage = ImageFile.from("images/profiles/started-member.png");
+            URI startedMemberProfileImageUri = URI.create("https://example.com/started-member.png?signature=test");
+            startedMember.changeProfileImage(startedMemberProfileImage);
             List<AlarmOccurrence> alarmOccurrences = List.of(
                 alarmOccurrenceWith(arrivedMember, 11L),
                 alarmOccurrenceWith(movingMember, 12L),
@@ -137,6 +146,7 @@ class AlarmMovementServiceTest {
             given(alarmOccurrenceRepository.findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
                 ROOM_ID, NOW.toLocalDate().atStartOfDay(), NOW.toLocalDate().plusDays(1).atStartOfDay()))
                 .willReturn(alarmOccurrences);
+            given(imageFileService.createReadUri(startedMemberProfileImage)).willReturn(startedMemberProfileImageUri);
 
             // when
             MemberMovementsResponse response = alarmMovementService.getMemberMovements(USER_ID, ROOM_ID);
@@ -155,7 +165,10 @@ class AlarmMovementServiceTest {
                     MovementStatus.MOVING,
                     MovementStatus.ARRIVED
                 );
+            assertThat(response.members()).extracting(MemberMovementResponse::profileImageUrl)
+                .containsExactly(null, null, null, startedMemberProfileImageUri.toString(), null, null);
             verify(roomUserRepository).findActiveByRoomId(ROOM_ID);
+            verify(imageFileService).createReadUri(startedMemberProfileImage);
             verify(alarmOccurrenceRepository).findActiveByRoomIdAndStartedAtBetweenOrderByStartedAtDescIdDesc(
                 ROOM_ID, NOW.toLocalDate().atStartOfDay(), NOW.toLocalDate().plusDays(1).atStartOfDay());
         }

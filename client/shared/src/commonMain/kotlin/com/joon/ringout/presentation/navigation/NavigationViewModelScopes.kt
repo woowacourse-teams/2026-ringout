@@ -27,6 +27,7 @@ import com.joon.ringout.presentation.signup.SignupViewModel
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
 import com.joon.ringout.presentation.roomedit.RoomEditViewModel
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roomactivity.RoomActivityViewModel
 import com.joon.ringout.presentation.roommembermanagement.RoomMemberManagementViewModel
 import com.joon.ringout.presentation.roomlist.model.toRoomUiModel
 import kotlinx.coroutines.CancellationException
@@ -141,6 +142,13 @@ private fun navigationViewModelFactory(container: AppContainer): ViewModelProvid
                 loadRecords = container.roomRepository::getRoomRecords,
                 deleteRoom = container.roomRepository::deleteRoom,
                 leaveRoom = container.roomRepository::leaveRoom,
+                authSession = container.authSession,
+            )
+        }
+        initializer {
+            RoomActivityViewModel(
+                loadMembers = container.roomRepository::getMemberMovements,
+                loadRecords = container.roomRepository::getRoomRecords,
                 authSession = container.authSession,
             )
         }

@@ -15,6 +15,7 @@ import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomManagementMember
+import com.joon.ringout.domain.room.RoomMemberMovement
 import com.joon.ringout.domain.room.RoomRepository
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomSummary
@@ -141,6 +142,55 @@ class DefaultRoomRepository(
                 throw invalidManagementResponse(error)
             } catch (error: IllegalStateException) {
                 throw invalidManagementResponse(error)
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: ApiException) {
+            throw error.toRoomRepositoryException()
+        }
+    }
+
+    override suspend fun getMemberMovements(roomId: Long): List<RoomMemberMovement> {
+        if (roomId <= 0L) {
+            throw RoomRepositoryException(
+                statusCode = HttpStatusCode.BadRequest.value,
+                code = "ROOM400",
+                message = "모임 ID를 확인해 주세요.",
+            )
+        }
+        ensureGetAuthenticated()
+        try {
+            val response = authenticatedRequests.execute { accessToken ->
+                httpClient.get(ApiConfig.url("/api/v1/rooms/$roomId/members/movements")) {
+                    bearerAuth(accessToken)
+                }
+            }
+            val body = response.decodeOrThrow<JsonElement>()
+            if (!body.isSuccess) {
+                throw RoomRepositoryException(
+                    statusCode = response.status.value,
+                    code = body.code,
+                    message = body.message,
+                )
+            }
+            if (response.status != HttpStatusCode.OK || body.code != "ROOM200") {
+                throw RoomRepositoryException(
+                    statusCode = response.status.value,
+                    code = body.code,
+                    message = body.message.ifBlank { "모임 회원 이동 상태 응답이 올바르지 않아요." },
+                )
+            }
+            val result = body.result ?: throw invalidMemberMovementsResponse()
+            return try {
+                ApiJson.decodeFromJsonElement<RoomMemberMovementsResponseEntity>(result).toDomain()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: SerializationException) {
+                throw invalidMemberMovementsResponse(error)
+            } catch (error: IllegalArgumentException) {
+                throw invalidMemberMovementsResponse(error)
+            } catch (error: IllegalStateException) {
+                throw invalidMemberMovementsResponse(error)
             }
         } catch (error: CancellationException) {
             throw error
@@ -362,6 +412,8 @@ class DefaultRoomRepository(
 private fun RoomUpdateInput.toMultipartContent(): MultiPartFormDataContent = MultiPartFormDataContent(formData {
     name?.let { append("name", it) }
     description?.let { append("description", it) }
+    activityDays?.forEach { append("activityDays", it) }
+    activityTime?.let { append("activityTime", it) }
     append("removeImage", removeImage.toString())
     image?.let { upload ->
         append("image", upload.bytes, Headers.build {
@@ -385,6 +437,13 @@ private fun invalidManagementResponse(cause: Throwable? = null) = RoomRepository
     statusCode = HttpStatusCode.OK.value,
     code = "ROOM_MEMBER_RESPONSE_INVALID",
     message = "회원 정보를 불러오지 못했어요. 다시 시도해 주세요.",
+    cause = cause,
+)
+
+private fun invalidMemberMovementsResponse(cause: Throwable? = null) = RoomRepositoryException(
+    statusCode = HttpStatusCode.OK.value,
+    code = "ROOM_MEMBER_MOVEMENTS_RESPONSE_INVALID",
+    message = "회원 이동 상태를 불러오지 못했어요. 다시 시도해 주세요.",
     cause = cause,
 )
 

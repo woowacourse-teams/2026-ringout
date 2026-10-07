@@ -90,6 +90,11 @@ public class Room extends BaseEntity {
         this.activityDays = ActivityDays.from(activityDays);
     }
 
+    public void changeActivityTime(LocalTime activityTime) {
+        validateActivityTime(activityTime);
+        this.activityTime = activityTime;
+    }
+
     public void update(String rawName, String description) {
         if (rawName == null && description == null) {
             throw new GeneralException(RoomErrorStatus.ROOM_UPDATE_REQUIRED);

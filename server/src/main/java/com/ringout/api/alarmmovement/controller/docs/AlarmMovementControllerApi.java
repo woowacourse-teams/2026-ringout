@@ -161,9 +161,9 @@ public interface AlarmMovementControllerApi {
                   "message": "모임 회원 상태 조회에 성공했습니다.",
                   "result": {
                     "members": [
-                      {"userId": 3, "nickname": "가나다", "status": "IDLE"},
-                      {"userId": 1, "nickname": "Alice", "status": "MOVEMENT_STARTED"},
-                      {"userId": 2, "nickname": "@runner", "status": "ARRIVED"}
+                      {"userId": 3, "nickname": "가나다", "profileImageUrl": null, "status": "IDLE"},
+                      {"userId": 1, "nickname": "Alice", "profileImageUrl": "https://s3.example.com/profiles/1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example", "status": "MOVEMENT_STARTED"},
+                      {"userId": 2, "nickname": "@runner", "profileImageUrl": null, "status": "ARRIVED"}
                     ]
                   }
                 }

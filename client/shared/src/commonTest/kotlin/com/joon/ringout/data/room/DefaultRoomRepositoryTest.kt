@@ -12,6 +12,7 @@ import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.room.RoomRecordEvent
 import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.domain.room.RoomImageUpload
+import com.joon.ringout.domain.room.RoomMemberMovementStatus
 import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomUpdateInput
@@ -47,6 +48,23 @@ import kotlin.test.assertTrue
 
 class DefaultRoomRepositoryTest {
     @Test
+    fun `활동 일정만 수정하면 요일별 멀티파트와 시간만 전송한다`() = runTest {
+        val fixture = RoomUpdateFixture()
+        fixture.repository.updateRoom(7, RoomUpdateInput(
+            activityDays = listOf("MONDAY", "FRIDAY"), activityTime = "19:30",
+        ))
+        val body = fixture.patchBodies.single()
+        val days = body.split("name=\"activityDays\"").drop(1).map {
+            it.substringAfter("\r\n\r\n").substringBefore("\r\n--")
+        }
+        assertEquals(listOf("MONDAY", "FRIDAY"), days)
+        assertMultipartPart(body, "activityTime", "19:30")
+        assertFalse(body.contains("name=\"name\""))
+        assertFalse(body.contains("name=\"description\""))
+        fixture.client.close()
+    }
+
+    @Test
     fun `모임 수정은 변경된 텍스트와 원본 이미지 파일 그리고 removeImage false를 멀티파트로 전송한다`() = runTest {
         val fixture = RoomUpdateFixture()
 
@@ -66,6 +84,8 @@ class DefaultRoomRepositoryTest {
         assertMultipartPart(body, "name", "새 모임")
         assertMultipartPart(body, "description", "")
         assertMultipartPart(body, "removeImage", "false")
+        assertFalse(body.contains("name=\"activityDays\""))
+        assertFalse(body.contains("name=\"activityTime\""))
         assertTrue(body.contains("name=\"image\""))
         assertTrue(body.contains("filename=\"room.png\""))
         assertTrue(body.contains("Content-Type: image/png", ignoreCase = true))
@@ -460,6 +480,178 @@ class DefaultRoomRepositoryTest {
         emptyClient.close()
         nullResultClient.close()
         wrongCodeClient.close()
+    }
+
+    @Test
+    fun `회원 이동 조회는 Bearer GET으로 조회하고 서버 순서와 여섯 상태와 Unknown을 반환한다`() = runTest {
+        var requestCount = 0
+        val client = clientFor { request ->
+            requestCount += 1
+            assertEquals(HttpMethod.Get, request.method)
+            assertEquals("/api/v1/rooms/7/members/movements", request.url.encodedPath)
+            assertEquals("Bearer access", request.headers[HttpHeaders.Authorization])
+            assertTrue(request.url.parameters.isEmpty())
+            assertTrue(request.body !is TextContent)
+            respond(
+                content = """{"isSuccess":true,"code":"ROOM200","message":"성공","result":{"members":[
+                    {"userId":1,"nickname":"대기","status":"IDLE"},
+                    {"userId":2,"nickname":"알람","status":"ALARM_TRIGGERED"},
+                    {"userId":3,"nickname":"출발","status":"MOVEMENT_STARTED"},
+                    {"userId":4,"nickname":"이동","status":"MOVING"},
+                    {"userId":5,"nickname":"도착","status":"ARRIVED"},
+                    {"userId":6,"nickname":"포기","status":"GAVE_UP"},
+                    {"userId":7,"nickname":"미래","status":"PAUSED"}
+                ]}}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+
+        val movements = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+            .getMemberMovements(7)
+
+        assertEquals(1, requestCount)
+        assertEquals(listOf(1L, 2L, 3L, 4L, 5L, 6L, 7L), movements.map { it.userId })
+        assertEquals(
+            listOf(
+                RoomMemberMovementStatus.Idle,
+                RoomMemberMovementStatus.AlarmTriggered,
+                RoomMemberMovementStatus.MovementStarted,
+                RoomMemberMovementStatus.Moving,
+                RoomMemberMovementStatus.Arrived,
+                RoomMemberMovementStatus.GaveUp,
+                RoomMemberMovementStatus.Unknown,
+            ),
+            movements.map { it.status },
+        )
+        client.close()
+    }
+
+    @Test
+    fun `회원 이동 조회의 빈 목록은 성공하고 null result와 잘못된 응답은 실패한다`() = runTest {
+        val emptyClient = clientFor {
+            respond(
+                """{"isSuccess":true,"code":"ROOM200","message":"성공","result":{"members":[]}}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+        val invalidResponses = listOf(
+            """{"isSuccess":true,"code":"ROOM200","message":"성공","result":null}""",
+            """{"isSuccess":true,"code":"MEMBER200","message":"성공","result":{"members":[]}}""",
+            """{"isSuccess":true,"code":"ROOM200","message":"성공","result":{"members":[{"userId":0,"nickname":"회원","status":"IDLE"}]}}""",
+            """{"isSuccess":true,"code":"ROOM200","message":"성공","result":{"members":[{"userId":1,"nickname":"회원","status":"IDLE"},{"userId":1,"nickname":"중복","status":"MOVING"}]}}""",
+            """{"isSuccess":true,"code":"ROOM200","message":"성공","result":{"members":[{"userId":1,"nickname":"","status":"IDLE"}]}}""",
+        )
+
+        assertTrue(repository(emptyClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+            .getMemberMovements(7).isEmpty())
+        emptyClient.close()
+
+        invalidResponses.forEach { body ->
+            val client = clientFor {
+                respond(body, status = HttpStatusCode.OK, headers = jsonHeaders)
+            }
+            assertFailsWith<RoomRepositoryException> {
+                repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                    .getMemberMovements(7)
+            }
+            client.close()
+        }
+    }
+
+    @Test
+    fun `회원 이동 조회는 비양수 ID와 인증 없음과 토큰 없음에서 요청하지 않는다`() = runTest {
+        var calls = 0
+        val client = clientFor { calls += 1; error("요청하면 안 됨") }
+        val authenticated = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+        val unauthenticated = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Unauthenticated)
+        val missingToken = repository(client, state = AuthSessionState.Authenticated)
+
+        assertFailsWith<RoomRepositoryException> { authenticated.getMemberMovements(0) }
+        assertFailsWith<RoomRepositoryException> { unauthenticated.getMemberMovements(7) }
+        assertFailsWith<RoomRepositoryException> { missingToken.getMemberMovements(7) }
+
+        assertEquals(0, calls)
+        client.close()
+    }
+
+    @Test
+    fun `회원 이동 조회의 HTTP 오류와 업무 실패는 RoomRepositoryException으로 전달한다`() = runTest {
+        val businessClient = clientFor {
+            respond(
+                """{"isSuccess":false,"code":"ROOM403","message":"참여하지 않은 방입니다.","result":null}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+        val httpClient = clientFor {
+            respond(
+                """{"isSuccess":false,"code":"ROOM404","message":"모임을 찾을 수 없습니다.","result":null}""",
+                status = HttpStatusCode.NotFound,
+                headers = jsonHeaders,
+            )
+        }
+
+        val businessError = assertFailsWith<RoomRepositoryException> {
+            repository(businessClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                .getMemberMovements(7)
+        }
+        val httpError = assertFailsWith<RoomRepositoryException> {
+            repository(httpClient, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+                .getMemberMovements(7)
+        }
+
+        assertEquals(200, businessError.statusCode)
+        assertEquals("ROOM403", businessError.code)
+        assertEquals(404, httpError.statusCode)
+        assertEquals("ROOM404", httpError.code)
+        businessClient.close()
+        httpClient.close()
+    }
+
+    @Test
+    fun `회원 이동 조회는 AUTH401이면 토큰을 갱신하고 한 번 재시도한다`() = runTest {
+        var movementRequestCount = 0
+        var reissueRequestCount = 0
+        val storage = TestTokenStorage(AuthTokens("old-access", "old-refresh"))
+        val authSession = session(AuthSessionState.Authenticated)
+        val client = clientFor { request ->
+            when (request.url.encodedPath) {
+                "/api/v1/rooms/7/members/movements" -> {
+                    movementRequestCount += 1
+                    when (request.headers[HttpHeaders.Authorization]) {
+                        "Bearer old-access" -> respond(
+                            """{"isSuccess":false,"code":"AUTH401","message":"토큰 만료","result":null}""",
+                            status = HttpStatusCode.Unauthorized,
+                            headers = jsonHeaders,
+                        )
+                        "Bearer new-access" -> respond(
+                            """{"isSuccess":true,"code":"ROOM200","message":"성공","result":{"members":[]}}""",
+                            status = HttpStatusCode.OK,
+                            headers = jsonHeaders,
+                        )
+                        else -> error("예상하지 않은 Authorization 헤더입니다.")
+                    }
+                }
+                "/api/v1/auth/reissue" -> {
+                    reissueRequestCount += 1
+                    respond(
+                        """{"isSuccess":true,"code":"COMMON200","message":"성공","result":{"accessToken":"new-access","refreshToken":"new-refresh"}}""",
+                        status = HttpStatusCode.OK,
+                        headers = jsonHeaders,
+                    )
+                }
+                else -> error("예상하지 않은 요청입니다: ${request.url.encodedPath}")
+            }
+        }
+
+        DefaultRoomRepository(client, storage, authSession).getMemberMovements(7)
+
+        assertEquals(2, movementRequestCount)
+        assertEquals(1, reissueRequestCount)
+        assertEquals(AuthTokens("new-access", "new-refresh"), storage.read())
+        client.close()
     }
 
     @Test

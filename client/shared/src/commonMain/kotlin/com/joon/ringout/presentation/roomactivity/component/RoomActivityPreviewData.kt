@@ -12,6 +12,10 @@ import com.joon.ringout.presentation.roomhome.RoomHomeRecordUiModel
 internal val RoomActivityPreviewState = RoomActivityUiState(
     roomId = "preview-room-home",
     activityDate = MissionDate.of(2026, 9, 17),
+    timelineDate = MissionDate.of(2026, 9, 17),
+    isDataLoaded = true,
+    isTimelineDataLoaded = true,
+    showTimeline = true,
     members = listOf(
         RoomActivityMemberUiModel("me", "볼링뜨실분다이겨드림", RoomActivityMemberStatus.Moving, isMe = true),
         RoomActivityMemberUiModel("artist", "아아아티스트", RoomActivityMemberStatus.Arrived),

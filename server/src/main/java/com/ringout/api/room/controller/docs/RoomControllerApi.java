@@ -117,7 +117,7 @@ public interface RoomControllerApi {
                         "memberCount": 1,
                         "membershipRole": "OWNER",
                         "createdAt": "2026-09-20T10:30:00",
-                        "members": [{"userId": 1, "nickname": "가나다", "profileImageUrl": null}]
+                        "members": [{"userId": 1, "nickname": "가나다", "profileImageUrl": null, "membershipRole": "OWNER"}]
                       }
                     }
                     """)
@@ -274,10 +274,10 @@ public interface RoomControllerApi {
                     "membershipRole": "MEMBER",
                     "createdAt": "2026-09-20T10:30:00",
                     "members": [
-                      {"userId": 1, "nickname": "가나다", "profileImageUrl": "https://s3.example.com/profiles/1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example"},
-                      {"userId": 2, "nickname": "성열", "profileImageUrl": null},
-                      {"userId": 3, "nickname": "Alice", "profileImageUrl": "https://s3.example.com/profiles/3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example"},
-                      {"userId": 4, "nickname": "@runner", "profileImageUrl": null}
+                      {"userId": 1, "nickname": "가나다", "profileImageUrl": "https://s3.example.com/profiles/1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example", "membershipRole": "OWNER"},
+                      {"userId": 2, "nickname": "성열", "profileImageUrl": null, "membershipRole": "MEMBER"},
+                      {"userId": 3, "nickname": "Alice", "profileImageUrl": "https://s3.example.com/profiles/3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example", "membershipRole": "MEMBER"},
+                      {"userId": 4, "nickname": "@runner", "profileImageUrl": null, "membershipRole": "MEMBER"}
                     ]
                   }
                 }
@@ -375,7 +375,8 @@ public interface RoomControllerApi {
                           {
                             "userId": 1,
                             "nickname": "링아웃",
-                            "profileImageUrl": null
+                            "profileImageUrl": null,
+                            "membershipRole": "OWNER"
                           }
                         ]
                       }
@@ -513,7 +514,7 @@ public interface RoomControllerApi {
 
     @Operation(
         summary = "모임 방 수정",
-        description = "방장만 방 이름·소개 정보를 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, image, removeImage 중 하나 이상을 전달해야 합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage를 true로 전달하면 기존 이미지를 삭제합니다. image와 removeImage=true는 함께 전달할 수 없습니다. 응답에는 이미지가 있으면 presigned 조회 URL을, 없으면 null을 반환합니다. name 또는 description 변경 시 최신 활동 시각을 갱신합니다.",
+        description = "방장만 방 이름·소개·활동 요일·활동 시간을 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, activityDays, activityTime, image, removeImage 중 하나 이상을 전달해야 하며, 수정하지 않는 필드는 생략하면 null로 바인딩됩니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage를 true로 전달하면 기존 이미지를 삭제합니다. image와 removeImage=true는 함께 전달할 수 없습니다. 응답에는 이미지가 있으면 presigned 조회 URL을, 없으면 null을 반환합니다. 이름·소개·활동 요일·활동 시간 변경 시 최신 활동 시각을 갱신합니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
@@ -531,7 +532,9 @@ public interface RoomControllerApi {
                         "roomId": 1,
                         "name": "새로운 아침 운동 모임",
                         "description": "매주 아침 함께 운동하는 모임입니다.",
-                        "imageUrl": "https://example.com/images/room-1.png?signature=test"
+                        "imageUrl": "https://example.com/images/room-1.png?signature=test",
+                        "activityDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
+                        "activityTime": "19:30"
                       }
                     }
                     """)
@@ -549,6 +552,12 @@ public interface RoomControllerApi {
                     """),
                 @ExampleObject(name = "invalidDescription", value = """
                     {"isSuccess": false, "code": "ROOM400", "message": "모임 소개의 형식이 올바르지 않습니다.", "result": null}
+                    """),
+                @ExampleObject(name = "invalidActivityDays", value = """
+                    {"isSuccess": false, "code": "ROOM400", "message": "활동 요일을 1개 이상 선택해야 합니다.", "result": null}
+                    """),
+                @ExampleObject(name = "invalidActivityTime", value = """
+                    {"isSuccess": false, "code": "ROOM400", "message": "활동 시간의 형식이 올바르지 않습니다.", "result": null}
                     """),
                 @ExampleObject(name = "invalidImage", value = """
                     {"isSuccess": false, "code": "ROOM400", "message": "모임 대표 이미지의 형식이 올바르지 않습니다.", "result": null}
@@ -603,7 +612,7 @@ public interface RoomControllerApi {
         @Parameter(description = "수정할 모임 방 식별자", required = true, example = "1") Long roomId,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
-            description = "multipart/form-data. name, description, image, removeImage 중 하나 이상 전달합니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage=true를 전달하면 기본 이미지로 전환합니다.",
+            description = "multipart/form-data. name, description, activityDays, activityTime, image, removeImage 중 하나 이상 전달합니다. 활동 요일은 activityDays에 리스트로 전달하고 활동 시간은 activityTime으로 전달합니다. 수정하지 않는 필드는 생략하면 null로 바인딩됩니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage=true를 전달하면 기본 이미지로 전환합니다.",
             content = @Content(
                 mediaType = "multipart/form-data",
                 schema = @Schema(implementation = RoomUpdateRequest.class)

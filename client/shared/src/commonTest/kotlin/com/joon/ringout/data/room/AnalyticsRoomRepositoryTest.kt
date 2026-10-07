@@ -77,6 +77,7 @@ private abstract class UnusedRoomRepository : RoomRepository {
     override suspend fun getRooms(): List<RoomSummary> = error("unused")
     override suspend fun getRoom(roomId: Long): RoomMembershipDetails = error("unused")
     override suspend fun getMembersForManagement(roomId: Long): List<RoomManagementMember> = error("unused")
+    override suspend fun getMemberMovements(roomId: Long): List<RoomMemberMovement> = error("unused")
     override suspend fun kickMember(roomId: Long, userId: Long): Unit = error("unused")
     override suspend fun getRoomRecords(roomId: Long, date: MissionDate): RoomRecords = error("unused")
     override suspend fun createRoom(input: RoomCreateInput): RoomMembershipDetails = error("unused")

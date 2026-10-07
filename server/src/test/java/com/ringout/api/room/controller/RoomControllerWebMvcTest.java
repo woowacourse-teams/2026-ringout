@@ -1,10 +1,14 @@
 package com.ringout.api.room.controller;
 
 import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -15,13 +19,16 @@ import com.ringout.api.config.jwt.JwtAuthenticationFilter;
 import com.ringout.api.config.jwt.JwtProvider;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.config.security.JwtAuthenticationEntryPoint;
+import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomManagementMemberResponse;
 import com.ringout.api.room.dto.response.RoomMembersResponse;
+import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.service.RoomService;
 import com.ringout.api.room.service.RoomRecordService;
 import com.ringout.api.user.domain.Role;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -160,5 +167,40 @@ class RoomControllerWebMvcTest {
             jsonPath("$.message").value("인증되지 않은 사용자입니다.")
         );
         verifyNoInteractions(roomService);
+    }
+
+    @Test
+    void 활동_요일과_시간을_multipart_수정_요청으로_바인딩한다() throws Exception {
+        // given
+        Long roomId = 10L;
+        RoomUpdateResponse response = new RoomUpdateResponse(
+            roomId, "아침 운동 모임", null, null, List.of("TUESDAY", "THURSDAY"), "19:30"
+        );
+        given(roomService.updateRoom(eq(1L), eq(roomId), any())).willReturn(response);
+
+        // when
+        var result = mockMvc.perform(multipart("/api/v1/rooms/{roomId}", roomId)
+            .param("activityDays", "TUESDAY", "THURSDAY")
+            .param("activityTime", "19:30")
+            .with(request -> {
+                request.setMethod("PATCH");
+                return request;
+            })
+            .with(user(new CustomUserDetails(1L, Role.USER))));
+
+        // then
+        result.andExpectAll(
+            status().isOk(),
+            jsonPath("$.isSuccess").value(true),
+            jsonPath("$.code").value("ROOM200"),
+            jsonPath("$.result.activityDays[0]").value("TUESDAY"),
+            jsonPath("$.result.activityDays[1]").value("THURSDAY"),
+            jsonPath("$.result.activityTime").value("19:30")
+        );
+        verify(roomService).updateRoom(eq(1L), eq(roomId),
+            argThat(request -> request.activityDays().equals(List.of(
+                ActivityDay.TUESDAY,
+                ActivityDay.THURSDAY
+            )) && request.activityTime().equals(LocalTime.of(19, 30))));
     }
 }

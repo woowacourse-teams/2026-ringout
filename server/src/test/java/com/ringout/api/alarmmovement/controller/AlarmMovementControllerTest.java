@@ -72,9 +72,9 @@ class AlarmMovementControllerTest {
     void 인증된_사용자에게_정렬된_모임_회원_이동_상태를_반환한다() throws Exception {
         // given
         MemberMovementsResponse response = new MemberMovementsResponse(List.of(
-            new MemberMovementResponse(2L, "가나다", MovementStatus.IDLE),
-            new MemberMovementResponse(3L, "Alice", MovementStatus.MOVEMENT_STARTED),
-            new MemberMovementResponse(4L, "123", MovementStatus.ARRIVED)
+            new MemberMovementResponse(2L, "가나다", null, MovementStatus.IDLE),
+            new MemberMovementResponse(3L, "Alice", "https://example.com/alice.png", MovementStatus.MOVEMENT_STARTED),
+            new MemberMovementResponse(4L, "123", null, MovementStatus.ARRIVED)
         ));
         given(alarmMovementService.getMemberMovements(1L, 10L)).willReturn(response);
 
@@ -90,7 +90,9 @@ class AlarmMovementControllerTest {
             jsonPath("$.message").value("모임 회원 상태 조회에 성공했습니다."),
             jsonPath("$.result.members[0].userId").value(2L),
             jsonPath("$.result.members[0].nickname").value("가나다"),
+            jsonPath("$.result.members[0].profileImageUrl").doesNotExist(),
             jsonPath("$.result.members[0].status").value("IDLE"),
+            jsonPath("$.result.members[1].profileImageUrl").value("https://example.com/alice.png"),
             jsonPath("$.result.members[1].status").value("MOVEMENT_STARTED"),
             jsonPath("$.result.members[2].status").value("ARRIVED")
         );

@@ -34,6 +34,7 @@ import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
 import com.joon.ringout.presentation.roomedit.RoomEditViewModel
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roomactivity.RoomActivityViewModel
 import com.joon.ringout.presentation.roomhome.blocksNavigationBack
 import com.joon.ringout.presentation.roomlist.RoomListViewModel
 import com.joon.ringout.presentation.roomlist.model.RoomMutationType
@@ -191,6 +192,11 @@ private fun RingoutAppContent(
             viewModelScopes.get(route, RoomHomeViewModel::class)
         }
     }
+    val roomActivityViewModels = remember(retainedRoutes, viewModelScopes) {
+        retainedRoutes.filterIsInstance<AppRoute.RoomActivity>().map { route ->
+            viewModelScopes.get(route, RoomActivityViewModel::class)
+        }
+    }
     val myPageViewModel = if (AppRoute.MyPage in retainedRoutes) {
         viewModelScopes.get(AppRoute.MyPage, MyPageViewModel::class)
     } else {
@@ -254,6 +260,7 @@ private fun RingoutAppContent(
         destinationViewModel = alarmEditorNavigation?.destinationViewModel,
         roomListViewModel = socialRoomListViewModel,
         roomHomeViewModels = roomHomeViewModels,
+        roomActivityViewModels = roomActivityViewModels,
     )
     val roomMutationState = socialRoomListViewModel?.mutationState
     LaunchedEffect(roomMutationState?.operationId, roomMutationState?.isSuccessful) {
