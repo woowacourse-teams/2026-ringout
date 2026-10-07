@@ -173,7 +173,9 @@ class RoomControllerWebMvcTest {
     void 활동_요일과_시간을_multipart_수정_요청으로_바인딩한다() throws Exception {
         // given
         Long roomId = 10L;
-        RoomUpdateResponse response = new RoomUpdateResponse(roomId, "아침 운동 모임", null, null);
+        RoomUpdateResponse response = new RoomUpdateResponse(
+            roomId, "아침 운동 모임", null, null, List.of("TUESDAY", "THURSDAY"), "19:30"
+        );
         given(roomService.updateRoom(eq(1L), eq(roomId), any())).willReturn(response);
 
         // when
@@ -190,7 +192,10 @@ class RoomControllerWebMvcTest {
         result.andExpectAll(
             status().isOk(),
             jsonPath("$.isSuccess").value(true),
-            jsonPath("$.code").value("ROOM200")
+            jsonPath("$.code").value("ROOM200"),
+            jsonPath("$.result.activityDays[0]").value("TUESDAY"),
+            jsonPath("$.result.activityDays[1]").value("THURSDAY"),
+            jsonPath("$.result.activityTime").value("19:30")
         );
         verify(roomService).updateRoom(eq(1L), eq(roomId),
             argThat(request -> request.activityDays().equals(List.of(

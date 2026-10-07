@@ -405,11 +405,13 @@ class RoomServiceTest {
             );
 
             // when
-            roomService.updateRoom(userId, 10L, request);
+            RoomUpdateResponse response = roomService.updateRoom(userId, 10L, request);
 
             // then
             assertThat(room.getActivityDays()).containsExactly(ActivityDay.TUESDAY, ActivityDay.THURSDAY);
             assertThat(room.getActivityTime()).isEqualTo(LocalTime.of(19, 30));
+            assertThat(response.activityDays()).containsExactly("TUESDAY", "THURSDAY");
+            assertThat(response.activityTime()).isEqualTo("19:30");
         }
 
         @Test

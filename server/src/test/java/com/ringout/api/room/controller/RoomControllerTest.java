@@ -211,7 +211,9 @@ class RoomControllerTest {
                 roomId,
                 "새로운 아침 운동 모임",
                 "",
-                "/images/default-room.png"
+                "/images/default-room.png",
+                List.of("MONDAY", "WEDNESDAY", "FRIDAY"),
+                "08:00"
             );
             given(roomService.updateRoom(userId, roomId, request)).willReturn(serviceResponse);
 

@@ -532,7 +532,9 @@ public interface RoomControllerApi {
                         "roomId": 1,
                         "name": "새로운 아침 운동 모임",
                         "description": "매주 아침 함께 운동하는 모임입니다.",
-                        "imageUrl": "https://example.com/images/room-1.png?signature=test"
+                        "imageUrl": "https://example.com/images/room-1.png?signature=test",
+                        "activityDays": ["MONDAY", "WEDNESDAY", "FRIDAY"],
+                        "activityTime": "19:30"
                       }
                     }
                     """)
