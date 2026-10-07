@@ -8,4 +8,6 @@ data class RoomUpdateResponseEntity(
     val name: String,
     val description: String? = null,
     val imageUrl: String? = null,
+    val activityDays: List<String>? = null,
+    val activityTime: String? = null,
 )

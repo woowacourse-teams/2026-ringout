@@ -15,6 +15,7 @@ import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomScheduleClock
 import com.joon.ringout.domain.room.RoomRecords
+import com.joon.ringout.presentation.roomlist.model.withUpdatedSchedule
 import com.joon.ringout.domain.room.RoomUpdateResult
 import com.joon.ringout.presentation.roomlist.model.toRoomUiModel
 import kotlinx.coroutines.CancellationException
@@ -337,7 +338,7 @@ internal class RoomHomeViewModel(
                 state
             } else {
                 state.copy(
-                    room = currentRoom.copy(
+                    room = currentRoom.withUpdatedSchedule(result).copy(
                         representativeImage = result.imageUrl,
                         name = result.name,
                         description = result.description.orEmpty(),

@@ -5,4 +5,6 @@ data class RoomUpdateResult(
     val name: String,
     val description: String?,
     val imageUrl: String?,
+    val activityDays: List<String>? = null,
+    val activityTime: String? = null,
 )

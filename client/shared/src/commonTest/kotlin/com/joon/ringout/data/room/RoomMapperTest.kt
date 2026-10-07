@@ -78,14 +78,18 @@ class RoomMapperTest {
     }
 
     @Test
-    fun `수정 응답은 네 필드만 Domain 결과로 변환하고 이미지 주소를 정규화한다`() {
+    fun `수정 응답은 일정과 기본 정보를 Domain 결과로 변환하고 이미지 주소를 정규화한다`() {
         val result = RoomUpdateResponseEntity(
             roomId = 7,
             name = "수정된 모임",
             description = "",
             imageUrl = "/images/rooms/updated.png",
+            activityDays = listOf("MONDAY", "FRIDAY"),
+            activityTime = "19:30",
         ).toDomain()
 
+        assertEquals(listOf("MONDAY", "FRIDAY"), result.activityDays)
+        assertEquals("19:30", result.activityTime)
         assertEquals(7L, result.roomId)
         assertEquals("수정된 모임", result.name)
         assertEquals("", result.description)

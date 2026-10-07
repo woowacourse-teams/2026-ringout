@@ -12,6 +12,7 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomRepositoryException
+import com.joon.ringout.presentation.roomlist.model.withUpdatedSchedule
 import com.joon.ringout.domain.room.RoomUpdateResult
 import com.joon.ringout.presentation.roomlist.model.RoomListUiState
 import com.joon.ringout.presentation.roomlist.model.RoomMutationSource
@@ -149,7 +150,7 @@ class RoomListViewModel(
         invalidateRoomsRequest()
         val allRooms = uiState.allRooms.map { room ->
             if (room.id == roomIdString) {
-                room.copy(
+                room.withUpdatedSchedule(result).copy(
                     representativeImage = result.imageUrl,
                     name = result.name,
                     description = result.description.orEmpty(),

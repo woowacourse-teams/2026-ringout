@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.joon.ringout.presentation.roomedit.component.RoomEditScheduleSection
+import com.joon.ringout.presentation.alarmsetup.toAlarmTimePickerValue
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.roomedit.component.RoomEditHeader
@@ -43,6 +45,10 @@ internal fun RoomEditScreen(
     onImageChangeClick: () -> Unit,
     onSaveClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onDayClick: (String) -> Unit = {},
+    onAmPmChange: (Boolean) -> Unit = {},
+    onHourChange: (Int) -> Unit = {},
+    onMinuteChange: (Int) -> Unit = {},
 ) {
     val original = checkNotNull(uiState.original)
     val scrollState = rememberScrollState()
@@ -101,6 +107,14 @@ internal fun RoomEditScreen(
                     onValueChange = onIntroductionChange,
                     enabled = !uiState.isSaving,
                 )
+                RoomEditScheduleSection(
+                    selectedDays = uiState.selectedDays,
+                    time = uiState.time24Hour.toAlarmTimePickerValue(),
+                    onDayClick = onDayClick,
+                    onAmPmChange = onAmPmChange,
+                    onHourChange = onHourChange,
+                    onMinuteChange = onMinuteChange,
+                )
                 uiState.saveErrorMessage?.let { message ->
                     Text(
                         text = message,
@@ -144,6 +158,9 @@ private fun previewRoomEditState(
 ) = RoomEditUiState(
     roomId = RoomEditPreviewRoom.id,
     original = RoomEditPreviewRoom,
+    selectedDays = RoomEditPreviewRoom.activityDays,
+    time24Hour = "08:00",
+    originalTime24Hour = "08:00",
     nameInput = nameInput,
     introductionInput = introductionInput,
 )

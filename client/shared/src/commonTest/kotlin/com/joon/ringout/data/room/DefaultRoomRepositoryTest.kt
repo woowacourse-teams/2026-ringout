@@ -48,6 +48,23 @@ import kotlin.test.assertTrue
 
 class DefaultRoomRepositoryTest {
     @Test
+    fun `활동 일정만 수정하면 요일별 멀티파트와 시간만 전송한다`() = runTest {
+        val fixture = RoomUpdateFixture()
+        fixture.repository.updateRoom(7, RoomUpdateInput(
+            activityDays = listOf("MONDAY", "FRIDAY"), activityTime = "19:30",
+        ))
+        val body = fixture.patchBodies.single()
+        val days = body.split("name=\"activityDays\"").drop(1).map {
+            it.substringAfter("\r\n\r\n").substringBefore("\r\n--")
+        }
+        assertEquals(listOf("MONDAY", "FRIDAY"), days)
+        assertMultipartPart(body, "activityTime", "19:30")
+        assertFalse(body.contains("name=\"name\""))
+        assertFalse(body.contains("name=\"description\""))
+        fixture.client.close()
+    }
+
+    @Test
     fun `모임 수정은 변경된 텍스트와 원본 이미지 파일 그리고 removeImage false를 멀티파트로 전송한다`() = runTest {
         val fixture = RoomUpdateFixture()
 
@@ -67,6 +84,8 @@ class DefaultRoomRepositoryTest {
         assertMultipartPart(body, "name", "새 모임")
         assertMultipartPart(body, "description", "")
         assertMultipartPart(body, "removeImage", "false")
+        assertFalse(body.contains("name=\"activityDays\""))
+        assertFalse(body.contains("name=\"activityTime\""))
         assertTrue(body.contains("name=\"image\""))
         assertTrue(body.contains("filename=\"room.png\""))
         assertTrue(body.contains("Content-Type: image/png", ignoreCase = true))

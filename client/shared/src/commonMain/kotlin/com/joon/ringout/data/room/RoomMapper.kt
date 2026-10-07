@@ -100,6 +100,8 @@ internal fun RoomMemberMovementsResponseEntity.toDomain(): List<RoomMemberMoveme
 }
 
 internal fun RoomUpdateResponseEntity.toDomain(): RoomUpdateResult = RoomUpdateResult(
+    activityDays = activityDays,
+    activityTime = activityTime,
     roomId = roomId,
     name = name,
     description = description,
