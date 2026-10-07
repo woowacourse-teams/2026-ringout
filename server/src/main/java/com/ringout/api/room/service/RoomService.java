@@ -155,6 +155,8 @@ public class RoomService {
             .addKeyValue("hasName", request != null && request.name() != null)
             .addKeyValue("descriptionLength", request == null || request.description() == null
                 ? null : request.description().length())
+            .addKeyValue("hasActivityDays", request != null && request.activityDays() != null)
+            .addKeyValue("hasActivityTime", request != null && request.activityTime() != null)
             .addKeyValue("hasImage", request != null && request.image() != null)
             .log("모임방 수정 요청 시작");
 
@@ -176,6 +178,8 @@ public class RoomService {
             .addKeyValue("roomId", room.getId())
             .addKeyValue("updatedName", request.name() != null)
             .addKeyValue("updatedDescription", request.description() != null)
+            .addKeyValue("updatedActivityDays", request.activityDays() != null)
+            .addKeyValue("updatedActivityTime", request.activityTime() != null)
             .addKeyValue("updatedImage", request.image() != null)
             .log("모임방 수정 성공");
 
@@ -302,16 +306,25 @@ public class RoomService {
     }
 
     private void updateRoomInformation(Room room, RoomUpdateRequest request) {
-        if (request.name() == null && request.description() == null) {
+        if (request.name() == null && request.description() == null
+            && request.activityDays() == null && request.activityTime() == null) {
             return;
         }
 
-        room.update(request.name(), request.description());
+        if (request.name() != null || request.description() != null) {
+            room.update(request.name(), request.description());
+        }
+        if (request.activityDays() != null) {
+            room.changeActivityDays(request.activityDays());
+        }
+        if (request.activityTime() != null) {
+            room.changeActivityTime(request.activityTime());
+        }
         room.recordActivityAt(java.time.LocalDateTime.now());
     }
 
     private void updateRoomImage(Room room, RoomUpdateRequest request) {
-        if (request.removeImage()) {
+        if (request.isRemoveImage()) {
             removeRoomImage(room);
             return;
         }
