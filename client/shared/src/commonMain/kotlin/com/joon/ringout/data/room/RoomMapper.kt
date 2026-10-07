@@ -1,13 +1,15 @@
 package com.joon.ringout.data.room
 
 import com.joon.ringout.data.network.ApiConfig
+import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.room.RoomCreateInput
+import com.joon.ringout.domain.room.RoomManagementMember
 import com.joon.ringout.domain.room.RoomMemberDetails
+import com.joon.ringout.domain.room.RoomMemberMovement
+import com.joon.ringout.domain.room.RoomMemberMovementStatus
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomMembershipRole
-import com.joon.ringout.domain.room.RoomManagementMember
 import com.joon.ringout.domain.room.RoomSummary
-import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.room.RoomUpdateResult
 
 internal fun RoomEntity.toDomain(): RoomSummary = RoomSummary(
@@ -82,12 +84,36 @@ internal fun RoomManagementMembersResponseEntity.toDomain(): List<RoomManagement
     }
 }
 
+internal fun RoomMemberMovementsResponseEntity.toDomain(): List<RoomMemberMovement> {
+    check(members.all { it.userId > 0L }) { "회원 식별자를 확인할 수 없어요." }
+    check(members.map { it.userId }.distinct().size == members.size) { "중복된 회원 식별자가 있어요." }
+    check(members.all { it.nickname.isNotBlank() }) { "회원 닉네임을 확인할 수 없어요." }
+
+    return members.map { member ->
+        RoomMemberMovement(
+            userId = member.userId,
+            nickname = member.nickname,
+            status = member.status.toRoomMemberMovementStatus(),
+        )
+    }
+}
+
 internal fun RoomUpdateResponseEntity.toDomain(): RoomUpdateResult = RoomUpdateResult(
     roomId = roomId,
     name = name,
     description = description,
     imageUrl = imageUrl.toRoomImageUrl(),
 )
+
+private fun String.toRoomMemberMovementStatus(): RoomMemberMovementStatus = when (this) {
+    "IDLE" -> RoomMemberMovementStatus.Idle
+    "ALARM_TRIGGERED" -> RoomMemberMovementStatus.AlarmTriggered
+    "MOVEMENT_STARTED" -> RoomMemberMovementStatus.MovementStarted
+    "MOVING" -> RoomMemberMovementStatus.Moving
+    "ARRIVED" -> RoomMemberMovementStatus.Arrived
+    "GAVE_UP" -> RoomMemberMovementStatus.GaveUp
+    else -> RoomMemberMovementStatus.Unknown
+}
 
 internal fun String?.toRoomImageUrl(): String? {
     val value = this?.trim()?.takeIf(String::isNotEmpty) ?: return null

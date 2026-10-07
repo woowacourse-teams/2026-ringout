@@ -9,6 +9,8 @@ interface RoomRepository {
 
     suspend fun getMembersForManagement(roomId: Long): List<RoomManagementMember>
 
+    suspend fun getMemberMovements(roomId: Long): List<RoomMemberMovement>
+
     suspend fun kickMember(roomId: Long, userId: Long)
     
     suspend fun getRoomRecords(roomId: Long, date: MissionDate): RoomRecords
