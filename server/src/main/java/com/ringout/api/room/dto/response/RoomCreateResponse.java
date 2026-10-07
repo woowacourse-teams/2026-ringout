@@ -1,7 +1,6 @@
 package com.ringout.api.room.dto.response;
 
 import com.ringout.api.room.domain.Room;
-import com.ringout.api.room.domain.RoomUser;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -22,7 +21,7 @@ public record RoomCreateResponse(
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
-    public static RoomCreateResponse from(Room room, RoomUser roomUser, String imageUrl) {
+    public static RoomCreateResponse from(Room room, RoomMemberResponse roomMember, String imageUrl) {
         return new RoomCreateResponse(
             room.getId(),
             room.getName(),
@@ -33,7 +32,7 @@ public record RoomCreateResponse(
             1,
             "OWNER",
             room.getCreated_at(),
-            List.of(RoomMemberResponse.from(roomUser))
+            List.of(roomMember)
         );
     }
 }

@@ -46,6 +46,7 @@ internal data class RoomHomeMemberUiModel(
     val id: String,
     val nickname: String,
     val profileImageUrl: String? = null,
+    val isOwner: Boolean = false,
 )
 
 /** 활동 시간으로 계산한 진행 여부와 모임 상세의 참여 인원이다. */

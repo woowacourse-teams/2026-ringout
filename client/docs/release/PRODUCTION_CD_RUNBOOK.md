@@ -3,7 +3,7 @@
 ## 실행 범위
 
 - `main` push에서 Android 및 iOS 운영 업로드를 실행한다. main에는 develop PR만 병합하는 기존 정책을 유지하고 직접 push는 브랜치 보호로 제한한다.
-- Android는 동일 SHA의 `Build Signed Release AAB` 성공 결과를 다운로드·검증하고 Google Play `production` **draft**를 만든다. 심사 제출과 공개는 Play Console에서 수동으로 한다.
+- Android는 동일 SHA의 `Build Signed Release AAB` 성공 결과를 다운로드·검증하고 Google Play `production` **draft**를 만든다. 새 릴리스는 자동 공개하지 않는다. 앱 전체 변경 사항의 심사·게시 상태는 Play Console에서 확인한다.
 - iOS는 동일 SHA의 `iOS CI` 성공 후 운영 Archive를 생성하여 App Store Connect에 업로드한다. 내부 TestFlight 전용 제한이 없는 빌드이며, Apple 처리 결과 확인·심사 제출·공개는 수동이다.
 - Android는 client/ 및 관련 Android workflow 변경에 반응한다. producer/consumer 경로 필터를 함께 유지해야 gate 대기가 발생하지 않는다. iOS는 main/develop push마다 CI를 실행한다.
 - develop의 기존 내부 Play / 내부 TestFlight 배포는 유지한다.
@@ -96,3 +96,17 @@ Firebase 설정은 빌드 전에 복원하고 프로젝트·번들 ID를 검사�
 - [Google Play edits.commit](https://developers.google.com/android-publisher/api-ref/rest/v3/edits/commit)
 - [Google Play bundle SHA-256](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.bundles)
 - [Apple 빌드 업로드](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)
+
+## Android commit 옵션
+
+운영 draft 저장 시 `changesNotSentForReview`는 지정하지 않는다. 자동 심사 상태의 앱에서는 해당 옵션이 HTTP 400으로 거부된다. `changesInReviewBehavior=ERROR_IF_IN_REVIEW`를 지정하고 요청 본문은 생략한다.
+
+진행 중인 심사가 있으면 CD는 실패하며, 보호 옵션을 제거해 재시도하거나 기존 심사를 취소하지 않는다. Play Console에서 심사 완료를 확인한 뒤 CD를 재실행한다. 새 릴리스의 `status=draft`는 유지하지만 앱 전체 변경 사항의 자동 심사 여부까지 차단하는 옵션은 아니므로, 업로드 후 심사·게시 상태를 확인한다.
+
+## 클라이언트 변경 경로 필터
+
+iOS CI의 develop/main push와 내부·운영 CD는 동일한 경로 목록을 사용한다. `client/iosApp/**`, `client/shared/**`, `client/ci/**`, Gradle 설정 및 세 iOS 워크플로 변경 시 실행한다. 서버 코드·서버 전용 워크플로만 변경한 push는 실행하지 않는다. PR의 기존 iOS 경로 필터도 유지한다.
+
+경로 목록을 수정할 때는 세 워크플로를 함께 수정해야 한다. CI는 생략됐는데 CD만 시작되면 동일 SHA의 선행 CI를 기다리다 시간 초과될 수 있다. iOS 워크플로는 현재 저장소의 로컬 공통 action을 사용하지 않는다. 이후 로컬 action을 도입하면 해당 경로를 세 필터에 함께 추가한다.
+
+Android는 기존 경로 필터를 유지한다. 서버·클라이언트 혼합 변경은 관련 클라이언트 파일을 포함하므로 필요한 파이프라인이 실행된다. main 적용에는 develop → main 병합이 필요하다. 추후 필수 상태 검사를 설정할 때는 경로 필터로 생략된 워크플로가 PR 병합을 차단하지 않는지 함께 확인한다.

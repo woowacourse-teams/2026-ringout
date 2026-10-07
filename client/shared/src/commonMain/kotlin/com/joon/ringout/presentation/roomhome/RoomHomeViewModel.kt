@@ -500,6 +500,7 @@ internal class RoomHomeViewModel(
                 id = member.userId.toString(),
                 nickname = member.nickname,
                 profileImageUrl = member.profileImageUrl,
+                isOwner = member.membershipRole == RoomMembershipRole.OWNER,
             )
         }
         if (!room.isJoined) {
@@ -682,6 +683,7 @@ internal class RoomHomeViewModel(
                         id = member.userId.toString(),
                         nickname = member.nickname,
                         profileImageUrl = member.profileImageUrl,
+                        isOwner = member.membershipRole == RoomMembershipRole.OWNER,
                     )
                 }
                 if (!isCurrentRequest(requestId, roomId, identity)) return@launch

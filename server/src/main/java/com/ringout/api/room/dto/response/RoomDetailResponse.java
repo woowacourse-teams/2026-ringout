@@ -1,7 +1,6 @@
 package com.ringout.api.room.dto.response;
 
 import com.ringout.api.room.domain.Room;
-import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.common.util.NicknameComparator;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
@@ -26,9 +25,13 @@ public record RoomDetailResponse(
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
-    public static RoomDetailResponse from(Room room, Long currentUserId, List<RoomUser> roomUsers, String imageUrl) {
-        List<RoomMemberResponse> members = roomUsers.stream()
-            .map(RoomMemberResponse::from)
+    public static RoomDetailResponse from(
+        Room room,
+        Long currentUserId,
+        List<RoomMemberResponse> roomMembers,
+        String imageUrl
+    ) {
+        List<RoomMemberResponse> members = roomMembers.stream()
             .sorted(NicknameComparator.comparing(RoomMemberResponse::nickname))
             .collect(LinkedHashMap<Long, RoomMemberResponse>::new,
                 (uniqueMembers, member) -> uniqueMembers.putIfAbsent(member.userId(), member),

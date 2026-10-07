@@ -14,6 +14,7 @@ import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomManagementMemberResponse;
+import com.ringout.api.room.dto.response.RoomMemberResponse;
 import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomSummaryResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
@@ -38,7 +39,6 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class RoomService {
 
-    private static final String DEFAULT_ROOM_IMAGE_URL = "/images/default-room.png";
     @Value("${app.file.image.room-directory}")
     private String ROOM_IMAGE_DIRECTORY;
     private final RoomRepository roomRepository;
@@ -69,7 +69,7 @@ public class RoomService {
             .addKeyValue("activityDayCount", savedRoom.getActivityDays().size())
             .log("모임방 생성 성공");
 
-        return RoomCreateResponse.from(savedRoom, roomUser, DEFAULT_ROOM_IMAGE_URL);
+        return RoomCreateResponse.from(savedRoom, toRoomMemberResponse(roomUser), null);
     }
 
     @Transactional(readOnly = true)
@@ -96,7 +96,12 @@ public class RoomService {
 
         List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
 
-        return RoomDetailResponse.from(room, user.getId(), roomUsers, resolveRoomImageUrl(room));
+        return RoomDetailResponse.from(
+            room,
+            user.getId(),
+            roomUsers.stream().map(this::toRoomMemberResponse).toList(),
+            resolveRoomImageUrl(room)
+        );
     }
 
     @Transactional(readOnly = true)
@@ -108,7 +113,8 @@ public class RoomService {
         }
 
         List<RoomManagementMemberResponse> members = roomUserRepository.findActiveByRoomId(roomId).stream()
-            .map(roomUser -> RoomManagementMemberResponse.from(roomUser, room))
+            .map(roomUser -> RoomManagementMemberResponse.from(
+                roomUser, room, resolveProfileImageUrl(roomUser)))
             .sorted(NicknameComparator.comparing(RoomManagementMemberResponse::nickname))
             .toList();
 
@@ -132,7 +138,12 @@ public class RoomService {
             .addKeyValue("roomId", roomId)
             .log("모임방 참여 성공");
 
-        return RoomDetailResponse.from(room, user.getId(), roomUsers, resolveRoomImageUrl(room));
+        return RoomDetailResponse.from(
+            room,
+            user.getId(),
+            roomUsers.stream().map(this::toRoomMemberResponse).toList(),
+            resolveRoomImageUrl(room)
+        );
     }
 
     @Transactional
@@ -144,6 +155,8 @@ public class RoomService {
             .addKeyValue("hasName", request != null && request.name() != null)
             .addKeyValue("descriptionLength", request == null || request.description() == null
                 ? null : request.description().length())
+            .addKeyValue("hasActivityDays", request != null && request.activityDays() != null)
+            .addKeyValue("hasActivityTime", request != null && request.activityTime() != null)
             .addKeyValue("hasImage", request != null && request.image() != null)
             .log("모임방 수정 요청 시작");
 
@@ -165,10 +178,12 @@ public class RoomService {
             .addKeyValue("roomId", room.getId())
             .addKeyValue("updatedName", request.name() != null)
             .addKeyValue("updatedDescription", request.description() != null)
+            .addKeyValue("updatedActivityDays", request.activityDays() != null)
+            .addKeyValue("updatedActivityTime", request.activityTime() != null)
             .addKeyValue("updatedImage", request.image() != null)
             .log("모임방 수정 성공");
 
-        return RoomUpdateResponse.from(room, resolveRoomImageUrlOrNull(room));
+        return RoomUpdateResponse.from(room, resolveRoomImageUrl(room));
     }
 
     @Transactional
@@ -291,16 +306,25 @@ public class RoomService {
     }
 
     private void updateRoomInformation(Room room, RoomUpdateRequest request) {
-        if (request.name() == null && request.description() == null) {
+        if (request.name() == null && request.description() == null
+            && request.activityDays() == null && request.activityTime() == null) {
             return;
         }
 
-        room.update(request.name(), request.description());
+        if (request.name() != null || request.description() != null) {
+            room.update(request.name(), request.description());
+        }
+        if (request.activityDays() != null) {
+            room.changeActivityDays(request.activityDays());
+        }
+        if (request.activityTime() != null) {
+            room.changeActivityTime(request.activityTime());
+        }
         room.recordActivityAt(java.time.LocalDateTime.now());
     }
 
     private void updateRoomImage(Room room, RoomUpdateRequest request) {
-        if (request.removeImage()) {
+        if (request.isRemoveImage()) {
             removeRoomImage(room);
             return;
         }
@@ -346,21 +370,22 @@ public class RoomService {
     private String resolveRoomImageUrl(Room room) {
         ImageFile image = room.getImage();
         if (image == null) {
-            return DEFAULT_ROOM_IMAGE_URL;
-        }
-
-        URI imageUri = imageFileService.createReadUri(image);
-        return imageUri.toString();
-    }
-
-    private String resolveRoomImageUrlOrNull(Room room) {
-        ImageFile image = room.getImage();
-        if (image == null) {
             return null;
         }
-
         URI imageUri = imageFileService.createReadUri(image);
         return imageUri.toString();
     }
 
+    private RoomMemberResponse toRoomMemberResponse(RoomUser roomUser) {
+        return RoomMemberResponse.from(roomUser, resolveProfileImageUrl(roomUser));
+    }
+
+    private String resolveProfileImageUrl(RoomUser roomUser) {
+        ImageFile profileImage = roomUser.getUser().getImage();
+        if (profileImage == null) {
+            return null;
+        }
+        URI profileImageUri = imageFileService.createReadUri(profileImage);
+        return profileImageUri.toString();
+    }
 }

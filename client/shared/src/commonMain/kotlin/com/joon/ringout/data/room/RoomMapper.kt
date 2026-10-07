@@ -56,6 +56,7 @@ internal fun RoomMembershipResponseEntity.toDomain(
                 userId = member.userId,
                 nickname = member.nickname,
                 profileImageUrl = member.profileImageUrl.toRoomImageUrl(),
+                membershipRole = RoomMembershipRole.entries.firstOrNull { it.name == member.membershipRole },
             )
         },
     )

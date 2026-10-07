@@ -1,6 +1,10 @@
 package com.ringout.api.room.dto.request;
 
+import com.ringout.api.room.domain.ActivityDay;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
+import java.time.LocalTime;
+import java.util.List;
 import org.springframework.web.multipart.MultipartFile;
 
 public record RoomUpdateRequest(
@@ -20,6 +24,23 @@ public record RoomUpdateRequest(
         nullable = true
     )
     String description,
+    @ArraySchema(
+        arraySchema = @Schema(
+            description = "변경할 모임 활동 요일. 최소 1개를 선택하고 중복할 수 없습니다. 변경하지 않으면 null로 바인딩됩니다.",
+            nullable = true
+        ),
+        schema = @Schema(implementation = ActivityDay.class),
+        minItems = 1,
+        uniqueItems = true
+    )
+    List<ActivityDay> activityDays,
+    @Schema(
+        description = "변경할 모임 활동 시간. ISO-8601 local time 형식으로 입력합니다. 변경하지 않으면 null로 바인딩됩니다.",
+        example = "19:30",
+        format = "time",
+        nullable = true
+    )
+    LocalTime activityTime,
     @Schema(
         description = "이미지 파일. 빈 파일 또는 image/*가 아닌 콘텐츠 타입은 거부됩니다. 전달하면 S3에 저장하고 대표 이미지를 교체합니다. 변경하지 않으면 파일 파트를 생략합니다.",
         format = "binary",
@@ -30,15 +51,20 @@ public record RoomUpdateRequest(
         description = "true이면 현재 대표 이미지를 삭제하고 기본 이미지로 전환합니다. image와 함께 전달할 수 없습니다.",
         example = "false"
     )
-    boolean removeImage
+    Boolean removeImage
 ) {
 
     public RoomUpdateRequest(String name, String description, MultipartFile image) {
-        this(name, description, image, false);
+        this(name, description, null, null, image, false);
+    }
+
+    public RoomUpdateRequest(String name, String description, MultipartFile image, boolean removeImage) {
+        this(name, description, null, null, image, removeImage);
     }
 
     public boolean hasNoUpdateField() {
-        return name == null && description == null && image == null && !removeImage;
+        return name == null && description == null && activityDays == null && activityTime == null && image == null
+            && !isRemoveImage();
     }
 
     public boolean hasInvalidImage() {
@@ -48,6 +74,10 @@ public record RoomUpdateRequest(
     }
 
     public boolean hasImageRemovalConflict() {
-        return image != null && removeImage;
+        return image != null && isRemoveImage();
+    }
+
+    public boolean isRemoveImage() {
+        return Boolean.TRUE.equals(removeImage);
     }
 }
