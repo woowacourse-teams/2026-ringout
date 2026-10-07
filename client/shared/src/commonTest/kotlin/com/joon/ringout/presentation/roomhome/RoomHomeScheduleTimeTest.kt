@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.roomhome
 
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.room.FakeRoomScheduleClock
+import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,6 +44,25 @@ class RoomHomeScheduleTimeTest {
         val yearEndClock = FakeRoomScheduleClock(MissionDate.parse("2026-12-31"), 7 * 3_600_000L)
         val mondayRoom = room.copy(activityDays = listOf("월"))
         assertEquals("2027년 1월 4일 오전 06:00", state.copy(room = mondayRoom).withCurrentSchedule(yearEndClock).nextScheduleText)
+    }
+
+    @Test
+    fun `정상 상세 상태에서만 진행 중 활동을 표시하고 시작일을 보존한다`() {
+        val clock = FakeRoomScheduleClock(elapsedMillis = 6 * 3_600_000L + 30 * 60_000L)
+        val loadedState = RoomHomeUiState(
+            room = room,
+            membershipRole = RoomMembershipRole.MEMBER,
+            areMembersLoaded = true,
+        )
+
+        assertEquals(MissionDate.parse("2026-09-28"), loadedState.withCurrentSchedule(clock).ongoingActivity?.date)
+        assertEquals(room.participantCount, loadedState.withCurrentSchedule(clock).ongoingActivity?.participantCount)
+        assertNull(loadedState.copy(areMembersLoaded = false).withCurrentSchedule(clock).ongoingActivity)
+        assertNull(loadedState.copy(isLoading = true).withCurrentSchedule(clock).ongoingActivity)
+        assertNull(loadedState.copy(room = room.copy(isJoined = false)).withCurrentSchedule(clock).ongoingActivity)
+        assertNull(loadedState.copy(errorMessage = "오류").withCurrentSchedule(clock).ongoingActivity)
+        assertNull(loadedState.copy(room = room.copy(activityDays = emptyList())).withCurrentSchedule(clock).ongoingActivity)
+        assertNull(loadedState.copy(room = room.copy(activityDays = listOf("오류"))).withCurrentSchedule(clock).ongoingActivity)
     }
 
     private val room = RoomUiModel(

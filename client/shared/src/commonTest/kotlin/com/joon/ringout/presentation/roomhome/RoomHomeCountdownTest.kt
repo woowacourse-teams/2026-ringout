@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.roomhome
 
 import com.joon.ringout.domain.auth.AuthSession
+import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.FakeRoomScheduleClock
@@ -78,6 +79,12 @@ class RoomHomeCountdownTest {
         runCurrent()
         assertEquals("내일 오전 06:00", viewModel.uiState.value.nextScheduleText)
         assertEquals("1일 0시간", viewModel.uiState.value.remainingTimeText)
+        assertEquals(MissionDate.parse("2026-09-28"), viewModel.uiState.value.ongoingActivity?.date)
+
+        clock.elapsedMillis = 7 * 3_600_000L
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(null, viewModel.uiState.value.ongoingActivity)
     }
 
     @Test
@@ -119,6 +126,8 @@ class RoomHomeCountdownTest {
             activityDays = listOf("월", "화", "수", "목", "금", "토", "일"), activityTimeText = "오전 06:00",
             participantCount = 2, isJoined = true,
         ),
+        membershipRole = com.joon.ringout.domain.room.RoomMembershipRole.MEMBER,
+        areMembersLoaded = true,
         nextScheduleText = "고정 샘플", remainingTimeText = "00:18:24",
     )
 }
