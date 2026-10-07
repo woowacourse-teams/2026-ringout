@@ -24,8 +24,8 @@ import com.ringout.api.room.dto.response.RoomCreateResponse;
 import com.ringout.api.room.dto.response.RoomDetailResponse;
 import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomManagementMemberResponse;
-import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomMemberResponse;
+import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
 import com.ringout.api.room.repository.RoomRepository;
@@ -90,8 +90,12 @@ class RoomServiceTest {
             // given
             Long userId = 1L;
             User user = userWithId(userId, "가나다");
+            ImageFile profileImage = mock(ImageFile.class);
+            URI profileImageUri = URI.create("https://example.com/profiles/1.png?signature=test");
             RoomCreateRequest request = validRequest();
+            given(user.getImage()).willReturn(profileImage);
             given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(imageFileService.createReadUri(profileImage)).willReturn(profileImageUri);
             given(roomRepository.save(any(Room.class))).willAnswer(invocation -> {
                 Room room = invocation.getArgument(0);
                 ReflectionTestUtils.setField(room, "id", 10L);
@@ -115,9 +119,10 @@ class RoomServiceTest {
             assertThat(response.members()).hasSize(1);
             assertThat(response.members().get(0).userId()).isEqualTo(userId);
             assertThat(response.members().get(0).nickname()).isEqualTo("가나다");
-            assertThat(response.members().get(0).profileImageUrl()).isNull();
+            assertThat(response.members().get(0).profileImageUrl()).isEqualTo(profileImageUri.toString());
             verify(roomRepository).save(any(Room.class));
             verify(roomUserRepository).save(any(RoomUser.class));
+            verify(imageFileService).createReadUri(profileImage);
         }
     }
 
@@ -1122,7 +1127,6 @@ class RoomServiceTest {
             User koreanMember = userWithId(3L, "가나다");
             User specialMember = userWithId(4L, "@runner");
             ImageFile requesterProfileImage = mock(ImageFile.class);
-            given(requesterProfileImage.getUrl()).willReturn("https://example.com/profiles/2.png");
             given(requester.getImage()).willReturn(requesterProfileImage);
             Room room = roomWithDetails(
                 roomId,
@@ -1146,7 +1150,9 @@ class RoomServiceTest {
                 .willReturn(Optional.of(RoomUser.of(requester, room)));
             given(roomUserRepository.findActiveByRoomId(roomId)).willReturn(roomUsers);
             URI roomImageUri = URI.create("https://example.com/room-1.png?signature=test");
+            URI requesterProfileImageUri = URI.create("https://example.com/profiles/2.png?signature=test");
             given(imageFileService.createReadUri(room.getImage())).willReturn(roomImageUri);
+            given(imageFileService.createReadUri(requesterProfileImage)).willReturn(requesterProfileImageUri);
 
             // when
             RoomDetailResponse response = roomService.getRoom(userId, roomId);
@@ -1165,9 +1171,10 @@ class RoomServiceTest {
             assertThat(response.members()).extracting(RoomMemberResponse::nickname)
                 .containsExactly("가나다", "방장", "Alice", "@runner");
             assertThat(response.members()).extracting(RoomMemberResponse::profileImageUrl)
-                .containsExactly(null, null, "https://example.com/profiles/2.png", null);
+                .containsExactly(null, null, requesterProfileImageUri.toString(), null);
             verify(roomUserRepository).findActiveByRoomId(roomId);
             verify(imageFileService).createReadUri(room.getImage());
+            verify(imageFileService).createReadUri(requesterProfileImage);
         }
 
         @Test
@@ -1189,7 +1196,7 @@ class RoomServiceTest {
             // then
             assertThat(response.membershipRole()).isEqualTo("OWNER");
             assertThat(response.memberCount()).isOne();
-            assertThat(response.imageUrl()).isEqualTo("/images/default-room.png");
+            assertThat(response.imageUrl()).isNull();
         }
     }
 
@@ -1260,6 +1267,8 @@ class RoomServiceTest {
             User host = userWithId(hostUserId, "방장");
             User englishMember = userWithId(2L, "Alice");
             User koreanMember = userWithId(3L, "가나다");
+            ImageFile englishMemberProfileImage = mock(ImageFile.class);
+            URI englishMemberProfileImageUri = URI.create("https://example.com/profiles/2.png?signature=test");
             Room room = roomWithHost(hostUserId, roomId);
             RoomUser hostRoomUser = RoomUser.of(host, room);
             RoomUser englishRoomUser = RoomUser.of(englishMember, room);
@@ -1267,10 +1276,12 @@ class RoomServiceTest {
             ReflectionTestUtils.setField(hostRoomUser, "created_at", LocalDateTime.of(2026, 9, 20, 10, 30));
             ReflectionTestUtils.setField(englishRoomUser, "created_at", LocalDateTime.of(2026, 9, 21, 14, 20));
             ReflectionTestUtils.setField(koreanRoomUser, "created_at", LocalDateTime.of(2026, 9, 22, 9, 0));
+            given(englishMember.getImage()).willReturn(englishMemberProfileImage);
             given(userRepository.findById(hostUserId)).willReturn(Optional.of(host));
             given(roomRepository.findActiveById(roomId)).willReturn(Optional.of(room));
             given(roomUserRepository.findActiveByRoomId(roomId))
                 .willReturn(List.of(englishRoomUser, hostRoomUser, koreanRoomUser));
+            given(imageFileService.createReadUri(englishMemberProfileImage)).willReturn(englishMemberProfileImageUri);
 
             // when
             RoomMembersResponse response = roomService.getMembersForManagement(hostUserId, roomId);
@@ -1280,8 +1291,11 @@ class RoomServiceTest {
                 .containsExactly("가나다", "방장", "Alice");
             assertThat(response.members()).extracting(RoomManagementMemberResponse::membershipRole)
                 .containsExactly("MEMBER", "OWNER", "MEMBER");
+            assertThat(response.members()).extracting(RoomManagementMemberResponse::profileImageUrl)
+                .containsExactly(null, null, englishMemberProfileImageUri.toString());
             assertThat(response.members().get(1).joinedAt()).isEqualTo(LocalDateTime.of(2026, 9, 20, 10, 30));
             verify(roomUserRepository).findActiveByRoomId(roomId);
+            verify(imageFileService).createReadUri(englishMemberProfileImage);
         }
 
         @Test

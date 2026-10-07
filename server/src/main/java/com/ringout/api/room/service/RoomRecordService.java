@@ -6,6 +6,8 @@ import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
 import com.ringout.api.alarmoccurrence.domain.RingingType;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.file.domain.ImageFile;
+import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.dto.response.ActivityRecordResponse;
 import com.ringout.api.room.dto.response.MemberRecordResponse;
@@ -38,6 +40,7 @@ public class RoomRecordService {
     private final RoomRepository roomRepository;
     private final RoomUserRepository roomUserRepository;
     private final AlarmOccurrenceRepository alarmOccurrenceRepository;
+    private final ImageFileService imageFileService;
 
     @Transactional(readOnly = true)
     public RoomRecordsResponse getRoomRecords(Long userId, Long roomId, String date) {
@@ -100,15 +103,22 @@ public class RoomRecordService {
             .sorted(Comparator.comparing(ActivityRecordResponse::occurredAt))
             .toList();
 
-        String profileImageUrl = roomUser.getUser().getImage() == null
-            ? null
-            : roomUser.getUser().getImage().getUrl();
+        String profileImageUrl = resolveProfileImageUrl(roomUser);
         return new MemberRecordResponse(
             roomUser.getUser().getId(),
             roomUser.getUser().getNickname().getValue(),
             profileImageUrl,
             records
         );
+    }
+
+    private String resolveProfileImageUrl(RoomUser roomUser) {
+        ImageFile profileImage = roomUser.getUser().getImage();
+        if (profileImage == null) {
+            return null;
+        }
+
+        return imageFileService.createReadUri(profileImage).toString();
     }
 
     private List<ActivityRecordResponse> toActivityRecords(AlarmOccurrence occurrence) {

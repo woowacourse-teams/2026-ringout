@@ -6,7 +6,11 @@ import java.util.List;
 public record MemberRecordResponse(
     @Schema(description = "회원 식별자", example = "1") Long userId,
     @Schema(description = "회원 닉네임", example = "아이아티스트님") String nickname,
-    @Schema(description = "회원 프로필 이미지 URL", nullable = true) String profileImageUrl,
+    @Schema(
+        description = "회원 프로필 이미지 조회용 S3 presigned URL. 설정하지 않은 경우 null",
+        format = "uri",
+        nullable = true
+    ) String profileImageUrl,
     @Schema(description = "회원 활동 기록") List<ActivityRecordResponse> records
 ) {
 }
