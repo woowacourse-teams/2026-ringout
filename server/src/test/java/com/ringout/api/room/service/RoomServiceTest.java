@@ -388,6 +388,31 @@ class RoomServiceTest {
     class 방장_모임방_수정_처리 {
 
         @Test
+        void 활동_요일과_시간을_수정한다() {
+            // given
+            Long userId = 1L;
+            User user = userWithId(userId, "가나다");
+            Room room = roomWithHost(userId, 10L);
+            given(userRepository.findById(userId)).willReturn(Optional.of(user));
+            given(roomRepository.findById(10L)).willReturn(Optional.of(room));
+            RoomUpdateRequest request = new RoomUpdateRequest(
+                null,
+                null,
+                List.of(ActivityDay.TUESDAY, ActivityDay.THURSDAY),
+                LocalTime.of(19, 30),
+                null,
+                false
+            );
+
+            // when
+            roomService.updateRoom(userId, 10L, request);
+
+            // then
+            assertThat(room.getActivityDays()).containsExactly(ActivityDay.TUESDAY, ActivityDay.THURSDAY);
+            assertThat(room.getActivityTime()).isEqualTo(LocalTime.of(19, 30));
+        }
+
+        @Test
         void 이름과_소개를_수정하고_이미지가_없으면_null을_반환한다() {
             // given
             Long userId = 1L;
@@ -405,6 +430,8 @@ class RoomServiceTest {
             assertThat(response.name()).isEqualTo("새로운 아침 운동 모임");
             assertThat(response.description()).isEmpty();
             assertThat(response.imageUrl()).isNull();
+            assertThat(room.getActivityDays()).containsExactly(ActivityDay.MONDAY);
+            assertThat(room.getActivityTime()).isEqualTo(LocalTime.of(8, 0));
         }
 
         @Test
