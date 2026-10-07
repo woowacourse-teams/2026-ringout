@@ -124,7 +124,7 @@ class ProductionCDTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 verify_ios_firebase.verify(source, root, production=True)
 
-    def test_운영_업로드는_초안만_만들고_심사에_제출하지_않는다(self):
+    def test_운영_업로드는_초안을_만들고_기존_심사_보호_옵션으로_저장한다(self):
         self.check_publish()
 
     def test_동일_AAB_재실행은_재업로드를_생략한다(self):
@@ -134,7 +134,10 @@ class ProductionCDTest(unittest.TestCase):
         with self.assertRaises(internal.CDError):
             self.check_publish(existing=True, mismatch=True)
 
-    def check_publish(self, existing=False, mismatch=False):
+    def test_심사중_commit_거부시_보호옵션을_제거하거나_재시도하지_않는다(self):
+        self.check_publish(commit_error=True)
+
+    def check_publish(self, existing=False, mismatch=False, commit_error=False):
         with tempfile.TemporaryDirectory() as directory:
             aab = Path(directory)/'app.aab'
             aab.write_bytes(b'content')
@@ -142,6 +145,8 @@ class ProductionCDTest(unittest.TestCase):
             calls = []
             def request(url, token, method='GET', body=None, *args, **kwargs):
                 calls.append((url, method, body))
+                if ':commit?' in url and commit_error:
+                    raise internal.CDError('Changes already in review')
                 if url.endswith('/edits') or ':commit?' in url:
                     return {'id': 'edit1'}
                 if url.endswith('/tracks/production'):
@@ -152,10 +157,16 @@ class ProductionCDTest(unittest.TestCase):
             env = {'GITHUB_REF': 'refs/heads/main', 'GITHUB_EVENT_NAME': 'push', 'GOOGLE_PLAY_ACCESS_TOKEN': 'test',
                    'VERIFIED_AAB_PATH': str(aab), 'VERIFIED_VERSION_CODE': '11', 'GITHUB_SHA': 'a'*40}
             with patch.dict(os.environ, env), patch.object(production, 'request_json', side_effect=request):
-                production.publish()
+                if commit_error:
+                    with self.assertRaisesRegex(internal.CDError, 'Changes already in review'):
+                        production.publish()
+                else:
+                    production.publish()
             update = next(call for call in calls if call[1] == 'PUT')
             self.assertEqual(update[2]['releases'][-1]['status'], 'draft')
-            self.assertIn('changesNotSentForReview=true', calls[-1][0])
+            self.assertTrue(calls[-1][0].endswith(':commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW'))
+            self.assertIsNone(calls[-1][2])
+            self.assertEqual(sum(':commit' in call[0] for call in calls), 1)
             self.assertEqual(sum('/bundles?' in call[0] for call in calls), 0 if existing else 1)
 
 
