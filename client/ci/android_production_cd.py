@@ -1,4 +1,4 @@
-"""Upload a verified main AAB as a production draft; never submit or roll out."""
+"""Upload a verified main AAB as a production draft; never roll out the new release."""
 
 import argparse
 import hashlib
@@ -49,10 +49,10 @@ def publish():
             raise CDError('업로드 응답의 버전 또는 체크섬이 다릅니다.')
     if releases is not None:
         request_json(f'{edit_url}/tracks/production', token, 'PUT', {'track': 'production', 'releases': releases})
-        result = request_json(f'{edit_url}:commit?changesNotSentForReview=true', token, 'POST', {})
+        result = request_json(f'{edit_url}:commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW', token, 'POST')
         if result.get('id') != edit_id:
             raise CDError('Play commit 응답이 다릅니다.')
-    summary = f'Google Play production 업로드 확인: versionCode {version}, commit {required("GITHUB_SHA")}. 심사 제출·공개는 수동입니다.'
+    summary = f'Google Play production 업로드 확인: versionCode {version}, commit {required("GITHUB_SHA")}. 새 릴리스는 자동 공개하지 않습니다. Play Console에서 심사·게시 상태를 확인하세요.'
     print(summary)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a') as stream:
