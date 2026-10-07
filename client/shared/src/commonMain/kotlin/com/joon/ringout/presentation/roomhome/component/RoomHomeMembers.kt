@@ -26,13 +26,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.roomhome.RoomHomeMemberUiModel
 import com.joon.ringout.presentation.roomhome.roomHomeColors
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.room_member_default_avatar
+import ringout.shared.generated.resources.room_default_avartar_dark
+import ringout.shared.generated.resources.room_default_avartar_light
 
 @Composable
 internal fun RoomHomeMembers(
@@ -41,6 +43,11 @@ internal fun RoomHomeMembers(
     isLoaded: Boolean = true,
 ) {
     val colors = roomHomeColors()
+    val defaultAvatarResource = when (LocalRingoutThemeMode.current) {
+        ThemeMode.Dark -> Res.drawable.room_default_avartar_dark
+        ThemeMode.Light -> Res.drawable.room_default_avartar_light
+    }
+    val defaultAvatar = painterResource(defaultAvatarResource)
 
     Column(modifier = modifier.fillMaxWidth().padding(10.dp)) {
         Text(
@@ -75,7 +82,6 @@ internal fun RoomHomeMembers(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        val defaultAvatar = painterResource(Res.drawable.room_member_default_avatar)
                         if (member.profileImageUrl.isNullOrBlank()) {
                             Image(
                                 painter = defaultAvatar,

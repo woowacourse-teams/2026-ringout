@@ -13,11 +13,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.roomhome.roomHomeColors
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.room_member_default_avatar
+import ringout.shared.generated.resources.room_default_avartar_dark
+import ringout.shared.generated.resources.room_default_avartar_light
 
 @Composable
 internal fun RoomHomeParticipantAvatars(
@@ -31,12 +34,15 @@ internal fun RoomHomeParticipantAvatars(
 
     Box(modifier = modifier.size(width = avatarSize + ((visibleCount - 1) * 9.5f).dp, height = avatarSize)) {
         repeat(visibleCount) { index ->
-            val defaultAvatar = painterResource(Res.drawable.room_member_default_avatar)
+            val defaultAvatar = when(LocalRingoutThemeMode.current) {
+                ThemeMode.Dark -> Res.drawable.room_default_avartar_dark
+                ThemeMode.Light -> Res.drawable.room_default_avartar_light
+            }
             AsyncImage(
                 model = profileImageUrls.getOrNull(index)?.takeIf(String::isNotBlank),
-                placeholder = defaultAvatar,
-                error = defaultAvatar,
-                fallback = defaultAvatar,
+                placeholder = painterResource(defaultAvatar),
+                error = painterResource(defaultAvatar),
+                fallback = painterResource(defaultAvatar),
                 contentDescription = null,
                 modifier = Modifier.offset(x = (index * 9.5f).dp).size(avatarSize).clip(CircleShape),
                 contentScale = ContentScale.Crop,

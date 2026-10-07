@@ -31,12 +31,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.roommembermanagement.RoomMemberUiModel
 import com.joon.ringout.presentation.roommembermanagement.roomMemberManagementColors
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
-import ringout.shared.generated.resources.room_member_default_avatar
+import ringout.shared.generated.resources.room_default_avartar_dark
+import ringout.shared.generated.resources.room_default_avartar_light
 
 @Composable
 internal fun RoomMemberRow(
@@ -52,7 +55,10 @@ internal fun RoomMemberRow(
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val defaultProfile = painterResource(Res.drawable.room_member_default_avatar)
+        val defaultProfile = when(LocalRingoutThemeMode.current) {
+            ThemeMode.Dark -> Res.drawable.room_default_avartar_dark
+            ThemeMode.Light -> Res.drawable.room_default_avartar_light
+        }
         Box(
             modifier = Modifier
                 .size(38.dp)
@@ -61,7 +67,7 @@ internal fun RoomMemberRow(
         ) {
             if (member.profileImageUrl.isNullOrBlank()) {
                 Image(
-                    painter = defaultProfile,
+                    painter = painterResource(defaultProfile),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -71,8 +77,8 @@ internal fun RoomMemberRow(
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    placeholder = defaultProfile,
-                    error = defaultProfile,
+                    placeholder = painterResource(defaultProfile),
+                    error = painterResource(defaultProfile),
                 )
             }
         }
