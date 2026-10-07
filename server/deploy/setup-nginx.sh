@@ -61,6 +61,7 @@ fi
 sudo ln -sf "$SITE_AVAILABLE" "$SITE_ENABLED"
 
 echo "Validating nginx configuration..."
+echo 'client_max_body_size 10m;' | sudo tee /etc/nginx/conf.d/ringout-upload-size.conf > /dev/null
 sudo nginx -t
 
 echo "Reloading nginx..."
