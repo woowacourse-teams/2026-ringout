@@ -46,6 +46,7 @@ internal data class RoomHomeMemberUiModel(
     val id: String,
     val nickname: String,
     val profileImageUrl: String? = null,
+    val isOwner: Boolean = false,
 )
 
 /** 진행 여부와 참여 인원은 외부에서 전달한다. UI가 시각만으로 활동 여부를 추정하지 않는다. */

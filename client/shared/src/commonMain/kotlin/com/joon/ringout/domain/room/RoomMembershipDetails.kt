@@ -15,4 +15,5 @@ data class RoomMemberDetails(
     val userId: Long,
     val nickname: String,
     val profileImageUrl: String? = null,
+    val membershipRole: RoomMembershipRole? = null,
 )
