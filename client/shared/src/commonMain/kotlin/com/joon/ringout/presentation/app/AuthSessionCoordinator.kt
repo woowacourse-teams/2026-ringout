@@ -11,6 +11,7 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roomactivity.RoomActivityViewModel
 import com.joon.ringout.presentation.roomlist.RoomListViewModel
 
 @Composable
@@ -22,6 +23,7 @@ internal fun AuthSessionCoordinator(
     destinationViewModel: DestinationViewModel?,
     roomListViewModel: RoomListViewModel? = null,
     roomHomeViewModels: List<RoomHomeViewModel> = emptyList(),
+    roomActivityViewModels: List<RoomActivityViewModel> = emptyList(),
 ) {
     val sessionIdentity by authSession.identity.collectAsState()
     AuthSessionStateBinding(
@@ -35,6 +37,7 @@ internal fun AuthSessionCoordinator(
         authSessionState = authSessionState,
         roomListViewModel = roomListViewModel,
         roomHomeViewModels = roomHomeViewModels,
+        roomActivityViewModels = roomActivityViewModels,
     )
     AuthSessionRestoreEffect(authRepository)
 }
@@ -45,9 +48,10 @@ private fun RoomSessionStateBinding(
     authSessionState: AuthSessionState,
     roomListViewModel: RoomListViewModel?,
     roomHomeViewModels: List<RoomHomeViewModel>,
+    roomActivityViewModels: List<RoomActivityViewModel>,
 ) {
-    val handler = remember(roomListViewModel, roomHomeViewModels) {
-        RoomSessionStateHandler(roomListViewModel, roomHomeViewModels)
+    val handler = remember(roomListViewModel, roomHomeViewModels, roomActivityViewModels) {
+        RoomSessionStateHandler(roomListViewModel, roomHomeViewModels, roomActivityViewModels)
     }
     LaunchedEffect(authSessionState, sessionIdentity, handler) {
         handler.onSessionStateChanged(authSessionState, sessionIdentity)
@@ -57,10 +61,12 @@ private fun RoomSessionStateBinding(
 internal class RoomSessionStateHandler(
     private val roomListViewModel: RoomListViewModel?,
     private val roomHomeViewModels: List<RoomHomeViewModel>,
+    private val roomActivityViewModels: List<RoomActivityViewModel> = emptyList(),
 ) {
     fun onSessionStateChanged(authSessionState: AuthSessionState, sessionIdentity: Any?) {
         roomListViewModel?.onAuthSessionChanged(authSessionState, sessionIdentity)
         roomHomeViewModels.forEach { it.onAuthSessionChanged(authSessionState, sessionIdentity) }
+        roomActivityViewModels.forEach { it.onAuthSessionChanged(authSessionState, sessionIdentity) }
     }
 }
 

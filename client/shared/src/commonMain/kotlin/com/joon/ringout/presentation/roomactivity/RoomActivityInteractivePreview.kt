@@ -29,7 +29,10 @@ private fun RoomActivityInteractivePreview() {
             stateHolder.SaveableStateProvider("home") {
                 RoomHomeScreen(
                     uiState = RoomHomePreviewState.copy(
-                        ongoingActivity = RoomHomeOngoingActivityUiModel(state.activityDate, participantCount = 3),
+                        ongoingActivity = RoomHomeOngoingActivityUiModel(
+                            checkNotNull(state.activityDate),
+                            participantCount = 3,
+                        ),
                     ),
                     onBackClick = {},
                     onActivityClick = { roomId, date ->
@@ -45,6 +48,9 @@ private fun RoomActivityInteractivePreview() {
                 state,
                 onBackClick = { showingActivity = false },
                 onMembersClick = { state = state.copy(selectedMemberIds = it) },
+                onRefresh = {},
+                onRetryMembers = {},
+                onRetryTimeline = {},
                 listState = timelineState,
             )
         }
@@ -58,7 +64,7 @@ private fun RoomActivityMembersInteractivePreview() {
     val listState = rememberLazyListState()
     RingoutTheme(ThemeMode.Dark) {
         if (selected == null) {
-            RoomActivityScreen(RoomActivityPreviewState, {}, { selected = it }, listState = listState)
+            RoomActivityScreen(RoomActivityPreviewState, {}, { selected = it }, {}, {}, {}, listState = listState)
         } else {
             RoomActivityMembersScreen(
                 RoomActivityPreviewState.members.filter { it.id in selected.orEmpty() },

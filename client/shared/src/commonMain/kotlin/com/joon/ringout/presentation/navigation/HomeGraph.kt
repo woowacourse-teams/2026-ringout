@@ -24,6 +24,8 @@ import com.joon.ringout.presentation.roomedit.RoomEditRoute
 import com.joon.ringout.presentation.roomedit.RoomEditViewModel
 import com.joon.ringout.presentation.roomhome.RoomHomeRoute
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
+import com.joon.ringout.presentation.roomactivity.RoomActivityRoute
+import com.joon.ringout.presentation.roomactivity.RoomActivityViewModel
 import com.joon.ringout.presentation.roommembermanagement.RoomMemberManagementRoute
 import com.joon.ringout.presentation.roommembermanagement.RoomMemberManagementViewModel
 import com.joon.ringout.presentation.roomlist.model.RoomMutationSource
@@ -150,6 +152,21 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             },
             onMenuActionNeedsListRefresh = { roomListViewModel.onRetryRooms() },
             onRetry = roomHomeViewModel::onRetry,
+            onActivityClick = { activityRoomId, activityDate ->
+                if (navigationState.isCurrentRoute(route) && activityRoomId == route.roomId) {
+                    navigationState.navigate(AppRoute.RoomActivity(activityRoomId, activityDate.iso8601))
+                }
+            },
+        )
+    }
+    entry<AppRoute.RoomActivity>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        RoomActivityRoute(
+            viewModel = viewModelScopes.get(route, RoomActivityViewModel::class),
+            roomId = route.roomId,
+            activityDate = route.activityDate,
+            authSessionState = authSessionState,
+            sessionIdentity = sessionIdentity,
+            onBackClick = { navigationState.popBackStack(route) },
         )
     }
     entry<AppRoute.RoomMemberManagement>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
