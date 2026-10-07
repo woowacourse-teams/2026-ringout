@@ -184,7 +184,7 @@ public interface RoomControllerApi {
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "모임 회원 조회 성공", content = @Content(
             mediaType = "application/json", examples = @ExampleObject(value = """
-                {"isSuccess":true,"code":"MEMBER200","message":"모임 회원 조회에 성공했습니다.","result":{"members":[{"userId":1,"nickname":"가나다","profileImageUrl":null,"joinedAt":"2026-09-20T10:30:00","membershipRole":"OWNER"},{"userId":2,"nickname":"라마바","profileImageUrl":"https://example.com/profiles/2.png","joinedAt":"2026-09-21T14:20:00","membershipRole":"MEMBER"}]}}
+                {"isSuccess":true,"code":"MEMBER200","message":"모임 회원 조회에 성공했습니다.","result":{"members":[{"userId":1,"nickname":"가나다","profileImageUrl":null,"joinedAt":"2026-09-20T10:30:00","membershipRole":"OWNER"},{"userId":2,"nickname":"라마바","profileImageUrl":"https://s3.example.com/profiles/2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example","joinedAt":"2026-09-21T14:20:00","membershipRole":"MEMBER"}]}}
                 """))),
         @ApiResponse(responseCode = "400", description = "roomId를 Long으로 변환할 수 없음", content = @Content(
             mediaType = "application/json", examples = @ExampleObject(value = """
@@ -274,9 +274,9 @@ public interface RoomControllerApi {
                     "membershipRole": "MEMBER",
                     "createdAt": "2026-09-20T10:30:00",
                     "members": [
-                      {"userId": 1, "nickname": "가나다", "profileImageUrl": "https://example.com/profiles/1.png"},
+                      {"userId": 1, "nickname": "가나다", "profileImageUrl": "https://s3.example.com/profiles/1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example"},
                       {"userId": 2, "nickname": "성열", "profileImageUrl": null},
-                      {"userId": 3, "nickname": "Alice", "profileImageUrl": "https://example.com/profiles/3.png"},
+                      {"userId": 3, "nickname": "Alice", "profileImageUrl": "https://s3.example.com/profiles/3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example"},
                       {"userId": 4, "nickname": "@runner", "profileImageUrl": null}
                     ]
                   }

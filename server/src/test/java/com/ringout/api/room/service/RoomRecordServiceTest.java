@@ -11,6 +11,8 @@ import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
 import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.auth.social.SocialProvider;
+import com.ringout.api.file.domain.ImageFile;
+import com.ringout.api.file.service.ImageFileService;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.dto.response.MemberRecordResponse;
@@ -19,6 +21,7 @@ import com.ringout.api.room.dto.response.RoomRecordsResponse;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.user.domain.User;
+import java.net.URI;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -48,12 +51,15 @@ class RoomRecordServiceTest {
     @Mock
     private AlarmOccurrenceRepository alarmOccurrenceRepository;
 
+    @Mock
+    private ImageFileService imageFileService;
+
     private RoomRecordService roomRecordService;
 
     @BeforeEach
     void setUp() {
         roomRecordService = new RoomRecordService(
-            roomRepository, roomUserRepository, alarmOccurrenceRepository
+            roomRepository, roomUserRepository, alarmOccurrenceRepository, imageFileService
         );
     }
 
@@ -91,6 +97,10 @@ class RoomRecordServiceTest {
             // given
             LocalDate date = LocalDate.of(2026, 9, 16);
             User member = userWithId(USER_ID, "아이아티스트님");
+            ImageFile profileImage = mock(ImageFile.class);
+            URI profileImageUri = URI.create("https://example.com/profiles/1.png?signature=test");
+            member.changeProfileImage(profileImage);
+            given(imageFileService.createReadUri(profileImage)).willReturn(profileImageUri);
             AlarmOccurrence occurrence = occurrenceWithId(member, 101L, LocalDateTime.of(2026, 9, 16, 7, 0));
             occurrence.dismiss(null, LocalDateTime.of(2026, 9, 16, 7, 0, 30));
             occurrence.ringRepeat("repeat-1", LocalDateTime.of(2026, 9, 16, 7, 5));
@@ -108,7 +118,7 @@ class RoomRecordServiceTest {
             MemberRecordResponse memberRecord = response.memberRecords().get(0);
             assertThat(memberRecord.userId()).isEqualTo(USER_ID);
             assertThat(memberRecord.nickname()).isEqualTo("아이아티스트님");
-            assertThat(memberRecord.profileImageUrl()).isNull();
+            assertThat(memberRecord.profileImageUrl()).isEqualTo(profileImageUri.toString());
             assertThat(memberRecord.records()).extracting(record -> tuple(record.event(), record.occurredAt(), record.count()))
                 .containsExactly(
                     tuple(RecordEvent.ALARM_TRIGGERED, OffsetDateTime.parse("2026-09-16T07:00:00+09:00"), null),
@@ -117,6 +127,7 @@ class RoomRecordServiceTest {
                     tuple(RecordEvent.ALARM_DISMISSED, OffsetDateTime.parse("2026-09-16T07:05:20+09:00"), null),
                     tuple(RecordEvent.ARRIVED, OffsetDateTime.parse("2026-09-16T07:25:00+09:00"), null)
                 );
+            verify(imageFileService).createReadUri(profileImage);
         }
 
         @Test
