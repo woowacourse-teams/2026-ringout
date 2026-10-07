@@ -103,6 +103,10 @@ internal fun RoomEditRoute(
             imageError = imageError,
             onBackClick = if (uiState.isSaving) ({}) else onBackClick,
             onNameChange = viewModel::updateName,
+            onDayClick = viewModel::toggleDay,
+            onAmPmChange = viewModel::updateAmPm,
+            onHourChange = viewModel::updateHour,
+            onMinuteChange = viewModel::updateMinute,
             onIntroductionChange = viewModel::updateIntroduction,
             onImageChangeClick = launchImagePicker,
             onSaveClick = {

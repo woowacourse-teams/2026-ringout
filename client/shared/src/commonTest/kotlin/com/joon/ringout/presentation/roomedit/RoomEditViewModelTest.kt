@@ -35,6 +35,27 @@ import kotlinx.coroutines.test.runTest
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomEditViewModelTest {
     @Test
+    fun `조회한 활동 일정으로 초기화하고 시간과 요일 선택을 반영한다`() = runTest {
+        val viewModel = loadedViewModel()
+        val original = viewModel.uiState
+        assertEquals(original.original?.activityDays, original.selectedDays)
+        assertEquals(roomDetails().room.activityTime.take(5), original.time24Hour)
+        assertFalse(original.scheduleChanged)
+
+        viewModel.updateAmPm(false)
+        viewModel.updateHour(12)
+        viewModel.updateMinute(35)
+        assertEquals("12:35", viewModel.uiState.time24Hour)
+        viewModel.updateAmPm(true)
+        assertEquals("00:35", viewModel.uiState.time24Hour)
+
+        val day = "월"
+        viewModel.toggleDay(day)
+        assertEquals(day !in original.selectedDays, day in viewModel.uiState.selectedDays)
+        assertTrue(viewModel.uiState.scheduleChanged)
+    }
+
+    @Test
     fun `방장 상세를 한 번 조회해 원본으로 채우고 변경 전 저장을 막는다`() = runTest {
         var loadCount = 0
         val viewModel = viewModel(

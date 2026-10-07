@@ -1,5 +1,9 @@
 package com.joon.ringout.presentation.roomedit
 
+import com.joon.ringout.presentation.alarmsetup.AlarmTimePickerValue
+import com.joon.ringout.presentation.alarmsetup.toAlarmTimePickerValue
+import com.joon.ringout.presentation.alarmsetup.to24HourString
+import com.joon.ringout.presentation.common.WeekdayOrder
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.RoomAnalyticsEvent
 import androidx.compose.runtime.getValue
@@ -97,6 +101,24 @@ internal class RoomEditViewModel(
                 saveErrorMessage = uiState.saveErrorMessage.takeIf { uiState.isSaveBlocked },
             )
         }
+    }
+
+    fun toggleDay(day: String) {
+        if (!uiState.isOriginalLoaded || uiState.isSaving || day !in WeekdayOrder) return
+        val current = uiState.selectedDays.toSet()
+        val selected = if (day in current) current - day else current + day
+        uiState = uiState.copy(selectedDays = WeekdayOrder.filter(selected::contains))
+    }
+
+    fun updateAmPm(isAm: Boolean) = updateTime { copy(isAm = isAm) }
+
+    fun updateHour(hour: Int) = updateTime { copy(hour = hour) }
+
+    fun updateMinute(minute: Int) = updateTime { copy(minute = minute) }
+
+    private fun updateTime(transform: AlarmTimePickerValue.() -> AlarmTimePickerValue) {
+        if (!uiState.isOriginalLoaded || uiState.isSaving) return
+        uiState = uiState.copy(time24Hour = transform(uiState.time24Hour.toAlarmTimePickerValue()).to24HourString())
     }
 
     fun onImageSelected(selectionToken: Long, upload: RoomImageUpload) {
@@ -275,6 +297,9 @@ internal class RoomEditViewModel(
         uiState = uiState.copy(
             roomId = roomId.toString(),
             original = original,
+            selectedDays = original.activityDays,
+            time24Hour = details.room.activityTime.take(5),
+            originalTime24Hour = details.room.activityTime.take(5),
             nameInput = original.name,
             introductionInput = original.description,
             imageSelectionToken = null,
