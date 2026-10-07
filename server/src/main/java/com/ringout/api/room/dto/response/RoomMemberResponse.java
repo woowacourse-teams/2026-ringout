@@ -10,14 +10,16 @@ public record RoomMemberResponse(
         description = "프로필 이미지 조회용 S3 presigned URL. 설정하지 않은 경우 null",
         format = "uri",
         nullable = true
-    ) String profileImageUrl
+    ) String profileImageUrl,
+    @Schema(description = "모임 내 회원 역할", allowableValues = {"OWNER", "MEMBER"}) String membershipRole
 ) {
 
     public static RoomMemberResponse from(RoomUser roomUser, String profileImageUrl) {
         return new RoomMemberResponse(
             roomUser.getUser().getId(),
             roomUser.getUser().getNickname().getValue(),
-            profileImageUrl
+            profileImageUrl,
+            roomUser.getRoom().isHostedBy(roomUser.getUser().getId()) ? "OWNER" : "MEMBER"
         );
     }
 }
