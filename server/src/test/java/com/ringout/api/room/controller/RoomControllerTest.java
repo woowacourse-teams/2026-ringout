@@ -65,7 +65,7 @@ class RoomControllerTest {
                 1,
                 "OWNER",
                 null,
-                List.of(new RoomMemberResponse(1L, "가나다", null))
+                List.of(new RoomMemberResponse(1L, "가나다", null, "OWNER"))
             );
             given(roomService.createRoom(userId, request)).willReturn(serviceResponse);
 
@@ -144,7 +144,7 @@ class RoomControllerTest {
                 1,
                 "OWNER",
                 null,
-                List.of(new RoomMemberResponse(userId, "가나다", null))
+                List.of(new RoomMemberResponse(userId, "가나다", null, "OWNER"))
             );
             given(roomService.getRoom(userId, roomId)).willReturn(serviceResponse);
 
@@ -175,7 +175,10 @@ class RoomControllerTest {
                 roomId, "아침 운동 모임", "매주 함께 운동하고 인증하는 모임입니다.",
                 "/images/default-room.png", List.of("MONDAY", "WEDNESDAY", "FRIDAY"), "08:00", 2,
                 "MEMBER", null,
-                List.of(new RoomMemberResponse(1L, "방장", null), new RoomMemberResponse(userId, "참여자", null))
+                List.of(
+                    new RoomMemberResponse(1L, "방장", null, "OWNER"),
+                    new RoomMemberResponse(userId, "참여자", null, "MEMBER")
+                )
             );
             given(roomService.joinRoom(userId, roomId)).willReturn(serviceResponse);
 

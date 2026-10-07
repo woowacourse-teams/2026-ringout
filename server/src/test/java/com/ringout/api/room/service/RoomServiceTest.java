@@ -1172,6 +1172,8 @@ class RoomServiceTest {
                 .containsExactly("가나다", "방장", "Alice", "@runner");
             assertThat(response.members()).extracting(RoomMemberResponse::profileImageUrl)
                 .containsExactly(null, null, requesterProfileImageUri.toString(), null);
+            assertThat(response.members()).extracting(RoomMemberResponse::membershipRole)
+                .containsExactly("MEMBER", "OWNER", "MEMBER", "MEMBER");
             verify(roomUserRepository).findActiveByRoomId(roomId);
             verify(imageFileService).createReadUri(room.getImage());
             verify(imageFileService).createReadUri(requesterProfileImage);

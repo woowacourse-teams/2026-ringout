@@ -117,7 +117,7 @@ public interface RoomControllerApi {
                         "memberCount": 1,
                         "membershipRole": "OWNER",
                         "createdAt": "2026-09-20T10:30:00",
-                        "members": [{"userId": 1, "nickname": "가나다", "profileImageUrl": null}]
+                        "members": [{"userId": 1, "nickname": "가나다", "profileImageUrl": null, "membershipRole": "OWNER"}]
                       }
                     }
                     """)
@@ -274,10 +274,10 @@ public interface RoomControllerApi {
                     "membershipRole": "MEMBER",
                     "createdAt": "2026-09-20T10:30:00",
                     "members": [
-                      {"userId": 1, "nickname": "가나다", "profileImageUrl": "https://s3.example.com/profiles/1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example"},
-                      {"userId": 2, "nickname": "성열", "profileImageUrl": null},
-                      {"userId": 3, "nickname": "Alice", "profileImageUrl": "https://s3.example.com/profiles/3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example"},
-                      {"userId": 4, "nickname": "@runner", "profileImageUrl": null}
+                      {"userId": 1, "nickname": "가나다", "profileImageUrl": "https://s3.example.com/profiles/1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example", "membershipRole": "OWNER"},
+                      {"userId": 2, "nickname": "성열", "profileImageUrl": null, "membershipRole": "MEMBER"},
+                      {"userId": 3, "nickname": "Alice", "profileImageUrl": "https://s3.example.com/profiles/3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example", "membershipRole": "MEMBER"},
+                      {"userId": 4, "nickname": "@runner", "profileImageUrl": null, "membershipRole": "MEMBER"}
                     ]
                   }
                 }
@@ -375,7 +375,8 @@ public interface RoomControllerApi {
                           {
                             "userId": 1,
                             "nickname": "링아웃",
-                            "profileImageUrl": null
+                            "profileImageUrl": null,
+                            "membershipRole": "OWNER"
                           }
                         ]
                       }
