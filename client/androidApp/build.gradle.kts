@@ -122,8 +122,8 @@ android {
         applicationId = "com.joon.ringout"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 261020001
-        versionName = "1.2.0"
+        versionCode = 261020101
+        versionName = "1.2.1"
         buildConfigField("String", "MAPS_API_KEY", "\"$escapedMapsApiKey\"")
         buildConfigField("String", "KAKAO_NATIVE_APP_KEY", "\"$escapedKakaoNativeAppKey\"")
         manifestPlaceholders["kakaoNativeAppKey"] = kakaoNativeAppKey
