@@ -18,6 +18,18 @@ on:
       - '.github/workflows/ios-production-cd.yml'
   push:
     branches: [develop, main]
+    paths:
+      - 'client/iosApp/**'
+      - 'client/shared/**'
+      - 'client/ci/**'
+      - 'client/gradle/**'
+      - 'client/gradlew'
+      - 'client/build.gradle.kts'
+      - 'client/settings.gradle.kts'
+      - 'client/gradle.properties'
+      - '.github/workflows/ios-ci.yml'
+      - '.github/workflows/ios-internal-cd.yml'
+      - '.github/workflows/ios-production-cd.yml'
 
 permissions:
   contents: read
