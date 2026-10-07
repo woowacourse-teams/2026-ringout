@@ -16,7 +16,7 @@ internal fun RoomSummary.toRoomUiModel(): RoomUiModel = RoomUiModel(
     isJoined = isJoined,
 )
 
-private fun String.toKoreanTimeText(): String {
+internal fun String.toKoreanTimeText(): String {
     require(RoomActivityTimePattern.matches(this)) { "모임 활동 시간은 HH:mm 형식이어야 해요." }
     val hour = substringBefore(':').toInt()
     val minute = substringAfter(':').toInt()
@@ -30,7 +30,7 @@ private fun String.toKoreanTimeText(): String {
     return "$period $displayHour:${minute.toString().padStart(2, '0')}"
 }
 
-private val RoomWeekdayLabels = mapOf(
+internal val RoomWeekdayLabels = mapOf(
     "MONDAY" to "월",
     "TUESDAY" to "화",
     "WEDNESDAY" to "수",
@@ -43,3 +43,9 @@ private val RoomWeekdayLabels = mapOf(
 private val RoomWeekdayOrder = listOf("월", "화", "수", "목", "금", "토", "일")
 
 private val RoomActivityTimePattern = Regex("\\d{2}:\\d{2}")
+
+internal fun RoomUiModel.withUpdatedSchedule(result: com.joon.ringout.domain.room.RoomUpdateResult): RoomUiModel = copy(
+    activityDays = result.activityDays?.map { day -> checkNotNull(RoomWeekdayLabels[day]) }
+        ?.sortedBy { RoomWeekdayOrder.indexOf(it) } ?: activityDays,
+    activityTimeText = result.activityTime?.toKoreanTimeText() ?: activityTimeText,
+)

@@ -10,7 +10,7 @@ internal data class RoomEditUiState(
     val original: RoomUiModel? = null,
     val nameInput: String = "",
     val introductionInput: String = "",
-    val selectedDays: List<String> = emptyList(),
+    val selectedDays: List<String> = original?.activityDays.orEmpty(),
     val time24Hour: String = "00:00",
     val originalTime24Hour: String = "00:00",
     val imageSelectionToken: Long? = null,
@@ -55,10 +55,10 @@ internal data class RoomEditUiState(
             (selectedDays.toSet() != original?.activityDays?.toSet() || time24Hour != originalTime24Hour)
 
     val hasChanges: Boolean
-        get() = nameChanged || introductionChanged || imageSelectionToken != null
+        get() = nameChanged || introductionChanged || imageSelectionToken != null || scheduleChanged
 
     val canSave: Boolean
-        get() = isOriginalLoaded && !isSaving && !isSaveBlocked && hasChanges &&
+        get() = isOriginalLoaded && !isSaving && !isSaveBlocked && hasChanges && selectedDays.isNotEmpty() &&
             (!nameChanged || effectiveNameValidation.isValid) &&
             (!introductionChanged || effectiveIntroductionValidation.isValid)
 

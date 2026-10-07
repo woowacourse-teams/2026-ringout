@@ -18,6 +18,7 @@ import com.joon.ringout.domain.room.RoomMembershipDetails
 import com.joon.ringout.domain.room.RoomMembershipRole
 import com.joon.ringout.domain.room.RoomRepositoryException
 import com.joon.ringout.domain.room.RoomUpdateInput
+import com.joon.ringout.presentation.roomlist.model.withUpdatedSchedule
 import com.joon.ringout.domain.room.RoomUpdateResult
 import com.joon.ringout.presentation.roomedit.model.RoomEditSuccessfulUpdate
 import com.joon.ringout.presentation.roomedit.model.RoomEditUiState
@@ -325,7 +326,7 @@ internal class RoomEditViewModel(
         }
 
         val original = uiState.original
-        val updatedOriginal = original?.copy(
+        val updatedOriginal = original?.withUpdatedSchedule(result)?.copy(
             representativeImage = result.imageUrl,
             name = result.name,
             description = result.description.orEmpty(),
@@ -335,6 +336,9 @@ internal class RoomEditViewModel(
         consumedCompletionId = null
         uiState = uiState.copy(
             original = updatedOriginal,
+            selectedDays = updatedOriginal?.activityDays ?: uiState.selectedDays,
+            time24Hour = result.activityTime ?: uiState.time24Hour,
+            originalTime24Hour = result.activityTime ?: uiState.time24Hour,
             nameInput = result.name,
             introductionInput = result.description.orEmpty(),
             imageSelectionToken = null,
@@ -348,17 +352,14 @@ internal class RoomEditViewModel(
 
     private fun RoomEditUiState.toUpdateInput(upload: SelectedRoomImageUpload?): RoomUpdateInput {
         val original = checkNotNull(original)
-        val imageUpload = imageSelectionToken
-            ?.let { token -> upload?.takeIf { it.selectionToken == token }?.upload }
-            ?: return RoomUpdateInput(
-                name = changedName(original),
-                description = changedDescription(original),
-                image = null,
-            )
         return RoomUpdateInput(
             name = changedName(original),
             description = changedDescription(original),
-            image = imageUpload,
+            image = imageSelectionToken?.let { token -> upload?.takeIf { it.selectionToken == token }?.upload },
+            activityDays = selectedDays.takeIf { it.toSet() != original.activityDays.toSet() }?.map { label ->
+                com.joon.ringout.presentation.roomlist.model.RoomWeekdayLabels.entries.single { it.value == label }.key
+            },
+            activityTime = time24Hour.takeIf { it != originalTime24Hour },
         )
     }
 

@@ -235,6 +235,8 @@ class RoomHomeViewModelTest {
                 name = "수정한 모임",
                 description = null,
                 imageUrl = "https://cdn.example.com/updated.png",
+                activityDays = listOf("TUESDAY", "SATURDAY"),
+                activityTime = "19:30",
             ),
             checkNotNull(session.identity.value),
         )
@@ -245,6 +247,8 @@ class RoomHomeViewModelTest {
         assertEquals("수정한 모임", state.room?.name)
         assertEquals("", state.room?.description)
         assertEquals("https://cdn.example.com/updated.png", state.room?.representativeImage)
+        assertEquals(listOf("화", "토"), state.room?.activityDays)
+        assertEquals("오후 7:30", state.room?.activityTimeText)
         assertEquals(7, state.room?.participantCount)
         assertEquals(RoomMembershipRole.OWNER, state.membershipRole)
         assertEquals(listOf("방장"), state.members.map(RoomHomeMemberUiModel::nickname))

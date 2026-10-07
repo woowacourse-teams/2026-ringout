@@ -362,6 +362,8 @@ class DefaultRoomRepository(
 private fun RoomUpdateInput.toMultipartContent(): MultiPartFormDataContent = MultiPartFormDataContent(formData {
     name?.let { append("name", it) }
     description?.let { append("description", it) }
+    activityDays?.forEach { append("activityDays", it) }
+    activityTime?.let { append("activityTime", it) }
     append("removeImage", removeImage.toString())
     image?.let { upload ->
         append("image", upload.bytes, Headers.build {
