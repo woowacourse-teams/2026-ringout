@@ -75,6 +75,53 @@ class RoomActivityViewModelTest {
     }
 
     @Test
+    fun `갱신 중에도 선택 회원의 최신 프로필 이미지 URL을 반영한다`() = runTest {
+        val session = AuthSession().apply { startNewSession() }
+        var requests = 0
+        val viewModel = RoomActivityViewModel(
+            loadMembers = {
+                requests += 1
+                val profileImageUrl = when (requests) {
+                    1 -> "https://cdn.example.test/profile-a.png"
+                    2 -> "https://cdn.example.test/profile-b.png"
+                    else -> null
+                }
+                listOf(
+                    movement(11, "프로필 회원", RoomMemberMovementStatus.Moving, profileImageUrl),
+                    movement(12, "기본 아바타 회원", RoomMemberMovementStatus.Idle),
+                )
+            },
+            loadRecords = emptyRecordsLoader,
+            authSession = session,
+            coroutineScope = this,
+        )
+
+        viewModel.onRouteVisible("7", activityDate.iso8601, session.state.value, session.identity.value)
+        viewModel.onResume()
+        runCurrent()
+        viewModel.onMembersClick(listOf("11", "12"))
+
+        assertEquals(
+            listOf("https://cdn.example.test/profile-a.png", null),
+            viewModel.uiState.value.selectedMembers.map { it.profileImageUrl },
+        )
+
+        viewModel.onRefresh()
+        runCurrent()
+        assertEquals(2, requests)
+        assertEquals(
+            listOf("https://cdn.example.test/profile-b.png", null),
+            viewModel.uiState.value.selectedMembers.map { it.profileImageUrl },
+        )
+
+        viewModel.onRefresh()
+        runCurrent()
+        assertEquals(3, requests)
+        assertEquals(listOf(null, null), viewModel.uiState.value.selectedMembers.map { it.profileImageUrl })
+        viewModel.onPause()
+    }
+
+    @Test
     fun `최초 조회 실패는 재시도 가능한 오류로 표시하고 회원 목록을 만들지 않는다`() = runTest {
         val session = AuthSession().apply { startNewSession() }
         var calls = 0
@@ -649,7 +696,8 @@ class RoomActivityViewModelTest {
         userId: Long,
         nickname: String,
         status: RoomMemberMovementStatus,
-    ) = RoomMemberMovement(userId, nickname, status)
+        profileImageUrl: String? = null,
+    ) = RoomMemberMovement(userId, nickname, status, profileImageUrl)
 
     private fun oneRecord(event: RoomRecordEvent, occurredAt: String): RoomRecords = RoomRecords(
         listOf(

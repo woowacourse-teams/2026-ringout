@@ -28,7 +28,7 @@ internal fun RoomActivityMemberRow(member: RoomActivityMemberUiModel, modifier: 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        RoomActivityMemberAvatar()
+        RoomActivityMemberAvatar(profileImageUrl = member.profileImageUrl)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 member.displayName,

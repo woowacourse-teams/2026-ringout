@@ -12,4 +12,5 @@ internal data class RoomMemberMovementEntity(
     val userId: Long,
     val nickname: String,
     val status: String,
+    val profileImageUrl: String? = null,
 )

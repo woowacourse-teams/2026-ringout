@@ -4,6 +4,7 @@ data class RoomMemberMovement(
     val userId: Long,
     val nickname: String,
     val status: RoomMemberMovementStatus,
+    val profileImageUrl: String? = null,
 )
 
 enum class RoomMemberMovementStatus {

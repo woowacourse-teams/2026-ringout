@@ -95,6 +95,7 @@ internal fun RoomMemberMovementsResponseEntity.toDomain(): List<RoomMemberMoveme
             userId = member.userId,
             nickname = member.nickname,
             status = member.status.toRoomMemberMovementStatus(),
+            profileImageUrl = member.profileImageUrl.toRoomImageUrl(),
         )
     }
 }
