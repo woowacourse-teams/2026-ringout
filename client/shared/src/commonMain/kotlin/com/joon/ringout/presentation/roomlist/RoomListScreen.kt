@@ -19,6 +19,7 @@ import com.joon.ringout.presentation.roomlist.component.RoomListHeader
 import com.joon.ringout.presentation.roomlist.component.RoomSection
 import com.joon.ringout.presentation.roomlist.component.RoomListPreviewData
 import com.joon.ringout.presentation.roomlist.model.RoomListUiState
+import com.joon.ringout.ringoutColors
 
 @Composable
 fun RoomListScreen(
@@ -34,10 +35,10 @@ fun RoomListScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.ringoutColors.mainScreenBackground)
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
-            .padding(top = 28.dp),
+            .padding(top = 20.dp),
     ) {
         RoomListHeader(
             onCreateRoom = onCreateRoom,

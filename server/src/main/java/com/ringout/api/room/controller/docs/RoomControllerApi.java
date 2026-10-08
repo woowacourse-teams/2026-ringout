@@ -184,7 +184,7 @@ public interface RoomControllerApi {
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "모임 회원 조회 성공", content = @Content(
             mediaType = "application/json", examples = @ExampleObject(value = """
-                {"isSuccess":true,"code":"MEMBER200","message":"모임 회원 조회에 성공했습니다.","result":{"members":[{"userId":1,"nickname":"가나다","profileImageUrl":null,"joinedAt":"2026-09-20T10:30:00","membershipRole":"OWNER"},{"userId":2,"nickname":"라마바","profileImageUrl":"https://s3.example.com/profiles/2.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example","joinedAt":"2026-09-21T14:20:00","membershipRole":"MEMBER"}]}}
+                {"isSuccess":true,"code":"MEMBER200","message":"모임 회원 조회에 성공했습니다.","result":{"members":[{"userId":1,"nickname":"가나다","profileImageUrl":null,"joinedAt":"2026-09-20T10:30:00","membershipRole":"OWNER"},{"userId":2,"nickname":"라마바","profileImageUrl":"https://cdn.example.com/profiles/2.png","joinedAt":"2026-09-21T14:20:00","membershipRole":"MEMBER"}]}}
                 """))),
         @ApiResponse(responseCode = "400", description = "roomId를 Long으로 변환할 수 없음", content = @Content(
             mediaType = "application/json", examples = @ExampleObject(value = """
@@ -274,9 +274,9 @@ public interface RoomControllerApi {
                     "membershipRole": "MEMBER",
                     "createdAt": "2026-09-20T10:30:00",
                     "members": [
-                      {"userId": 1, "nickname": "가나다", "profileImageUrl": "https://s3.example.com/profiles/1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example", "membershipRole": "OWNER"},
+                      {"userId": 1, "nickname": "가나다", "profileImageUrl": "https://cdn.example.com/profiles/1.png", "membershipRole": "OWNER"},
                       {"userId": 2, "nickname": "성열", "profileImageUrl": null, "membershipRole": "MEMBER"},
-                      {"userId": 3, "nickname": "Alice", "profileImageUrl": "https://s3.example.com/profiles/3.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example", "membershipRole": "MEMBER"},
+                      {"userId": 3, "nickname": "Alice", "profileImageUrl": "https://cdn.example.com/profiles/3.png", "membershipRole": "MEMBER"},
                       {"userId": 4, "nickname": "@runner", "profileImageUrl": null, "membershipRole": "MEMBER"}
                     ]
                   }
@@ -514,7 +514,7 @@ public interface RoomControllerApi {
 
     @Operation(
         summary = "모임 방 수정",
-        description = "방장만 방 이름·소개·활동 요일·활동 시간을 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, activityDays, activityTime, image, removeImage 중 하나 이상을 전달해야 하며, 수정하지 않는 필드는 생략하면 null로 바인딩됩니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage를 true로 전달하면 기존 이미지를 삭제합니다. image와 removeImage=true는 함께 전달할 수 없습니다. 응답에는 이미지가 있으면 presigned 조회 URL을, 없으면 null을 반환합니다. 이름·소개·활동 요일·활동 시간 변경 시 최신 활동 시각을 갱신합니다.",
+        description = "방장만 방 이름·소개·활동 요일·활동 시간을 수정하거나 이미지 파일을 전달할 수 있습니다. name, description, activityDays, activityTime, image, removeImage 중 하나 이상을 전달해야 하며, 수정하지 않는 필드는 생략하면 null로 바인딩됩니다. image를 전달하면 S3에 저장해 대표 이미지를 교체하고, removeImage를 true로 전달하면 기존 이미지를 삭제합니다. image와 removeImage=true는 함께 전달할 수 없습니다. 응답에는 이미지가 있으면 CDN 조회 URL을, 없으면 null을 반환합니다. 이름·소개·활동 요일·활동 시간 변경 시 최신 활동 시각을 갱신합니다.",
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({

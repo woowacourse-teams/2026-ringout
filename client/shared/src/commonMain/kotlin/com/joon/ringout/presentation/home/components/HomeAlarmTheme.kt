@@ -1,16 +1,18 @@
 package com.joon.ringout.presentation.home.components
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.ringoutColors
 
 @Composable
 internal fun homeAlarmColors(): HomeAlarmColors {
     val isDarkTheme = LocalRingoutThemeMode.current == ThemeMode.Dark
     return if (isDarkTheme) {
         HomeAlarmColors(
-            screenBackground = Color.Black,
+            screenBackground = MaterialTheme.ringoutColors.mainScreenBackground,
             cardBackground = Color(0xFF171717),
             primaryText = Color.White,
             secondaryText = Color(0xFF8C8C8C),
@@ -19,7 +21,7 @@ internal fun homeAlarmColors(): HomeAlarmColors {
         )
     } else {
         HomeAlarmColors(
-            screenBackground = Color.White,
+            screenBackground = MaterialTheme.ringoutColors.mainScreenBackground,
             cardBackground = Color(0xFFF5F5F5),
             primaryText = Color(0xFF111827),
             secondaryText = Color(0xFF6B7280),
@@ -37,4 +39,3 @@ internal data class HomeAlarmColors(
     val cardPrimaryText: Color,
     val cardSecondaryText: Color,
 )
-

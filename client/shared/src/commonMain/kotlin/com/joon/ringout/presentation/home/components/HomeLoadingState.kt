@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.ringoutColors
 
 @Composable
 internal fun HomeLoadingState(
@@ -19,7 +20,7 @@ internal fun HomeLoadingState(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.ringoutColors.mainScreenBackground),
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -30,6 +31,14 @@ internal fun HomeLoadingState(
 @Composable
 private fun DarkHomeLoadingStatePreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
+        HomeLoadingState()
+    }
+}
+
+@Preview(name = "Light loading Home", widthDp = 402, heightDp = 941)
+@Composable
+private fun LightHomeLoadingStatePreview() {
+    RingoutTheme(themeMode = ThemeMode.Light) {
         HomeLoadingState()
     }
 }

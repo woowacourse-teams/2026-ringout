@@ -7,7 +7,7 @@ public record MemberMovementResponse(
     @Schema(description = "사용자 식별자", example = "1") Long userId,
     @Schema(description = "사용자 닉네임", example = "성열") String nickname,
     @Schema(
-        description = "프로필 이미지 조회용 S3 presigned URL. 설정하지 않은 경우 null",
+        description = "프로필 이미지 조회용 CDN URL. 설정하지 않은 경우 null",
         format = "uri",
         nullable = true
     ) String profileImageUrl,
