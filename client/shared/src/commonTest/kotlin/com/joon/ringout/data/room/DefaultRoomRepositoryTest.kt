@@ -528,6 +528,31 @@ class DefaultRoomRepositoryTest {
     }
 
     @Test
+    fun `회원 이동 조회는 프로필 이미지 URL을 보존하고 null과 빈 값은 이미지 없음으로 변환한다`() = runTest {
+        val presignedUrl = "https://cdn.example.test/profile.png?X-Amz-Credential=a%2Fb&X-Amz-Signature=c%2Bd"
+        val client = clientFor {
+            respond(
+                """{"isSuccess":true,"code":"ROOM200","message":"성공","result":{"members":[
+                    {"userId":1,"nickname":"URL","status":"IDLE","profileImageUrl":"$presignedUrl"},
+                    {"userId":2,"nickname":"명시적 null","status":"IDLE","profileImageUrl":null},
+                    {"userId":3,"nickname":"생략","status":"IDLE"},
+                    {"userId":4,"nickname":"빈 값","status":"IDLE","profileImageUrl":""},
+                    {"userId":5,"nickname":"공백","status":"IDLE","profileImageUrl":"   "}
+                ]}}""",
+                status = HttpStatusCode.OK,
+                headers = jsonHeaders,
+            )
+        }
+
+        val movements = repository(client, AuthTokens("access", "refresh"), AuthSessionState.Authenticated)
+            .getMemberMovements(7)
+
+        assertEquals(listOf(1L, 2L, 3L, 4L, 5L), movements.map { it.userId })
+        assertEquals(listOf(presignedUrl, null, null, null, null), movements.map { it.profileImageUrl })
+        client.close()
+    }
+
+    @Test
     fun `회원 이동 조회의 빈 목록은 성공하고 null result와 잘못된 응답은 실패한다`() = runTest {
         val emptyClient = clientFor {
             respond(
