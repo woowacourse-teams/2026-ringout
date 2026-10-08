@@ -4,7 +4,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -94,22 +93,7 @@ internal fun HomeEmptyState(
 
 @Composable
 private fun EmptyHomeHeader() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(65.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = "알람",
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontSize = 28.sp,
-                lineHeight = 34.sp,
-                fontWeight = FontWeight.Black,
-            ),
-        )
-    }
+    AlarmListHeader(nextAlarmDescription = "")
 }
 
 @Composable

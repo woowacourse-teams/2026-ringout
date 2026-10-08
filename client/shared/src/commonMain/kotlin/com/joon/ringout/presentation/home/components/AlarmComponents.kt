@@ -39,6 +39,7 @@ import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
+import com.joon.ringout.presentation.common.component.MainScreenHeader
 import com.joon.ringout.ringoutColors
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.painterResource
@@ -56,37 +57,13 @@ internal fun AlarmListHeader(
 ) {
     val colors = homeAlarmColors()
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(65.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-        ) {
-            Text(
-                text = "알람",
-                color = colors.primaryText,
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontSize = 28.sp,
-                    lineHeight = 34.sp,
-                    fontWeight = FontWeight.Black,
-                ),
-            )
-            Text(
-                text = nextAlarmDescription,
-                color = colors.secondaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 18.sp,
-                    lineHeight = 21.6.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
-            )
-        }
-    }
+    MainScreenHeader(
+        title = "알람",
+        description = nextAlarmDescription,
+        titleColor = colors.primaryText,
+        descriptionColor = colors.secondaryText,
+        modifier = modifier,
+    )
 }
 
 @Composable

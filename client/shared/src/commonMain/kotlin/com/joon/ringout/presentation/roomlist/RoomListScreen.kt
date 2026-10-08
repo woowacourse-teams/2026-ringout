@@ -38,7 +38,7 @@ fun RoomListScreen(
             .background(MaterialTheme.ringoutColors.mainScreenBackground)
             .statusBarsPadding()
             .padding(horizontal = 20.dp)
-            .padding(top = 28.dp),
+            .padding(top = 20.dp),
     ) {
         RoomListHeader(
             onCreateRoom = onCreateRoom,
