@@ -96,7 +96,7 @@ private fun RoomListMessagePreviewContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(MaterialTheme.ringoutColors.mainScreenBackground)
                 .padding(20.dp),
         ) {
             RoomListMessage(

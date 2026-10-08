@@ -40,18 +40,19 @@ internal fun HomeEmptyState(
     modifier: Modifier = Modifier,
 ) {
     val isDarkTheme = LocalRingoutThemeMode.current == ThemeMode.Dark
+    val background = MaterialTheme.ringoutColors.mainScreenBackground
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(background)
             .statusBarsPadding(),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .background(MaterialTheme.colorScheme.background),
+                .background(background),
         ) {
             Column(
                 modifier = Modifier
@@ -81,7 +82,7 @@ internal fun HomeEmptyState(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(if (isDarkTheme) Color.Black else LightNavigationDivider),
+                .background(if (isDarkTheme) background else LightNavigationDivider),
         )
         Spacer(
             modifier = Modifier
