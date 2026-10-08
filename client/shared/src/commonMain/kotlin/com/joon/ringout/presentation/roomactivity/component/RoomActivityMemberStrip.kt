@@ -64,6 +64,7 @@ internal fun RoomActivityMemberStrip(
                     RoomActivityMemberAvatar(
                         highlighted = member.status == RoomActivityMemberStatus.Moving ||
                             member.status == RoomActivityMemberStatus.Arrived,
+                        profileImageUrl = member.profileImageUrl,
                     )
                     Spacer(Modifier.height(14.dp))
                     Text(

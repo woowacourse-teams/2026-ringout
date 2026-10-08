@@ -19,6 +19,7 @@ internal data class RoomActivityMemberUiModel(
     val nickname: String,
     val status: RoomActivityMemberStatus,
     val isMe: Boolean = false,
+    val profileImageUrl: String? = null,
 ) {
     val displayName: String get() = if (isMe) "나" else nickname
 }
@@ -63,6 +64,7 @@ internal fun RoomMemberMovement.toRoomActivityMemberUiModel() = RoomActivityMemb
     id = userId.toString(),
     nickname = nickname,
     status = status.toRoomActivityMemberStatus(),
+    profileImageUrl = profileImageUrl,
 )
 
 private fun RoomMemberMovementStatus.toRoomActivityMemberStatus() = when (this) {
