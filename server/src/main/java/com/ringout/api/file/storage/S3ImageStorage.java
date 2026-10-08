@@ -1,6 +1,7 @@
 package com.ringout.api.file.storage;
 
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.file.config.CloudFrontProperties;
 import com.ringout.api.file.config.S3Properties;
 import com.ringout.api.file.status.FileErrorStatus;
 import java.io.IOException;
@@ -19,10 +20,7 @@ import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 @Slf4j
 @Component
@@ -34,8 +32,8 @@ public class S3ImageStorage implements ImageStorage {
     private static final Pattern EXTENSION_PATTERN = Pattern.compile("^[A-Za-z0-9]{1,10}$");
 
     private final S3Client s3Client;
-    private final S3Presigner s3Presigner;
     private final S3Properties properties;
+    private final CloudFrontProperties cloudFrontProperties;
 
     @Override
     public String upload(MultipartFile image, String directory) {
@@ -65,19 +63,13 @@ public class S3ImageStorage implements ImageStorage {
             throw new GeneralException(FileErrorStatus.IMAGE_FILE_INVALID);
         }
 
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-            .bucket(requireBucket(FileErrorStatus.IMAGE_URL_CREATE_FAILED))
-            .key(objectKey)
-            .build();
-        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-            .signatureDuration(properties.presignedUrlExpiration())
-            .getObjectRequest(getObjectRequest)
-            .build();
-
         try {
-            return URI.create(s3Presigner.presignGetObject(presignRequest).url().toString());
-        } catch (SdkException | IllegalArgumentException exception) {
-            log.error("S3 이미지 조회 URL 생성 실패. objectKey={}", objectKey, exception);
+            URI baseUri = requireCloudFrontBaseUri();
+            String baseUrl = baseUri.toString();
+            String separator = baseUrl.endsWith("/") ? "" : "/";
+            return URI.create(baseUrl + separator + objectKey);
+        } catch (IllegalArgumentException exception) {
+            log.error("CloudFront 이미지 조회 URL 생성 실패. objectKey={}", objectKey, exception);
             throw new GeneralException(FileErrorStatus.IMAGE_URL_CREATE_FAILED);
         }
     }
@@ -132,5 +124,18 @@ public class S3ImageStorage implements ImageStorage {
             throw new GeneralException(errorStatus);
         }
         return properties.bucket();
+    }
+
+    private URI requireCloudFrontBaseUri() {
+        String baseUrl = cloudFrontProperties.baseUrl();
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalArgumentException("AWS_CLOUDFRONT_BASE_URL 설정이 비어 있습니다.");
+        }
+        URI baseUri = URI.create(baseUrl.trim());
+        if (!baseUri.isAbsolute() || baseUri.getHost() == null
+            || !"https".equalsIgnoreCase(baseUri.getScheme())) {
+            throw new IllegalArgumentException("AWS_CLOUDFRONT_BASE_URL은 유효한 HTTPS URL이어야 합니다.");
+        }
+        return baseUri;
     }
 }

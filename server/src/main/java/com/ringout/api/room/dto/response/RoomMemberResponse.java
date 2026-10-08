@@ -7,7 +7,7 @@ public record RoomMemberResponse(
     @Schema(description = "참여자 식별자", example = "1") Long userId,
     @Schema(description = "참여자 닉네임", example = "가나다") String nickname,
     @Schema(
-        description = "프로필 이미지 조회용 S3 presigned URL. 설정하지 않은 경우 null",
+        description = "프로필 이미지 조회용 CDN URL. 설정하지 않은 경우 null",
         format = "uri",
         nullable = true
     ) String profileImageUrl,

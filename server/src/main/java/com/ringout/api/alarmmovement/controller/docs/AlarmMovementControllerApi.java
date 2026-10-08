@@ -162,7 +162,7 @@ public interface AlarmMovementControllerApi {
                   "result": {
                     "members": [
                       {"userId": 3, "nickname": "가나다", "profileImageUrl": null, "status": "IDLE"},
-                      {"userId": 1, "nickname": "Alice", "profileImageUrl": "https://s3.example.com/profiles/1.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=example", "status": "MOVEMENT_STARTED"},
+                      {"userId": 1, "nickname": "Alice", "profileImageUrl": "https://cdn.example.com/profiles/1.png", "status": "MOVEMENT_STARTED"},
                       {"userId": 2, "nickname": "@runner", "profileImageUrl": null, "status": "ARRIVED"}
                     ]
                   }
