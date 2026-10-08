@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.presentation.home.components.homeAlarmColors
+import com.joon.ringout.ringoutColors
 
 @Composable
 internal fun RoomListHeader(
@@ -97,7 +98,7 @@ private fun RoomListHeaderPreview() {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(MaterialTheme.ringoutColors.mainScreenBackground)
                 .padding(20.dp),
         ) {
             RoomListHeader(onCreateRoom = {})

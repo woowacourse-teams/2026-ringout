@@ -19,6 +19,7 @@ import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
+import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
 import ringout.shared.generated.resources.social_room_default_dark
@@ -63,7 +64,7 @@ private fun RoomImageDefaultPreview() {
     RingoutTheme(ThemeMode.Dark) {
         Box(
             modifier = Modifier
-                .background(MaterialTheme.colorScheme.background)
+                .background(MaterialTheme.ringoutColors.mainScreenBackground)
                 .padding(16.dp),
         ) {
             RoomImage(
@@ -90,7 +91,7 @@ private fun RoomImageDefaultLightPreview() {
     RingoutTheme(ThemeMode.Light) {
         Box(
             modifier = Modifier
-                .background(MaterialTheme.colorScheme.background)
+                .background(MaterialTheme.ringoutColors.mainScreenBackground)
                 .padding(16.dp),
         ) {
             RoomImage(
