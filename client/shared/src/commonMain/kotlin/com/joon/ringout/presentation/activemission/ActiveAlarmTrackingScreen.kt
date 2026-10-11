@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
+import com.joon.ringout.alarm.MissionRecoveryReservationState
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.DefaultMissionLocationState
 import com.joon.ringout.alarm.MaximumAcceptedLocationAccuracyMeters
@@ -90,8 +91,14 @@ fun ActiveAlarmTrackingScreen(
     ActiveAlarmTrackingLayout(
         missionOccurrenceId = mission.occurrenceId,
         destinationName = mission.destinationName,
-        countdown = formatAlarmMissionRemainingTime(remainingSeconds),
-        trackingStatusMessage = missionLocationStatusMessage(locationState),
+        countdown = if (mission.recoveryReservationState != null && remainingSeconds == 0L)
+            "제한 시간 만료" else formatAlarmMissionRemainingTime(remainingSeconds),
+        trackingStatusMessage = when (mission.recoveryReservationState) {
+            MissionRecoveryReservationState.FAILED -> "재울림을 예약하지 못했습니다. 알람 권한을 확인해 주세요."
+            MissionRecoveryReservationState.UNKNOWN -> "재울림 예약 여부를 확인하지 못했습니다."
+            MissionRecoveryReservationState.PENDING -> "재울림 예약을 확인하고 있습니다."
+            else -> missionLocationStatusMessage(locationState)
+        },
         mapUnavailableMessage = when {
             !hasValidDestination -> "설정한 목적지의 위치 정보가 없습니다."
             mapError != null -> mapError
