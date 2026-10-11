@@ -1,6 +1,8 @@
 package com.joon.ringout.data.alarmoccurrence
 
 import com.joon.ringout.alarm.IosAlarmMissionEventDto
+import com.joon.ringout.alarm.IosAlarmRecoveryAttemptDto
+import com.joon.ringout.alarm.toMissionEvent
 import com.joon.ringout.alarm.IosRingingAlarm
 import com.joon.ringout.alarm.iosInitialRingingScheduledAt
 import com.joon.ringout.data.alarm.AlarmDataSource
@@ -42,12 +44,45 @@ class IosAlarmOccurrenceRecorder internal constructor(
         }
     }
 
+    internal suspend fun recordRecoveryAttempt(
+        attempt: IosAlarmRecoveryAttemptDto,
+        scheduledAtEpochMillis: Long?,
+    ): Boolean {
+        val event = attempt.toMissionEvent()
+        val owner = event.ownerAccountId
+        if (!event.ownerCaptured) return false
+        if (owner == null) return true
+        if (event.retryAttempt > 0 && dao.findExecutionForRecording(event.occurrenceId) == null) return false
+        recordRinging(
+            id = event.occurrenceId,
+            alarmId = event.alarmId,
+            version = event.scheduleVersion,
+            retryAttempt = event.retryAttempt,
+            referenceTime = event.ringingObservedAtEpochMillis
+                ?: event.ringingStoppedAtEpochMillis
+                ?: event.occurredAtEpochMillis,
+            alarmTime = attempt.snapshot.originalTime,
+            owner = owner,
+            ownerCaptured = true,
+            scheduledAtEpochMillis = scheduledAtEpochMillis,
+        )
+        event.ringingStoppedAtEpochMillis?.let { at ->
+            val execution = dao.findExecutionForRecording(event.occurrenceId) ?: return false
+            dao.recordDismissal(execution.ownerAccountId, event.occurrenceId, at)
+        }
+        val execution = dao.findExecutionForRecording(event.occurrenceId) ?: return false
+        dao.registerRepeat(execution.ownerAccountId, execution.localExecutionId,
+            attempt.nextOccurrenceToken, NSUUID().UUIDString)
+        return dao.findExecutionForRecording(event.occurrenceId) != null
+    }
+
     private suspend fun recordRinging(
         id: String, alarmId: String, version: Long, retryAttempt: Int, referenceTime: Long,
-        alarmTime: String?, owner: String?, ownerCaptured: Boolean,
+        alarmTime: String?, owner: String?, ownerCaptured: Boolean, scheduledAtEpochMillis: Long? = null,
     ) {
         val existing = dao.findExecutionForRecording(id)
-        val scheduledAt = activityDao.getOccurrenceTimes(id)?.ringingScheduledAtEpochMillis
+        val scheduledAt = scheduledAtEpochMillis
+            ?: activityDao.getOccurrenceTimes(id)?.ringingScheduledAtEpochMillis
             ?: if (retryAttempt == 0) alarmTime?.let { iosInitialRingingScheduledAt(it, referenceTime) } else null
         if (retryAttempt == 0) {
             val capturedOwner = existing?.ownerAccountId ?: owner.takeIf { ownerCaptured } ?: return

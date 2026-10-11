@@ -29,6 +29,7 @@ import platform.Foundation.NSLocale
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -139,6 +140,53 @@ class IosAlarmOccurrenceRecorderTest {
         assertEquals(expected, f.dao.getExecution("1", "midnight")?.scheduledAtEpochMillis)
     }
 
+    @Test
+    fun `복구 시 다음 재울림 예약은 저널 토큰으로 연결만 저장하고 실제 반복 울림은 재울림 도착 때 기록한다`() = withFixture { f ->
+        val rootAck = f.outcomes.recordRecoveryAttempt(recoveryAttempt(
+            id = "root",
+            clock = "07:03",
+            scheduledAt = "07:00",
+            nextId = "retry",
+            nextEventId = "retry-token",
+            nextDue = "07:08",
+        ))
+        assertTrue(rootAck)
+        assertNotNull(f.dao.getRinging("1", "retry")?.eventId)
+        assertTrue(f.dao.getRinging("1", "retry")?.eventId != "retry")
+        assertEquals(listOf(AlarmOccurrenceOutboxKind.START, AlarmOccurrenceOutboxKind.INITIAL_DISMISSED),
+            f.dao.getEvents("1", "root").map { it.kind })
+
+        val retryAck = f.outcomes.recordRecoveryAttempt(recoveryAttempt(
+            id = "retry",
+            clock = "07:09",
+            scheduledAt = "07:08",
+            retry = 1,
+        ))
+        assertTrue(retryAck)
+        assertEquals(
+            listOf(
+                AlarmOccurrenceOutboxKind.START,
+                AlarmOccurrenceOutboxKind.INITIAL_DISMISSED,
+                AlarmOccurrenceOutboxKind.REPEAT_RANG,
+                AlarmOccurrenceOutboxKind.REPEAT_DISMISSED,
+            ),
+            f.dao.getEvents("1", "root").map { it.kind },
+        )
+        assertEquals(time("07:08"), f.dao.getEvents("1", "root").single { it.kind == AlarmOccurrenceOutboxKind.REPEAT_RANG }.occurredAtEpochMillis)
+    }
+
+    @Test
+    fun `복구 이벤트는 소유권 근거별로 ACK 여부를 구분한다`() = withFixture { f ->
+        assertTrue(f.outcomes.recordRecoveryAttempt(recoveryAttempt("guest", "07:03", "07:00", owner = null)))
+        assertNull(f.dao.findExecutionForRecording("guest"))
+
+        assertEquals(false, f.outcomes.recordRecoveryAttempt(recoveryAttempt("unknown", "07:04", "07:00", ownerCaptured = false)))
+        assertNull(f.dao.findExecutionForRecording("unknown"))
+
+        assertEquals(false, f.outcomes.recordRecoveryAttempt(recoveryAttempt("orphan-retry", "07:09", "07:08", retry = 1)))
+        assertNull(f.dao.findExecutionForRecording("orphan-retry"))
+    }
+
     private fun withFixture(block: suspend (Fixture) -> Unit) = runBlocking {
         val db = Room.inMemoryDatabaseBuilder<RingoutDatabase>().setDriver(BundledSQLiteDriver()).build()
         try {
@@ -176,6 +224,35 @@ private fun stop(id: String, clock: String, retry: Int = 0) = IosAlarmMissionEve
     eventId = "event-$id", alarmId = "alarm", occurrenceId = id, action = IosAlarmMissionAction.STOP,
     occurredAtEpochMillis = time(clock), retryAttempt = retry, ringingStoppedAtEpochMillis = time(clock),
     ownerAccountId = "1", ownerCaptured = true,
+)
+
+private fun recoveryAttempt(
+    id: String,
+    clock: String,
+    scheduledAt: String,
+    retry: Int = 0,
+    owner: String? = "1",
+    ownerCaptured: Boolean = true,
+    nextId: String? = null,
+    nextEventId: String? = null,
+    nextDue: String? = null,
+) = IosAlarmRecoveryAttemptDto(
+    occurrenceId = id, chainId = if (retry == 0) id else "root", sequence = retry,
+    snapshot = IosAlarmRecoverySourceSnapshotDto(
+        sourceAlarmId = "alarm", scheduleVersion = 1,
+        destination = IosAlarmRecoveryDestinationSnapshotDto("목적지", 37.5, 127.0),
+        limitSeconds = 300, originalTime = "07:00",
+        owner = IosAlarmRecoveryOwnerDto(when {
+            !ownerCaptured -> IosAlarmRecoveryOwnerKind.UNCAPTURED
+            owner == null -> IosAlarmRecoveryOwnerKind.CAPTURED_GUEST
+            else -> IosAlarmRecoveryOwnerKind.CAPTURED_ACCOUNT
+        }, owner),
+    ),
+    stopAtEpochMillis = time(clock), scheduledAtEpochMillis = time(scheduledAt),
+    expiresAtEpochMillis = nextDue?.let(::time) ?: time(clock) + 300_000,
+    nextReservationUuid = "reserved-$id", nextOccurrenceToken = nextId ?: "next-$id",
+    currentReservation = IosAlarmRecoveryReservationDto("reserved-$id", IosAlarmRecoveryReservationStatus.CONFIRMED),
+    missionProjectionAck = false, recordProjectionAck = false, outcome = IosAlarmRecoveryAttemptOutcome.ACTIVE,
 )
 
 private fun time(clock: String): Long = NSDateFormatter().apply {
