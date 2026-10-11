@@ -1,10 +1,11 @@
 import AppIntents
 import AlarmKit
 import Foundation
+import UIKit
 
 struct StopAlarmIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "알람 중지"
-    static var supportedModes: IntentModes = .foreground(.immediate)
+    static var supportedModes: IntentModes = [.background, .foreground(.deferred)]
     static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
     @Parameter(title: "Alarm ID")
@@ -66,6 +67,16 @@ struct StopAlarmIntent: LiveActivityIntent {
                 systemAlarmId: systemAlarmId, now: enteredAt
             )
         }
+        // Deferred mode requests foreground after this background work completes.
+        // No optional transition error is swallowed, and cancellation cannot undo
+        // the durable stop or its already awaited reservation.
+        let protectedDataAvailable = await MainActor.run { UIApplication.shared.isProtectedDataAvailable }
+        try? AlarmRecoveryDriver.journal.recordPresentation(
+            stage: "stop_committed_foreground_deferred",
+            mode: systemContext.currentMode.debugDescription,
+            canContinueInForeground: systemContext.currentMode.canContinueInForeground,
+            protectedDataAvailable: protectedDataAvailable
+        )
         return .result()
     }
 }
