@@ -100,6 +100,12 @@ class IosAlarmRuntime(
     }
 
     suspend fun start() = startMutex.withLock {
+        // Bootstrap snapshots for OS configurations created before journal support.
+        runStartupStep {
+            dataSource.getEnabled().forEach { saved ->
+                eventInbox.upsertSourceSnapshotAwait(saved.request.toRecoverySnapshot())
+            }
+        }
         startOccurrenceSync()
         scheduler.setStateListener(alarmStateListener)
         eventInbox.setEventListener(missionEventListener)
@@ -308,7 +314,8 @@ class IosAlarmRuntime(
 
     private fun syncTracking() {
         val mission = activeMissionFlow.value
-        if (mission == null) {
+        if (mission == null || (mission.isExpiredAt(Clock.System.now().toEpochMilliseconds()) &&
+                !mission.isAwaitingDeadlineLocation(Clock.System.now().toEpochMilliseconds()))) {
             stopTracking()
             return
         }
@@ -364,6 +371,8 @@ class IosAlarmRuntime(
                     systemAlarmId = systemAlarmId,
                     dataSource = dataSource,
                     deadlineAlarm = missionCoordinator.deadlineAlarmForSystemId(systemAlarmId),
+                    recoveryAttempt = runCatching { eventInbox.recoveryAttemptsAwait().attempts
+                        .firstOrNull { it.nextReservationUuid == systemAlarmId } }.getOrNull(),
                     observedOccurrenceId = snapshot.occurrenceId,
                     startedAtEpochMillis = snapshot.ringingObservedAtEpochMillis
                         ?: Clock.System.now().toEpochMilliseconds(),

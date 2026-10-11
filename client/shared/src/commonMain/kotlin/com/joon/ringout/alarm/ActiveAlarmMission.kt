@@ -12,6 +12,7 @@ data class ActiveAlarmMission(
     val limitMinutes: Int,
     val expiresAtEpochMillis: Long,
     val occurrenceId: String = alarmId,
+    val chainId: String = occurrenceId,
     val retryAttempt: Int = 0,
     val alarmTime: String = "",
     val startedAtEpochMillis: Long = 0L,
@@ -21,7 +22,10 @@ data class ActiveAlarmMission(
     val alarmSoundUri: String? = null,
     val hasAlarmSoundUri: Boolean = false,
     val scheduleVersion: Long = 1,
+    val recoveryReservationState: MissionRecoveryReservationState? = null,
 )
+
+enum class MissionRecoveryReservationState { PENDING, CONFIRMED, FAILED, UNKNOWN }
 
 data class ActiveAlarmMissionLocation(
     val latitude: Double,

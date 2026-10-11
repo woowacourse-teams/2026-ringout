@@ -23,8 +23,16 @@ internal suspend fun resolveIosRingingAlarm(
     dataSource: AlarmDataSource,
     deadlineAlarm: IosMissionDeadlineAlarm?,
     observedOccurrenceId: String? = null,
+    recoveryAttempt: IosAlarmRecoveryAttemptDto? = null,
     startedAtEpochMillis: Long = Clock.System.now().toEpochMilliseconds(),
 ): IosRingingAlarm? {
+    if (recoveryAttempt != null) {
+        val snapshot = recoveryAttempt.snapshot
+        return IosRingingAlarm(systemAlarmId, snapshot.sourceAlarmId,
+            recoveryAttempt.nextOccurrenceToken, recoveryAttempt.sequence + 1,
+            snapshot.originalTime.orEmpty(), snapshot.destination.name,
+            (snapshot.limitSeconds / 60).toInt(), startedAtEpochMillis, snapshot.scheduleVersion)
+    }
     val retryRegistration = deadlineAlarm
         ?.takeIf { registration -> registration.alarmKitId == systemAlarmId }
     val retrySeed = retryRegistration?.missionSeed
