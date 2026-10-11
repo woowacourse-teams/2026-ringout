@@ -20,6 +20,58 @@ import kotlin.test.assertTrue
 
 class IosAlarmLifecycleTest {
     @Test
+    fun `목적지만 수정해도 새 네이티브 snapshot 버전을 예약한다`() = runBlocking {
+        val original = savedAlarm(id = CanonicalUuid)
+        val data = LifecycleAlarmDataSource(listOf(original))
+        IosAlarmStore(data, LifecycleScheduler()).save(original.request.copy(destinationName = "새 목적지"))
+        assertEquals(original.request.scheduleVersion + 1, data.getById(CanonicalUuid)?.request?.scheduleVersion)
+    }
+
+    @Test
+    fun `비활성화 취소가 실패하면 이전 저널 eligibility를 복원한다`() = runBlocking {
+        val inbox = LifecycleInbox(emptyList())
+        val scheduler = LifecycleScheduler().apply { failNextCancellations() }
+        val data = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
+        assertFailsWith<IllegalStateException> {
+            IosAlarmStore(data, scheduler, recoveryInbox = inbox).setEnabled(CanonicalUuid, false)
+        }
+        assertEquals(IosAlarmRecoveryEligibility.ENABLED, inbox.eligibility.last())
+        assertTrue(data.getById(CanonicalUuid)!!.enabled)
+    }
+
+    @Test
+    fun `삭제 취소가 실패하면 이전 저널 eligibility를 복원한다`() = runBlocking {
+        val inbox = LifecycleInbox(emptyList())
+        val scheduler = LifecycleScheduler().apply { failNextCancellations() }
+        val data = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
+        assertFailsWith<IllegalStateException> {
+            IosAlarmStore(data, scheduler, recoveryInbox = inbox).delete(CanonicalUuid)
+        }
+        assertEquals(IosAlarmRecoveryEligibility.ENABLED, inbox.eligibility.last())
+        assertTrue(data.getById(CanonicalUuid)!!.enabled)
+    }
+
+    @Test
+    fun `저널 재울림 예약은 원본이 없는 orphan 정리에서도 취소하지 않는다`() = runBlocking {
+        val scheduler = LifecycleScheduler(listOf(IosScheduledAlarmDto("reserved", IosScheduledAlarmState.SCHEDULED)))
+        val inbox = LifecycleInbox(emptyList()).apply { protectedIds = setOf("reserved") }
+        IosAlarmReconciler(LifecycleAlarmDataSource(emptyList()), scheduler, ::canonicalUuid,
+            recoveryInbox = inbox).reconcile()
+        assertTrue(scheduler.hasScheduledAlarm("reserved"))
+    }
+
+    @Test
+    fun `저널 조회가 실패하면 orphan 취소를 시작하지 않는다`() = runBlocking {
+        val scheduler = LifecycleScheduler(listOf(IosScheduledAlarmDto("reserved", IosScheduledAlarmState.SCHEDULED)))
+        val inbox = LifecycleInbox(emptyList()).apply { protectedCode = IosAlarmOperationCode.SDK_ERROR }
+        assertFailsWith<IllegalStateException> {
+            IosAlarmReconciler(LifecycleAlarmDataSource(emptyList()), scheduler, ::canonicalUuid,
+                recoveryInbox = inbox).reconcile()
+        }
+        assertTrue(scheduler.hasScheduledAlarm("reserved"))
+    }
+
+    @Test
     fun `설정 수정 뒤 늦게 전달된 종료도 원래 버전을 미션과 재울림 예약에 전달한다`() = runBlocking {
         val event = currentStopEvent().copy(scheduleVersion = 4)
         val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid).let {
@@ -1693,6 +1745,17 @@ private class LifecycleInbox(
     private val recordOpenCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
 ) :
     IosAlarmMissionEventInbox {
+    val eligibility = mutableListOf<IosAlarmRecoveryEligibility>()
+    override fun setSourceEligibility(alarmId: String, scheduleVersion: Long,
+        eligibility: IosAlarmRecoveryEligibility, callback: (IosAlarmOperationResult) -> Unit) {
+        this.eligibility += eligibility
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+    var protectedIds: Set<String> = emptySet()
+    var protectedCode = IosAlarmOperationCode.SUCCESS
+    override fun protectedReservationUuids(callback: (IosAlarmProtectedReservationsResult) -> Unit) {
+        callback(IosAlarmProtectedReservationsResult(protectedIds, protectedCode))
+    }
     private val pending = pending.toMutableList()
     private var listener: IosAlarmMissionEventListener? = null
     val events = mutableListOf<String>()
