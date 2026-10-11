@@ -65,7 +65,72 @@ interface IosAlarmMissionEventInbox {
         eventId: String,
         callback: (IosAlarmOperationResult) -> Unit,
     )
+
+    fun upsertSourceSnapshot(
+        snapshot: IosAlarmRecoverySourceSnapshotDto,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
+    fun setSourceEligibility(
+        alarmId: String,
+        scheduleVersion: Long,
+        eligibility: IosAlarmRecoveryEligibility,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
+    fun recoveryState(callback: (IosAlarmRecoveryAttemptsResult) -> Unit) {
+        callback(IosAlarmRecoveryAttemptsResult())
+    }
+
+    fun recoverReservations(callback: (IosAlarmRecoveryAttemptsResult) -> Unit) {
+        callback(IosAlarmRecoveryAttemptsResult())
+    }
+
+    fun ackMissionProjection(
+        occurrenceId: String,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
+    fun ackRecordProjection(
+        occurrenceId: String,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
+    fun commitTerminal(
+        chainId: String,
+        outcome: IosAlarmRecoveryAttemptOutcome,
+        completedAtEpochMillis: Long,
+        occurrenceId: String?,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
+    fun ackTerminalRecord(
+        chainId: String,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
+    fun protectedReservationUuids(callback: (IosAlarmProtectedReservationsResult) -> Unit) {
+        callback(IosAlarmProtectedReservationsResult())
+    }
 }
+
+data class IosAlarmProtectedReservationsResult(
+    val reservationUuids: Set<String> = emptySet(),
+    val code: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
+    val message: String? = null,
+)
 
 class IosAlarmMissionCoordinator(
     private val dataSource: AlarmDataSource,
@@ -620,6 +685,11 @@ data class IosPendingMissionTerminal(
 interface IosMissionOutcomeRecorder {
     suspend fun recordRingingTimes(event: IosAlarmMissionEventDto) = Unit
 
+    suspend fun recordRecoveryAttempt(attempt: IosAlarmRecoveryAttemptDto): Boolean {
+        recordRingingTimes(attempt.toMissionEvent())
+        return attempt.snapshot.owner.kind != IosAlarmRecoveryOwnerKind.UNCAPTURED
+    }
+
     suspend fun recordRetryRingingSchedule(occurrenceId: String, sourceOccurrenceId: String, intervalMinutes: Int) = Unit
 
     suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long? = null)
@@ -963,6 +1033,21 @@ private fun IosRetryMissionSeed.toActiveAlarmMission(
         hasAlarmSoundUri = hasAlarmSoundUri,
     )
 
+internal fun IosAlarmRecoveryAttemptDto.toMissionEvent(): IosAlarmMissionEventDto =
+    IosAlarmMissionEventDto(
+        eventId = occurrenceId,
+        alarmId = snapshot.sourceAlarmId,
+        occurrenceId = occurrenceId,
+        action = IosAlarmMissionAction.STOP,
+        occurredAtEpochMillis = stopAtEpochMillis,
+        retryAttempt = sequence,
+        ringingObservedAtEpochMillis = null,
+        ringingStoppedAtEpochMillis = stopAtEpochMillis,
+        scheduleVersion = snapshot.scheduleVersion,
+        ownerAccountId = snapshot.owner.accountId,
+        ownerCaptured = snapshot.owner.kind != IosAlarmRecoveryOwnerKind.UNCAPTURED,
+    )
+
 internal suspend fun IosAlarmMissionEventInbox.pendingEventsAwait():
     List<IosAlarmMissionEventDto> {
     val result = awaitSingleCallback<IosAlarmMissionEventsResult> { callback ->
@@ -1016,5 +1101,83 @@ internal suspend fun IosAlarmMissionEventInbox.markConsumedAwait(eventId: String
     result.requireAlarmKitSuccess("알람 미션 이벤트를 소비 처리하지 못했습니다.")
 }
 
+internal suspend fun IosAlarmMissionEventInbox.upsertSourceSnapshotAwait(
+    snapshot: IosAlarmRecoverySourceSnapshotDto,
+) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        upsertSourceSnapshot(snapshot, callback)
+    }
+    result.requireAlarmKitSuccess("알람 복구 스냅샷을 저장하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmMissionEventInbox.setSourceEligibilityAwait(
+    alarmId: String,
+    scheduleVersion: Long,
+    eligibility: IosAlarmRecoveryEligibility,
+) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        setSourceEligibility(alarmId, scheduleVersion, eligibility, callback)
+    }
+    result.requireAlarmKitSuccess("알람 복구 eligibility를 저장하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmMissionEventInbox.recoveryAttemptsAwait():
+    IosAlarmRecoveryAttemptsResult {
+    val result = awaitSingleCallback<IosAlarmRecoveryAttemptsResult> { callback ->
+        recoveryState(callback)
+    }
+    IosAlarmOperationResult(result.code, result.message)
+        .requireAlarmKitSuccess("알람 복구 예약을 읽지 못했습니다.")
+    return result
+}
+
+internal suspend fun IosAlarmMissionEventInbox.ackMissionProjectionAwait(occurrenceId: String) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        ackMissionProjection(occurrenceId, callback)
+    }
+    result.requireAlarmKitSuccess("알람 복구 미션 반영 ACK를 저장하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmMissionEventInbox.ackRecordProjectionAwait(occurrenceId: String) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        ackRecordProjection(occurrenceId, callback)
+    }
+    result.requireAlarmKitSuccess("알람 복구 기록 반영 ACK를 저장하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmMissionEventInbox.commitTerminalAwait(
+    chainId: String,
+    outcome: IosAlarmRecoveryAttemptOutcome,
+    completedAtEpochMillis: Long = Clock.System.now().toEpochMilliseconds(),
+    occurrenceId: String? = null,
+) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        commitTerminal(chainId, outcome, completedAtEpochMillis, occurrenceId, callback)
+    }
+    result.requireAlarmKitSuccess("알람 복구 종료 상태를 저장하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmMissionEventInbox.ackTerminalRecordAwait(chainId: String) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        ackTerminalRecord(chainId, callback)
+    }
+    result.requireAlarmKitSuccess("알람 복구 종료 기록 ACK를 저장하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmMissionEventInbox.protectedReservationUuidsAwait(): Set<String> {
+    val result = awaitSingleCallback<IosAlarmProtectedReservationsResult> { callback ->
+        protectedReservationUuids(callback)
+    }
+    IosAlarmOperationResult(result.code, result.message)
+        .requireAlarmKitSuccess("보호 예약 목록을 읽지 못했습니다.")
+    return result.reservationUuids
+}
+
 private const val MillisPerMinute = 60_000L
 private const val MillisPerSecond = 1_000.0
+
+internal suspend fun IosAlarmMissionEventInbox.recoverReservationsAwait(): IosAlarmRecoveryAttemptsResult {
+    val result = awaitSingleCallback<IosAlarmRecoveryAttemptsResult> { callback -> recoverReservations(callback) }
+    IosAlarmOperationResult(result.code, result.message).requireAlarmKitSuccess("알람 복구를 실행하지 못했습니다.")
+    return result
+}
