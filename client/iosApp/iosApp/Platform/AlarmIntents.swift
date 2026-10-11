@@ -45,14 +45,27 @@ struct StopAlarmIntent: LiveActivityIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        try RingoutAlarmMissionEventInbox.shared.record(
-            alarmId: alarmId,
-            action: .stop,
-            occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
-            retryAttempt: retryAttempt,
-            scheduleVersion: Int64(scheduleVersion),
-            systemAlarmId: systemAlarmId
-        )
+        let enteredAt = Date()
+        if try AlarmRecoveryDriver.journal.sourceSnapshot(
+            sourceAlarmId: alarmId, scheduleVersion: Int64(scheduleVersion)
+        ) != nil {
+            try await AlarmRecoveryDriver.stop(
+                alarmId: alarmId,
+                occurrenceToken: occurrenceId.isEmpty ? nil : occurrenceId,
+                scheduleVersion: Int64(scheduleVersion),
+                systemAlarmId: systemAlarmId,
+                now: enteredAt
+            )
+            RingoutAlarmMissionEventInbox.shared.notifyRecoveryChanged()
+        } else {
+            // Existing OS configurations created before the snapshot migration.
+            try RingoutAlarmMissionEventInbox.shared.record(
+                alarmId: alarmId, action: .stop,
+                occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
+                retryAttempt: retryAttempt, scheduleVersion: Int64(scheduleVersion),
+                systemAlarmId: systemAlarmId, now: enteredAt
+            )
+        }
         return .result()
     }
 }
@@ -107,15 +120,23 @@ struct OpenRingoutIntent: LiveActivityIntent {
                 didStopRinging = true
             }
         }
-        try RingoutAlarmMissionEventInbox.shared.record(
-            alarmId: alarmId,
-            action: .open,
-            occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
-            retryAttempt: retryAttempt,
-            scheduleVersion: Int64(scheduleVersion),
-            systemAlarmId: systemAlarmId,
-            didStopRinging: didStopRinging
-        )
+        if didStopRinging, try AlarmRecoveryDriver.journal.sourceSnapshot(
+            sourceAlarmId: alarmId, scheduleVersion: Int64(scheduleVersion)
+        ) != nil {
+            try await AlarmRecoveryDriver.stop(
+                alarmId: alarmId,
+                occurrenceToken: occurrenceId.isEmpty ? nil : occurrenceId,
+                scheduleVersion: Int64(scheduleVersion), systemAlarmId: systemAlarmId
+            )
+            RingoutAlarmMissionEventInbox.shared.notifyRecoveryChanged()
+        } else {
+            try RingoutAlarmMissionEventInbox.shared.record(
+                alarmId: alarmId, action: .open,
+                occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
+                retryAttempt: retryAttempt, scheduleVersion: Int64(scheduleVersion),
+                systemAlarmId: systemAlarmId, didStopRinging: didStopRinging
+            )
+        }
         return .result()
     }
 }

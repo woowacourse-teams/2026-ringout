@@ -21,6 +21,20 @@ final class AlarmRingingOccurrenceStore {
         self.directoryURL = directoryURL
     }
 
+    // A stop can adopt existing evidence without consuming it before the
+    // authoritative journal commit. Missing/inaccessible evidence stays unknown.
+    func observation(systemAlarmId: String, now: Date = Date()) throws -> AlarmRingingOccurrence? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let session = try read()[systemAlarmId] else { return nil }
+        let timestamp = Int64(now.timeIntervalSince1970 * 1_000)
+        guard timestamp >= session.observedAtEpochMillis,
+              session.endedAtEpochMillis.map({ timestamp <= $0 + coalescingWindowMillis }) ?? true else {
+            return nil
+        }
+        return session
+    }
+
     func observe(alertingIds: Set<String>, now: Date = Date()) throws -> [String: AlarmRingingOccurrence] {
         lock.lock()
         defer { lock.unlock() }
