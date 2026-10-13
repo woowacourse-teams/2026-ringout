@@ -13,6 +13,23 @@ Status (2026-10-10): recovery core implemented and physically observed in the pr
 - Native retry recovery preserves the preceding mission's location acquisition grace. Terminal replay uses the actual completed occurrence, even if a later retry stop was already accepted.
 - Reconciliation protects journal reservation IDs and the existing legacy deadline UUID, and aborts destructive cleanup on authority read failure.
 - Legacy active projections import their occurrence, deadline, next token, snapshot and captured owner. An existing legacy deadline without enough stop evidence remains protected and on its existing recovery path; no fabricated stop time or historical parent identity is added.
+- Native inbox events and terminal journal chains are cleaned only after durable-consumption and Room projection proofs; candidate fingerprints are rechecked before deletion/compaction. Native writes use interprocess locking and durable atomic replacement, and cleanup failures preserve data for a later pass.
+
+## Native data cleanup (2026-10-13)
+
+- Consumed inbox events stay through the 10-second deduplication window. Record-projecting events also require their record ACK and a transactional Room proof; terminal chains require the expected history, movement parent/children and occurrence outbox rows to exist and be settled before compaction to tombstones.
+- `AUTH_PENDING` records remain protected. `LOCAL_ONLY` cleanup requires the local activity/occurrence projection. `SERVER` cleanup checks ownership, expected outbox identity/content and `SENT` state; an empty or incomplete expected-row set cannot prove completion.
+- Cleanup is requested during startup/auth replay, runtime recovery and sync flush. A candidate inside its deduplication window gets one retry at the window boundary. Mission, deadline and reservation references protect their chains from compaction.
+- Stop recovery reports handled, fallback or preserved explicitly. Unknown retries stay preserved rather than being promoted to a root fallback.
+- No alarm snapshots, active ringing observations or retry authority are removed by this cleanup path.
+
+## Cleanup validation evidence
+
+- Native journal host tests: 30 PASS, including v1-to-v2 journal decoding, stale fingerprint protection, terminal-chain compaction, tokenless legacy-root routing after tombstoning, legacy-import tombstone protection and concurrent journal access.
+- Swift frontend parse: PASS for the inbox, recovery driver, journal and intent sources. This checks syntax only; it does not type-check the iOS app target or its Kotlin/Native bridge.
+- Kotlin/Native iOS shared test sources compile, including cleanup coordinator proof-gate, dedup-window boundary and Room migration tests. The simulator test task reaches Xcode linking but cannot complete in this environment because `xcrun xcodebuild -version` is unavailable; no iOS simulator test run is claimed.
+- Android shared host tests: 934 PASS, 0 failures/errors/skips. Android release lint, R8 output verification, unsigned release bundle creation and unsigned-bundle verification: PASS.
+- Cross-process inbox integration, on-device cleanup/relaunch behavior and actual Room/native bridge execution remain unverified on an iOS device.
 
 ## Evidence
 
