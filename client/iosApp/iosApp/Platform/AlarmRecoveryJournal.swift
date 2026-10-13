@@ -1,4 +1,5 @@
 import Darwin
+import CryptoKit
 import Foundation
 
 enum AlarmRecoveryJournalError: Error, Equatable {
@@ -10,6 +11,10 @@ enum AlarmRecoveryJournalError: Error, Equatable {
     case terminalChain
     case pastDueReservation
     case legacyConflict
+    case missingTerminalChain
+    case unsettledReservation
+    case unsettledProjection
+    case staleCleanupCandidate
     case unsupportedSchemaVersion
 }
 
@@ -141,23 +146,119 @@ struct AlarmRecoveryPresentationObservation: Codable, Equatable {
     let protectedDataAvailable: Bool
 }
 
+struct AlarmRecoveryTerminalTombstone: Codable, Equatable {
+    let chainId: String
+    let chainFingerprint: String
+    let sourceKey: AlarmRecoverySourceKey
+    let terminalOccurrenceId: String
+    let terminalOutcome: AlarmRecoveryAttemptOutcome
+    let terminalAtEpochMillis: Int64
+    let knownTokens: [String]
+    let retryReservationUUIDByToken: [String: String]
+    let tokenlessRootStopAtEpochMillis: [Int64]
+    let reservationUUIDs: [String]
+    var cancellationRequiredReservationUUIDs: [String]
+}
+
+enum AlarmRecoveryJournalStopRoute: Equatable {
+    case liveAttempt(AlarmRecoveryAttempt)
+    case compactedTerminal(AlarmRecoveryTerminalTombstone)
+    case unknownRetry
+    case newRoot
+}
+
 struct AlarmRecoveryState: Codable, Equatable {
+    static let currentSchemaVersion = 2
+
     var schemaVersion: Int
     var snapshots: [AlarmRecoverySourceKey: AlarmRecoverySourceSnapshot]
     var sources: [AlarmRecoverySourceKey: AlarmRecoveryEligibility]
     var chains: [String: AlarmRecoveryChain]
     var tokenIndex: [String: String]
     var rootWindowIndex: [String: String]
+    var terminalTombstones: [String: AlarmRecoveryTerminalTombstone]
     var presentationObservations: [AlarmRecoveryPresentationObservation]? = nil
 
     static let empty = AlarmRecoveryState(
-        schemaVersion: 1,
+        schemaVersion: currentSchemaVersion,
         snapshots: [:],
         sources: [:],
         chains: [:],
         tokenIndex: [:],
-        rootWindowIndex: [:]
+        rootWindowIndex: [:],
+        terminalTombstones: [:]
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case snapshots
+        case sources
+        case chains
+        case tokenIndex
+        case rootWindowIndex
+        case terminalTombstones
+        case presentationObservations
+    }
+
+    init(
+        schemaVersion: Int,
+        snapshots: [AlarmRecoverySourceKey: AlarmRecoverySourceSnapshot],
+        sources: [AlarmRecoverySourceKey: AlarmRecoveryEligibility],
+        chains: [String: AlarmRecoveryChain],
+        tokenIndex: [String: String],
+        rootWindowIndex: [String: String],
+        terminalTombstones: [String: AlarmRecoveryTerminalTombstone],
+        presentationObservations: [AlarmRecoveryPresentationObservation]? = nil
+    ) {
+        self.schemaVersion = schemaVersion
+        self.snapshots = snapshots
+        self.sources = sources
+        self.chains = chains
+        self.tokenIndex = tokenIndex
+        self.rootWindowIndex = rootWindowIndex
+        self.terminalTombstones = terminalTombstones
+        self.presentationObservations = presentationObservations
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        snapshots = try container.decode([AlarmRecoverySourceKey: AlarmRecoverySourceSnapshot].self, forKey: .snapshots)
+        sources = try container.decode([AlarmRecoverySourceKey: AlarmRecoveryEligibility].self, forKey: .sources)
+        chains = try container.decode([String: AlarmRecoveryChain].self, forKey: .chains)
+        tokenIndex = try container.decode([String: String].self, forKey: .tokenIndex)
+        rootWindowIndex = try container.decode([String: String].self, forKey: .rootWindowIndex)
+        if decodedVersion == 1 {
+            terminalTombstones = [:]
+        } else if decodedVersion == Self.currentSchemaVersion {
+            terminalTombstones = try container.decode(
+                [String: AlarmRecoveryTerminalTombstone].self,
+                forKey: .terminalTombstones
+            )
+        } else {
+            terminalTombstones = try container.decodeIfPresent(
+                [String: AlarmRecoveryTerminalTombstone].self,
+                forKey: .terminalTombstones
+            ) ?? [:]
+        }
+        presentationObservations = try container.decodeIfPresent(
+            [AlarmRecoveryPresentationObservation].self,
+            forKey: .presentationObservations
+        )
+        schemaVersion = decodedVersion == 1 ? Self.currentSchemaVersion : decodedVersion
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(snapshots, forKey: .snapshots)
+        try container.encode(sources, forKey: .sources)
+        try container.encode(chains, forKey: .chains)
+        try container.encode(tokenIndex, forKey: .tokenIndex)
+        try container.encode(rootWindowIndex, forKey: .rootWindowIndex)
+        try container.encode(terminalTombstones, forKey: .terminalTombstones)
+        try container.encodeIfPresent(presentationObservations, forKey: .presentationObservations)
+    }
 }
 
 struct AlarmRecoveryAcceptedStop: Equatable {
@@ -210,6 +311,7 @@ final class AlarmRecoveryJournal {
     func acceptStop(
         snapshot: AlarmRecoverySourceSnapshot,
         occurrenceToken: String?,
+        retryAttempt: Int? = nil,
         parentOccurrenceId: String? = nil,
         rootOccurrenceId: String? = nil,
         stopAt: Date = Date()
@@ -221,6 +323,15 @@ final class AlarmRecoveryJournal {
                 scheduleVersion: snapshot.scheduleVersion
             )
             let isRetry = parentOccurrenceId != nil
+
+            if state.compactedTerminal(
+                occurrenceToken: occurrenceToken,
+                sourceKey: sourceKey,
+                stopAtEpochMillis: nowMillis,
+                windowMillis: coalescingWindowMillis
+            ) != nil {
+                throw AlarmRecoveryJournalError.terminalChain
+            }
 
             let dedupKey: String
             if let occurrenceToken {
@@ -245,6 +356,14 @@ final class AlarmRecoveryJournal {
                     throw AlarmRecoveryJournalError.missingParentAttempt
                 }
                 return parentAttempt
+            }
+            if let retryAttempt {
+                guard retryAttempt == 0 || parent != nil else {
+                    throw AlarmRecoveryJournalError.missingParentAttempt
+                }
+                if let parent, retryAttempt != parent.sequence + 1 {
+                    throw AlarmRecoveryJournalError.retryTokenMismatch
+                }
             }
             if let parent {
                 guard state.chains[parent.chainId]?.terminalOutcome == nil else {
@@ -323,6 +442,174 @@ final class AlarmRecoveryJournal {
                 state.rootWindowIndex[dedupKey] = occurrenceId
             }
             return AlarmRecoveryAcceptedStop(attempt: attempt, duplicate: false)
+        }
+    }
+
+    func routeStop(
+        occurrenceToken: String?,
+        retryAttempt: Int,
+        sourceKey: AlarmRecoverySourceKey,
+        stopAt: Date = Date()
+    ) throws -> AlarmRecoveryJournalStopRoute {
+        let state = try lockedRead()
+        let stopAtEpochMillis = Self.epochMillis(stopAt)
+        let exactTombstone = state.compactedTerminal(
+            occurrenceToken: occurrenceToken,
+            sourceKey: sourceKey,
+            stopAtEpochMillis: stopAtEpochMillis,
+            windowMillis: coalescingWindowMillis
+        )
+        let tokenlessRootDuplicate = retryAttempt == 0 ? state.compactedTerminal(
+            occurrenceToken: nil,
+            sourceKey: sourceKey,
+            stopAtEpochMillis: stopAtEpochMillis,
+            windowMillis: coalescingWindowMillis
+        ) : nil
+        if let tombstone = exactTombstone ?? tokenlessRootDuplicate {
+            return .compactedTerminal(tombstone)
+        }
+        if let occurrenceToken,
+           let attempt = state.chains.values.flatMap(\.attempts).first(where: {
+               $0.nextOccurrenceToken == occurrenceToken
+           }) {
+            return attempt.sourceKey == sourceKey ? .liveAttempt(attempt) : .unknownRetry
+        }
+        if retryAttempt > 0 { return .unknownRetry }
+        if let occurrenceToken,
+           let occurrenceId = state.tokenIndex["token|\(occurrenceToken)"],
+           let attempt = state.findAttempt(occurrenceId: occurrenceId) {
+            return .liveAttempt(attempt)
+        }
+        if let attempt = state.findRootAttempt(
+            sourceKey: sourceKey,
+            stopAtEpochMillis: stopAtEpochMillis,
+            windowMillis: coalescingWindowMillis
+        ) {
+            return .liveAttempt(attempt)
+        }
+        return .newRoot
+    }
+
+    func terminalCleanupSnapshots() throws -> [(chain: AlarmRecoveryChain, fingerprint: String)] {
+        let state = try lockedRead()
+        return try state.chains.values
+            .filter { chain in
+                guard let outcome = chain.terminalOutcome,
+                      outcome != .active,
+                      outcome != .expired else { return false }
+                return chain.terminalAtEpochMillis != nil &&
+                    chain.terminalOccurrenceId != nil &&
+                    !chain.attempts.isEmpty
+            }
+            .sorted { $0.chainId < $1.chainId }
+            .map { chain in
+                (chain: chain, fingerprint: try Self.fingerprint(chain))
+            }
+    }
+
+    func compactTerminalChain(
+        chainId: String,
+        expectedFingerprint: String
+    ) throws -> AlarmRecoveryTerminalTombstone {
+        try mutate { state in
+            if let existing = state.terminalTombstones[chainId] {
+                guard existing.chainFingerprint == expectedFingerprint else {
+                    throw AlarmRecoveryJournalError.staleCleanupCandidate
+                }
+                return existing
+            }
+            guard let chain = state.chains[chainId],
+                  let terminalOutcome = chain.terminalOutcome,
+                  terminalOutcome != .active,
+                  terminalOutcome != .expired,
+                  let terminalOccurrenceId = chain.terminalOccurrenceId,
+                  let terminalAtEpochMillis = chain.terminalAtEpochMillis,
+                  let sourceKey = chain.attempts.first?.sourceKey,
+                  !chain.attempts.isEmpty else {
+                throw AlarmRecoveryJournalError.missingTerminalChain
+            }
+            guard try Self.fingerprint(chain) == expectedFingerprint else {
+                throw AlarmRecoveryJournalError.staleCleanupCandidate
+            }
+            guard chain.terminalRecordAck && chain.attempts.allSatisfy(\.recordProjectionAck) else {
+                throw AlarmRecoveryJournalError.unsettledProjection
+            }
+            guard chain.attempts.allSatisfy({ attempt in
+                let ledger = attempt.currentReservation
+                return ledger.status == .cancellationConfirmed &&
+                    !ledger.cancellationRequired &&
+                    (ledger.operationId == nil || ledger.scheduleCallSettled)
+            }) else {
+                throw AlarmRecoveryJournalError.unsettledReservation
+            }
+
+            let occurrenceIds = Set(chain.attempts.map(\.occurrenceId))
+            var knownTokens = Set<String>()
+            var retryReservationUUIDByToken: [String: String] = [:]
+            var tokenlessRootStopAtEpochMillis: [Int64] = []
+            var reservationUUIDs = Set<String>()
+            for attempt in chain.attempts {
+                knownTokens.insert(attempt.occurrenceId)
+                if attempt.stopDedupKey.hasPrefix("token|") {
+                    knownTokens.insert(String(attempt.stopDedupKey.dropFirst("token|".count)))
+                } else if attempt.parentOccurrenceId == nil {
+                    tokenlessRootStopAtEpochMillis.append(attempt.stopAtEpochMillis)
+                }
+                knownTokens.insert(attempt.nextOccurrenceToken)
+                retryReservationUUIDByToken[attempt.nextOccurrenceToken] = attempt.nextReservationUUID
+                reservationUUIDs.insert(attempt.nextReservationUUID)
+            }
+            let tombstone = AlarmRecoveryTerminalTombstone(
+                chainId: chainId,
+                chainFingerprint: expectedFingerprint,
+                sourceKey: sourceKey,
+                terminalOccurrenceId: terminalOccurrenceId,
+                terminalOutcome: terminalOutcome,
+                terminalAtEpochMillis: terminalAtEpochMillis,
+                knownTokens: knownTokens.sorted(),
+                retryReservationUUIDByToken: retryReservationUUIDByToken,
+                tokenlessRootStopAtEpochMillis: tokenlessRootStopAtEpochMillis.sorted(),
+                reservationUUIDs: reservationUUIDs.sorted(),
+                cancellationRequiredReservationUUIDs: []
+            )
+            state.terminalTombstones[chainId] = tombstone
+            state.tokenIndex = state.tokenIndex.filter { !occurrenceIds.contains($0.value) }
+            state.rootWindowIndex = state.rootWindowIndex.filter { !occurrenceIds.contains($0.value) }
+            state.chains.removeValue(forKey: chainId)
+            return tombstone
+        }
+    }
+
+    func tombstoneCancellationRequiredUUIDs() throws -> Set<String> {
+        Set(try lockedRead().terminalTombstones.values.flatMap(\.cancellationRequiredReservationUUIDs))
+    }
+
+    func compactedReservationUUIDs() throws -> Set<String> {
+        Set(try lockedRead().terminalTombstones.values.flatMap(\.reservationUUIDs))
+    }
+
+    func requireTombstoneCancellation(reservationUUID: String) throws {
+        try mutate { state in
+            guard let chainId = state.terminalTombstones.first(where: {
+                $0.value.reservationUUIDs.contains(reservationUUID)
+            })?.key,
+            var tombstone = state.terminalTombstones[chainId] else { return }
+            if !tombstone.cancellationRequiredReservationUUIDs.contains(reservationUUID) {
+                tombstone.cancellationRequiredReservationUUIDs.append(reservationUUID)
+                tombstone.cancellationRequiredReservationUUIDs.sort()
+                state.terminalTombstones[chainId] = tombstone
+            }
+        }
+    }
+
+    func markTombstoneCancellationConfirmed(reservationUUID: String) throws {
+        try mutate { state in
+            guard let chainId = state.terminalTombstones.first(where: {
+                $0.value.reservationUUIDs.contains(reservationUUID)
+            })?.key,
+            var tombstone = state.terminalTombstones[chainId] else { return }
+            tombstone.cancellationRequiredReservationUUIDs.removeAll { $0 == reservationUUID }
+            state.terminalTombstones[chainId] = tombstone
         }
     }
 
@@ -543,10 +830,13 @@ final class AlarmRecoveryJournal {
     }
 
     func protectedReservationUUIDs() throws -> Set<String> {
-        let attempts = try lockedRead().chains.values.flatMap(\.attempts)
-        return Set(attempts.compactMap { attempt in
+        let state = try lockedRead()
+        let attempts = state.chains.values.flatMap(\.attempts)
+        let activeReservations = Set(attempts.compactMap { attempt in
             attempt.currentReservation.status == .cancellationConfirmed ? nil : attempt.nextReservationUUID
         })
+        let tombstoneReservations = Set(state.terminalTombstones.values.flatMap(\.reservationUUIDs))
+        return activeReservations.union(tombstoneReservations)
     }
 
     func importLegacy(
@@ -570,6 +860,21 @@ final class AlarmRecoveryJournal {
                 sourceAlarmId: snapshot.sourceAlarmId,
                 scheduleVersion: snapshot.scheduleVersion
             )
+            let isKnownCompactedTerminal = state.compactedTerminal(
+                occurrenceToken: occurrenceId,
+                sourceKey: sourceKey,
+                stopAtEpochMillis: nowMillis,
+                windowMillis: coalescingWindowMillis
+            ) != nil
+            let isCompactedTokenlessRootDuplicate = sequence == 0 && state.compactedTerminal(
+                occurrenceToken: nil,
+                sourceKey: sourceKey,
+                stopAtEpochMillis: nowMillis,
+                windowMillis: coalescingWindowMillis
+            ) != nil
+            guard !isKnownCompactedTerminal && !isCompactedTokenlessRootDuplicate else {
+                throw AlarmRecoveryJournalError.terminalChain
+            }
             let ledger = AlarmRecoveryReservationLedger(
                 reservationUUID: reservationUUID ?? uuidProvider(),
                 status: reservationUUID == nil ? .unknown : .confirmed,
@@ -649,8 +954,8 @@ final class AlarmRecoveryJournal {
         if fd == -1 {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
-        try applyProtectedFileAttributes(to: lockURL)
         defer { close(fd) }
+        try applyProtectedFileAttributes(to: lockURL)
         if flock(fd, LOCK_EX) != 0 {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
@@ -759,6 +1064,13 @@ final class AlarmRecoveryJournal {
     private static func epochMillis(_ date: Date) -> Int64 {
         Int64((date.timeIntervalSince1970 * 1_000).rounded())
     }
+
+    private static func fingerprint(_ chain: AlarmRecoveryChain) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let digest = SHA256.hash(data: try encoder.encode(chain))
+        return "sha256:" + digest.map { String(format: "%02x", Int($0)) }.joined()
+    }
 }
 
 private extension JSONEncoder {
@@ -770,6 +1082,23 @@ private extension JSONEncoder {
 }
 
 private extension AlarmRecoveryState {
+    func compactedTerminal(
+        occurrenceToken: String?,
+        sourceKey: AlarmRecoverySourceKey,
+        stopAtEpochMillis: Int64,
+        windowMillis: Int64
+    ) -> AlarmRecoveryTerminalTombstone? {
+        terminalTombstones.values.first { tombstone in
+            if let occurrenceToken, tombstone.knownTokens.contains(occurrenceToken) {
+                return true
+            }
+            guard occurrenceToken == nil, tombstone.sourceKey == sourceKey else { return false }
+            return tombstone.tokenlessRootStopAtEpochMillis.contains {
+                abs($0 - stopAtEpochMillis) <= windowMillis
+            }
+        }
+    }
+
     func findAttempt(occurrenceId: String) -> AlarmRecoveryAttempt? {
         guard let location = location(of: occurrenceId) else { return nil }
         return chains[location.chainId]?.attempts[location.attemptIndex]

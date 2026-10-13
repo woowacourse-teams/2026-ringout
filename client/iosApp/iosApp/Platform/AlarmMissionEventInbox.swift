@@ -1,3 +1,5 @@
+import CryptoKit
+import Darwin
 import Foundation
 import Shared
 
@@ -14,11 +16,59 @@ struct AlarmMissionEvent: Codable, Equatable {
     let ringingStoppedAtEpochMillis: Int64?
     let ownerAccountId: String?
     let ownerCaptured: Bool?
+    let chainId: String?
     var consumedAtEpochMillis: Int64?
+    var recordProjectionAckAtEpochMillis: Int64? = nil
 
     var isConsumed: Bool {
         consumedAtEpochMillis != nil
     }
+
+    var requiresRecordProjection: Bool {
+        action == .stop || ringingObservedAtEpochMillis != nil || ringingStoppedAtEpochMillis != nil
+    }
+}
+
+private struct AlarmMissionEventDedupRecord: Codable, Equatable {
+    let eventId: String
+    let alarmId: String
+    let occurrenceId: String
+    let action: AlarmMissionEventAction
+    let occurredAtEpochMillis: Int64
+    let retryAttempt: Int?
+    let scheduleVersion: Int64?
+    let source: AlarmMissionEventSource?
+    let ownerAccountId: String?
+    let ownerCaptured: Bool?
+    let chainId: String?
+
+    init(event: AlarmMissionEvent) {
+        eventId = event.eventId
+        alarmId = event.alarmId
+        occurrenceId = event.occurrenceId
+        action = event.action
+        occurredAtEpochMillis = event.occurredAtEpochMillis
+        retryAttempt = event.retryAttempt
+        scheduleVersion = event.scheduleVersion
+        source = event.source
+        ownerAccountId = event.ownerAccountId
+        ownerCaptured = event.ownerCaptured
+        chainId = event.chainId
+    }
+}
+
+private struct AlarmMissionEventInboxState: Codable {
+    static let currentSchemaVersion = 1
+
+    let schemaVersion: Int
+    var events: [AlarmMissionEvent]
+    var dedupRecords: [AlarmMissionEventDedupRecord]
+
+    static let empty = AlarmMissionEventInboxState(
+        schemaVersion: currentSchemaVersion,
+        events: [],
+        dedupRecords: []
+    )
 }
 
 enum AlarmMissionEventAction: String, Codable {
@@ -70,6 +120,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         occurrenceId requestedOccurrenceId: String? = nil,
         retryAttempt: Int = 0,
         scheduleVersion: Int64 = 1,
+        chainId requestedChainId: String? = nil,
         source: AlarmMissionEventSource = .nativeIntent,
         systemAlarmId: String? = nil,
         didStopRinging: Bool = true,
@@ -81,13 +132,13 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
 
         let alarmId = alarmUUID.uuidString
         let occurredAtEpochMillis = Int64(now.timeIntervalSince1970 * 1_000)
-        let event = try mutateEvents { events in
+        let event = try mutateEvents { events, dedupRecords in
             let observation = try? AlarmRingingOccurrenceStore.shared.consume(
                 systemAlarmId: systemAlarmId.flatMap { UUID(uuidString: $0)?.uuidString } ?? alarmId,
                 requestedOccurrenceId: requestedOccurrenceId,
                 now: now
             )
-            let recentOccurrenceId = events.reversed().first { existing in
+            let recentOccurrenceId = dedupRecords.reversed().first { existing in
                 let existingRetryAttempt = existing.retryAttempt ?? 0
                 let elapsedMillis = occurredAtEpochMillis - existing.occurredAtEpochMillis
                 let isFallbackDeliveryPair =
@@ -104,10 +155,23 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
             let occurrenceId = requestedOccurrenceId ?? recentOccurrenceId ?? observation?.occurrenceId ??
                 "\(alarmId):\(UUID().uuidString)"
             let previous = events.first { $0.occurrenceId == occurrenceId }
+            let previousDedupRecord = dedupRecords.first { $0.occurrenceId == occurrenceId }
+            let previousChainId = dedupRecords.reversed().first { existing in
+                existing.alarmId == alarmId &&
+                    (existing.scheduleVersion ?? 1) == scheduleVersion &&
+                    (existing.retryAttempt ?? 0) < retryAttempt
+            }.flatMap { $0.chainId ?? (($0.retryAttempt ?? 0) == 0 ? $0.occurrenceId : nil) }
+            let chainId = requestedChainId ?? previous?.chainId ??
+                (retryAttempt == 0 ? occurrenceId : previousChainId)
             // Preserve an explicitly captured guest, including across native/fallback duplicates.
             let owner: IosAlarmOccurrenceOwner
             if let previous {
                 owner = IosAlarmOccurrenceOwner(accountId: previous.ownerAccountId, captured: previous.ownerCaptured ?? false)
+            } else if let previousDedupRecord {
+                owner = IosAlarmOccurrenceOwner(
+                    accountId: previousDedupRecord.ownerAccountId,
+                    captured: previousDedupRecord.ownerCaptured ?? false
+                )
             } else if let observation {
                 owner = IosAlarmOccurrenceOwner(accountId: observation.ownerAccountId, captured: observation.ownerCaptured ?? false)
             } else {
@@ -126,6 +190,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 ringingStoppedAtEpochMillis: source == .runtimeFallback || !didStopRinging ? nil : occurredAtEpochMillis,
                 ownerAccountId: owner.accountId,
                 ownerCaptured: owner.captured,
+                chainId: chainId,
                 consumedAtEpochMillis: nil
             )
             events.append(event)
@@ -140,6 +205,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         occurrenceId: String?,
         retryAttempt: Int32,
         scheduleVersion: Int64,
+        chainId: String?,
         callback: @escaping (IosAlarmOperationResult) -> Void
     ) {
         do {
@@ -149,6 +215,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 occurrenceId: occurrenceId,
                 retryAttempt: Int(retryAttempt),
                 scheduleVersion: scheduleVersion,
+                chainId: chainId,
                 source: .runtimeCustom
             )
             callback(IosAlarmOperationResult(code: .success, message: nil))
@@ -167,26 +234,27 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         occurrenceId: String?,
         retryAttempt: Int32,
         scheduleVersion: Int64,
+        chainId: String?,
         callback: @escaping (IosAlarmOperationResult) -> Void
     ) {
         Task {
             do {
-                if try hasJournalRoute(
+                let disposition = try await AlarmRecoveryDriver.stop(
                     alarmId: alarmId,
                     occurrenceToken: occurrenceId,
-                    scheduleVersion: scheduleVersion
-                ) {
-                    _ = try await AlarmRecoveryDriver.stop(
-                        alarmId: alarmId,
-                        occurrenceToken: occurrenceId,
-                        scheduleVersion: scheduleVersion,
-                        systemAlarmId: alarmId
-                    )
+                    retryAttempt: Int(retryAttempt),
+                    scheduleVersion: scheduleVersion,
+                    systemAlarmId: alarmId
+                )
+                switch disposition {
+                case .handled, .preserved:
                     completeOnMain {
                         self.notifyEventRecorded()
                         callback(IosAlarmOperationResult(code: .success, message: nil))
                     }
                     return
+                case .fallback:
+                    break
                 }
                 try record(
                     alarmId: alarmId,
@@ -194,6 +262,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                     occurrenceId: occurrenceId,
                     retryAttempt: Int(retryAttempt),
                     scheduleVersion: scheduleVersion,
+                    chainId: chainId,
                     source: .runtimeFallback
                 )
                 completeOnMain {
@@ -232,6 +301,192 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         }
     }
 
+    func recordProjectionEvents(callback: @escaping (IosAlarmMissionEventsResult) -> Void) {
+        do {
+            callback(
+                IosAlarmMissionEventsResult(
+                    events: try recordProjectionEventDtos(),
+                    code: .success,
+                    message: nil
+                )
+            )
+        } catch {
+            callback(
+                IosAlarmMissionEventsResult(
+                    events: [],
+                    code: .sdkError,
+                    message: error.localizedDescription
+                )
+            )
+        }
+    }
+
+    func nativeCleanupCandidates(callback: @escaping (IosAlarmNativeCleanupCandidatesResult) -> Void) {
+        do {
+            let events = try withInboxFileLock { try readStateUnlocked().events }
+                .map { event in
+                    IosAlarmNativeCleanupEventCandidate(
+                        eventId: event.eventId,
+                        fingerprint: try eventFingerprint(event),
+                        alarmId: event.alarmId,
+                        occurrenceId: event.occurrenceId,
+                        action: event.action.iosAction,
+                        occurredAtEpochMillis: event.occurredAtEpochMillis,
+                        retryAttempt: Int32(event.retryAttempt ?? 0),
+                        ringingObservedAtEpochMillis: event.ringingObservedAtEpochMillis.map { KotlinLong(value: $0) },
+                        ringingStoppedAtEpochMillis: event.ringingStoppedAtEpochMillis.map { KotlinLong(value: $0) },
+                        scheduleVersion: event.scheduleVersion ?? 1,
+                        ownerAccountId: event.ownerAccountId,
+                        ownerCaptured: event.ownerCaptured ?? false,
+                        chainId: event.chainId,
+                        consumedAtEpochMillis: event.consumedAtEpochMillis.map { KotlinLong(value: $0) },
+                        recordProjectionAckAtEpochMillis: event.recordProjectionAckAtEpochMillis.map { KotlinLong(value: $0) }
+                    )
+                }
+            let chains: [IosAlarmNativeCleanupChainCandidate] = try AlarmRecoveryDriver.journal.terminalCleanupSnapshots()
+                .compactMap { snapshot -> IosAlarmNativeCleanupChainCandidate? in
+                    let chain = snapshot.chain
+                    guard let outcome = chain.terminalOutcome,
+                          let completedAt = chain.terminalAtEpochMillis,
+                          let terminalOccurrenceId = chain.terminalOccurrenceId,
+                          let root = chain.attempts.first(where: { $0.sequence == 0 }) else {
+                        return nil
+                    }
+                    return IosAlarmNativeCleanupChainCandidate(
+                        chainId: chain.chainId,
+                        fingerprint: snapshot.fingerprint,
+                        sourceAlarmId: root.snapshot.sourceAlarmId,
+                        scheduleVersion: root.snapshot.scheduleVersion,
+                        rootOccurrenceId: root.occurrenceId,
+                        terminalOccurrenceId: terminalOccurrenceId,
+                        terminalOutcome: outcome.toDto(),
+                        terminalAtEpochMillis: completedAt,
+                        terminalRecordAck: chain.terminalRecordAck,
+                        attempts: chain.attempts.sorted { $0.sequence < $1.sequence }.map { $0.toRecoveryAttemptDto() }
+                    )
+                }
+            callback(IosAlarmNativeCleanupCandidatesResult(
+                events: events,
+                chains: chains,
+                code: .success,
+                message: nil
+            ))
+        } catch {
+            callback(IosAlarmNativeCleanupCandidatesResult(
+                events: [],
+                chains: [],
+                code: .sdkError,
+                message: "Native cleanup candidates could not be read."
+            ))
+        }
+    }
+
+    func commitEventCleanup(
+        eventId: String,
+        fingerprint: String,
+        callback: @escaping (IosAlarmNativeCleanupCommitResult) -> Void
+    ) {
+        do {
+            let result = try withInboxFileLock { () -> IosAlarmNativeCleanupCommitResult in
+                let state = try readStateUnlocked()
+                guard let event = state.events.first(where: { $0.eventId == eventId }),
+                      try eventFingerprint(event) == fingerprint,
+                      event.consumedAtEpochMillis != nil,
+                      Date().timeIntervalSince1970 * 1_000 >= Double(event.occurredAtEpochMillis + Self.occurrenceCoalescingWindowMillis),
+                      !event.requiresRecordProjection || event.recordProjectionAckAtEpochMillis != nil else {
+                    return IosAlarmNativeCleanupCommitResult(
+                        committed: false,
+                        stale: true,
+                        code: .success,
+                        message: nil
+                    )
+                }
+                let remaining = state.events.filter { $0.eventId != eventId }
+                try writeStateUnlocked(AlarmMissionEventInboxState(
+                    schemaVersion: state.schemaVersion,
+                    events: remaining,
+                    dedupRecords: state.dedupRecords
+                ))
+                return IosAlarmNativeCleanupCommitResult(
+                    committed: true,
+                    stale: false,
+                    code: .success,
+                    message: nil
+                )
+            }
+            callback(result)
+        } catch {
+            callback(IosAlarmNativeCleanupCommitResult(
+                committed: false,
+                stale: false,
+                code: .sdkError,
+                message: "Native cleanup could not be committed."
+            ))
+        }
+    }
+
+    func compactTerminalChain(
+        chainId: String,
+        fingerprint: String,
+        callback: @escaping (IosAlarmNativeCleanupCommitResult) -> Void
+    ) {
+        do {
+            // Lock order is Inbox -> journal. No journal operation acquires the Inbox lock.
+            // Keeping the Inbox lock through compaction prevents a new event from racing the tombstone.
+            let result = try withInboxFileLock { () -> IosAlarmNativeCleanupCommitResult in
+                let state = try readStateUnlocked()
+                let journalState = try AlarmRecoveryDriver.journal.recoveryState()
+                var protectedOccurrenceIds = Set<String>()
+                if let chain = journalState.chains[chainId] {
+                    protectedOccurrenceIds.formUnion(chain.attempts.map(\.occurrenceId))
+                    protectedOccurrenceIds.formUnion(chain.attempts.map(\.nextOccurrenceToken))
+                    if let terminalOccurrenceId = chain.terminalOccurrenceId {
+                        protectedOccurrenceIds.insert(terminalOccurrenceId)
+                    }
+                }
+                if let tombstone = journalState.terminalTombstones[chainId] {
+                    protectedOccurrenceIds.formUnion(tombstone.knownTokens)
+                    protectedOccurrenceIds.insert(tombstone.terminalOccurrenceId)
+                }
+                guard !state.events.contains(where: {
+                    $0.chainId == chainId || protectedOccurrenceIds.contains($0.occurrenceId)
+                }) else {
+                    return IosAlarmNativeCleanupCommitResult(
+                        committed: false,
+                        stale: true,
+                        code: .success,
+                        message: nil
+                    )
+                }
+                _ = try AlarmRecoveryDriver.journal.compactTerminalChain(
+                    chainId: chainId,
+                    expectedFingerprint: fingerprint
+                )
+                return IosAlarmNativeCleanupCommitResult(
+                    committed: true,
+                    stale: false,
+                    code: .success,
+                    message: nil
+                )
+            }
+            callback(result)
+        } catch AlarmRecoveryJournalError.staleCleanupCandidate {
+            callback(IosAlarmNativeCleanupCommitResult(
+                committed: false,
+                stale: true,
+                code: .success,
+                message: nil
+            ))
+        } catch {
+            callback(IosAlarmNativeCleanupCommitResult(
+                committed: false,
+                stale: false,
+                code: .sdkError,
+                message: "Native cleanup could not be committed."
+            ))
+        }
+    }
+
     func markConsumed(
         eventId: String,
         callback: @escaping (IosAlarmOperationResult) -> Void
@@ -243,6 +498,20 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 message: nil
             )
         )
+    }
+
+    func ackRecordEventProjection(
+        eventId: String,
+        callback: @escaping (IosAlarmOperationResult) -> Void
+    ) {
+        let acked = (try? mutateEvents { events, _ in
+            guard let index = events.firstIndex(where: { $0.eventId == eventId }) else { return false }
+            if events[index].recordProjectionAckAtEpochMillis == nil {
+                events[index].recordProjectionAckAtEpochMillis = Int64(Date().timeIntervalSince1970 * 1_000)
+            }
+            return true
+        }) ?? false
+        callback(IosAlarmOperationResult(code: acked ? .success : .notFound, message: nil))
     }
 
     func upsertSourceSnapshot(
@@ -406,32 +675,30 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
     func recordOpenStopThroughRecoveryIfAvailable(
         alarmId: String,
         occurrenceId: String?,
+        retryAttempt: Int = 0,
         scheduleVersion: Int64,
         systemAlarmId: String,
         now: Date = Date()
     ) async throws -> Bool {
-        guard try hasJournalRoute(
+        let disposition = try await AlarmRecoveryDriver.stop(
             alarmId: alarmId,
             occurrenceToken: occurrenceId,
-            scheduleVersion: scheduleVersion
-        ) else {
-            return false
-        }
-        _ = try await AlarmRecoveryDriver.stop(
-            alarmId: alarmId,
-            occurrenceToken: occurrenceId,
+            retryAttempt: retryAttempt,
             scheduleVersion: scheduleVersion,
             systemAlarmId: systemAlarmId,
             now: now
         )
-        notifyRecoveryChanged()
-        return true
+        switch disposition {
+        case .handled, .preserved:
+            notifyRecoveryChanged()
+            return true
+        case .fallback:
+            return false
+        }
     }
 
     private func pendingEvents() throws -> [AlarmMissionEvent] {
-        try lock.withLock {
-            try readEventsUnlocked().filter { !$0.isConsumed }
-        }
+        try withInboxFileLock { try readStateUnlocked().events.filter { !$0.isConsumed } }
     }
 
     @discardableResult
@@ -449,9 +716,10 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 return false
             }
         }
-        let consumedLegacyProjection = lock.withLock {
+        let consumedLegacyProjection = (try? withInboxFileLock {
             do {
-                var events = try readEventsUnlocked()
+                var state = try readStateUnlocked()
+                var events = state.events
                 guard let index = events.firstIndex(where: { $0.eventId == eventId }) else {
                     return false
                 }
@@ -459,22 +727,26 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                     return true
                 }
                 events[index].consumedAtEpochMillis = consumedAtEpochMillis
-                try writeEventsUnlocked(events)
+                state.events = events
+                try writeStateUnlocked(state)
                 return true
             } catch {
                 return false
             }
-        }
+        }) ?? false
         return consumedJournalProjection || consumedLegacyProjection
     }
 
     private func mutateEvents<Result>(
-        _ mutation: (inout [AlarmMissionEvent]) throws -> Result
+        _ mutation: (inout [AlarmMissionEvent], [AlarmMissionEventDedupRecord]) throws -> Result
     ) throws -> Result {
-        try lock.withLock {
-            var events = try readEventsUnlocked()
-            let result = try mutation(&events)
-            try writeEventsUnlocked(events)
+        try withInboxFileLock {
+            var state = try readStateUnlocked()
+            var events = state.events
+            let result = try mutation(&events, state.dedupRecords)
+            state.events = events
+            state.dedupRecords = mergedDedupRecords(state.dedupRecords, events: events)
+            try writeStateUnlocked(state)
             return result
         }
     }
@@ -482,8 +754,53 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
     private static let occurrenceCoalescingWindowMillis: Int64 = 10_000
 
     private func pendingEventDtos() throws -> [IosAlarmMissionEventDto] {
+        try importLegacyProjection()
         let journalIds = Set(try AlarmRecoveryDriver.journal.attemptsForRecovery().map(\.occurrenceId))
-        return try pendingEvents().filter { !journalIds.contains($0.occurrenceId) }.map { $0.toDto() }
+        return try pendingEvents()
+            .filter { !journalIds.contains($0.occurrenceId) }
+            .filter { try isRoutableToKotlin($0) }
+            .map { $0.toDto() }
+    }
+
+    private func recordProjectionEventDtos() throws -> [IosAlarmMissionEventDto] {
+        try importLegacyProjection()
+        let journalIds = Set(try AlarmRecoveryDriver.journal.attemptsForRecovery().map(\.occurrenceId))
+        return try withInboxFileLock { try readStateUnlocked().events }
+            .filter {
+                ($0.action == .stop ||
+                    $0.ringingObservedAtEpochMillis != nil ||
+                    $0.ringingStoppedAtEpochMillis != nil) &&
+                    $0.recordProjectionAckAtEpochMillis == nil &&
+                    !journalIds.contains($0.occurrenceId)
+            }
+            .filter { try isRoutableToKotlin($0) }
+            .sorted { $0.occurredAtEpochMillis < $1.occurredAtEpochMillis }
+            .map { $0.toDto() }
+    }
+
+    private func isRoutableToKotlin(_ event: AlarmMissionEvent) throws -> Bool {
+        let sourceKey = AlarmRecoverySourceKey(
+            sourceAlarmId: event.alarmId,
+            scheduleVersion: event.scheduleVersion ?? 1
+        )
+        let stopAt = Date(timeIntervalSince1970: Double(
+            event.ringingStoppedAtEpochMillis ?? event.occurredAtEpochMillis
+        ) / 1_000)
+        switch try AlarmRecoveryDriver.journal.routeStop(
+            occurrenceToken: event.occurrenceId,
+            retryAttempt: event.retryAttempt ?? 0,
+            sourceKey: sourceKey,
+            stopAt: stopAt
+        ) {
+        case .unknownRetry, .compactedTerminal:
+            return false
+        case let .liveAttempt(attempt):
+            // A known next token belongs to native recovery. If its legacy
+            // import was rejected, do not let Kotlin reinterpret it as a root.
+            return event.occurrenceId != attempt.nextOccurrenceToken
+        case .newRoot:
+            return true
+        }
     }
 
     private func recoveryEventDtos(includeAcked: Bool) throws -> [IosAlarmMissionEventDto] {
@@ -496,7 +813,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         let defaults = UserDefaults.standard
         let active = defaults.stringArray(forKey: "ios.activeMission.record.v2")
         let deadline = defaults.stringArray(forKey: "ios.activeMission.deadlineAlarm.v1")
-        let legacyEvents = try lock.withLock { try readEventsUnlocked() }
+        let legacyEvents = try withInboxFileLock { try readStateUnlocked().events }
         if let active, active.count >= 12,
            let limit = Int64(active[3]), let expires = Int64(active[4]),
            let stopped = Int64(active[5]), let lat = Double(active[7]), let lon = Double(active[8]) {
@@ -512,16 +829,53 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
             )
             _ = try AlarmRecoveryDriver.journal.upsertSourceSnapshot(snapshot)
             let matching = deadline.flatMap { $0.count >= 4 && $0[1] == active[1] ? $0 : nil }
-            _ = try AlarmRecoveryDriver.journal.importLegacy(
-                occurrenceId: active[1], snapshot: snapshot,
-                stopAt: Date(timeIntervalSince1970: Double(stopped) / 1_000),
-                reservationUUID: matching?[0], nextOccurrenceToken: matching?[2],
-                expiresAtEpochMillis: expires, sequence: active.count > 12 ? Int(active[12]) ?? 0 : 0
-            )
+            do {
+                _ = try AlarmRecoveryDriver.journal.importLegacy(
+                    occurrenceId: active[1], snapshot: snapshot,
+                    stopAt: Date(timeIntervalSince1970: Double(stopped) / 1_000),
+                    reservationUUID: matching?[0], nextOccurrenceToken: matching?[2],
+                    expiresAtEpochMillis: expires, sequence: active.count > 12 ? Int(active[12]) ?? 0 : 0
+                )
+            } catch AlarmRecoveryJournalError.terminalChain {
+                // A permanent tombstone means this legacy projection is stale.
+            }
         }
         // Only pending confirmed stops with an immutable source snapshot can be imported.
         // Other legacy events remain in their existing inbox for the old coordinator.
         for event in legacyEvents where !event.isConsumed && event.ringingStoppedAtEpochMillis != nil {
+            let sourceKey = AlarmRecoverySourceKey(
+                sourceAlarmId: event.alarmId,
+                scheduleVersion: event.scheduleVersion ?? 1
+            )
+            let stopAt = Date(timeIntervalSince1970: Double(event.ringingStoppedAtEpochMillis!) / 1_000)
+            switch try AlarmRecoveryDriver.journal.routeStop(
+                occurrenceToken: event.occurrenceId,
+                retryAttempt: event.retryAttempt ?? 0,
+                sourceKey: sourceKey,
+                stopAt: stopAt
+            ) {
+            case .unknownRetry, .compactedTerminal:
+                continue
+            case let .liveAttempt(parent):
+                guard event.occurrenceId == parent.nextOccurrenceToken else { continue }
+                let retryAttempt = event.retryAttempt ?? 0
+                do {
+                    _ = try AlarmRecoveryDriver.journal.acceptStop(
+                        snapshot: parent.snapshot,
+                        occurrenceToken: event.occurrenceId,
+                        retryAttempt: retryAttempt == 0 ? parent.sequence + 1 : retryAttempt,
+                        parentOccurrenceId: parent.occurrenceId,
+                        stopAt: stopAt
+                    )
+                } catch AlarmRecoveryJournalError.terminalChain,
+                        AlarmRecoveryJournalError.missingParentAttempt,
+                        AlarmRecoveryJournalError.retryTokenMismatch {
+                    // Keep ambiguous legacy retry data out of the Kotlin root path.
+                }
+                continue
+            case .newRoot:
+                break
+            }
             guard event.retryAttempt ?? 0 == 0,
                   var snapshot = try AlarmRecoveryDriver.journal.sourceSnapshot(
                     sourceAlarmId: event.alarmId, scheduleVersion: event.scheduleVersion ?? 1
@@ -537,20 +891,28 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 owner: event.ownerCaptured == true
                     ? event.ownerAccountId.map(AlarmRecoveryOwner.capturedAccount) ?? .capturedGuest : .uncaptured
             )
-            _ = try AlarmRecoveryDriver.journal.importLegacy(
-                occurrenceId: event.occurrenceId, snapshot: snapshot,
-                stopAt: Date(timeIntervalSince1970: Double(event.ringingStoppedAtEpochMillis!) / 1_000),
-                reservationUUID: nil
-            )
+            do {
+                _ = try AlarmRecoveryDriver.journal.importLegacy(
+                    occurrenceId: event.occurrenceId, snapshot: snapshot,
+                    stopAt: stopAt,
+                    reservationUUID: nil
+                )
+            } catch AlarmRecoveryJournalError.terminalChain {
+                // Keep the legacy record intact without recreating a compacted chain.
+            }
         }
         if let terminal = defaults.stringArray(forKey: "ios.activeMission.pendingTerminal.v1"),
            terminal.count >= 3, let at = Int64(terminal[2]) {
-            try AlarmRecoveryDriver.journal.markTerminal(
-                chainId: terminal.count > 4 ? terminal[4] : terminal[0],
-                outcome: terminal[1] == "SUCCESS" ? .terminalSucceeded : .terminalForcedStop,
-                occurrenceId: terminal[0],
-                now: Date(timeIntervalSince1970: Double(at) / 1_000)
-            )
+            let chainId = terminal.count > 4 ? terminal[4] : terminal[0]
+            let state = try AlarmRecoveryDriver.journal.recoveryState()
+            if state.terminalTombstones[chainId] == nil {
+                try AlarmRecoveryDriver.journal.markTerminal(
+                    chainId: chainId,
+                    outcome: terminal[1] == "SUCCESS" ? .terminalSucceeded : .terminalForcedStop,
+                    occurrenceId: terminal[0],
+                    now: Date(timeIntervalSince1970: Double(at) / 1_000)
+                )
+            }
         }
     }
 
@@ -569,21 +931,6 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
     private func recoveryAttemptDtos() throws -> [IosAlarmRecoveryAttemptDto] {
         try AlarmRecoveryDriver.journal.attemptsForRecovery()
             .map { $0.toRecoveryAttemptDto() }
-    }
-
-    private func hasJournalRoute(
-        alarmId rawAlarmId: String,
-        occurrenceToken: String?,
-        scheduleVersion: Int64
-    ) throws -> Bool {
-        let alarmId = UUID(uuidString: rawAlarmId)?.uuidString ?? rawAlarmId
-        let state = try AlarmRecoveryDriver.journal.recoveryState()
-        if let occurrenceToken,
-           state.chains.values.flatMap(\.attempts).contains(where: { $0.nextOccurrenceToken == occurrenceToken }) {
-            return true
-        }
-        let key = AlarmRecoverySourceKey(sourceAlarmId: alarmId, scheduleVersion: scheduleVersion)
-        return state.snapshots[key] != nil
     }
 
     private func completeOperation(
@@ -610,26 +957,147 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         }
     }
 
-    private func readEventsUnlocked() throws -> [AlarmMissionEvent] {
+    private func readStateUnlocked() throws -> AlarmMissionEventInboxState {
         let url = try inboxURL()
         guard fileManager.fileExists(atPath: url.path) else {
-            return []
+            return .empty
         }
         let data = try Data(contentsOf: url)
         guard !data.isEmpty else {
-            return []
+            return .empty
         }
-        return try decoder.decode([AlarmMissionEvent].self, from: data)
+        do {
+            let state = try decoder.decode(AlarmMissionEventInboxState.self, from: data)
+            guard state.schemaVersion == AlarmMissionEventInboxState.currentSchemaVersion else {
+                throw AlarmMissionEventInboxError.unsupportedSchemaVersion
+            }
+            return state
+        } catch let error as AlarmMissionEventInboxError {
+            throw error
+        } catch {
+            let legacyEvents = try decoder.decode([AlarmMissionEvent].self, from: data)
+            return AlarmMissionEventInboxState(
+                schemaVersion: AlarmMissionEventInboxState.currentSchemaVersion,
+                events: legacyEvents,
+                dedupRecords: mergedDedupRecords([], events: legacyEvents)
+            )
+        }
     }
 
-    private func writeEventsUnlocked(_ events: [AlarmMissionEvent]) throws {
+    private func writeStateUnlocked(_ state: AlarmMissionEventInboxState) throws {
+        guard state.schemaVersion == AlarmMissionEventInboxState.currentSchemaVersion else {
+            throw AlarmMissionEventInboxError.unsupportedSchemaVersion
+        }
         let url = try inboxURL()
-        try fileManager.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+        let directory = url.deletingLastPathComponent()
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        try applyProtectedFileAttributes(to: directory)
+        let tempURL = directory.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        do {
+            try writeDurably(encoder.encode(state), to: tempURL)
+            try applyProtectedFileAttributes(to: tempURL)
+            if fileManager.fileExists(atPath: url.path) {
+                _ = try fileManager.replaceItemAt(url, withItemAt: tempURL)
+            } else {
+                try fileManager.moveItem(at: tempURL, to: url)
+            }
+            try applyProtectedFileAttributes(to: url)
+            try fsyncDirectory(directory)
+        } catch {
+            try? fileManager.removeItem(at: tempURL)
+            throw error
+        }
+    }
+
+    private func withInboxFileLock<T>(_ body: () throws -> T) throws -> T {
+        try lock.withLock {
+            let directory = try inboxURL().deletingLastPathComponent()
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try applyProtectedFileAttributes(to: directory)
+            let lockURL = directory.appendingPathComponent("alarm-mission-events.lock")
+            let fd = open(lockURL.path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+            guard fd != -1 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            defer { close(fd) }
+            try applyProtectedFileAttributes(to: lockURL)
+            guard flock(fd, LOCK_EX) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            defer { flock(fd, LOCK_UN) }
+            return try body()
+        }
+    }
+
+    private func mergedDedupRecords(
+        _ existing: [AlarmMissionEventDedupRecord],
+        events: [AlarmMissionEvent]
+    ) -> [AlarmMissionEventDedupRecord] {
+        var records = existing
+        for event in events {
+            let record = AlarmMissionEventDedupRecord(event: event)
+            if let index = records.firstIndex(where: { $0.eventId == event.eventId }) {
+                records[index] = record
+            } else {
+                records.append(record)
+            }
+        }
+        return records
+    }
+
+    private func eventFingerprint(_ event: AlarmMissionEvent) throws -> String {
+        let digest = SHA256.hash(data: try encoder.encode(event))
+        return "sha256:" + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func applyProtectedFileAttributes(to url: URL) throws {
+        #if os(iOS)
+        try fileManager.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: url.path
         )
-        let data = try encoder.encode(events)
-        try data.write(to: url, options: [.atomic])
+        #endif
+    }
+
+    private func writeDurably(_ data: Data, to url: URL) throws {
+        let fd = open(url.path, O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR)
+        guard fd != -1 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        do {
+            try data.withUnsafeBytes { rawBuffer in
+                guard let baseAddress = rawBuffer.baseAddress else { return }
+                var remaining = rawBuffer.count
+                var pointer = baseAddress
+                while remaining > 0 {
+                    let written = Darwin.write(fd, pointer, remaining)
+                    guard written > 0 else {
+                        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+                    }
+                    remaining -= written
+                    pointer = pointer.advanced(by: written)
+                }
+            }
+            guard fsync(fd) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+        } catch {
+            close(fd)
+            try? fileManager.removeItem(at: url)
+            throw error
+        }
+        close(fd)
+    }
+
+    private func fsyncDirectory(_ directory: URL) throws {
+        let fd = open(directory.path, O_RDONLY)
+        guard fd != -1 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { close(fd) }
+        guard fsync(fd) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
     }
 
     private func inboxURL() throws -> URL {
@@ -658,7 +1126,8 @@ private extension AlarmMissionEvent {
             ringingStoppedAtEpochMillis: ringingStoppedAtEpochMillis.map { KotlinLong(value: $0) },
             scheduleVersion: scheduleVersion ?? 1,
             ownerAccountId: ownerAccountId,
-            ownerCaptured: ownerCaptured ?? false
+            ownerCaptured: ownerCaptured ?? false,
+            chainId: chainId
         )
     }
 }
@@ -676,7 +1145,8 @@ private extension AlarmRecoveryAttempt {
             ringingStoppedAtEpochMillis: KotlinLong(value: stopAtEpochMillis),
             scheduleVersion: snapshot.scheduleVersion,
             ownerAccountId: snapshot.owner.dtoAccountId,
-            ownerCaptured: snapshot.owner.dtoCaptured
+            ownerCaptured: snapshot.owner.dtoCaptured,
+            chainId: chainId
         )
     }
 
@@ -774,7 +1244,8 @@ private extension AlarmRecoveryReservationLedger {
             lastError: lastError,
             cancellationRequired: cancellationRequired,
             cancellationConfirmedAtEpochMillis: cancellationConfirmedAtEpochMillis.map { KotlinLong(value: $0) },
-            lateScheduleAfterTerminal: lateScheduleAfterTerminal
+            lateScheduleAfterTerminal: lateScheduleAfterTerminal,
+            scheduleCallSettled: scheduleCallSettled
         )
     }
 }
@@ -924,6 +1395,7 @@ private func completeOnMain(_ completion: @escaping () -> Void) {
 
 enum AlarmMissionEventInboxError: Error {
     case invalidAlarmId
+    case unsupportedSchemaVersion
 }
 
 private extension NSLock {

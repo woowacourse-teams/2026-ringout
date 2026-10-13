@@ -47,25 +47,26 @@ struct StopAlarmIntent: LiveActivityIntent {
 
     func perform() async throws -> some IntentResult {
         let enteredAt = Date()
-        if try AlarmRecoveryDriver.journal.sourceSnapshot(
-            sourceAlarmId: alarmId, scheduleVersion: Int64(scheduleVersion)
-        ) != nil {
-            try await AlarmRecoveryDriver.stop(
-                alarmId: alarmId,
-                occurrenceToken: occurrenceId.isEmpty ? nil : occurrenceId,
-                scheduleVersion: Int64(scheduleVersion),
-                systemAlarmId: systemAlarmId,
-                now: enteredAt
-            )
+        let disposition = try await AlarmRecoveryDriver.stop(
+            alarmId: alarmId,
+            occurrenceToken: occurrenceId.isEmpty ? nil : occurrenceId,
+            retryAttempt: retryAttempt,
+            scheduleVersion: Int64(scheduleVersion),
+            systemAlarmId: systemAlarmId,
+            now: enteredAt
+        )
+        switch disposition {
+        case .handled:
             RingoutAlarmMissionEventInbox.shared.notifyRecoveryChanged()
-        } else {
-            // Existing OS configurations created before the snapshot migration.
+        case .fallback:
             try RingoutAlarmMissionEventInbox.shared.record(
                 alarmId: alarmId, action: .stop,
                 occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
                 retryAttempt: retryAttempt, scheduleVersion: Int64(scheduleVersion),
                 systemAlarmId: systemAlarmId, now: enteredAt
             )
+        case .preserved:
+            break
         }
         // Deferred mode requests foreground after this background work completes.
         // No optional transition error is swallowed, and cancellation cannot undo
@@ -131,15 +132,26 @@ struct OpenRingoutIntent: LiveActivityIntent {
                 didStopRinging = true
             }
         }
-        if didStopRinging, try AlarmRecoveryDriver.journal.sourceSnapshot(
-            sourceAlarmId: alarmId, scheduleVersion: Int64(scheduleVersion)
-        ) != nil {
-            try await AlarmRecoveryDriver.stop(
+        if didStopRinging {
+            let disposition = try await AlarmRecoveryDriver.stop(
                 alarmId: alarmId,
                 occurrenceToken: occurrenceId.isEmpty ? nil : occurrenceId,
+                retryAttempt: retryAttempt,
                 scheduleVersion: Int64(scheduleVersion), systemAlarmId: systemAlarmId
             )
-            RingoutAlarmMissionEventInbox.shared.notifyRecoveryChanged()
+            switch disposition {
+            case .handled:
+                RingoutAlarmMissionEventInbox.shared.notifyRecoveryChanged()
+            case .fallback:
+                try RingoutAlarmMissionEventInbox.shared.record(
+                    alarmId: alarmId, action: .open,
+                    occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
+                    retryAttempt: retryAttempt, scheduleVersion: Int64(scheduleVersion),
+                    systemAlarmId: systemAlarmId, didStopRinging: didStopRinging
+                )
+            case .preserved:
+                break
+            }
         } else {
             try RingoutAlarmMissionEventInbox.shared.record(
                 alarmId: alarmId, action: .open,

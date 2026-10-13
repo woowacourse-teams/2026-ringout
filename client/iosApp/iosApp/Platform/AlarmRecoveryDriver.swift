@@ -7,6 +7,12 @@ private struct RecoveryAlarmMetadata: AlarmMetadata {
     let occurrenceToken: String
 }
 
+enum AlarmRecoveryStopDisposition {
+    case handled
+    case fallback
+    case preserved
+}
+
 /// The only scheduler for journal-backed retries. No Room, DI or foreground
 /// construction is needed between a stop and its durable next reservation.
 enum AlarmRecoveryDriver {
@@ -17,21 +23,56 @@ enum AlarmRecoveryDriver {
     static func stop(
         alarmId: String,
         occurrenceToken: String?,
+        retryAttempt: Int = 0,
         scheduleVersion: Int64,
         systemAlarmId: String,
         now: Date = Date()
-    ) async throws -> AlarmRecoveryAcceptedStop? {
+    ) async throws -> AlarmRecoveryStopDisposition {
         let state = try journal.recoveryState()
-        let parent = state.chains.values.flatMap(\.attempts).first {
-            occurrenceToken != nil && $0.nextOccurrenceToken == occurrenceToken
+        let sourceKey = AlarmRecoverySourceKey(sourceAlarmId: alarmId, scheduleVersion: scheduleVersion)
+        let route = try journal.routeStop(
+            occurrenceToken: occurrenceToken,
+            retryAttempt: retryAttempt,
+            sourceKey: sourceKey,
+            stopAt: now
+        )
+        if case let .compactedTerminal(tombstone) = route {
+            let reservationId = UUID(uuidString: systemAlarmId)?.uuidString
+            let expectedReservationId = occurrenceToken.flatMap {
+                tombstone.retryReservationUUIDByToken[$0]
+            }
+            if let reservationId, reservationId == expectedReservationId {
+                try journal.requireTombstoneCancellation(reservationUUID: reservationId)
+                try await cancelTombstoneReservation(reservationId)
+            }
+            return .handled
+        }
+        if case .unknownRetry = route {
+            return Self.hasLegacyRetryProof(
+                alarmId: alarmId,
+                occurrenceToken: occurrenceToken,
+                retryAttempt: retryAttempt,
+                scheduleVersion: scheduleVersion,
+                systemAlarmId: systemAlarmId
+            ) ? .fallback : .preserved
+        }
+
+        let parent: AlarmRecoveryAttempt?
+        if let occurrenceToken, case let .liveAttempt(attempt) = route,
+           attempt.nextOccurrenceToken == occurrenceToken {
+            parent = attempt
+        } else {
+            parent = nil
         }
         if let parent, state.chains[parent.chainId]?.terminalOutcome != nil {
             try await recover()
-            return nil
+            return .handled
         }
         guard var snapshot = try parent?.snapshot ?? journal.sourceSnapshot(
             sourceAlarmId: alarmId, scheduleVersion: scheduleVersion
-        ) else { return nil }
+        ) else {
+            return retryAttempt == 0 ? .fallback : .preserved
+        }
         let observation = parent == nil ? try? AlarmRingingOccurrenceStore.shared.observation(
             systemAlarmId: systemAlarmId, now: now
         ) : nil
@@ -53,19 +94,34 @@ enum AlarmRecoveryDriver {
         }
         let accepted: AlarmRecoveryAcceptedStop
         do {
+            let acceptedRetryAttempt: Int
+            if let parent, retryAttempt == 0 {
+                acceptedRetryAttempt = parent.sequence + 1
+            } else {
+                acceptedRetryAttempt = retryAttempt
+            }
             accepted = try journal.acceptStop(
                 snapshot: snapshot,
                 occurrenceToken: occurrenceToken ?? observation?.occurrenceId,
+                retryAttempt: acceptedRetryAttempt,
                 parentOccurrenceId: parent?.occurrenceId,
                 rootOccurrenceId: parent == nil ? observation?.occurrenceId : nil,
                 stopAt: now
             )
         } catch AlarmRecoveryJournalError.sourceNotEligible {
-            return nil
+            return .preserved
+        } catch AlarmRecoveryJournalError.terminalChain {
+            // Another process may have compacted or terminated the chain after
+            // the route lookup. The retry is consumed without creating a root.
+            return .handled
+        } catch AlarmRecoveryJournalError.missingParentAttempt {
+            // A concurrently removed parent is ambiguous. Keep the event out of
+            // the legacy/root fallback and let the next recovery read decide.
+            return .preserved
         }
         // Persist before any actor hop, OS request or foreground authentication.
         try await submit(accepted.attempt)
-        return accepted
+        return .handled
     }
 
     static func recover() async throws {
@@ -87,7 +143,42 @@ enum AlarmRecoveryDriver {
             }
             } catch { lastError = error }
         }
+        for reservationUUID in try journal.compactedReservationUUIDs() {
+            if try await contains(reservationUUID) {
+                try journal.requireTombstoneCancellation(reservationUUID: reservationUUID)
+            }
+        }
+        for reservationUUID in try journal.tombstoneCancellationRequiredUUIDs() {
+            do {
+                try await cancelTombstoneReservation(reservationUUID)
+            } catch { lastError = error }
+        }
         if let lastError { throw lastError }
+    }
+
+    private static func hasLegacyRetryProof(
+        alarmId: String,
+        occurrenceToken: String?,
+        retryAttempt: Int,
+        scheduleVersion: Int64,
+        systemAlarmId: String
+    ) -> Bool {
+        guard retryAttempt > 0,
+              let occurrenceToken,
+              let active = UserDefaults.standard.stringArray(forKey: "ios.activeMission.record.v2"),
+              active.count >= 13,
+              let activeSequence = Int(active[12]),
+              let deadline = UserDefaults.standard.stringArray(forKey: "ios.activeMission.deadlineAlarm.v1"),
+              deadline.count >= 3 else { return false }
+        let activeScheduleVersion = active.count > 13 ? Int64(active[13]) ?? 1 : 1
+        return (UUID(uuidString: active[0])?.uuidString ?? active[0]) ==
+                (UUID(uuidString: alarmId)?.uuidString ?? alarmId) &&
+            activeScheduleVersion == scheduleVersion &&
+            retryAttempt == activeSequence + 1 &&
+            deadline[1] == active[1] &&
+            deadline[2] == occurrenceToken &&
+            (UUID(uuidString: deadline[0])?.uuidString ?? deadline[0]) ==
+                (UUID(uuidString: systemAlarmId)?.uuidString ?? systemAlarmId)
     }
 
     private static func submit(_ attempt: AlarmRecoveryAttempt) async throws {
@@ -166,5 +257,14 @@ enum AlarmRecoveryDriver {
         // In-flight/unknown owners may still produce a late schedule. Their
         // obligation remains protected even after a currently absent snapshot.
         try journal.markCancellationConfirmed(reservationUUID: attempt.nextReservationUUID)
+    }
+
+    @MainActor
+    private static func cancelTombstoneReservation(_ rawId: String) throws {
+        guard let id = UUID(uuidString: rawId) else { return }
+        if try AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
+            try AlarmManager.shared.cancel(id: id)
+        }
+        try journal.markTombstoneCancellationConfirmed(reservationUUID: id.uuidString)
     }
 }

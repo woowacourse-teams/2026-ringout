@@ -24,6 +24,11 @@ struct AlarmRecoveryJournalTests {
             return
         }
 
+        try `compact된_정확한_retry와_root는_종료_경로로_라우팅한다`()
+        try `compact뒤의_legacy_import은_chain을_되살리지_않는다`()
+        try `fingerprint가_바뀐_chain은_원자적으로_compact되지_않는다`()
+        try `알_수_없는_retry는_root로_승격하지_않는다`()
+        try `schema_v1은_보수적으로_v2로_읽고_다음_저장에_이행한다`()
         try `루트_중지는_재시작해도_chainId와_occurrenceId를_유지한다`()
         try `명시적_토큰_중복은_예약_ID와_시간을_보존한다`()
         try `토큰_없는_루트는_십초_창에서만_휴리스틱으로_합쳐진다`()
@@ -49,7 +54,280 @@ struct AlarmRecoveryJournalTests {
         try `관측된_원본_울림은_기존_실행_ID를_체인_ID로_채택한다`()
         try `미지원_schema는_변경하지_않고_실패한다`()
         try `앱_전환_관측은_마감과_예약을_바꾸지_않고_개수를_제한한다`()
-        print("25 alarm recovery journal tests passed")
+        print("30 alarm recovery journal tests passed")
+    }
+
+    static func `compact된_정확한_retry와_root는_종료_경로로_라우팅한다`() throws {
+        try withJournal(ids: ["root", "reservation", "retry-token"]) { directory, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let attempt = try journal.acceptStop(
+                snapshot: snapshot,
+                occurrenceToken: "root-observation",
+                stopAt: Date(timeIntervalSince1970: 1_000)
+            ).attempt
+            let claim = try journal.claimNextReservation(
+                occurrenceId: attempt.occurrenceId,
+                executionEpoch: "epoch",
+                now: Date(timeIntervalSince1970: 1_001)
+            )!
+            try journal.completeReservation(claim: claim, status: .confirmed)
+            try journal.markTerminal(
+                chainId: attempt.chainId,
+                outcome: .terminalSucceeded,
+                occurrenceId: attempt.occurrenceId,
+                now: Date(timeIntervalSince1970: 1_002)
+            )
+            try journal.ackTerminalRecord(chainId: attempt.chainId)
+            try journal.ackRecordProjection(occurrenceId: attempt.occurrenceId)
+            try journal.markCancellationConfirmed(
+                reservationUUID: attempt.nextReservationUUID,
+                now: Date(timeIntervalSince1970: 1_003)
+            )
+
+            let cleanupCandidate = try journal.terminalCleanupSnapshots().first!
+            assert(cleanupCandidate.chain.chainId == attempt.chainId)
+            let fingerprint = cleanupCandidate.fingerprint
+            let tombstone = try journal.compactTerminalChain(
+                chainId: attempt.chainId,
+                expectedFingerprint: fingerprint
+            )
+            let repeatedCompact = try journal.compactTerminalChain(
+                chainId: attempt.chainId,
+                expectedFingerprint: fingerprint
+            )
+            assert(repeatedCompact == tombstone)
+            let restored = AlarmRecoveryJournal(directoryURL: directory)
+            let sourceKey = AlarmRecoverySourceKey(sourceAlarmId: "alarm", scheduleVersion: 1)
+            assert(tombstone.knownTokens.contains("root-observation"))
+            assert(tombstone.knownTokens.contains(attempt.nextOccurrenceToken))
+            let restoredAttempts = try restored.attemptsForRecovery()
+            let restoredState = try restored.recoveryState()
+            let protectedReservations = try restored.protectedReservationUUIDs()
+            assert(restoredAttempts.isEmpty)
+            assert(restoredState.tokenIndex.isEmpty)
+            assert(restoredState.rootWindowIndex.isEmpty)
+            assert(protectedReservations.contains(attempt.nextReservationUUID))
+            do {
+                _ = try restored.acceptStop(
+                    snapshot: snapshot,
+                    occurrenceToken: attempt.nextOccurrenceToken,
+                    retryAttempt: 1,
+                    stopAt: Date(timeIntervalSince1970: 1_060)
+                )
+                assertionFailure("A tombstoned retry must not recreate its attempt")
+            } catch AlarmRecoveryJournalError.terminalChain { }
+
+            try restored.requireTombstoneCancellation(reservationUUID: attempt.nextReservationUUID)
+            let reopened = AlarmRecoveryJournal(directoryURL: directory)
+            let pendingCancellation = try reopened.tombstoneCancellationRequiredUUIDs()
+            assert(pendingCancellation.contains(attempt.nextReservationUUID))
+            try reopened.markTombstoneCancellationConfirmed(reservationUUID: attempt.nextReservationUUID)
+            let clearedCancellation = try reopened.tombstoneCancellationRequiredUUIDs()
+            assert(!clearedCancellation.contains(attempt.nextReservationUUID))
+
+            let knownRetry = try restored.routeStop(
+                occurrenceToken: attempt.nextOccurrenceToken,
+                retryAttempt: 1,
+                sourceKey: sourceKey,
+                stopAt: Date(timeIntervalSince1970: 1_060)
+            )
+            let knownRoot = try restored.routeStop(
+                occurrenceToken: "root-observation",
+                retryAttempt: 0,
+                sourceKey: sourceKey,
+                stopAt: Date(timeIntervalSince1970: 9_000)
+            )
+            let nextRoot = try restored.routeStop(
+                occurrenceToken: "next-normal-root",
+                retryAttempt: 0,
+                sourceKey: sourceKey,
+                stopAt: Date(timeIntervalSince1970: 9_000)
+            )
+            assert(knownRetry == .compactedTerminal(tombstone))
+            assert(knownRoot == .compactedTerminal(tombstone))
+            assert(nextRoot == .newRoot)
+            let acceptedNextRoot = try restored.acceptStop(
+                snapshot: snapshot,
+                occurrenceToken: "next-normal-root",
+                retryAttempt: 0,
+                stopAt: Date(timeIntervalSince1970: 9_000)
+            )
+            assert(!acceptedNextRoot.duplicate)
+            assert(acceptedNextRoot.attempt.chainId != tombstone.chainId)
+        }
+    }
+
+    static func `compact뒤의_legacy_import은_chain을_되살리지_않는다`() throws {
+        try withJournal(ids: ["root", "reservation", "retry-token"]) { _, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let attempt = try journal.acceptStop(
+                snapshot: snapshot,
+                occurrenceToken: nil,
+                stopAt: Date(timeIntervalSince1970: 1_000)
+            ).attempt
+            let claim = try journal.claimNextReservation(
+                occurrenceId: attempt.occurrenceId,
+                executionEpoch: "epoch",
+                now: Date(timeIntervalSince1970: 1_001)
+            )!
+            try journal.completeReservation(claim: claim, status: .confirmed)
+            try journal.markTerminal(
+                chainId: attempt.chainId,
+                outcome: .terminalSucceeded,
+                occurrenceId: attempt.occurrenceId,
+                now: Date(timeIntervalSince1970: 1_002)
+            )
+            try journal.ackTerminalRecord(chainId: attempt.chainId)
+            try journal.ackRecordProjection(occurrenceId: attempt.occurrenceId)
+            try journal.markCancellationConfirmed(
+                reservationUUID: attempt.nextReservationUUID,
+                now: Date(timeIntervalSince1970: 1_003)
+            )
+            let candidate = try journal.terminalCleanupSnapshots().first!
+            let tombstone = try journal.compactTerminalChain(
+                chainId: attempt.chainId,
+                expectedFingerprint: candidate.fingerprint
+            )
+            let sourceKey = AlarmRecoverySourceKey(sourceAlarmId: snapshot.sourceAlarmId, scheduleVersion: snapshot.scheduleVersion)
+            let staleRoute = try journal.routeStop(
+                occurrenceToken: "stale-tokenless-root",
+                retryAttempt: 0,
+                sourceKey: sourceKey,
+                stopAt: Date(timeIntervalSince1970: 1_009)
+            )
+            assert(staleRoute == .compactedTerminal(tombstone))
+
+            let staleLegacyImports: [(String, Date, Int)] = [
+                ("stale-tokenless-root", Date(timeIntervalSince1970: 1_009), 0),
+                (attempt.nextOccurrenceToken, Date(timeIntervalSince1970: 1_060), 1),
+            ]
+            for (occurrenceId, stopAt, sequence) in staleLegacyImports {
+                do {
+                    _ = try journal.importLegacy(
+                        occurrenceId: occurrenceId,
+                        snapshot: snapshot,
+                        stopAt: stopAt,
+                        reservationUUID: nil,
+                        sequence: sequence
+                    )
+                    assertionFailure("A legacy projection must not recreate a compacted chain")
+                } catch AlarmRecoveryJournalError.terminalChain { }
+            }
+            let attemptsAfterLegacyImports = try journal.attemptsForRecovery()
+            assert(attemptsAfterLegacyImports.isEmpty)
+        }
+    }
+
+    static func `fingerprint가_바뀐_chain은_원자적으로_compact되지_않는다`() throws {
+        try withJournal(ids: ["root", "reservation", "retry-token"]) { _, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let attempt = try journal.acceptStop(
+                snapshot: snapshot,
+                occurrenceToken: "root-observation",
+                stopAt: Date(timeIntervalSince1970: 1_000)
+            ).attempt
+            let claim = try journal.claimNextReservation(
+                occurrenceId: attempt.occurrenceId,
+                executionEpoch: "epoch",
+                now: Date(timeIntervalSince1970: 1_001)
+            )!
+            try journal.completeReservation(claim: claim, status: .confirmed)
+            try journal.markTerminal(
+                chainId: attempt.chainId,
+                outcome: .terminalSucceeded,
+                occurrenceId: attempt.occurrenceId,
+                now: Date(timeIntervalSince1970: 1_002)
+            )
+            try journal.ackTerminalRecord(chainId: attempt.chainId)
+            try journal.ackRecordProjection(occurrenceId: attempt.occurrenceId)
+            try journal.markCancellationConfirmed(
+                reservationUUID: attempt.nextReservationUUID,
+                now: Date(timeIntervalSince1970: 1_003)
+            )
+            let cleanupCandidate = try journal.terminalCleanupSnapshots().first!
+            assert(cleanupCandidate.chain.chainId == attempt.chainId)
+            let candidate = cleanupCandidate.fingerprint
+
+            try journal.ackMissionProjection(occurrenceId: attempt.occurrenceId)
+            do {
+                _ = try journal.compactTerminalChain(
+                    chainId: attempt.chainId,
+                    expectedFingerprint: candidate
+                )
+                assertionFailure("A changed chain must not match the old cleanup candidate")
+            } catch AlarmRecoveryJournalError.staleCleanupCandidate { }
+            let changedAttempts = try journal.attemptsForRecovery()
+            assert(changedAttempts.count == 1)
+            assert(changedAttempts[0].missionProjectionAck)
+            assert(changedAttempts[0].currentReservation.status == .cancellationConfirmed)
+
+            let currentFingerprint = try journal.terminalCleanupSnapshots().first!.fingerprint
+            assert(currentFingerprint != candidate)
+            let tombstone = try journal.compactTerminalChain(
+                chainId: attempt.chainId,
+                expectedFingerprint: currentFingerprint
+            )
+            assert(tombstone.chainFingerprint == currentFingerprint)
+        }
+    }
+
+    static func `알_수_없는_retry는_root로_승격하지_않는다`() throws {
+        try withJournal { _, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let route = try journal.routeStop(
+                occurrenceToken: "unknown-retry",
+                retryAttempt: 1,
+                sourceKey: AlarmRecoverySourceKey(sourceAlarmId: "alarm", scheduleVersion: 1),
+                stopAt: Date(timeIntervalSince1970: 1_000)
+            )
+            assert(route == .unknownRetry)
+            do {
+                _ = try journal.acceptStop(
+                    snapshot: snapshot,
+                    occurrenceToken: "unknown-retry",
+                    retryAttempt: 1,
+                    stopAt: Date(timeIntervalSince1970: 1_000)
+                )
+                assertionFailure("An unproven retry must not become a root")
+            } catch AlarmRecoveryJournalError.missingParentAttempt { }
+            let attempts = try journal.attemptsForRecovery()
+            assert(attempts.isEmpty)
+        }
+    }
+
+    static func `schema_v1은_보수적으로_v2로_읽고_다음_저장에_이행한다`() throws {
+        try withJournal { directory, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let attempt = try journal.acceptStop(
+                snapshot: snapshot,
+                occurrenceToken: "v1-root",
+                stopAt: Date(timeIntervalSince1970: 1_000)
+            ).attempt
+            let file = directory.appendingPathComponent("alarm-recovery-journal.json")
+            var fixture = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
+            fixture["schemaVersion"] = 1
+            fixture.removeValue(forKey: "terminalTombstones")
+            try JSONSerialization.data(withJSONObject: fixture).write(to: file)
+
+            let restored = AlarmRecoveryJournal(directoryURL: directory)
+            let decoded = try restored.recoveryState()
+            assert(decoded.schemaVersion == 2)
+            assert(decoded.chains[attempt.chainId]?.attempts == [attempt])
+            try restored.recordPresentation(
+                stage: "migration-write", mode: "background",
+                canContinueInForeground: true, protectedDataAvailable: true
+            )
+            let migrated = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
+            assert(migrated["schemaVersion"] as? Int == 2)
+            assert(migrated["terminalTombstones"] != nil)
+            let migratedAttempts = try restored.attemptsForRecovery()
+            assert(migratedAttempts == [attempt])
+        }
     }
 
     static func `뒤늦은_재울림이_있어도_종료된_울림_ID를_보존한다`() throws {
