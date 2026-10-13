@@ -2,6 +2,7 @@ package com.joon.ringout.alarm
 
 import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.analytics.IosAlarmAnalyticsRecorder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,7 @@ data class IosAlarmMissionEventDto(
     val scheduleVersion: Long = 1,
     val ownerAccountId: String? = null,
     val ownerCaptured: Boolean = false,
+    val chainId: String? = null,
 )
 
 data class IosAlarmMissionEventsResult(
@@ -48,6 +50,7 @@ interface IosAlarmMissionEventInbox {
         occurrenceId: String?,
         retryAttempt: Int,
         scheduleVersion: Long,
+        chainId: String?,
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
@@ -56,15 +59,28 @@ interface IosAlarmMissionEventInbox {
         occurrenceId: String?,
         retryAttempt: Int,
         scheduleVersion: Long,
+        chainId: String?,
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
     fun pendingEvents(callback: (IosAlarmMissionEventsResult) -> Unit)
 
+    /** All durable record projections, including events already consumed by mission recovery. */
+    fun recordProjectionEvents(callback: (IosAlarmMissionEventsResult) -> Unit) {
+        pendingEvents(callback)
+    }
+
     fun markConsumed(
         eventId: String,
         callback: (IosAlarmOperationResult) -> Unit,
     )
+
+    fun ackRecordEventProjection(
+        eventId: String,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        markConsumed(eventId, callback)
+    }
 
     fun upsertSourceSnapshot(
         snapshot: IosAlarmRecoverySourceSnapshotDto,
@@ -124,6 +140,35 @@ interface IosAlarmMissionEventInbox {
     fun protectedReservationUuids(callback: (IosAlarmProtectedReservationsResult) -> Unit) {
         callback(IosAlarmProtectedReservationsResult())
     }
+
+    fun nativeCleanupCandidates(callback: (IosAlarmNativeCleanupCandidatesResult) -> Unit) {
+        callback(IosAlarmNativeCleanupCandidatesResult(
+            code = IosAlarmOperationCode.SDK_ERROR,
+            message = "Native cleanup is unsupported by this inbox.",
+        ))
+    }
+
+    fun commitEventCleanup(
+        eventId: String,
+        fingerprint: String,
+        callback: (IosAlarmNativeCleanupCommitResult) -> Unit,
+    ) {
+        callback(IosAlarmNativeCleanupCommitResult(
+            code = IosAlarmOperationCode.SDK_ERROR,
+            message = "Native cleanup is unsupported by this inbox.",
+        ))
+    }
+
+    fun compactTerminalChain(
+        chainId: String,
+        fingerprint: String,
+        callback: (IosAlarmNativeCleanupCommitResult) -> Unit,
+    ) {
+        callback(IosAlarmNativeCleanupCommitResult(
+            code = IosAlarmOperationCode.SDK_ERROR,
+            message = "Native cleanup is unsupported by this inbox.",
+        ))
+    }
 }
 
 data class IosAlarmProtectedReservationsResult(
@@ -163,6 +208,23 @@ class IosAlarmMissionCoordinator(
     fun hasPendingDeadlineAlarm(): Boolean = missionStore.loadDeadlineAlarm() != null
 
     fun hasPendingTerminal(): Boolean = missionStore.loadPendingTerminal() != null
+
+    /** Hold mission transitions out while native code rechecks and commits terminal compaction. */
+    internal suspend fun compactIfUnprotected(
+        references: Set<String>,
+        compact: suspend () -> Boolean,
+    ): Boolean = mutex.withLock {
+        val active = activeMission.value
+        val pending = missionStore.loadPendingTerminal()
+        val deadline = missionStore.loadDeadlineAlarm()
+        val protected = buildSet {
+            active?.let { add(it.chainId); add(it.occurrenceId) }
+            pending?.let { add(it.chainId); add(it.occurrenceId) }
+            deadline?.let { add(it.sourceOccurrenceId); add(it.retryOccurrenceId) }
+        }
+        if (references.any(protected::contains)) return@withLock false
+        compact()
+    }
 
     internal fun deadlineAlarmForSystemId(systemAlarmId: String): IosMissionDeadlineAlarm? =
         missionStore.loadDeadlineAlarm()?.takeIf { registration ->
@@ -214,7 +276,7 @@ class IosAlarmMissionCoordinator(
 
     suspend fun processPendingEventsAfterRetryRecovery(): ActiveAlarmMission? = mutex.withLock {
         val nativeRecovered = recoverNativeAttemptsLocked()
-        val events = inbox.pendingEventsAwait()
+        val events = inbox.pendingEventsAwait().map(::withKnownChainId)
             .sortedBy(IosAlarmMissionEventDto::occurredAtEpochMillis)
         recoverPendingRetryCancellationLocked(events)
         var startedMission: ActiveAlarmMission? = nativeRecovered
@@ -227,7 +289,7 @@ class IosAlarmMissionCoordinator(
     suspend fun processPendingEvents(): ActiveAlarmMission? = mutex.withLock {
         recoverPendingTerminalLocked()
         val nativeRecovered = recoverNativeAttemptsLocked()
-        val events = inbox.pendingEventsAwait()
+        val events = inbox.pendingEventsAwait().map(::withKnownChainId)
             .sortedBy(IosAlarmMissionEventDto::occurredAtEpochMillis)
         recoverPendingRetryCancellationLocked(events)
         var startedMission: ActiveAlarmMission? = nativeRecovered
@@ -235,6 +297,55 @@ class IosAlarmMissionCoordinator(
             startedMission = processEventLocked(event) ?: startedMission
         }
         startedMission
+    }
+
+    /** Replays only record projections after auth resolves. It never restores a mission or schedules an alarm. */
+    suspend fun processPendingRecordProjections() = mutex.withLock {
+        outcomeRecorder.resolvePendingRecordDecisions()
+        val recovery = inbox.recoveryAttemptsAwait()
+        val recordReady = mutableSetOf<String>()
+        recovery.attempts.sortedWith(compareBy<IosAlarmRecoveryAttemptDto> { it.chainId }.thenBy { it.sequence })
+            .forEach { attempt ->
+                val ready = try {
+                    outcomeRecorder.recordRecoveryAttempt(attempt)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Throwable) {
+                    false
+                }
+                if (ready) {
+                    recordReady += attempt.occurrenceId
+                    if (!attempt.recordProjectionAck) inbox.ackRecordProjectionAwait(attempt.occurrenceId)
+                }
+            }
+        recovery.terminals.filterNot { it.terminalRecordAck }.forEach { terminal ->
+            if (terminal.outcome == IosAlarmRecoveryAttemptOutcome.SKIPPED_UNSUPPORTED_OVERLAP) {
+                inbox.ackTerminalRecordAwait(terminal.chainId)
+            } else if (terminal.occurrenceId in recordReady) {
+                when (terminal.outcome) {
+                    IosAlarmRecoveryAttemptOutcome.TERMINAL_SUCCEEDED -> outcomeRecorder.recordSuccess(
+                        terminal.occurrenceId, iosMissionDate(terminal.completedAtEpochMillis),
+                        terminal.completedAtEpochMillis,
+                    )
+                    IosAlarmRecoveryAttemptOutcome.TERMINAL_FORCED_STOP -> outcomeRecorder.recordFailure(
+                        terminal.occurrenceId, iosMissionDate(terminal.completedAtEpochMillis),
+                        terminal.completedAtEpochMillis,
+                    )
+                    else -> Unit
+                }
+                inbox.ackTerminalRecordAwait(terminal.chainId)
+            }
+        }
+        inbox.recordProjectionEventsAwait().map(::withKnownChainId).forEach { event ->
+            val ready = try {
+                outcomeRecorder.recordRingingTimes(event)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Throwable) {
+                false
+            }
+            if (ready) inbox.ackRecordEventProjectionAwait(event.eventId)
+        }
     }
 
     private suspend fun recoverNativeAttemptsLocked(): ActiveAlarmMission? {
@@ -497,6 +608,29 @@ class IosAlarmMissionCoordinator(
             retryAttempt = mission.retryAttempt,
         )
         return mission
+    }
+
+    /** Fill only chain IDs already recoverable from the stored mission/deadline state. */
+    private fun withKnownChainId(event: IosAlarmMissionEventDto): IosAlarmMissionEventDto {
+        if (event.chainId != null) return event
+        if (event.retryAttempt == 0) return event.copy(chainId = event.occurrenceId)
+
+        val activeMissionChain = missionStore.loadActiveMission()?.takeIf { mission ->
+            mission.alarmId == event.alarmId &&
+                mission.scheduleVersion == event.scheduleVersion &&
+                mission.occurrenceId == event.occurrenceId
+        }?.chainId
+        val terminalChain = missionStore.loadPendingTerminal()?.takeIf { terminal ->
+            terminal.occurrenceId == event.occurrenceId
+        }?.chainId
+        val firstRetryChain = missionStore.loadDeadlineAlarm()?.takeIf { registration ->
+            registration.retryAttempt == 1 &&
+                registration.retryOccurrenceId == event.occurrenceId &&
+                registration.missionSeed?.alarmId == event.alarmId &&
+                registration.missionSeed.scheduleVersion == event.scheduleVersion
+        }?.sourceOccurrenceId
+        val knownChainId = activeMissionChain ?: terminalChain ?: firstRetryChain ?: return event
+        return event.copy(chainId = knownChainId)
     }
 
     private fun replaceActiveMissionLocked(mission: ActiveAlarmMission) {
@@ -819,7 +953,9 @@ data class IosPendingMissionTerminal(
 )
 
 interface IosMissionOutcomeRecorder {
-    suspend fun recordRingingTimes(event: IosAlarmMissionEventDto) = Unit
+    suspend fun recordRingingTimes(event: IosAlarmMissionEventDto): Boolean = true
+
+    suspend fun resolvePendingRecordDecisions() = Unit
 
     suspend fun recordRecoveryAttempt(attempt: IosAlarmRecoveryAttemptDto): Boolean {
         recordRingingTimes(attempt.toMissionEvent())
@@ -1128,7 +1264,7 @@ private fun AlarmScheduleRequest.toActiveAlarmMission(
         limitMinutes = limitMinutes,
         expiresAtEpochMillis = event.occurredAtEpochMillis + limitMinutes * MillisPerMinute,
         occurrenceId = event.occurrenceId,
-        chainId = event.occurrenceId,
+        chainId = event.chainId ?: event.occurrenceId,
         retryAttempt = event.retryAttempt,
         alarmTime = time,
         scheduleVersion = event.scheduleVersion,
@@ -1170,7 +1306,7 @@ private fun IosRetryMissionSeed.toActiveAlarmMission(
         limitMinutes = limitMinutes,
         expiresAtEpochMillis = event.occurredAtEpochMillis + limitMinutes * MillisPerMinute,
         occurrenceId = event.occurrenceId,
-        chainId = event.occurrenceId,
+        chainId = event.chainId ?: event.occurrenceId,
         retryAttempt = event.retryAttempt,
         alarmTime = alarmTime,
         startedAtEpochMillis = event.occurredAtEpochMillis,
@@ -1194,6 +1330,7 @@ internal fun IosAlarmRecoveryAttemptDto.toMissionEvent(): IosAlarmMissionEventDt
         scheduleVersion = snapshot.scheduleVersion,
         ownerAccountId = snapshot.owner.accountId,
         ownerCaptured = snapshot.owner.kind != IosAlarmRecoveryOwnerKind.UNCAPTURED,
+        chainId = chainId,
     )
 
 private fun IosAlarmRecoveryAttemptDto.toActiveAlarmMission(): ActiveAlarmMission {
@@ -1235,11 +1372,22 @@ internal suspend fun IosAlarmMissionEventInbox.pendingEventsAwait():
     return result.events
 }
 
+internal suspend fun IosAlarmMissionEventInbox.recordProjectionEventsAwait():
+    List<IosAlarmMissionEventDto> {
+    val result = awaitSingleCallback<IosAlarmMissionEventsResult> { callback ->
+        recordProjectionEvents(callback)
+    }
+    IosAlarmOperationResult(result.code, result.message)
+        .requireAlarmKitSuccess("알람 기록 투영 이벤트를 읽지 못했습니다.")
+    return result.events
+}
+
 internal suspend fun IosAlarmMissionEventInbox.recordOpenEventAwait(
     alarmId: String,
     occurrenceId: String?,
     retryAttempt: Int,
     scheduleVersion: Long = 1,
+    chainId: String? = null,
 ) {
     val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
         recordOpenEvent(
@@ -1247,6 +1395,7 @@ internal suspend fun IosAlarmMissionEventInbox.recordOpenEventAwait(
             occurrenceId = occurrenceId,
             retryAttempt = retryAttempt,
             scheduleVersion = scheduleVersion,
+            chainId = chainId,
             callback = callback,
         )
     }
@@ -1258,6 +1407,7 @@ internal suspend fun IosAlarmMissionEventInbox.recordStopEventAwait(
     occurrenceId: String?,
     retryAttempt: Int,
     scheduleVersion: Long = 1,
+    chainId: String? = null,
 ) {
     val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
         recordStopEvent(
@@ -1265,6 +1415,7 @@ internal suspend fun IosAlarmMissionEventInbox.recordStopEventAwait(
             occurrenceId = occurrenceId,
             retryAttempt = retryAttempt,
             scheduleVersion = scheduleVersion,
+            chainId = chainId,
             callback = callback,
         )
     }
@@ -1276,6 +1427,13 @@ internal suspend fun IosAlarmMissionEventInbox.markConsumedAwait(eventId: String
         markConsumed(eventId, callback)
     }
     result.requireAlarmKitSuccess("알람 미션 이벤트를 소비 처리하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmMissionEventInbox.ackRecordEventProjectionAwait(eventId: String) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        ackRecordEventProjection(eventId, callback)
+    }
+    result.requireAlarmKitSuccess("알람 이벤트 기록 투영 ACK를 저장하지 못했습니다.")
 }
 
 internal suspend fun IosAlarmMissionEventInbox.upsertSourceSnapshotAwait(
@@ -1348,6 +1506,39 @@ internal suspend fun IosAlarmMissionEventInbox.protectedReservationUuidsAwait():
     IosAlarmOperationResult(result.code, result.message)
         .requireAlarmKitSuccess("보호 예약 목록을 읽지 못했습니다.")
     return result.reservationUuids
+}
+
+internal suspend fun IosAlarmMissionEventInbox.nativeCleanupCandidatesAwait(): IosAlarmNativeCleanupCandidatesResult {
+    val result = awaitSingleCallback<IosAlarmNativeCleanupCandidatesResult> { callback ->
+        nativeCleanupCandidates(callback)
+    }
+    IosAlarmOperationResult(result.code, result.message)
+        .requireAlarmKitSuccess("네이티브 정리 후보를 읽지 못했습니다.")
+    return result
+}
+
+internal suspend fun IosAlarmMissionEventInbox.commitEventCleanupAwait(
+    eventId: String,
+    fingerprint: String,
+): IosAlarmNativeCleanupCommitResult {
+    val result = awaitSingleCallback<IosAlarmNativeCleanupCommitResult> { callback ->
+        commitEventCleanup(eventId, fingerprint, callback)
+    }
+    IosAlarmOperationResult(result.code, result.message)
+        .requireAlarmKitSuccess("네이티브 이벤트 정리를 저장하지 못했습니다.")
+    return result
+}
+
+internal suspend fun IosAlarmMissionEventInbox.compactTerminalChainAwait(
+    chainId: String,
+    fingerprint: String,
+): IosAlarmNativeCleanupCommitResult {
+    val result = awaitSingleCallback<IosAlarmNativeCleanupCommitResult> { callback ->
+        compactTerminalChain(chainId, fingerprint, callback)
+    }
+    IosAlarmOperationResult(result.code, result.message)
+        .requireAlarmKitSuccess("네이티브 종료 체인을 정리하지 못했습니다.")
+    return result
 }
 
 private const val MillisPerMinute = 60_000L

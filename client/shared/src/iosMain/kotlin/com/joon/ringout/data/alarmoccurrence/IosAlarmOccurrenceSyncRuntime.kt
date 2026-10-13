@@ -17,6 +17,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -35,18 +38,53 @@ internal object IosAlarmOccurrenceSyncRuntime {
         NSLog("AlarmOccurrence: sync initialization failed; retry on next activation")
     })
     private var job: Job? = null
+    private var onAuthenticationDecisionReady: suspend () -> Unit = {}
+    private var onSyncCompleted: suspend () -> Unit = {}
 
-    fun start() {
+    fun start(
+        onAuthenticationDecisionReady: suspend () -> Unit = {},
+        onSyncCompleted: suspend () -> Unit = {},
+    ) {
+        this.onAuthenticationDecisionReady = onAuthenticationDecisionReady
+        this.onSyncCompleted = onSyncCompleted
         if (job?.isActive == true) return
         job = scope.launch {
             val tokens = createSecureTokenStorage()
             val session = getAuthSession()
+            launch {
+                combine(session.state, session.identity) { state, identity -> state to identity }
+                    .distinctUntilChanged()
+                    .collect { (state, _) ->
+                        if (state == com.joon.ringout.domain.auth.AuthSessionState.Authenticated ||
+                            state == com.joon.ringout.domain.auth.AuthSessionState.Unauthenticated
+                        ) {
+                            try {
+                                onAuthenticationDecisionReady()
+                                onSyncCompleted()
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Throwable) {
+                                NSLog("AlarmOccurrence: record projection replay failed; retry on next auth transition")
+                            }
+                        }
+                    }
+            }
             tokens.restoreAuthSession(session)
             val dao = getRingoutDatabase().alarmOccurrenceSyncDao()
             val syncer = AlarmOccurrenceSyncer(dao, getRingoutHttpClient(), tokens, session)
             AlarmOccurrenceSyncCoordinator(syncer, dao, session, IosNetworkMonitor(),
                 onStorageFailure = { NSLog("AlarmOccurrence: outbox persistence failed") },
-                flush = { withBackgroundTime { syncer.flush() } },
+                flush = {
+                    val result = withBackgroundTime { syncer.flush() }
+                    try {
+                        onSyncCompleted()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Throwable) {
+                        NSLog("AlarmOccurrence: cleanup request failed; retry on next activation")
+                    }
+                    result
+                },
             ).start(this).join()
         }
     }

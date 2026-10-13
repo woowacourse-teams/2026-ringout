@@ -29,9 +29,13 @@ internal class RoomIosMissionOutcomeRecorder(
     private val occurrenceRecorder: IosAlarmOccurrenceRecorder? = null,
 ) : IosMissionOutcomeRecorder {
 
-    override suspend fun recordRingingTimes(event: IosAlarmMissionEventDto) {
+    override suspend fun recordRingingTimes(event: IosAlarmMissionEventDto): Boolean {
         recordLocalRingingTimes(event, originalAlarmTime = null, scheduledAtEpochMillis = null)
-        occurrenceRecorder?.recordStopped(event)
+        return occurrenceRecorder?.recordStopped(event) ?: true
+    }
+
+    override suspend fun resolvePendingRecordDecisions() {
+        occurrenceRecorder?.resolvePendingRecordDecisions()
     }
 
     override suspend fun recordRecoveryAttempt(attempt: IosAlarmRecoveryAttemptDto): Boolean {

@@ -9,6 +9,8 @@ import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecorder
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceSyncRuntime
+import com.joon.ringout.data.auth.local.createSecureTokenStorage
+import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.platform.IosNativeServices
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
@@ -28,7 +30,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import platform.Foundation.NSUUID
 
-class IosAlarmRuntime(
+class IosAlarmRuntime internal constructor(
     private val dataSource: AlarmDataSource,
     private val scheduler: IosAlarmScheduler,
     private val eventInbox: IosAlarmMissionEventInbox,
@@ -39,7 +41,8 @@ class IosAlarmRuntime(
     private val runtimeDispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val activityDao: AlarmActivityDao? = null,
     private val occurrenceRecorder: IosAlarmOccurrenceRecorder? = null,
-    private val startOccurrenceSync: () -> Unit = {},
+    private val startOccurrenceSync: (suspend () -> Unit, suspend () -> Unit) -> Unit = { _, _ -> },
+    private val nativeCleanup: IosAlarmNativeCleanupCoordinator? = null,
 ) {
     private val startMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + runtimeDispatcher)
@@ -106,7 +109,14 @@ class IosAlarmRuntime(
                 eventInbox.upsertSourceSnapshotAwait(saved.request.toRecoverySnapshot())
             }
         }
-        startOccurrenceSync()
+        startOccurrenceSync(
+            {
+                missionCoordinator.processPendingRecordProjections()
+                nativeCleanup?.requestCleanup()
+            },
+            { nativeCleanup?.requestCleanup() },
+        )
+        runStartupStep { missionCoordinator.processPendingRecordProjections() }
         scheduler.setStateListener(alarmStateListener)
         eventInbox.setEventListener(missionEventListener)
         locationService.setListener(locationListener)
@@ -137,6 +147,7 @@ class IosAlarmRuntime(
         ensureDeadlineAlarmOrScheduleRecovery()
         scheduleRetryDeliveryRecoveryIfNeeded()
         runStartupStep { refreshRingingAlarmSnapshot() }
+        nativeCleanup?.requestCleanup()
     }
 
     internal suspend fun dismissRingingAlarm(expectedSystemAlarmId: String): Boolean =
@@ -160,6 +171,7 @@ class IosAlarmRuntime(
                         occurrenceId = ringing.occurrenceId,
                         retryAttempt = ringing.retryAttempt,
                         scheduleVersion = ringing.scheduleVersion,
+                        chainId = ringing.chainId,
                     )
                 } else {
                     // A late snapshot cannot tell us when the ringing actually stopped.
@@ -168,6 +180,7 @@ class IosAlarmRuntime(
                         occurrenceId = ringing.occurrenceId,
                         retryAttempt = ringing.retryAttempt,
                         scheduleVersion = ringing.scheduleVersion,
+                        chainId = ringing.chainId,
                     )
                 }
                 missionCoordinator.processPendingEvents()
@@ -184,6 +197,7 @@ class IosAlarmRuntime(
                 isDismissingRingingAlarm = false
                 syncTracking()
                 scheduleRetryDeliveryRecoveryIfNeeded()
+                nativeCleanup?.requestCleanup()
             }
         }
 
@@ -197,6 +211,7 @@ class IosAlarmRuntime(
         } finally {
             syncTracking()
             scheduleRetryDeliveryRecoveryIfNeeded()
+            nativeCleanup?.requestCleanup()
         }
     }
 
@@ -228,6 +243,7 @@ class IosAlarmRuntime(
             syncTracking()
             if (shouldRecoverActiveDeadlineAlarm) scheduleDeadlineAlarmRecovery()
             scheduleRetryDeliveryRecoveryIfNeeded()
+            nativeCleanup?.requestCleanup()
         }
     }
 
@@ -309,6 +325,7 @@ class IosAlarmRuntime(
             }
         } finally {
             if (activeMissionFlow.value == null) syncTracking()
+            nativeCleanup?.requestCleanup()
         }
     }
 
@@ -441,6 +458,7 @@ class IosAlarmRuntime(
         activeMissionFlow.value?.let(::clearRingingIfMissionMatches)
         syncTracking()
         scheduleRetryDeliveryRecoveryIfNeeded()
+        nativeCleanup?.requestCleanup()
     }
 
     private suspend fun processPendingMissionEventsOrNull(): ActiveAlarmMission? = try {
@@ -524,6 +542,7 @@ class IosAlarmRuntime(
             occurrenceId = ringing.occurrenceId,
             retryAttempt = ringing.retryAttempt,
             scheduleVersion = ringing.scheduleVersion,
+            chainId = ringing.chainId,
         )
         missionCoordinator.processPendingEvents()
     } catch (error: CancellationException) {
@@ -609,6 +628,7 @@ class IosAlarmRuntime(
             try {
                 delay(DeadlineRecoveryDelayMillis)
                 missionCoordinator.recoverPendingTerminal()
+                nativeCleanup?.requestCleanup()
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {
@@ -644,6 +664,7 @@ class IosAlarmRuntime(
                 if (activeMissionFlow.value == null) {
                     missionCoordinator.recoverPendingRetryDelivery()
                 }
+                nativeCleanup?.requestCleanup()
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {
@@ -714,22 +735,31 @@ class IosAlarmRuntime(
 
 fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
     val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
-    val occurrenceRecorder = IosAlarmOccurrenceRecorder(getRingoutDatabase().alarmOccurrenceSyncDao(),
-        getRingoutDatabase().alarmActivityDao(), dataSource)
+    val database = getRingoutDatabase()
+    val tokens = createSecureTokenStorage()
+    val session = getAuthSession()
+    val occurrenceRecorder = IosAlarmOccurrenceRecorder(database.alarmOccurrenceSyncDao(),
+        database.alarmActivityDao(), dataSource, tokens, session)
     val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker(), roomMembership = com.joon.ringout.analytics.createRoomMembershipAnalytics())
     val scheduler = nativeServices.alarmScheduler()
     val eventInbox = nativeServices.alarmMissionEventInbox()
+    val missionCoordinator = IosAlarmMissionCoordinator(
+        dataSource = dataSource,
+        inbox = eventInbox,
+        scheduler = scheduler,
+        outcomeRecorder = RoomIosMissionOutcomeRecorder(occurrenceRecorder = occurrenceRecorder),
+        analytics = analytics,
+    )
+    val nativeCleanup = IosAlarmNativeCleanupCoordinator(
+        inbox = eventInbox,
+        occurrenceDao = database.alarmOccurrenceSyncDao(),
+        missionCoordinator = missionCoordinator,
+    )
     return IosAlarmRuntime(
         dataSource = dataSource,
         scheduler = scheduler,
         eventInbox = eventInbox,
-        missionCoordinator = IosAlarmMissionCoordinator(
-            dataSource = dataSource,
-            inbox = eventInbox,
-            scheduler = scheduler,
-            outcomeRecorder = RoomIosMissionOutcomeRecorder(occurrenceRecorder = occurrenceRecorder),
-            analytics = analytics,
-        ),
+        missionCoordinator = missionCoordinator,
         reconciler = IosAlarmReconciler(
             dataSource = dataSource,
             scheduler = scheduler,
@@ -738,9 +768,12 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
             recoveryInbox = eventInbox,
         ),
         locationService = nativeServices.missionLocationService(),
-        activityDao = getRingoutDatabase().alarmActivityDao(),
+        activityDao = database.alarmActivityDao(),
         occurrenceRecorder = occurrenceRecorder,
-        startOccurrenceSync = IosAlarmOccurrenceSyncRuntime::start,
+        startOccurrenceSync = { onAuthReady, onSyncCompleted ->
+            IosAlarmOccurrenceSyncRuntime.start(onAuthReady, onSyncCompleted)
+        },
+        nativeCleanup = nativeCleanup,
     )
 }
 

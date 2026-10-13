@@ -69,6 +69,7 @@ data class IosAlarmRecoveryReservationDto(
     val cancellationRequired: Boolean = false,
     val cancellationConfirmedAtEpochMillis: Long? = null,
     val lateScheduleAfterTerminal: Boolean = false,
+    val scheduleCallSettled: Boolean = false,
 )
 
 data class IosAlarmRecoveryAttemptDto(

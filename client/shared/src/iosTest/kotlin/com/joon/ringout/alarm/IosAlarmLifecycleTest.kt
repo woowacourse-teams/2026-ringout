@@ -1,6 +1,9 @@
 package com.joon.ringout.alarm
 
+import androidx.room3.Room
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.joon.ringout.data.alarm.AlarmDataSource
+import com.joon.ringout.data.database.RingoutDatabase
 import com.joon.ringout.platform.IosAlarmAuthorizationState
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -25,6 +28,85 @@ class IosAlarmLifecycleTest {
         val data = LifecycleAlarmDataSource(listOf(original))
         IosAlarmStore(data, LifecycleScheduler()).save(original.request.copy(destinationName = "새 목적지"))
         assertEquals(original.request.scheduleVersion + 1, data.getById(CanonicalUuid)?.request?.scheduleVersion)
+    }
+
+    @Test
+    fun `네이티브 이벤트 정리는 소비와 Room ACK 증명이 없으면 보류한다`() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder<RingoutDatabase>()
+            .setDriver(BundledSQLiteDriver())
+            .build()
+        try {
+            val inbox = LifecycleInbox(emptyList()).apply {
+                cleanupCandidates = IosAlarmNativeCleanupCandidatesResult(events = listOf(
+                    cleanupEventCandidate().copy(consumedAtEpochMillis = null),
+                ))
+            }
+            val missions = IosAlarmMissionCoordinator(
+                LifecycleAlarmDataSource(emptyList()), inbox, LifecycleScheduler(),
+                LifecycleOutcomeRecorder(), LifecycleMissionStore(),
+            )
+            val cleanup = IosAlarmNativeCleanupCoordinator(
+                inbox, database.alarmOccurrenceSyncDao(), missions,
+                now = { 20_000L }, startWorker = false,
+            )
+
+            cleanup.cleanupNow()
+            assertTrue(inbox.cleanupCommits.isEmpty())
+
+            inbox.cleanupCandidates = IosAlarmNativeCleanupCandidatesResult(events = listOf(
+                cleanupEventCandidate().copy(recordProjectionAckAtEpochMillis = null),
+            ))
+            cleanup.cleanupNow()
+            assertTrue(inbox.cleanupCommits.isEmpty())
+
+            inbox.cleanupCandidates = IosAlarmNativeCleanupCandidatesResult(events = listOf(cleanupEventCandidate()))
+            cleanup.cleanupNow()
+            assertTrue(inbox.cleanupCommits.isEmpty())
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun `네이티브 이벤트 정리는 십초 창 뒤 fingerprint commit만 반영한다`() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder<RingoutDatabase>()
+            .setDriver(BundledSQLiteDriver())
+            .build()
+        try {
+            val inbox = LifecycleInbox(emptyList()).apply {
+                cleanupCandidates = IosAlarmNativeCleanupCandidatesResult(events = listOf(
+                    cleanupEventCandidate(action = IosAlarmMissionAction.OPEN_APP),
+                ))
+                cleanupCommitResult = IosAlarmNativeCleanupCommitResult(committed = false, stale = true)
+            }
+            val missions = IosAlarmMissionCoordinator(
+                LifecycleAlarmDataSource(emptyList()), inbox, LifecycleScheduler(),
+                LifecycleOutcomeRecorder(), LifecycleMissionStore(),
+            )
+            var now = 9_999L
+            val cleanup = IosAlarmNativeCleanupCoordinator(
+                inbox, database.alarmOccurrenceSyncDao(), missions,
+                now = { now }, startWorker = false,
+            )
+
+            val beforeBoundary = cleanup.cleanupNow()
+            assertEquals(0, beforeBoundary.removedEvents)
+            assertEquals(10_000L, beforeBoundary.retryAtEpochMillis)
+            assertTrue(inbox.cleanupCommits.isEmpty())
+
+            now = 10_000L
+            val staleCommit = cleanup.cleanupNow()
+            assertEquals(0, staleCommit.removedEvents)
+            assertEquals(1, staleCommit.preservedCandidates)
+            assertEquals(listOf("event" to "fingerprint"), inbox.cleanupCommits)
+
+            inbox.cleanupCommitResult = IosAlarmNativeCleanupCommitResult(committed = true)
+            val committed = cleanup.cleanupNow()
+            assertEquals(1, committed.removedEvents)
+            assertEquals(2, inbox.cleanupCommits.size)
+        } finally {
+            database.close()
+        }
     }
 
     @Test
@@ -1845,6 +1927,25 @@ private class LifecycleInbox(
     override fun recoveryState(callback: (IosAlarmRecoveryAttemptsResult) -> Unit) {
         callback(IosAlarmRecoveryAttemptsResult(attempts = recoveryAttempts))
     }
+    var cleanupCandidates = IosAlarmNativeCleanupCandidatesResult()
+    var cleanupCommitResult = IosAlarmNativeCleanupCommitResult(committed = true)
+    val cleanupCommits = mutableListOf<Pair<String, String>>()
+    override fun nativeCleanupCandidates(callback: (IosAlarmNativeCleanupCandidatesResult) -> Unit) {
+        callback(cleanupCandidates)
+    }
+    override fun commitEventCleanup(
+        eventId: String,
+        fingerprint: String,
+        callback: (IosAlarmNativeCleanupCommitResult) -> Unit,
+    ) {
+        cleanupCommits += eventId to fingerprint
+        callback(cleanupCommitResult)
+    }
+    override fun compactTerminalChain(
+        chainId: String,
+        fingerprint: String,
+        callback: (IosAlarmNativeCleanupCommitResult) -> Unit,
+    ) = callback(cleanupCommitResult)
     override fun ackRecordProjection(occurrenceId: String, callback: (IosAlarmOperationResult) -> Unit) {
         events += "recordAck:$occurrenceId"
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
@@ -1867,6 +1968,7 @@ private class LifecycleInbox(
         occurrenceId: String?,
         retryAttempt: Int,
         scheduleVersion: Long,
+        chainId: String?,
         callback: (IosAlarmOperationResult) -> Unit,
     ) {
         events += "stop:$alarmId:${occurrenceId.orEmpty()}:$retryAttempt"
@@ -1883,6 +1985,7 @@ private class LifecycleInbox(
             occurredAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
             retryAttempt = retryAttempt,
             scheduleVersion = scheduleVersion,
+            chainId = chainId,
         )
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
         listener?.onEventRecorded()
@@ -1893,6 +1996,7 @@ private class LifecycleInbox(
         occurrenceId: String?,
         retryAttempt: Int,
         scheduleVersion: Long,
+        chainId: String?,
         callback: (IosAlarmOperationResult) -> Unit,
     ) {
         events += "open:$alarmId:${occurrenceId.orEmpty()}:$retryAttempt"
@@ -1909,6 +2013,7 @@ private class LifecycleInbox(
             occurredAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
             retryAttempt = retryAttempt,
             scheduleVersion = scheduleVersion,
+            chainId = chainId,
         )
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
         listener?.onEventRecorded()
@@ -1921,6 +2026,22 @@ private class LifecycleInbox(
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
     }
 }
+
+private fun cleanupEventCandidate(
+    action: IosAlarmMissionAction = IosAlarmMissionAction.STOP,
+) = IosAlarmNativeCleanupEventCandidate(
+    eventId = "event",
+    fingerprint = "fingerprint",
+    alarmId = "alarm",
+    occurrenceId = "root",
+    action = action,
+    occurredAtEpochMillis = 0,
+    retryAttempt = 0,
+    ringingStoppedAtEpochMillis = if (action == IosAlarmMissionAction.STOP) 1_000 else null,
+    chainId = "root",
+    consumedAtEpochMillis = 1,
+    recordProjectionAckAtEpochMillis = 2,
+)
 
 private class LifecycleMissionStore : IosActiveAlarmMissionStore {
     var mission: ActiveAlarmMission? = null
