@@ -5,8 +5,11 @@ import androidx.room3.Insert
 import androidx.room3.OnConflictStrategy
 import androidx.room3.Query
 import androidx.room3.Transaction
-import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceId
+import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
+import com.joon.ringout.data.alarmactivity.AlarmOccurrenceTimesEntity
 import com.joon.ringout.data.alarmmovement.AlarmMovementOutboxEntity
+import com.joon.ringout.data.missionhistory.MissionHistoryEntity
+import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceId
 import com.joon.ringout.domain.alarmmovement.AlarmMovementAction
 import kotlinx.coroutines.flow.Flow
 
@@ -30,6 +33,24 @@ abstract class AlarmOccurrenceSyncDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     protected abstract suspend fun insertEvent(event: AlarmOccurrenceOutboxEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun replaceIosRecordDecision(decision: IosAlarmOccurrenceRecordEntity)
+
+    @Query("SELECT * FROM ios_alarm_occurrence_recording WHERE chain_id = :chainId")
+    abstract suspend fun getIosRecordDecision(chainId: String): IosAlarmOccurrenceRecordEntity?
+
+    @Query("SELECT * FROM ios_alarm_occurrence_recording WHERE state = 'AUTH_PENDING' ORDER BY chain_id")
+    abstract suspend fun getPendingIosRecordDecisions(): List<IosAlarmOccurrenceRecordEntity>
+
+    @Query("SELECT * FROM alarm_activity_events WHERE event_key = :eventKey")
+    protected abstract suspend fun getCleanupActivityEvent(eventKey: String): AlarmActivityEntity?
+
+    @Query("SELECT * FROM alarm_occurrence_times WHERE occurrence_id = :occurrenceId")
+    protected abstract suspend fun getCleanupOccurrenceTimes(occurrenceId: String): AlarmOccurrenceTimesEntity?
+
+    @Query("SELECT * FROM mission_history WHERE occurrence_id = :occurrenceId")
+    protected abstract suspend fun getCleanupMissionHistory(occurrenceId: String): MissionHistoryEntity?
 
     @Query("""
         UPDATE alarm_occurrence_sync SET scheduled_at = COALESCE(scheduled_at, :scheduledAt),
@@ -91,6 +112,231 @@ abstract class AlarmOccurrenceSyncDao {
     /** 실행, 최초 울림 연결, POST 대기를 한 번에 저장한다. 재전달은 최초 값을 보존한다. */
     @Transaction
     open suspend fun recordStart(execution: AlarmOccurrenceSyncEntity) {
+        recordStartInTransaction(execution)
+    }
+
+    /** Store iOS account attribution and the first server event as one durable decision. */
+    @Transaction
+    open suspend fun recordIosStart(
+        decision: IosAlarmOccurrenceRecordEntity,
+        execution: AlarmOccurrenceSyncEntity,
+    ): Boolean {
+        require(decision.chainId.isNotBlank() && decision.rootOccurrenceId == execution.localExecutionId)
+        val current = getIosRecordDecision(decision.chainId)
+        if (current?.state == IosAlarmOccurrenceRecordState.LOCAL_ONLY) return false
+        val existingExecution = findExecutionForRecording(decision.rootOccurrenceId)
+        val owner = current?.ownerAccountId
+            ?: existingExecution?.ownerAccountId
+            ?: execution.ownerAccountId
+        check(current?.state != IosAlarmOccurrenceRecordState.SERVER || current.ownerAccountId == null || current.ownerAccountId == owner)
+        recordStartInTransaction(execution.copy(ownerAccountId = owner))
+        replaceIosRecordDecision(decision.copy(
+            state = IosAlarmOccurrenceRecordState.SERVER,
+            ownerAccountId = owner,
+        ))
+        return true
+    }
+
+    /** Reads the persisted account decision and all projection proof in one Room transaction. */
+    @Transaction
+    open suspend fun evaluateIosAlarmCleanup(
+        request: IosAlarmCleanupReadinessRequest,
+    ): IosAlarmCleanupReadiness {
+        require(request.chainId.isNotBlank() && request.rootOccurrenceId.isNotBlank())
+        val decision = getIosRecordDecision(request.chainId)
+            ?: return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_DECISION)
+        if (decision.rootOccurrenceId != request.rootOccurrenceId ||
+            decision.alarmId != request.alarmId || decision.scheduleVersion != request.scheduleVersion
+        ) return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_DECISION)
+
+        when (decision.state) {
+            IosAlarmOccurrenceRecordState.AUTH_PENDING ->
+                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.AUTH_PENDING)
+            IosAlarmOccurrenceRecordState.LOCAL_ONLY -> {
+                if (decision.ownerAccountId != null) {
+                    return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_DECISION)
+                }
+                val localReason = verifyLocalProjections(request)
+                if (localReason != null) return IosAlarmCleanupReadiness(localReason)
+                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.READY)
+            }
+            IosAlarmOccurrenceRecordState.SERVER -> Unit
+        }
+
+        val owner = decision.ownerAccountId?.takeIf(String::isNotBlank)
+            ?: return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_DECISION)
+        val execution = getExecution(owner, request.rootOccurrenceId)
+            ?: return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_PROJECTION)
+        if (execution.ownerAccountId != owner || execution.alarmId != request.alarmId ||
+            execution.scheduleVersion != request.scheduleVersion
+        ) return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_PROJECTION, owner)
+
+        val localReason = verifyLocalProjections(request)
+        if (localReason != null) return IosAlarmCleanupReadiness(localReason, owner)
+
+        val start = request.expectedOutbox.firstOrNull {
+            it.deduplicationKey == "start" && it.kind == AlarmOccurrenceOutboxKind.START
+        } ?: return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, owner)
+        if (start.occurrenceId != request.rootOccurrenceId ||
+            execution.startedAtEpochMillis == null || execution.scheduledAtEpochMillis == null
+        ) return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_PROJECTION, owner)
+
+        val storedEvents = getEvents(owner, request.rootOccurrenceId)
+        val expectedStateReasons = mutableListOf<IosAlarmCleanupReadinessReason>()
+        for (expected in request.expectedOutbox) {
+            val event = storedEvents.firstOrNull { it.deduplicationKey == expected.deduplicationKey }
+                ?: return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, owner)
+            if (event.localRingingId != expected.occurrenceId || event.kind != expected.kind ||
+                !matchesCleanupOutboxTime(expected, event, execution, owner)
+            ) return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_PROJECTION, owner)
+            when (event.state) {
+                AlarmOccurrenceOutboxState.SENT -> Unit
+                AlarmOccurrenceOutboxState.PENDING -> expectedStateReasons += IosAlarmCleanupReadinessReason.PENDING
+                AlarmOccurrenceOutboxState.BLOCKED -> expectedStateReasons += IosAlarmCleanupReadinessReason.BLOCKED
+            }
+        }
+        if (request.requireAllOccurrenceRowsSent) {
+            storedEvents.forEach { event ->
+                when (event.state) {
+                    AlarmOccurrenceOutboxState.SENT -> Unit
+                    AlarmOccurrenceOutboxState.PENDING -> expectedStateReasons += IosAlarmCleanupReadinessReason.PENDING
+                    AlarmOccurrenceOutboxState.BLOCKED -> expectedStateReasons += IosAlarmCleanupReadinessReason.BLOCKED
+                }
+            }
+        }
+        if (expectedStateReasons.isNotEmpty()) {
+            val reason = if (IosAlarmCleanupReadinessReason.BLOCKED in expectedStateReasons) {
+                IosAlarmCleanupReadinessReason.BLOCKED
+            } else {
+                IosAlarmCleanupReadinessReason.PENDING
+            }
+            return IosAlarmCleanupReadiness(reason, owner)
+        }
+
+        val storedMovements = getMovements(owner, request.rootOccurrenceId)
+        for (expected in request.expectedMovements) {
+            val parent = storedMovements.firstOrNull { it.deduplicationKey == expected.deduplicationKey && it.roomId == null }
+                ?: return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, owner)
+            if (parent.action != expected.action || parent.occurredAtEpochMillis != expected.occurredAtEpochMillis) {
+                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_PROJECTION, owner)
+            }
+            val children = storedMovements.filter { it.deduplicationKey.startsWith("${expected.deduplicationKey}:room:") }
+            val movementStates = listOf(parent.state) + children.map { it.state }
+            if (movementStates.any { it == AlarmOccurrenceOutboxState.BLOCKED }) {
+                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.BLOCKED, owner)
+            }
+            if (movementStates.any { it != AlarmOccurrenceOutboxState.SENT }) {
+                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.PENDING, owner)
+            }
+        }
+        if (request.requireAllMovementRowsSent) {
+            if (storedMovements.any { it.state == AlarmOccurrenceOutboxState.BLOCKED }) {
+                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.BLOCKED, owner)
+            }
+            if (storedMovements.any { it.state != AlarmOccurrenceOutboxState.SENT }) {
+                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.PENDING, owner)
+            }
+        }
+        return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.READY, owner)
+    }
+
+    private suspend fun verifyLocalProjections(
+        request: IosAlarmCleanupReadinessRequest,
+    ): IosAlarmCleanupReadinessReason? {
+        for (expected in request.expectedActivity) {
+            val event = getCleanupActivityEvent("rang:${expected.occurrenceId}") ?: return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+            if (event.alarmId != expected.alarmId || event.scheduleVersion != expected.scheduleVersion) {
+                return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+            }
+            when {
+                expected.ringingStartObserved == true -> {
+                    if (event.type != "RANG" || event.occurredAtEpochMillis != expected.ringingStartedAtEpochMillis) {
+                        return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+                    }
+                }
+                expected.ringingStartedAtEpochMillis == null && expected.ringingStoppedAtEpochMillis != null -> {
+                    if (event.type != "RANG_CONFIRMED_BY_STOP" || event.occurredAtEpochMillis != expected.ringingStoppedAtEpochMillis) {
+                        return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+                    }
+                }
+                expected.ringingStartedAtEpochMillis != null &&
+                    (event.type != "RANG" || event.occurredAtEpochMillis != expected.ringingStartedAtEpochMillis) ->
+                    return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+            }
+
+            val times = getCleanupOccurrenceTimes(expected.occurrenceId)
+                ?: return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+            if ((expected.ringingScheduledAtEpochMillis != null && times.ringingScheduledAtEpochMillis != expected.ringingScheduledAtEpochMillis) ||
+                (expected.ringingStartedAtEpochMillis != null && times.ringingStartedAtEpochMillis != expected.ringingStartedAtEpochMillis) ||
+                (expected.ringingStoppedAtEpochMillis != null && times.ringingStoppedAtEpochMillis != expected.ringingStoppedAtEpochMillis) ||
+                (expected.ringingStartObserved == true && !times.isRingingStartObserved)
+            ) return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+        }
+
+        request.expectedHistory?.let { expected ->
+            val history = getCleanupMissionHistory(expected.occurrenceId)
+                ?: return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+            val times = getCleanupOccurrenceTimes(expected.occurrenceId)
+                ?: return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+            if (history.result != expected.result || times.missionCompletedAtEpochMillis != expected.completedAtEpochMillis) {
+                return IosAlarmCleanupReadinessReason.MISSING_PROJECTION
+            }
+        }
+        return null
+    }
+
+    private suspend fun matchesCleanupOutboxTime(
+        expected: IosAlarmCleanupOutboxProjection,
+        event: AlarmOccurrenceOutboxEntity,
+        execution: AlarmOccurrenceSyncEntity,
+        ownerAccountId: String,
+    ): Boolean {
+        expected.occurredAtEpochMillis?.let { return event.occurredAtEpochMillis == it }
+        if (expected.kind == AlarmOccurrenceOutboxKind.START) {
+            return expected.occurrenceId == execution.localExecutionId &&
+                event.occurredAtEpochMillis == execution.startedAtEpochMillis
+        }
+        if (expected.kind == AlarmOccurrenceOutboxKind.REPEAT_RANG) {
+            val ringing = getRinging(ownerAccountId, expected.occurrenceId) ?: return false
+            val times = getCleanupOccurrenceTimes(expected.occurrenceId) ?: return false
+            val ringingAt = ringing.ringingAtEpochMillis ?: return false
+            return event.occurredAtEpochMillis == ringingAt &&
+                (times.ringingScheduledAtEpochMillis == null || times.ringingScheduledAtEpochMillis == ringingAt)
+        }
+        return false
+    }
+
+    /** Record a pending auth decision without making an outbox row or consuming its native source. */
+    @Transaction
+    open suspend fun keepIosRecordPending(decision: IosAlarmOccurrenceRecordEntity) {
+        val current = getIosRecordDecision(decision.chainId)
+        when (current?.state) {
+            IosAlarmOccurrenceRecordState.LOCAL_ONLY,
+            IosAlarmOccurrenceRecordState.SERVER -> Unit
+            IosAlarmOccurrenceRecordState.AUTH_PENDING,
+            null -> replaceIosRecordDecision(decision.copy(
+                state = IosAlarmOccurrenceRecordState.AUTH_PENDING,
+                ownerAccountId = null,
+            ))
+        }
+    }
+
+    /** Finalize a chain as local-only; a previous server assignment always wins. */
+    @Transaction
+    open suspend fun keepIosRecordLocalOnly(decision: IosAlarmOccurrenceRecordEntity) {
+        val current = getIosRecordDecision(decision.chainId)
+        when (current?.state) {
+            IosAlarmOccurrenceRecordState.SERVER -> Unit
+            IosAlarmOccurrenceRecordState.LOCAL_ONLY -> Unit
+            IosAlarmOccurrenceRecordState.AUTH_PENDING,
+            null -> replaceIosRecordDecision(decision.copy(
+                state = IosAlarmOccurrenceRecordState.LOCAL_ONLY,
+                ownerAccountId = null,
+            ))
+        }
+    }
+
+    private suspend fun recordStartInTransaction(execution: AlarmOccurrenceSyncEntity) {
         require(execution.localExecutionId.isNotBlank() && execution.ownerAccountId.isNotBlank())
         require(execution.alarmId.isNotBlank() && execution.alarmId.length <= 64)
         require(execution.scheduleVersion > 0 && execution.serverOccurrenceId == null)

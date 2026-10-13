@@ -10,6 +10,8 @@ import com.joon.ringout.alarm.SavedAlarmSchedule
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.destination.DefaultDestinationRepository
 import com.joon.ringout.data.destination.RoomDestinationDataSource
+import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
+import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordState
 import com.joon.ringout.domain.destination.SavedDestination
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -22,6 +24,38 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTest {
+    @Test
+    fun `버전 십일에서 iOS 기록 판단 테이블을 추가하고 로컬 전용 결정을 보존한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        var database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            database.alarmOccurrenceSyncDao().getPendingIosRecordDecisions()
+            database.close()
+            BundledSQLiteDriver().open(path).use { connection ->
+                connection.execSQL("DROP TABLE ios_alarm_occurrence_recording")
+                connection.execSQL("UPDATE room_master_table SET identity_hash = '48a8b44654750f7b165ea3a10ff4ffb9' WHERE id = 42")
+                connection.execSQL("PRAGMA user_version = 11")
+            }
+            database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+            val dao = database.alarmOccurrenceSyncDao()
+            dao.keepIosRecordLocalOnly(IosAlarmOccurrenceRecordEntity(
+                chainId = "local-chain",
+                rootOccurrenceId = "local-root",
+                state = IosAlarmOccurrenceRecordState.AUTH_PENDING,
+                ownerAccountId = null,
+                alarmId = "alarm",
+                scheduleVersion = 1,
+                scheduledAtEpochMillis = 1_000,
+                startedAtEpochMillis = 1_000,
+            ))
+            assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY, dao.getIosRecordDecision("local-chain")?.state)
+            assertTrue(dao.getPendingIosRecordDecisions().isEmpty())
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
     @Test
     fun `버전 십의 미전송 알람을 보존하고 과거 이동 이벤트를 임의 생성하지 않는다`() = runBlocking {
         val path = temporaryDatabasePath()

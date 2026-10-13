@@ -22,6 +22,7 @@ import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceRingingLinkEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxEntity
+import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
 
 @Database(
@@ -38,9 +39,10 @@ import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
         AlarmOccurrenceSyncEntity::class,
         AlarmOccurrenceRingingLinkEntity::class,
         AlarmOccurrenceOutboxEntity::class,
+        IosAlarmOccurrenceRecordEntity::class,
         AlarmMovementOutboxEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -76,6 +78,7 @@ fun buildRingoutDatabase(
         RingoutMigration8To9,
         RingoutMigration9To10,
         RingoutMigration10To11,
+        RingoutMigration11To12,
     )
     .build()
 
