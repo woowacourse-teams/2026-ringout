@@ -36,11 +36,13 @@ actual fun rememberAlarmController(
             scheduler = scheduler,
             normalizeAlarmId = nativeServices::normalizeAlarmId,
             presentationMigrationState = UserDefaultsIosAlarmPresentationMigrationState(),
+            recoveryInbox = nativeServices.alarmMissionEventInbox(),
         )
         IosAlarmStore(
             dataSource = dataSource,
             scheduler = scheduler,
             reconciler = reconciler,
+            recoveryInbox = nativeServices.alarmMissionEventInbox(),
         )
     }
     val coroutineScope = rememberCoroutineScope()

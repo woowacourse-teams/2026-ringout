@@ -1,6 +1,9 @@
 package com.joon.ringout.alarm
 
+import androidx.room3.Room
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.joon.ringout.data.alarm.AlarmDataSource
+import com.joon.ringout.data.database.RingoutDatabase
 import com.joon.ringout.platform.IosAlarmAuthorizationState
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -19,6 +22,222 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class IosAlarmLifecycleTest {
+    @Test
+    fun `목적지만 수정해도 새 네이티브 snapshot 버전을 예약한다`() = runBlocking {
+        val original = savedAlarm(id = CanonicalUuid)
+        val data = LifecycleAlarmDataSource(listOf(original))
+        IosAlarmStore(data, LifecycleScheduler()).save(original.request.copy(destinationName = "새 목적지"))
+        assertEquals(original.request.scheduleVersion + 1, data.getById(CanonicalUuid)?.request?.scheduleVersion)
+    }
+
+    @Test
+    fun `네이티브 이벤트 정리는 소비와 Room ACK 증명이 없으면 보류한다`() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder<RingoutDatabase>()
+            .setDriver(BundledSQLiteDriver())
+            .build()
+        try {
+            val inbox = LifecycleInbox(emptyList()).apply {
+                cleanupCandidates = IosAlarmNativeCleanupCandidatesResult(events = listOf(
+                    cleanupEventCandidate().copy(consumedAtEpochMillis = null),
+                ))
+            }
+            val missions = IosAlarmMissionCoordinator(
+                LifecycleAlarmDataSource(emptyList()), inbox, LifecycleScheduler(),
+                LifecycleOutcomeRecorder(), LifecycleMissionStore(),
+            )
+            val cleanup = IosAlarmNativeCleanupCoordinator(
+                inbox, database.alarmOccurrenceSyncDao(), missions,
+                now = { 20_000L }, startWorker = false,
+            )
+
+            cleanup.cleanupNow()
+            assertTrue(inbox.cleanupCommits.isEmpty())
+
+            inbox.cleanupCandidates = IosAlarmNativeCleanupCandidatesResult(events = listOf(
+                cleanupEventCandidate().copy(recordProjectionAckAtEpochMillis = null),
+            ))
+            cleanup.cleanupNow()
+            assertTrue(inbox.cleanupCommits.isEmpty())
+
+            inbox.cleanupCandidates = IosAlarmNativeCleanupCandidatesResult(events = listOf(cleanupEventCandidate()))
+            cleanup.cleanupNow()
+            assertTrue(inbox.cleanupCommits.isEmpty())
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun `네이티브 이벤트 정리는 십초 창 뒤 fingerprint commit만 반영한다`() = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder<RingoutDatabase>()
+            .setDriver(BundledSQLiteDriver())
+            .build()
+        try {
+            val inbox = LifecycleInbox(emptyList()).apply {
+                cleanupCandidates = IosAlarmNativeCleanupCandidatesResult(events = listOf(
+                    cleanupEventCandidate(action = IosAlarmMissionAction.OPEN_APP),
+                ))
+                cleanupCommitResult = IosAlarmNativeCleanupCommitResult(committed = false, stale = true)
+            }
+            val missions = IosAlarmMissionCoordinator(
+                LifecycleAlarmDataSource(emptyList()), inbox, LifecycleScheduler(),
+                LifecycleOutcomeRecorder(), LifecycleMissionStore(),
+            )
+            var now = 9_999L
+            val cleanup = IosAlarmNativeCleanupCoordinator(
+                inbox, database.alarmOccurrenceSyncDao(), missions,
+                now = { now }, startWorker = false,
+            )
+
+            val beforeBoundary = cleanup.cleanupNow()
+            assertEquals(0, beforeBoundary.removedEvents)
+            assertEquals(10_000L, beforeBoundary.retryAtEpochMillis)
+            assertTrue(inbox.cleanupCommits.isEmpty())
+
+            now = 10_000L
+            val staleCommit = cleanup.cleanupNow()
+            assertEquals(0, staleCommit.removedEvents)
+            assertEquals(1, staleCommit.preservedCandidates)
+            assertEquals(listOf("event" to "fingerprint"), inbox.cleanupCommits)
+
+            inbox.cleanupCommitResult = IosAlarmNativeCleanupCommitResult(committed = true)
+            val committed = cleanup.cleanupNow()
+            assertEquals(1, committed.removedEvents)
+            assertEquals(2, inbox.cleanupCommits.size)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun `비활성화 취소가 실패하면 이전 저널 eligibility를 복원한다`() = runBlocking {
+        val inbox = LifecycleInbox(emptyList())
+        val scheduler = LifecycleScheduler().apply { failNextCancellations() }
+        val data = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
+        assertFailsWith<IllegalStateException> {
+            IosAlarmStore(data, scheduler, recoveryInbox = inbox).setEnabled(CanonicalUuid, false)
+        }
+        assertEquals(IosAlarmRecoveryEligibility.ENABLED, inbox.eligibility.last())
+        assertTrue(data.getById(CanonicalUuid)!!.enabled)
+    }
+
+    @Test
+    fun `삭제 취소가 실패하면 이전 저널 eligibility를 복원한다`() = runBlocking {
+        val inbox = LifecycleInbox(emptyList())
+        val scheduler = LifecycleScheduler().apply { failNextCancellations() }
+        val data = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
+        assertFailsWith<IllegalStateException> {
+            IosAlarmStore(data, scheduler, recoveryInbox = inbox).delete(CanonicalUuid)
+        }
+        assertEquals(IosAlarmRecoveryEligibility.ENABLED, inbox.eligibility.last())
+        assertTrue(data.getById(CanonicalUuid)!!.enabled)
+    }
+
+    @Test
+    fun `저널 재울림 예약은 원본이 없는 orphan 정리에서도 취소하지 않는다`() = runBlocking {
+        val scheduler = LifecycleScheduler(listOf(IosScheduledAlarmDto("reserved", IosScheduledAlarmState.SCHEDULED)))
+        val inbox = LifecycleInbox(emptyList()).apply { protectedIds = setOf("reserved") }
+        IosAlarmReconciler(LifecycleAlarmDataSource(emptyList()), scheduler, ::canonicalUuid,
+            recoveryInbox = inbox).reconcile()
+        assertTrue(scheduler.hasScheduledAlarm("reserved"))
+    }
+
+    @Test
+    fun `저널 조회가 실패하면 orphan 취소를 시작하지 않는다`() = runBlocking {
+        val scheduler = LifecycleScheduler(listOf(IosScheduledAlarmDto("reserved", IosScheduledAlarmState.SCHEDULED)))
+        val inbox = LifecycleInbox(emptyList()).apply { protectedCode = IosAlarmOperationCode.SDK_ERROR }
+        assertFailsWith<IllegalStateException> {
+            IosAlarmReconciler(LifecycleAlarmDataSource(emptyList()), scheduler, ::canonicalUuid,
+                recoveryInbox = inbox).reconcile()
+        }
+        assertTrue(scheduler.hasScheduledAlarm("reserved"))
+    }
+
+    @Test
+    fun `재울림 중지가 먼저 와도 이전 미션의 위치 획득 유예를 유지한다`() = runBlocking {
+        val root = nativeAttempt("root", "root", 0).copy(
+            expiresAtEpochMillis = Clock.System.now().toEpochMilliseconds() - 1_000,
+        )
+        val inbox = LifecycleInbox(emptyList()).apply {
+            recoveryAttempts = listOf(root, nativeAttempt("retry", "root", 1))
+        }
+        val store = LifecycleMissionStore().apply { saveActiveMission(ActiveAlarmMission(
+            alarmId = root.snapshot.sourceAlarmId, destinationName = "목적지", limitMinutes = 1,
+            expiresAtEpochMillis = root.expiresAtEpochMillis, occurrenceId = root.occurrenceId,
+            chainId = root.chainId, startedAtEpochMillis = root.stopAtEpochMillis,
+            destinationLatitude = 37.5, destinationLongitude = 127.0,
+        )) }
+        val coordinator = IosAlarmMissionCoordinator(LifecycleAlarmDataSource(emptyList()), inbox,
+            LifecycleScheduler(), LifecycleOutcomeRecorder(), store)
+        coordinator.processPendingEvents()
+        assertEquals("root", coordinator.activeMissionFlow.value?.occurrenceId)
+    }
+
+    @Test
+    fun `저널 미션은 소비 ACK와 로컬 미션 소실 이후에도 원래 마감으로 복원한다`() = runBlocking {
+        val attempt = nativeAttempt("root", "root", 0)
+        val inbox = LifecycleInbox(emptyList()).apply { recoveryAttempts = listOf(attempt.copy(missionProjectionAck = true)) }
+        val store = LifecycleMissionStore().apply { markConsumed("root") }
+        val scheduler = LifecycleScheduler()
+        val coordinator = IosAlarmMissionCoordinator(LifecycleAlarmDataSource(emptyList()), inbox,
+            scheduler, LifecycleOutcomeRecorder(), store)
+        coordinator.processPendingEvents()
+        assertEquals(attempt.expiresAtEpochMillis, coordinator.activeMissionFlow.value?.expiresAtEpochMillis)
+        assertEquals(attempt.nextReservationUuid, store.loadDeadlineAlarm()?.alarmKitId)
+        assertTrue(scheduler.retryScheduleRequests.isEmpty())
+    }
+
+    @Test
+    fun `마감이 지난 예약 실패는 만료 미션으로 남으며 새 재울림을 만들지 않는다`() = runBlocking {
+        val attempt = nativeAttempt("root", "root", 0, expired = true)
+        val inbox = LifecycleInbox(emptyList()).apply { recoveryAttempts = listOf(attempt) }
+        val scheduler = LifecycleScheduler()
+        val coordinator = IosAlarmMissionCoordinator(LifecycleAlarmDataSource(emptyList()), inbox,
+            scheduler, LifecycleOutcomeRecorder(), LifecycleMissionStore())
+        coordinator.processPendingEvents()
+        coordinator.handleDeadline("root")
+        assertEquals("root", coordinator.activeMissionFlow.value?.occurrenceId)
+        assertEquals(attempt.expiresAtEpochMillis, coordinator.activeMissionFlow.value?.expiresAtEpochMillis)
+        assertTrue(scheduler.retryScheduleRequests.isEmpty())
+    }
+
+    @Test
+    fun `앱을 열지 않은 연속 재울림은 최신 실제 중지와 고유 토큰으로 복원한다`() = runBlocking {
+        val root = nativeAttempt("root", "root", 0)
+        val retry = nativeAttempt("retry-token", "root", 1).copy(parentOccurrenceId = "root")
+        val inbox = LifecycleInbox(emptyList()).apply { recoveryAttempts = listOf(root, retry) }
+        val coordinator = IosAlarmMissionCoordinator(LifecycleAlarmDataSource(emptyList()), inbox,
+            LifecycleScheduler(), LifecycleOutcomeRecorder(), LifecycleMissionStore())
+        coordinator.processPendingEvents()
+        assertEquals("retry-token", coordinator.activeMissionFlow.value?.occurrenceId)
+        assertEquals("root", coordinator.activeMissionFlow.value?.chainId)
+    }
+
+    @Test
+    fun `기록 저장 오류는 저널 미션 복원과 다음 예약 채택을 막지 않는다`() = runBlocking {
+        val inbox = LifecycleInbox(emptyList()).apply { recoveryAttempts = listOf(nativeAttempt("root", "root", 0)) }
+        val recorder = object : IosMissionOutcomeRecorder {
+            override suspend fun recordRecoveryAttempt(attempt: IosAlarmRecoveryAttemptDto): Boolean = error("record unavailable")
+            override suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) = Unit
+            override suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) = Unit
+        }
+        val coordinator = IosAlarmMissionCoordinator(LifecycleAlarmDataSource(emptyList()), inbox,
+            LifecycleScheduler(), recorder, LifecycleMissionStore())
+        coordinator.processPendingEvents()
+        assertEquals("root", coordinator.activeMissionFlow.value?.occurrenceId)
+        assertFalse(inbox.events.any { it.startsWith("recordAck:") })
+    }
+
+    @Test
+    fun `소유권 미확인 기록은 서버 반영 ACK 없이 복원한다`() = runBlocking {
+        val inbox = LifecycleInbox(emptyList()).apply { recoveryAttempts = listOf(nativeAttempt("root", "root", 0)) }
+        val coordinator = IosAlarmMissionCoordinator(LifecycleAlarmDataSource(emptyList()), inbox,
+            LifecycleScheduler(), LifecycleOutcomeRecorder(), LifecycleMissionStore())
+        coordinator.processPendingEvents()
+        assertEquals("root", coordinator.activeMissionFlow.value?.occurrenceId)
+        assertFalse(inbox.events.any { it.startsWith("recordAck:") })
+    }
+
     @Test
     fun `설정 수정 뒤 늦게 전달된 종료도 원래 버전을 미션과 재울림 예약에 전달한다`() = runBlocking {
         val event = currentStopEvent().copy(scheduleVersion = 4)
@@ -1693,6 +1912,44 @@ private class LifecycleInbox(
     private val recordOpenCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
 ) :
     IosAlarmMissionEventInbox {
+    val eligibility = mutableListOf<IosAlarmRecoveryEligibility>()
+    override fun setSourceEligibility(alarmId: String, scheduleVersion: Long,
+        eligibility: IosAlarmRecoveryEligibility, callback: (IosAlarmOperationResult) -> Unit) {
+        this.eligibility += eligibility
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+    var protectedIds: Set<String> = emptySet()
+    var protectedCode = IosAlarmOperationCode.SUCCESS
+    override fun protectedReservationUuids(callback: (IosAlarmProtectedReservationsResult) -> Unit) {
+        callback(IosAlarmProtectedReservationsResult(protectedIds, protectedCode))
+    }
+    var recoveryAttempts: List<IosAlarmRecoveryAttemptDto> = emptyList()
+    override fun recoveryState(callback: (IosAlarmRecoveryAttemptsResult) -> Unit) {
+        callback(IosAlarmRecoveryAttemptsResult(attempts = recoveryAttempts))
+    }
+    var cleanupCandidates = IosAlarmNativeCleanupCandidatesResult()
+    var cleanupCommitResult = IosAlarmNativeCleanupCommitResult(committed = true)
+    val cleanupCommits = mutableListOf<Pair<String, String>>()
+    override fun nativeCleanupCandidates(callback: (IosAlarmNativeCleanupCandidatesResult) -> Unit) {
+        callback(cleanupCandidates)
+    }
+    override fun commitEventCleanup(
+        eventId: String,
+        fingerprint: String,
+        callback: (IosAlarmNativeCleanupCommitResult) -> Unit,
+    ) {
+        cleanupCommits += eventId to fingerprint
+        callback(cleanupCommitResult)
+    }
+    override fun compactTerminalChain(
+        chainId: String,
+        fingerprint: String,
+        callback: (IosAlarmNativeCleanupCommitResult) -> Unit,
+    ) = callback(cleanupCommitResult)
+    override fun ackRecordProjection(occurrenceId: String, callback: (IosAlarmOperationResult) -> Unit) {
+        events += "recordAck:$occurrenceId"
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
     private val pending = pending.toMutableList()
     private var listener: IosAlarmMissionEventListener? = null
     val events = mutableListOf<String>()
@@ -1711,6 +1968,7 @@ private class LifecycleInbox(
         occurrenceId: String?,
         retryAttempt: Int,
         scheduleVersion: Long,
+        chainId: String?,
         callback: (IosAlarmOperationResult) -> Unit,
     ) {
         events += "stop:$alarmId:${occurrenceId.orEmpty()}:$retryAttempt"
@@ -1727,6 +1985,7 @@ private class LifecycleInbox(
             occurredAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
             retryAttempt = retryAttempt,
             scheduleVersion = scheduleVersion,
+            chainId = chainId,
         )
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
         listener?.onEventRecorded()
@@ -1737,6 +1996,7 @@ private class LifecycleInbox(
         occurrenceId: String?,
         retryAttempt: Int,
         scheduleVersion: Long,
+        chainId: String?,
         callback: (IosAlarmOperationResult) -> Unit,
     ) {
         events += "open:$alarmId:${occurrenceId.orEmpty()}:$retryAttempt"
@@ -1753,6 +2013,7 @@ private class LifecycleInbox(
             occurredAtEpochMillis = Clock.System.now().toEpochMilliseconds(),
             retryAttempt = retryAttempt,
             scheduleVersion = scheduleVersion,
+            chainId = chainId,
         )
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
         listener?.onEventRecorded()
@@ -1765,6 +2026,22 @@ private class LifecycleInbox(
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
     }
 }
+
+private fun cleanupEventCandidate(
+    action: IosAlarmMissionAction = IosAlarmMissionAction.STOP,
+) = IosAlarmNativeCleanupEventCandidate(
+    eventId = "event",
+    fingerprint = "fingerprint",
+    alarmId = "alarm",
+    occurrenceId = "root",
+    action = action,
+    occurredAtEpochMillis = 0,
+    retryAttempt = 0,
+    ringingStoppedAtEpochMillis = if (action == IosAlarmMissionAction.STOP) 1_000 else null,
+    chainId = "root",
+    consumedAtEpochMillis = 1,
+    recordProjectionAckAtEpochMillis = 2,
+)
 
 private class LifecycleMissionStore : IosActiveAlarmMissionStore {
     var mission: ActiveAlarmMission? = null
@@ -1886,4 +2163,22 @@ private class LifecycleLocationService(
         )
         listener?.onStateChanged(state)
     }
+}
+
+private fun nativeAttempt(id: String, chain: String, sequence: Int, expired: Boolean = false): IosAlarmRecoveryAttemptDto {
+    val now = Clock.System.now().toEpochMilliseconds()
+    val stopped = if (expired) now - 120_000 else now - 1_000 + sequence
+    return IosAlarmRecoveryAttemptDto(
+        occurrenceId = id, chainId = chain, sequence = sequence,
+        snapshot = IosAlarmRecoverySourceSnapshotDto(
+            sourceAlarmId = "D08814F5-0B28-4454-91F0-F6931224EBD6", scheduleVersion = 1,
+            destination = IosAlarmRecoveryDestinationSnapshotDto("목적지", 37.5, 127.0),
+            limitSeconds = 60, originalTime = "07:00",
+            owner = IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.UNCAPTURED),
+        ),
+        stopAtEpochMillis = stopped, expiresAtEpochMillis = stopped + 60_000,
+        nextReservationUuid = "reservation-$id", nextOccurrenceToken = "next-$id",
+        currentReservation = IosAlarmRecoveryReservationDto("reservation-$id", IosAlarmRecoveryReservationStatus.FAILED),
+        missionProjectionAck = false, recordProjectionAck = false, outcome = IosAlarmRecoveryAttemptOutcome.ACTIVE,
+    )
 }

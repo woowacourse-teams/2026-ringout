@@ -22,6 +22,24 @@ data class AlarmOccurrenceSyncEntity(
     @ColumnInfo(name = "server_occurrence_id") val serverOccurrenceId: String? = null,
 )
 
+/** iOS recovery 체인의 서버 귀속 결정을 앱 재실행 뒤에도 보존한다. */
+@Entity(
+    tableName = "ios_alarm_occurrence_recording",
+    indices = [Index(value = ["state"])],
+)
+data class IosAlarmOccurrenceRecordEntity(
+    @PrimaryKey @ColumnInfo(name = "chain_id") val chainId: String,
+    @ColumnInfo(name = "root_occurrence_id") val rootOccurrenceId: String,
+    val state: IosAlarmOccurrenceRecordState,
+    @ColumnInfo(name = "owner_account_id") val ownerAccountId: String?,
+    @ColumnInfo(name = "alarm_id") val alarmId: String,
+    @ColumnInfo(name = "schedule_version") val scheduleVersion: Long,
+    @ColumnInfo(name = "scheduled_at") val scheduledAtEpochMillis: Long?,
+    @ColumnInfo(name = "started_at") val startedAtEpochMillis: Long?,
+)
+
+enum class IosAlarmOccurrenceRecordState { AUTH_PENDING, LOCAL_ONLY, SERVER }
+
 @Entity(
     tableName = "alarm_occurrence_ringing_links",
     foreignKeys = [ForeignKey(

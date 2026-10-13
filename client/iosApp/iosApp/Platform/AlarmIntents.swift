@@ -1,10 +1,11 @@
 import AppIntents
 import AlarmKit
 import Foundation
+import UIKit
 
 struct StopAlarmIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "알람 중지"
-    static var supportedModes: IntentModes = .foreground(.immediate)
+    static var supportedModes: IntentModes = [.background, .foreground(.deferred)]
     static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
     @Parameter(title: "Alarm ID")
@@ -45,13 +46,37 @@ struct StopAlarmIntent: LiveActivityIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        try RingoutAlarmMissionEventInbox.shared.record(
+        let enteredAt = Date()
+        let disposition = try await AlarmRecoveryDriver.stop(
             alarmId: alarmId,
-            action: .stop,
-            occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
+            occurrenceToken: occurrenceId.isEmpty ? nil : occurrenceId,
             retryAttempt: retryAttempt,
             scheduleVersion: Int64(scheduleVersion),
-            systemAlarmId: systemAlarmId
+            systemAlarmId: systemAlarmId,
+            now: enteredAt
+        )
+        switch disposition {
+        case .handled:
+            RingoutAlarmMissionEventInbox.shared.notifyRecoveryChanged()
+        case .fallback:
+            try RingoutAlarmMissionEventInbox.shared.record(
+                alarmId: alarmId, action: .stop,
+                occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
+                retryAttempt: retryAttempt, scheduleVersion: Int64(scheduleVersion),
+                systemAlarmId: systemAlarmId, now: enteredAt
+            )
+        case .preserved:
+            break
+        }
+        // Deferred mode requests foreground after this background work completes.
+        // No optional transition error is swallowed, and cancellation cannot undo
+        // the durable stop or its already awaited reservation.
+        let protectedDataAvailable = await MainActor.run { UIApplication.shared.isProtectedDataAvailable }
+        try? AlarmRecoveryDriver.journal.recordPresentation(
+            stage: "stop_committed_foreground_deferred",
+            mode: systemContext.currentMode.debugDescription,
+            canContinueInForeground: systemContext.currentMode.canContinueInForeground,
+            protectedDataAvailable: protectedDataAvailable
         )
         return .result()
     }
@@ -107,15 +132,34 @@ struct OpenRingoutIntent: LiveActivityIntent {
                 didStopRinging = true
             }
         }
-        try RingoutAlarmMissionEventInbox.shared.record(
-            alarmId: alarmId,
-            action: .open,
-            occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
-            retryAttempt: retryAttempt,
-            scheduleVersion: Int64(scheduleVersion),
-            systemAlarmId: systemAlarmId,
-            didStopRinging: didStopRinging
-        )
+        if didStopRinging {
+            let disposition = try await AlarmRecoveryDriver.stop(
+                alarmId: alarmId,
+                occurrenceToken: occurrenceId.isEmpty ? nil : occurrenceId,
+                retryAttempt: retryAttempt,
+                scheduleVersion: Int64(scheduleVersion), systemAlarmId: systemAlarmId
+            )
+            switch disposition {
+            case .handled:
+                RingoutAlarmMissionEventInbox.shared.notifyRecoveryChanged()
+            case .fallback:
+                try RingoutAlarmMissionEventInbox.shared.record(
+                    alarmId: alarmId, action: .open,
+                    occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
+                    retryAttempt: retryAttempt, scheduleVersion: Int64(scheduleVersion),
+                    systemAlarmId: systemAlarmId, didStopRinging: didStopRinging
+                )
+            case .preserved:
+                break
+            }
+        } else {
+            try RingoutAlarmMissionEventInbox.shared.record(
+                alarmId: alarmId, action: .open,
+                occurrenceId: occurrenceId.isEmpty ? nil : occurrenceId,
+                retryAttempt: retryAttempt, scheduleVersion: Int64(scheduleVersion),
+                systemAlarmId: systemAlarmId, didStopRinging: didStopRinging
+            )
+        }
         return .result()
     }
 }

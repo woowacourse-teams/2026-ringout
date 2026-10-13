@@ -40,8 +40,13 @@ data class IosAlarmScheduleDto(
     val repeats: Boolean,
     val title: String,
     val destinationName: String,
+    val destinationLatitude: Double = Double.NaN,
+    val destinationLongitude: Double = Double.NaN,
+    val arrivalRadiusMeters: Double = DefaultArrivalRadiusMeters,
     val limitMinutes: Int,
     val soundName: String,
+    val soundUri: String? = null,
+    val originalTime: String? = null,
     val scheduleVersion: Long = 1,
 )
 
@@ -174,8 +179,13 @@ internal fun AlarmScheduleRequest.toIosAlarmScheduleDto(): IosAlarmScheduleDto {
         repeats = repeatEnabled,
         title = destinationName.ifBlank { "Ringout" },
         destinationName = destinationName,
+        destinationLatitude = destinationLatitude,
+        destinationLongitude = destinationLongitude,
+        arrivalRadiusMeters = DefaultArrivalRadiusMeters,
         limitMinutes = limitMinutes,
         soundName = alarmSoundName,
+        soundUri = alarmSoundUri,
+        originalTime = time,
         scheduleVersion = scheduleVersion,
     )
 }

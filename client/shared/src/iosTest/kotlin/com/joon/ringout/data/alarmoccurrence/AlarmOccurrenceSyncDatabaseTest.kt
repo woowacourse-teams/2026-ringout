@@ -4,6 +4,9 @@ package com.joon.ringout.data.alarmoccurrence
 
 import androidx.room3.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
+import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
+import com.joon.ringout.data.alarmactivity.AlarmOccurrenceTimesEntity
 import com.joon.ringout.data.database.RingoutDatabase
 import com.joon.ringout.data.database.buildRingoutDatabase
 import kotlinx.coroutines.async
@@ -217,14 +220,158 @@ class AlarmOccurrenceSyncDatabaseTest {
         assertEquals(2, dao.getUnsentEvents(Owner).size)
     }
 
+    @Test
+    fun `SERVER 정리는 기대 outbox 행이 모두 존재하고 SENT인 경우에만 준비된다`() = withDatabase { dao ->
+        val decision = serverDecision()
+        dao.recordIosStart(decision, execution())
+        dao.completeStart(Owner, Root, ServerId)
+        dao.recordRepeat(Owner, Root, "retry-1", "retry-event", 3_000)
+
+        val request = cleanupRequest(
+            events = listOf(
+                expectedEvent("start", AlarmOccurrenceOutboxKind.START, 1_000),
+                expectedEvent("repeat:retry-1", AlarmOccurrenceOutboxKind.REPEAT_RANG, 3_000, "retry-1"),
+            ),
+        )
+        assertEquals(IosAlarmCleanupReadinessReason.PENDING, dao.evaluateIosAlarmCleanup(request).reason)
+
+        val repeat = dao.getEvents(Owner, Root).single { it.kind == AlarmOccurrenceOutboxKind.REPEAT_RANG }
+        dao.saveDeliveryState(Owner, repeat.id, AlarmOccurrenceOutboxState.BLOCKED, 1, errorCode = "ALREADY_ENDED")
+        assertEquals(IosAlarmCleanupReadinessReason.BLOCKED, dao.evaluateIosAlarmCleanup(request).reason)
+
+        dao.saveDeliveryState(Owner, repeat.id, AlarmOccurrenceOutboxState.SENT, 1)
+        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request).reason)
+    }
+
+    @Test
+    fun `기대 outbox 행이 누락되면 SENT 시작 행만으로 완료로 오판하지 않는다`() = withDatabase { dao ->
+        dao.recordIosStart(serverDecision(), execution())
+        dao.completeStart(Owner, Root, ServerId)
+
+        val missing = cleanupRequest(events = listOf(
+            expectedEvent("dismiss:retry-1", AlarmOccurrenceOutboxKind.REPEAT_DISMISSED, 4_000, "retry-1"),
+        ))
+        assertEquals(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, dao.evaluateIosAlarmCleanup(missing).reason)
+
+        val empty = cleanupRequest(events = emptyList())
+        assertEquals(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, dao.evaluateIosAlarmCleanup(empty).reason)
+    }
+
+    @Test
+    fun `인증 결정 대기 중인 기록은 iOS 정리 후보로 남긴다`() = withDatabase { dao ->
+        dao.keepIosRecordPending(serverDecision().copy(
+            state = IosAlarmOccurrenceRecordState.AUTH_PENDING,
+            ownerAccountId = null,
+        ))
+
+        val request = cleanupRequest(events = emptyList())
+        assertEquals(IosAlarmCleanupReadinessReason.AUTH_PENDING, dao.evaluateIosAlarmCleanup(request).reason)
+    }
+
+    @Test
+    fun `LOCAL_ONLY 정리는 실제 로컬 기록이 Room에 반영된 뒤 준비된다`() = withDatabaseAndActivity { dao, activity ->
+        val decision = serverDecision().copy(state = IosAlarmOccurrenceRecordState.LOCAL_ONLY, ownerAccountId = null)
+        dao.keepIosRecordLocalOnly(decision)
+        val request = cleanupRequest(
+            events = emptyList(),
+            localProjections = listOf(IosAlarmCleanupActivityProjection(
+                occurrenceId = Root,
+                alarmId = "alarm-1",
+                scheduleVersion = 1,
+                ringingScheduledAtEpochMillis = 900,
+                ringingStartedAtEpochMillis = null,
+                ringingStoppedAtEpochMillis = 2_000,
+                ringingStartObserved = false,
+            )),
+        )
+        assertEquals(IosAlarmCleanupReadinessReason.MISSING_PROJECTION, dao.evaluateIosAlarmCleanup(request).reason)
+
+        activity.record(AlarmActivityEntity.rangConfirmedByStop("alarm-1", Root,
+            AlarmActivityTimestamp(2_000, "1970-01-01"), scheduleVersion = 1))
+        activity.mergeOccurrenceTimes(AlarmOccurrenceTimesEntity(
+            occurrenceId = Root,
+            ringingStartedAtEpochMillis = null,
+            ringingStoppedAtEpochMillis = 2_000,
+            ringingScheduledAtEpochMillis = 900,
+        ))
+        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request).reason)
+    }
+
+    @Test
+    fun `이동 대상 조회 완료와 자식 전송 상태를 종료 정리 proof로 확인한다`() = withDatabase { dao ->
+        dao.recordIosStart(serverDecision(), execution())
+        dao.completeStart(Owner, Root, ServerId)
+        dao.recordDismissal(Owner, Root, 2_000)
+        val dismissal = dao.getEvents(Owner, Root).single { it.kind == AlarmOccurrenceOutboxKind.INITIAL_DISMISSED }
+        dao.saveDeliveryState(Owner, dismissal.id, AlarmOccurrenceOutboxState.SENT, 1)
+        val parent = dao.getMovements(Owner, Root).single()
+        dao.completeMovementTargets(Owner, parent.id, emptyList())
+
+        val movement = IosAlarmCleanupMovementProjection(
+            deduplicationKey = "start",
+            action = com.joon.ringout.domain.alarmmovement.AlarmMovementAction.START_MOVEMENT,
+            occurredAtEpochMillis = 2_000,
+        )
+        val request = cleanupRequest(
+            events = listOf(
+                expectedEvent("start", AlarmOccurrenceOutboxKind.START, 1_000),
+                expectedEvent("dismiss:$Root", AlarmOccurrenceOutboxKind.INITIAL_DISMISSED, 2_000),
+            ),
+            movements = listOf(movement),
+            requireAllMovementRowsSent = true,
+        )
+        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request).reason)
+
+        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
+        val terminalMovement = dao.getMovements(Owner, Root).first { it.deduplicationKey == "terminal" }
+        dao.completeMovementTargets(Owner, terminalMovement.id, listOf(7))
+        assertEquals(IosAlarmCleanupReadinessReason.PENDING, dao.evaluateIosAlarmCleanup(request).reason)
+    }
+
     private fun withDatabase(block: suspend (AlarmOccurrenceSyncDao) -> Unit) = runBlocking {
         val db = Room.inMemoryDatabaseBuilder<RingoutDatabase>().setDriver(BundledSQLiteDriver()).build()
         try { block(db.alarmOccurrenceSyncDao()) } finally { db.close() }
     }
+
+private fun withDatabaseAndActivity(block: suspend (AlarmOccurrenceSyncDao, com.joon.ringout.data.alarmactivity.AlarmActivityDao) -> Unit) = runBlocking {
+    val db = Room.inMemoryDatabaseBuilder<RingoutDatabase>().setDriver(BundledSQLiteDriver()).build()
+    try { block(db.alarmOccurrenceSyncDao(), db.alarmActivityDao()) } finally { db.close() }
+}
 }
 
 private const val Owner = "account-1"
 private const val Root = "initial-local-ring"
 private const val ServerId = "5c9e1f7a-3b2d-4a6c-8e0f-1a2b3c4d5e6f"
 private fun execution() = AlarmOccurrenceSyncEntity(Root, Owner, "alarm-1", 1, 900, 1_000)
+private fun serverDecision() = IosAlarmOccurrenceRecordEntity(
+    chainId = Root,
+    rootOccurrenceId = Root,
+    state = IosAlarmOccurrenceRecordState.SERVER,
+    ownerAccountId = Owner,
+    alarmId = "alarm-1",
+    scheduleVersion = 1,
+    scheduledAtEpochMillis = 900,
+    startedAtEpochMillis = 900,
+)
+private fun cleanupRequest(
+    events: List<IosAlarmCleanupOutboxProjection>,
+    localProjections: List<IosAlarmCleanupActivityProjection> = emptyList(),
+    movements: List<IosAlarmCleanupMovementProjection> = emptyList(),
+    requireAllMovementRowsSent: Boolean = false,
+) = IosAlarmCleanupReadinessRequest(
+    chainId = Root,
+    rootOccurrenceId = Root,
+    alarmId = "alarm-1",
+    scheduleVersion = 1,
+    expectedOutbox = events,
+    expectedActivity = localProjections,
+    expectedMovements = movements,
+    requireAllMovementRowsSent = requireAllMovementRowsSent,
+)
+private fun expectedEvent(
+    key: String,
+    kind: AlarmOccurrenceOutboxKind,
+    at: Long,
+    occurrenceId: String = Root,
+) = IosAlarmCleanupOutboxProjection(occurrenceId, key, kind, at)
 private fun openDatabase(path: String) = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))

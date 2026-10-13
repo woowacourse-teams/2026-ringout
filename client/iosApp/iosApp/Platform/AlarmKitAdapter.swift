@@ -79,6 +79,31 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
 
         do {
             let configuration = try makeConfiguration(request: request, alarmId: alarmId)
+            let snapshot = AlarmRecoverySourceSnapshot(
+                sourceAlarmId: alarmId.uuidString,
+                scheduleVersion: request.scheduleVersion,
+                destination: AlarmRecoveryDestinationSnapshot(
+                    name: request.destinationName,
+                    latitude: request.destinationLatitude,
+                    longitude: request.destinationLongitude
+                ),
+                limitSeconds: Int64(request.limitMinutes) * 60,
+                scheduledAtEpochMillis: nil,
+                originalTime: request.originalTime ?? String(format: "%02d:%02d", request.hour, request.minute),
+                arrivalRadiusMeters: request.arrivalRadiusMeters,
+                repeatRule: request.repeats ? request.isoWeekdays.map { $0.stringValue }.joined(separator: ",") : nil,
+                title: request.title,
+                soundName: request.soundName,
+                soundURI: request.soundUri,
+                // Scheduling-time login does not prove stop-time ownership.
+                owner: .uncaptured
+            )
+            _ = try AlarmRecoveryDriver.journal.upsertSourceSnapshot(snapshot)
+            try AlarmRecoveryDriver.journal.setSourceEligibility(
+                sourceAlarmId: alarmId.uuidString,
+                scheduleVersion: request.scheduleVersion,
+                eligibility: .enabled
+            )
             Task {
                 do {
                     _ = try await AlarmManager.shared.schedule(
@@ -89,6 +114,11 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
                         callback(IosAlarmOperationResult(code: .success, message: nil))
                     }
                 } catch {
+                    try? AlarmRecoveryDriver.journal.setSourceEligibility(
+                        sourceAlarmId: alarmId.uuidString,
+                        scheduleVersion: request.scheduleVersion,
+                        eligibility: .disabled
+                    )
                     completeOnMain {
                         callback(mapScheduleError(error))
                     }

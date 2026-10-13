@@ -15,12 +15,20 @@ internal class IosAlarmStore(
     private val dataSource: AlarmDataSource,
     private val scheduler: IosAlarmScheduler,
     private val reconciler: IosAlarmReconciler? = null,
+    private val recoveryInbox: IosAlarmMissionEventInbox? = null,
 ) {
     suspend fun save(request: AlarmScheduleRequest): Unit =
         IosAlarmStoreMutationMutex.withLock {
             request.validateForStorage()
             val previous = dataSource.getById(request.id)
-            val versionedRequest = request.withScheduleVersion(previous?.request)
+            val scheduleRequest = request.withScheduleVersion(previous?.request)
+            // Each native configuration needs an immutable mission snapshot, including
+            // changes that leave the calendar time/weekday schedule unchanged.
+            val versionedRequest = if (previous != null &&
+                scheduleRequest.scheduleVersion == previous.request.scheduleVersion &&
+                scheduleRequest != previous.request
+            ) scheduleRequest.copy(scheduleVersion = previous.request.scheduleVersion + 1)
+            else scheduleRequest
             val replacement = SavedAlarmSchedule(
                 request = versionedRequest,
                 enabled = true,
@@ -30,12 +38,33 @@ internal class IosAlarmStore(
             try {
                 if (previous?.enabled == true) {
                     dataSource.replace(previous.copy(enabled = false))
+                    recoveryInbox?.setSourceEligibilityAwait(
+                        alarmId = previous.request.id,
+                        scheduleVersion = previous.request.scheduleVersion,
+                        eligibility = IosAlarmRecoveryEligibility.DISABLED,
+                    )
                     scheduler.cancelAwait(request.id)
                 }
+                recoveryInbox?.upsertSourceSnapshotAwait(versionedRequest.toRecoverySnapshot())
+                recoveryInbox?.setSourceEligibilityAwait(
+                    alarmId = versionedRequest.id,
+                    scheduleVersion = versionedRequest.scheduleVersion,
+                    eligibility = IosAlarmRecoveryEligibility.ENABLED,
+                )
                 scheduler.scheduleAwait(versionedRequest)
             } catch (error: Exception) {
                 withContext(NonCancellable) {
                     scheduler.cancelBestEffort(request.id)
+                    recoveryInbox?.setSourceEligibilityBestEffort(
+                        request.id, versionedRequest.scheduleVersion, IosAlarmRecoveryEligibility.DISABLED,
+                    )
+                    previous?.takeIf(SavedAlarmSchedule::enabled)?.let { alarm ->
+                        recoveryInbox?.setSourceEligibilityBestEffort(
+                            alarm.request.id,
+                            alarm.request.scheduleVersion,
+                            IosAlarmRecoveryEligibility.ENABLED,
+                        )
+                    }
                 }
                 val restoreFailure = previous?.restoreScheduledFailure()
                 if (restoreFailure != null) {
@@ -54,6 +83,9 @@ internal class IosAlarmStore(
             } catch (error: Exception) {
                 withContext(NonCancellable) {
                     scheduler.cancelBestEffort(request.id)
+                    recoveryInbox?.setSourceEligibilityBestEffort(
+                        request.id, versionedRequest.scheduleVersion, IosAlarmRecoveryEligibility.DISABLED,
+                    )
                     val restoredSchedule = previous?.restoreScheduledFailure()
                     if (restoredSchedule == null) {
                         dataSource.restoreSnapshotBestEffort(previous, request.id)
@@ -74,11 +106,32 @@ internal class IosAlarmStore(
             ?: throw IllegalStateException("저장된 알람을 찾지 못했습니다.")
         if (previous.enabled == enabled) return@withLock
 
-        if (enabled) {
-            ensureAlarmAuthorization()
-            scheduler.scheduleAwait(previous.request)
-        } else {
-            scheduler.cancelAwait(alarmId)
+        try {
+            if (enabled) {
+                ensureAlarmAuthorization()
+                recoveryInbox?.upsertSourceSnapshotAwait(previous.request.toRecoverySnapshot())
+                recoveryInbox?.setSourceEligibilityAwait(
+                    alarmId = alarmId,
+                    scheduleVersion = previous.request.scheduleVersion,
+                    eligibility = IosAlarmRecoveryEligibility.ENABLED,
+                )
+                scheduler.scheduleAwait(previous.request)
+            } else {
+                recoveryInbox?.setSourceEligibilityAwait(
+                    alarmId = alarmId,
+                    scheduleVersion = previous.request.scheduleVersion,
+                    eligibility = IosAlarmRecoveryEligibility.DISABLED,
+                )
+                scheduler.cancelAwait(alarmId)
+            }
+        } catch (error: Exception) {
+            withContext(NonCancellable) {
+                recoveryInbox?.setSourceEligibilityBestEffort(
+                    alarmId, previous.request.scheduleVersion,
+                    if (previous.enabled) IosAlarmRecoveryEligibility.ENABLED else IosAlarmRecoveryEligibility.DISABLED,
+                )
+            }
+            throw error
         }
         try {
             check(dataSource.setEnabled(alarmId, enabled)) {
@@ -88,7 +141,17 @@ internal class IosAlarmStore(
             withContext(NonCancellable) {
                 if (enabled) {
                     scheduler.cancelBestEffort(alarmId)
+                    recoveryInbox?.setSourceEligibilityBestEffort(
+                        alarmId,
+                        previous.request.scheduleVersion,
+                        IosAlarmRecoveryEligibility.DISABLED,
+                    )
                 } else if (previous.enabled) {
+                    recoveryInbox?.setSourceEligibilityBestEffort(
+                        alarmId,
+                        previous.request.scheduleVersion,
+                        IosAlarmRecoveryEligibility.ENABLED,
+                    )
                     previous.restoreScheduledBestEffort()
                 }
                 reconciler?.reconcileBestEffort()
@@ -100,12 +163,43 @@ internal class IosAlarmStore(
     suspend fun delete(alarmId: String): Unit = IosAlarmStoreMutationMutex.withLock {
         val previous = dataSource.getById(alarmId)
         if (previous?.enabled == true) {
-            scheduler.cancelAwait(alarmId)
+            recoveryInbox?.setSourceEligibilityAwait(
+                alarmId = alarmId,
+                scheduleVersion = previous.request.scheduleVersion,
+                eligibility = IosAlarmRecoveryEligibility.DELETED,
+            )
+            try {
+                scheduler.cancelAwait(alarmId)
+            } catch (error: Exception) {
+                withContext(NonCancellable) {
+                    recoveryInbox?.setSourceEligibilityBestEffort(
+                        alarmId, previous.request.scheduleVersion, IosAlarmRecoveryEligibility.ENABLED,
+                    )
+                }
+                throw error
+            }
+        } else if (previous != null) {
+            recoveryInbox?.setSourceEligibilityAwait(
+                alarmId = alarmId,
+                scheduleVersion = previous.request.scheduleVersion,
+                eligibility = IosAlarmRecoveryEligibility.DELETED,
+            )
         }
         val deleted = try {
             dataSource.delete(alarmId)
         } catch (error: Exception) {
             withContext(NonCancellable) {
+                previous?.let { alarm ->
+                    recoveryInbox?.setSourceEligibilityBestEffort(
+                        alarmId,
+                        alarm.request.scheduleVersion,
+                        if (alarm.enabled) {
+                            IosAlarmRecoveryEligibility.ENABLED
+                        } else {
+                            IosAlarmRecoveryEligibility.DISABLED
+                        },
+                    )
+                }
                 previous?.restoreScheduledBestEffort()
                 reconciler?.reconcileBestEffort()
             }
@@ -113,6 +207,15 @@ internal class IosAlarmStore(
         }
         if (!deleted && previous != null) {
             withContext(NonCancellable) {
+                recoveryInbox?.setSourceEligibilityBestEffort(
+                    alarmId,
+                    previous.request.scheduleVersion,
+                    if (previous.enabled) {
+                        IosAlarmRecoveryEligibility.ENABLED
+                    } else {
+                        IosAlarmRecoveryEligibility.DISABLED
+                    },
+                )
                 previous.restoreScheduledBestEffort()
                 reconciler?.reconcileBestEffort()
             }
@@ -199,4 +302,31 @@ internal class IosAlarmStore(
     private suspend fun IosAlarmScheduler.cancelBestEffort(alarmId: String) {
         runCatching { cancelAwait(alarmId) }
     }
+
+    private suspend fun IosAlarmMissionEventInbox.setSourceEligibilityBestEffort(
+        alarmId: String,
+        scheduleVersion: Long,
+        eligibility: IosAlarmRecoveryEligibility,
+    ) {
+        runCatching { setSourceEligibilityAwait(alarmId, scheduleVersion, eligibility) }
+    }
 }
+
+internal fun AlarmScheduleRequest.toRecoverySnapshot(): IosAlarmRecoverySourceSnapshotDto =
+    IosAlarmRecoverySourceSnapshotDto(
+        sourceAlarmId = id,
+        scheduleVersion = scheduleVersion,
+        destination = IosAlarmRecoveryDestinationSnapshotDto(
+            name = destinationName,
+            latitude = destinationLatitude,
+            longitude = destinationLongitude,
+        ),
+        limitSeconds = limitMinutes * 60L,
+        originalTime = time,
+        arrivalRadiusMeters = DefaultArrivalRadiusMeters,
+        repeatRule = if (repeatEnabled) selectedDays.joinToString(",") else null,
+        title = destinationName.ifBlank { "Ringout" },
+        soundName = alarmSoundName,
+        soundUri = alarmSoundUri,
+        owner = IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.UNCAPTURED),
+    )

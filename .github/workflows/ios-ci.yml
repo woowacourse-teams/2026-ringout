@@ -66,6 +66,12 @@ jobs:
         run: xcodebuild -version
       - name: Test iOS CI/CD helper checks
         run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
+      - name: Test native alarm recovery journal
+        run: |
+          swiftc iosApp/iosApp/Platform/AlarmRecoveryJournal.swift \
+            ci/swift/AlarmRecoveryJournalTests.swift \
+            -o "$RUNNER_TEMP/ringout-alarm-recovery-journal-tests"
+          "$RUNNER_TEMP/ringout-alarm-recovery-journal-tests"
       - name: Test shared Kotlin code on iOS simulator
         run: ./gradlew :shared:iosSimulatorArm64Test --no-daemon --stacktrace
       - name: Build unsigned iOS simulator app

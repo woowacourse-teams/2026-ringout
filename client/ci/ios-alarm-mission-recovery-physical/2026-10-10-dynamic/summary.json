@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "evidence": "Product journal read after user physical test; identities, coordinates and absolute times omitted",
+  "userReportedRetry": true,
+  "userReportedMission": true,
+  "userReportedAutomaticForeground": false,
+  "chains": [
+    {
+      "alias": "chain-1",
+      "terminalOutcome": "terminalForcedStop",
+      "attempts": [
+        {
+          "sequence": 0,
+          "stopOffsetMillis": 0,
+          "deadlineOffsetMillis": 60000,
+          "limitSeconds": 60,
+          "parentSequence": null,
+          "parentTokenMatches": null,
+          "reservationStatus": "cancellationConfirmed",
+          "missionProjectionAck": false,
+          "recordProjectionAck": false,
+          "ownerKind": "uncaptured"
+        },
+        {
+          "sequence": 1,
+          "stopOffsetMillis": 63238,
+          "deadlineOffsetMillis": 123238,
+          "limitSeconds": 60,
+          "parentSequence": 0,
+          "parentTokenMatches": true,
+          "reservationStatus": "cancellationConfirmed",
+          "missionProjectionAck": true,
+          "recordProjectionAck": false,
+          "ownerKind": "uncaptured"
+        },
+        {
+          "sequence": 2,
+          "stopOffsetMillis": 125600,
+          "deadlineOffsetMillis": 185600,
+          "limitSeconds": 60,
+          "parentSequence": 1,
+          "parentTokenMatches": true,
+          "reservationStatus": "cancellationConfirmed",
+          "missionProjectionAck": true,
+          "recordProjectionAck": false,
+          "ownerKind": "uncaptured"
+        },
+        {
+          "sequence": 3,
+          "stopOffsetMillis": 190308,
+          "deadlineOffsetMillis": 250308,
+          "limitSeconds": 60,
+          "parentSequence": 2,
+          "parentTokenMatches": true,
+          "reservationStatus": "cancellationConfirmed",
+          "missionProjectionAck": true,
+          "recordProjectionAck": false,
+          "ownerKind": "uncaptured"
+        }
+      ]
+    }
+  ]
+}

@@ -212,3 +212,20 @@ internal val RingoutMigration10To11 = Migration(10, 11) { connection ->
     """.trimIndent())
     connection.executeSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_alarm_movement_outbox_local_execution_id_deduplication_key ON alarm_movement_outbox (local_execution_id, deduplication_key)")
 }
+
+/** Preserve iOS recovery record decisions, including a durable local-only choice. */
+internal val RingoutMigration11To12 = Migration(11, 12) { connection ->
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS ios_alarm_occurrence_recording (
+            chain_id TEXT NOT NULL PRIMARY KEY,
+            root_occurrence_id TEXT NOT NULL,
+            state TEXT NOT NULL,
+            owner_account_id TEXT,
+            alarm_id TEXT NOT NULL,
+            schedule_version INTEGER NOT NULL,
+            scheduled_at INTEGER,
+            started_at INTEGER
+        )
+    """.trimIndent())
+    connection.executeSQL("CREATE INDEX IF NOT EXISTS index_ios_alarm_occurrence_recording_state ON ios_alarm_occurrence_recording (state)")
+}
