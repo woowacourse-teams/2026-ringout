@@ -17,6 +17,7 @@ internal fun MyPageRoute(
     onThemeModeChange: (ThemeMode) -> Unit,
     onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
+    extraContent: (@Composable (ThemeMode) -> Unit)? = null,
     onEditProfileClick: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
@@ -40,6 +41,7 @@ internal fun MyPageRoute(
         },
         themeMode = themeMode,
         appVersion = appVersion,
+        extraContent = extraContent,
         policies = DefaultMyPagePolicies,
         onThemeModeChange = onThemeModeChange,
         onLoginClick = onLoginClick,

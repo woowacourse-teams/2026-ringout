@@ -5,6 +5,7 @@ import com.joon.ringout.presentation.roomlist.RoomListViewModel
 import com.joon.ringout.presentation.roomlist.roomdetail.RoomDetailRoute
 import com.joon.ringout.presentation.records.RecordsRoute
 import com.joon.ringout.presentation.records.RecordsViewModel
+import androidx.compose.runtime.Composable
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.member.MemberRepository
@@ -41,6 +42,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     memberRepository: MemberRepository,
     themeMode: ThemeMode,
     appVersion: String,
+    myPageExtraContent: (@Composable (ThemeMode) -> Unit)?,
     alarmController: AlarmController,
     activeAlarmMission: ActiveAlarmMission?,
     onThemeModeChange: (ThemeMode) -> Unit,
@@ -68,6 +70,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             viewModel = checkNotNull(myPageViewModel),
             themeMode = themeMode,
             appVersion = appVersion,
+            extraContent = myPageExtraContent,
             onThemeModeChange = onThemeModeChange,
             onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onEditProfileClick = { navigationState.navigate(AppRoute.NicknameChange) },

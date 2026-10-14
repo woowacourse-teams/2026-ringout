@@ -45,3 +45,5 @@ dependencyResolutionManagement {
 
 include(":androidApp")
 include(":shared")
+
+include(":developerTools")

@@ -42,6 +42,7 @@ internal fun MyPageScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
+    extraContent: (@Composable (ThemeMode) -> Unit)? = null,
     onLoginClick: () -> Unit = {},
     accountStatus: AccountStatus = AccountStatus.LoggedOut,
     profileImageUrl: String? = null,
@@ -53,6 +54,7 @@ internal fun MyPageScreen(
     MyPageScreenContent(
         themeMode = themeMode,
         appVersion = appVersion,
+        extraContent = extraContent,
         policies = policies,
         onThemeModeChange = onThemeModeChange,
         onPolicyClick = onPolicyClick,
@@ -75,6 +77,7 @@ fun MyPageScreenContent(
     onThemeModeChange: (ThemeMode) -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
     modifier: Modifier = Modifier,
+    extraContent: (@Composable (ThemeMode) -> Unit)? = null,
     onLoginClick: () -> Unit = {},
     accountStatus: AccountStatus = AccountStatus.LoggedOut,
     profileImageUrl: String? = null,
@@ -141,6 +144,10 @@ fun MyPageScreenContent(
         }
         item { Spacer(Modifier.height(10.dp)) }
         item { MyPageAppVersionRow(appVersion = appVersion) }
+        if (extraContent != null) {
+            item { Spacer(Modifier.height(10.dp)) }
+            item { extraContent(themeMode) }
+        }
     }
     if (isAccountActionInProgress) {
         LoadingOverlay(message = "계정 처리 중")

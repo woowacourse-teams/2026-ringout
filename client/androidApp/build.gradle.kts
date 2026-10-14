@@ -112,6 +112,7 @@ dependencies {
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
+    debugImplementation(projects.developerTools)
 }
 
 android {
@@ -183,4 +184,50 @@ val validateReleaseConfiguration by tasks.registering(ValidateReleaseConfigurati
 
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
     dependsOn(validateReleaseConfiguration)
+}
+
+// Record the actual compiler inputs, including shared KMP sources, before R8 can erase them.
+abstract class RecordReleaseSourceInputsTask : DefaultTask() {
+    @get:org.gradle.api.tasks.InputFiles
+    @get:org.gradle.api.tasks.PathSensitive(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+    abstract val compilerInputs: org.gradle.api.file.ConfigurableFileCollection
+
+    @get:org.gradle.api.tasks.OutputFile
+    abstract val reportFile: org.gradle.api.file.RegularFileProperty
+
+    @TaskAction
+    fun record() {
+        val sources = compilerInputs.asFileTree.files
+            .filter { it.extension in setOf("kt", "java") }
+            .map { it.canonicalPath }
+            .sorted()
+        check(sources.isNotEmpty()) { "Release compiler source inputs are missing" }
+        reportFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(sources.joinToString("\n", postfix = "\n"))
+        }
+    }
+}
+
+val releaseSourceReport = tasks.register<RecordReleaseSourceInputsTask>("recordReleaseSourceInputs") {
+    val appCompile = tasks.named("compileReleaseKotlin")
+    val sharedCompile = project(":shared").tasks.named("compileAndroidMain")
+    dependsOn(appCompile, sharedCompile)
+    compilerInputs.from(appCompile.map { it.inputs.files }, sharedCompile.map { it.inputs.files })
+    reportFile.set(layout.buildDirectory.file("reports/developer-tools/release-sources.txt"))
+}
+
+// Every local/CI release packaging command checks its own final artifact.
+listOf("Apk" to "assembleRelease", "Bundle" to "bundleRelease").forEach { (kind, buildTask) ->
+    val verify = tasks.register<Exec>("verifyRelease${kind}DeveloperTools") {
+        group = "verification"
+        description = "Verifies that the release $kind excludes debug developer tools."
+        dependsOn(releaseSourceReport)
+        workingDir(rootProject.projectDir)
+        commandLine("python3", "ci/verify_developer_tools.py", "--kind", kind.lowercase())
+    }
+    tasks.matching { it.name == buildTask }.configureEach {
+        dependsOn(releaseSourceReport)
+        finalizedBy(verify)
+    }
 }
