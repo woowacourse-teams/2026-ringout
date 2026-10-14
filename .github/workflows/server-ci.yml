@@ -50,8 +50,45 @@ jobs:
   #     - name: Run Checkstyle
   #       run: ./gradlew checkstyleMain checkstyleTest --no-daemon
 
+  test:
+    name: Test (unit + query-count regression)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      APPLE_CLIENT_ID: FAKE_APPLE_CLIENT_ID_FOR_TEST
+      JWT_SECRET: FAKE_TEST_ONLY_DO_NOT_USE_IN_PRODUCTION_0123456789
+      JWT_ACCESS_TOKEN_EXPIRATION_MILLIS: "1000"
+      JWT_REFRESH_TOKEN_EXPIRATION_MILLIS: "2000"
+      JWT_SIGNUP_TOKEN_EXPIRATION_MILLIS: "1000"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: server/**/*.gradle*
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Run tests
+        run: ./gradlew test --no-daemon
+
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-test-report
+          path: server/build/reports/tests/test
+          retention-days: 7
+
   docker:
     name: Docker build, smoke test, and push
+    needs: test
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
