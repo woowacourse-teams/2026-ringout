@@ -14,9 +14,12 @@ class IosAlarmReconciler(
     private val presentationMigrationState: IosAlarmPresentationMigrationState =
         CompletedIosAlarmPresentationMigrationState,
     private val newAlarmId: () -> String = ::newAlarmId,
+    private val recoveryInbox: IosAlarmMissionEventInbox? = null,
     private val currentMinuteOfDay: () -> Int = ::currentIosMinuteOfDay,
 ) {
     suspend fun reconcile(): IosAlarmReconcileReport {
+        // A failed authority read must prevent destructive orphan cleanup.
+        val protectedIds = recoveryInbox?.protectedReservationUuidsAwait().orEmpty()
         val failures = mutableListOf<IosAlarmReconcileFailure>()
         val shouldMigratePresentation = !presentationMigrationState.isMigrationComplete(
             CurrentAlarmPresentationVersion,
@@ -29,7 +32,7 @@ class IosAlarmReconciler(
 
         scheduledAlarms.forEach { scheduled ->
             val roomAlarm = roomById[scheduled.alarmId]
-            if ((roomAlarm == null || !roomAlarm.enabled) &&
+            if (scheduled.alarmId !in protectedIds && (roomAlarm == null || !roomAlarm.enabled) &&
                 scheduled.state == IosScheduledAlarmState.SCHEDULED
             ) {
                 failures.capture(scheduled.alarmId) {

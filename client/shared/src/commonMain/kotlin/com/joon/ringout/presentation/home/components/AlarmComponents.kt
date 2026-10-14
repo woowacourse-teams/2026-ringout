@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.alarm.MissionRecoveryReservationState
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.presentation.common.component.MainScreenHeader
 import com.joon.ringout.ringoutColors
@@ -116,7 +117,8 @@ internal fun ActiveAlarmMissionRow(
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(20.dp)
-    val countdown = formatAlarmMissionRemainingTime(remainingSeconds)
+    val countdown = if (mission.recoveryReservationState != null && remainingSeconds == 0L)
+        "제한 시간 만료" else formatAlarmMissionRemainingTime(remainingSeconds)
     val cardColor = MaterialTheme.colorScheme.primary
     val cardContentColor = MaterialTheme.ringoutColors.primaryActionContent
 
@@ -195,6 +197,16 @@ internal fun ActiveAlarmMissionRow(
                 )
             }
         }
+        val reservationNotice = when (mission.recoveryReservationState) {
+            MissionRecoveryReservationState.FAILED -> "재울림 예약 실패 · 알람 권한을 확인해 주세요"
+            MissionRecoveryReservationState.UNKNOWN -> "재울림 예약 여부를 확인하지 못했습니다"
+            MissionRecoveryReservationState.PENDING -> "재울림 예약 확인 중"
+            else -> null
+        }
+        reservationNotice?.let { notice ->
+            Text(text = notice, color = cardContentColor, style = MaterialTheme.typography.labelSmall)
+        }
+
     }
 }
 

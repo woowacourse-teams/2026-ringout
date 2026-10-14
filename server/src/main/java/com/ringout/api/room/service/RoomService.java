@@ -19,6 +19,7 @@ import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomSummaryResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
+import com.ringout.api.room.repository.RoomMemberStat;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
@@ -27,6 +28,9 @@ import com.ringout.api.user.repository.UserRepository;
 import com.ringout.api.user.status.UserErrorStatus;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -74,16 +78,30 @@ public class RoomService {
 
     @Transactional(readOnly = true)
     public RoomListResponse getRooms(Long userId) {
-        List<RoomSummaryResponse> rooms = roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc().stream()
-            .map(room -> RoomSummaryResponse.from(
-                room,
-                resolveRoomImageUrl(room),
-                roomUserRepository.countActiveByRoomId(room.getId()),
-                userId != null && roomUserRepository.existsActiveByRoomIdAndUserId(room.getId(), userId)
-            ))
+        List<Room> rooms = roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc();
+        if (rooms.isEmpty()) {
+            return new RoomListResponse(List.of());
+        }
+
+        List<Long> roomIds = rooms.stream().map(Room::getId).toList();
+        Map<Long, RoomMemberStat> statsByRoomId = roomUserRepository.findMemberStatsbyRoomIds(roomIds,
+                userId)
+            .stream()
+            .collect(Collectors.toMap(RoomMemberStat::roomId, Function.identity()));
+
+        List<RoomSummaryResponse> responses = rooms.stream()
+            .map(room -> {
+                RoomMemberStat stat = statsByRoomId.get(room.getId());
+                return RoomSummaryResponse.from(
+                    room,
+                    resolveRoomImageUrl(room),
+                    stat == null ? 0 : stat.memberCount().intValue(),
+                    stat != null && stat.isJoined()
+                );
+            })
             .toList();
 
-        return new RoomListResponse(rooms);
+        return new RoomListResponse(responses);
     }
 
     @Transactional(readOnly = true)

@@ -218,6 +218,38 @@ class RoomIosMissionOutcomeRecorderTest {
     }
 
     @Test
+    fun `복구 재생은 현재 알람 설정 대신 저널 스냅샷의 예정 시각과 다음 재울림 시각을 사용한다`() = withDatabase { database ->
+        val alarms = RoomAlarmDataSource(database.alarmDao())
+        alarms.replace(SavedAlarmSchedule(AlarmScheduleRequest(
+            id = "alarm", time = "06:00", selectedDays = listOf("월"), repeatEnabled = true, limitMinutes = 30,
+            destinationName = "변경됨", destinationAddress = "서울", destinationLatitude = 37.1, destinationLongitude = 127.1,
+            alarmSoundName = "기본", alarmSoundUri = null,
+        ), enabled = true))
+        val recorder = recorder(database)
+        val acknowledged = recorder.recordRecoveryAttempt(IosAlarmRecoveryAttemptDto(
+            occurrenceId = "root", chainId = "root", sequence = 0,
+            snapshot = IosAlarmRecoverySourceSnapshotDto(
+                sourceAlarmId = "alarm", scheduleVersion = 1,
+                destination = IosAlarmRecoveryDestinationSnapshotDto("원본", 37.5, 127.0),
+                limitSeconds = 60, originalTime = "07:00",
+                owner = IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.CAPTURED_GUEST),
+            ),
+            stopAtEpochMillis = localMillis("2026-09-28 07:02"),
+            scheduledAtEpochMillis = localMillis("2026-09-28 07:00"),
+            expiresAtEpochMillis = localMillis("2026-09-28 07:03"),
+            nextReservationUuid = "reserved", nextOccurrenceToken = "retry",
+            currentReservation = IosAlarmRecoveryReservationDto("reserved", IosAlarmRecoveryReservationStatus.CONFIRMED),
+            missionProjectionAck = false, recordProjectionAck = false, outcome = IosAlarmRecoveryAttemptOutcome.ACTIVE,
+        ))
+
+        assertTrue(acknowledged)
+        val records = database.missionHistoryDao().getRecords("2026-09-28", "2026-09-28")
+        assertEquals(listOf(localMillis("2026-09-28 07:00")), records.map { it.ringingScheduledAtEpochMillis })
+        assertEquals(localMillis("2026-09-28 07:03"), database.alarmActivityDao().getOccurrenceTimes("retry")?.ringingScheduledAtEpochMillis)
+        assertEquals(1, database.alarmActivityDao().observeCounts("2026-09-28").first().ringingCount)
+    }
+
+    @Test
     fun `실행별 시각과 성공 기록을 중복 없이 보존하고 데이터베이스를 다시 열어도 유지한다`() = runBlocking {
         val databasePath = NSTemporaryDirectory() +
             "ringout-outcome-${NSUUID().UUIDString}.db"
@@ -289,6 +321,8 @@ class RoomIosMissionOutcomeRecorderTest {
     private fun repository(database: RingoutDatabase) = DefaultMissionHistoryRepository(
         RoomMissionHistoryDataSource(database.missionHistoryDao()),
     )
+
+
 
     private fun deleteDatabaseFiles(databasePath: String) {
         listOf(databasePath, "$databasePath-shm", "$databasePath-wal").forEach { path ->

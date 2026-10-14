@@ -16,6 +16,7 @@ internal data class IosRingingAlarm(
     val limitMinutes: Int,
     val startedAtEpochMillis: Long,
     val scheduleVersion: Long = 1,
+    val chainId: String? = null,
 )
 
 internal suspend fun resolveIosRingingAlarm(
@@ -23,8 +24,17 @@ internal suspend fun resolveIosRingingAlarm(
     dataSource: AlarmDataSource,
     deadlineAlarm: IosMissionDeadlineAlarm?,
     observedOccurrenceId: String? = null,
+    recoveryAttempt: IosAlarmRecoveryAttemptDto? = null,
     startedAtEpochMillis: Long = Clock.System.now().toEpochMilliseconds(),
 ): IosRingingAlarm? {
+    if (recoveryAttempt != null) {
+        val snapshot = recoveryAttempt.snapshot
+        return IosRingingAlarm(systemAlarmId, snapshot.sourceAlarmId,
+            recoveryAttempt.nextOccurrenceToken, recoveryAttempt.sequence + 1,
+            snapshot.originalTime.orEmpty(), snapshot.destination.name,
+            (snapshot.limitSeconds / 60).toInt(), startedAtEpochMillis, snapshot.scheduleVersion,
+            recoveryAttempt.chainId)
+    }
     val retryRegistration = deadlineAlarm
         ?.takeIf { registration -> registration.alarmKitId == systemAlarmId }
     val retrySeed = retryRegistration?.missionSeed
@@ -39,6 +49,7 @@ internal suspend fun resolveIosRingingAlarm(
             limitMinutes = retrySeed.limitMinutes,
             startedAtEpochMillis = startedAtEpochMillis,
             scheduleVersion = retrySeed.scheduleVersion,
+            chainId = retryRegistration.sourceOccurrenceId,
         )
     }
 
@@ -53,6 +64,7 @@ internal suspend fun resolveIosRingingAlarm(
         limitMinutes = savedAlarm.request.limitMinutes,
         startedAtEpochMillis = startedAtEpochMillis,
         scheduleVersion = savedAlarm.request.scheduleVersion,
+        chainId = observedOccurrenceId,
     )
 }
 
@@ -66,6 +78,7 @@ internal fun ActiveAlarmMission.toIosRingingAlarm(): IosRingingAlarm = IosRingin
     limitMinutes = limitMinutes,
     startedAtEpochMillis = startedAtEpochMillis,
     scheduleVersion = scheduleVersion,
+    chainId = chainId,
 )
 
 internal fun iosAlarmDateText(epochMillis: Long): String {

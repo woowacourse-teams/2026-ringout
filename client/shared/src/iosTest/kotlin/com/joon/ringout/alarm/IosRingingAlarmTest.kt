@@ -73,6 +73,8 @@ class IosRingingAlarmTest {
                 destinationName = "서울역",
                 limitMinutes = 8,
                 startedAtEpochMillis = StartedAtEpochMillis,
+                scheduleVersion = 1,
+                chainId = registration.sourceOccurrenceId,
             ),
             ringing,
         )

@@ -1,0 +1,9 @@
+{
+  "date": "2026-10-10",
+  "foregroundMode": "deferred",
+  "userReportedAutomaticForeground": true,
+  "evidence": "User confirmed automatic app launch after installation of the deferred build.",
+  "journalExportSucceeded": false,
+  "journalExportError": "CoreDevice error 4016: required connectivity/service assertions unavailable",
+  "cancelUnlockRetryOnThisBuild": "not separately confirmed"
+}

@@ -29,10 +29,50 @@ internal class RoomIosMissionOutcomeRecorder(
     private val occurrenceRecorder: IosAlarmOccurrenceRecorder? = null,
 ) : IosMissionOutcomeRecorder {
 
-    override suspend fun recordRingingTimes(event: IosAlarmMissionEventDto) {
+    override suspend fun recordRingingTimes(event: IosAlarmMissionEventDto): Boolean {
+        recordLocalRingingTimes(event, originalAlarmTime = null, scheduledAtEpochMillis = null)
+        return occurrenceRecorder?.recordStopped(event) ?: true
+    }
+
+    override suspend fun resolvePendingRecordDecisions() {
+        occurrenceRecorder?.resolvePendingRecordDecisions()
+    }
+
+    override suspend fun recordRecoveryAttempt(attempt: IosAlarmRecoveryAttemptDto): Boolean {
+        val event = attempt.toMissionEvent()
+        val scheduledAt = attempt.scheduledAtEpochMillis ?: attempt.snapshot.scheduledAtEpochMillis ?: attempt.snapshot.originalTime?.let { alarmTime ->
+            val referenceTime = event.ringingObservedAtEpochMillis
+                ?: event.ringingStoppedAtEpochMillis
+                ?: event.occurredAtEpochMillis
+            iosInitialRingingScheduledAt(alarmTime, referenceTime)
+        }
+        recordLocalRingingTimes(event, attempt.snapshot.originalTime, scheduledAt)
+        if (attempt.nextOccurrenceToken.isNotBlank()) {
+            activityDao.mergeOccurrenceTimes(AlarmOccurrenceTimesEntity(
+                occurrenceId = attempt.nextOccurrenceToken,
+                ringingScheduledAtEpochMillis = attempt.expiresAtEpochMillis,
+            ))
+        }
+        return occurrenceRecorder?.recordRecoveryAttempt(attempt, scheduledAt)
+            ?: (attempt.snapshot.owner.kind != IosAlarmRecoveryOwnerKind.UNCAPTURED)
+    }
+
+    private suspend fun recordLocalRingingTimes(
+        event: IosAlarmMissionEventDto,
+        originalAlarmTime: String?,
+        scheduledAtEpochMillis: Long?,
+    ) {
+        scheduledAtEpochMillis?.let { scheduledAt ->
+            activityDao.mergeOccurrenceTimes(AlarmOccurrenceTimesEntity(
+                occurrenceId = event.occurrenceId,
+                ringingScheduledAtEpochMillis = scheduledAt,
+            ))
+        }
         val referenceTime = event.ringingObservedAtEpochMillis ?: event.ringingStoppedAtEpochMillis
         if (event.retryAttempt == 0 && referenceTime != null) {
-            alarmDataSource.getById(event.alarmId)?.request?.takeIf { it.scheduleVersion == event.scheduleVersion }?.time?.let { alarmTime ->
+            (originalAlarmTime
+                ?: alarmDataSource.getById(event.alarmId)?.request?.takeIf { it.scheduleVersion == event.scheduleVersion }?.time
+            )?.let { alarmTime ->
                 activityDao.recordInitialRingingSchedule(event.occurrenceId, alarmTime, referenceTime)
             }
         }
@@ -50,7 +90,6 @@ internal class RoomIosMissionOutcomeRecorder(
                 ),
             )
         }
-        occurrenceRecorder?.recordStopped(event)
     }
 
     override suspend fun recordRetryRingingSchedule(occurrenceId: String, sourceOccurrenceId: String, intervalMinutes: Int) {
