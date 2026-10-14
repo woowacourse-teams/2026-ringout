@@ -1,11 +1,12 @@
 """Regression checks for fail-closed release artifact verification."""
 
 from pathlib import Path
+import json
 import tempfile
 import unittest
 import zipfile
 
-from verify_developer_tools import verify
+from verify_developer_tools import resolve_artifact, verify
 
 
 class DeveloperToolsReleaseTest(unittest.TestCase):
@@ -82,3 +83,39 @@ class DeveloperToolsReleaseTest(unittest.TestCase):
         self.source_report.write_text(self.source_report.read_text().splitlines()[0] + "\n")
         with self.assertRaisesRegex(ValueError, "Shared compiler"):
             verify(self.root, self.artifact)
+
+    def apk_metadata(self, folder, filename="current.apk", variant="release"):
+        self.write(f"{folder}/output-metadata.json", json.dumps({
+            "artifactType": {"type": "APK"},
+            "variantName": variant,
+            "elements": [{"outputFile": filename}],
+        }).encode())
+
+    def test_IDE와_CLI의_실제_APK_출력_경로를_사용한다(self):
+        for folder in ("androidApp/build/intermediates/apk/release", "androidApp/build/outputs/apk/release"):
+            with self.subTest(folder=folder):
+                current = self.write(f"{folder}/current.apk", b"current")
+                self.write(f"{folder}/old-unsigned.apk", b"stale")
+                self.apk_metadata(folder)
+                self.assertEqual(resolve_artifact("apk", self.root / folder), current.resolve())
+
+    def test_현재_APK가_없으면_이전_APK로_대체하지_않는다(self):
+        folder = "androidApp/build/intermediates/apk/release"
+        self.write(f"{folder}/old.apk", b"stale")
+        self.apk_metadata(folder)
+        with self.assertRaises(FileNotFoundError):
+            resolve_artifact("apk", self.root / folder)
+
+    def test_Debug_메타데이터를_Release로_검증하지_않는다(self):
+        folder = "apk"
+        self.apk_metadata(folder, variant="debug")
+        with self.assertRaisesRegex(ValueError, "release APK"):
+            resolve_artifact("apk", self.root / folder)
+
+    def test_메타데이터_밖의_APK_경로를_거부한다(self):
+        self.apk_metadata("apk", filename="../outside.apk")
+        with self.assertRaisesRegex(ValueError, "Invalid APK"):
+            resolve_artifact("apk", self.root / "apk")
+
+    def test_AGP가_제공한_AAB_파일을_사용한다(self):
+        self.assertEqual(resolve_artifact("bundle", self.artifact), self.artifact.resolve())

@@ -58,7 +58,7 @@ def verify(root, artifact):
             if not name.endswith("/"):
                 reject_markers(archive.read(name), name)
     return {
-        "artifact": str(artifact.relative_to(root)),
+        "artifact": str(artifact.relative_to(root) if artifact.is_relative_to(root) else artifact),
         "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
         "sourceCount": len(sources),
         "preR8ClassCount": len(class_files),
@@ -68,18 +68,41 @@ def verify(root, artifact):
     }
 
 
+def resolve_artifact(kind, path):
+    """Use AGP's current output metadata, never an APK left by another build."""
+    path = path.resolve()
+    if kind == "apk":
+        metadata = json.loads((path / "output-metadata.json").read_text())
+        if metadata.get("variantName") != "release" or metadata.get("artifactType", {}).get("type") != "APK":
+            raise ValueError("Expected release APK output metadata")
+        elements = metadata.get("elements", [])
+        if len(elements) != 1:
+            raise ValueError("Expected exactly one APK in output metadata")
+        artifact = (path / elements[0]["outputFile"]).resolve()
+        if not artifact.is_relative_to(path) or artifact.suffix != ".apk":
+            raise ValueError("Invalid APK output path in metadata")
+    else:
+        artifact = path
+        if artifact.suffix != ".aab":
+            raise ValueError("Expected an AAB artifact path")
+    if not artifact.is_file():
+        raise FileNotFoundError(f"Build artifact is missing: {artifact}")
+    return artifact
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kind", choices=("apk", "bundle"), required=True)
+    parser.add_argument("--artifact-path", type=Path, help="AGP APK directory or AAB file")
     args = parser.parse_args()
-    extension = "apk" if args.kind == "apk" else "aab"
-    folder = ROOT / f"androidApp/build/outputs/{args.kind}/release"
-    artifacts = list(folder.glob(f"*.{extension}"))
-    if len(artifacts) != 1:
-        raise ValueError(f"Expected exactly one {extension} in {folder}")
     destination = ROOT / f"androidApp/build/reports/developer-tools/release-{args.kind}.json"
     destination.unlink(missing_ok=True)
-    report = verify(ROOT, artifacts[0])
+    default_path = ROOT / f"androidApp/build/outputs/{args.kind}/release"
+    if args.kind == "bundle":
+        default_path /= "androidApp-release.aab"
+    artifact = resolve_artifact(args.kind, args.artifact_path or default_path)
+    report = verify(ROOT, artifact)
+    destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(report, ensure_ascii=False))
 
