@@ -15,6 +15,7 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     @Query("""
         select room
         from Room room
+        left join fetch room.image
         where room.deletedAt is null
         order by room.latestActivityAt desc, room.id asc
         """)

@@ -28,6 +28,7 @@ import com.ringout.api.room.dto.response.RoomMemberResponse;
 import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
+import com.ringout.api.room.repository.RoomMemberStat;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
@@ -163,12 +164,11 @@ class RoomServiceTest {
             given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(
                 roomWithAlarmOccurrence, roomWithMovementStatus, roomUpdated
             ));
-            given(roomUserRepository.countActiveByRoomId(10L)).willReturn(12);
-            given(roomUserRepository.countActiveByRoomId(20L)).willReturn(5);
-            given(roomUserRepository.countActiveByRoomId(30L)).willReturn(3);
-            given(roomUserRepository.existsActiveByRoomIdAndUserId(10L, userId)).willReturn(true);
-            given(roomUserRepository.existsActiveByRoomIdAndUserId(20L, userId)).willReturn(false);
-            given(roomUserRepository.existsActiveByRoomIdAndUserId(30L, userId)).willReturn(false);
+            given(roomUserRepository.findMemberStatsbyRoomIds(List.of(20L, 30L, 10L), userId)).willReturn(List.of(
+                new RoomMemberStat(10L, 12L, 1L),
+                new RoomMemberStat(20L, 5L, 0L),
+                new RoomMemberStat(30L, 3L, 0L)
+            ));
             URI roomImageUri = URI.create("https://example.com/room-1.png?signature=test");
             given(imageFileService.createReadUri(roomUpdated.getImage())).willReturn(roomImageUri);
 
@@ -198,14 +198,41 @@ class RoomServiceTest {
                 LocalDateTime.of(2026, 9, 20, 10, 30)
             );
             given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(room));
-            given(roomUserRepository.countActiveByRoomId(10L)).willReturn(1);
+            given(roomUserRepository.findMemberStatsbyRoomIds(List.of(10L), null))
+                .willReturn(List.of(new RoomMemberStat(10L, 1L, 0L)));
 
             // when
             RoomListResponse response = roomService.getRooms(null);
 
             // then
             assertThat(response.rooms()).singleElement().extracting("isJoined").isEqualTo(false);
-            verify(roomUserRepository, never()).existsActiveByRoomIdAndUserId(any(), any());
+            assertThat(response.rooms().get(0).memberCount()).isEqualTo(1);
+        }
+
+        @Test
+        void 집계_결과가_없는_모임방은_참여자_수_0과_미참여로_반환한다() {
+            // given
+            Long userId = 1L;
+            Room room = roomWithDetails(
+                10L,
+                "아침 운동 모임",
+                null,
+                List.of(ActivityDay.MONDAY),
+                LocalTime.of(8, 0),
+                null,
+                LocalDateTime.of(2026, 9, 20, 10, 30)
+            );
+            given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(room));
+            given(roomUserRepository.findMemberStatsbyRoomIds(List.of(10L), userId)).willReturn(List.of());
+
+            // when
+            RoomListResponse response = roomService.getRooms(userId);
+
+            // then
+            assertThat(response.rooms()).singleElement().satisfies(summary -> {
+                assertThat(summary.memberCount()).isZero();
+                assertThat(summary.isJoined()).isFalse();
+            });
         }
 
         @Test
@@ -218,7 +245,7 @@ class RoomServiceTest {
 
             // then
             assertThat(response.rooms()).isEmpty();
-            verify(roomUserRepository, never()).countActiveByRoomId(any());
+            verify(roomUserRepository, never()).findMemberStatsbyRoomIds(any(), any());
         }
     }
 
