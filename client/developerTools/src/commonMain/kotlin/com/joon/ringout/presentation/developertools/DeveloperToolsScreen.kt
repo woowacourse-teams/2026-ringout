@@ -62,3 +62,18 @@ private fun DeveloperToolsScreenDarkPreview() {
         DeveloperToolsScreen(uiState = DeveloperToolsPreviewState, onBack = {})
     }
 }
+
+@Preview(showBackground = true, widthDp = 393, heightDp = 852)
+@Composable
+private fun DeveloperToolsScreenIosPreview() {
+    RingoutTheme(ThemeMode.Light) {
+        DeveloperToolsScreen(
+            uiState = DeveloperToolsPreviewState.copy(
+                versionName = "1.1.1",
+                versionCode = "261010101",
+                buildType = "Debug",
+            ),
+            onBack = {},
+        )
+    }
+}

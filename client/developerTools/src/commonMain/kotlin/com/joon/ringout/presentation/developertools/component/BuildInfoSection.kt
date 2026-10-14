@@ -23,8 +23,8 @@ internal fun BuildInfoSection(
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         listOf(
-            "앱 버전 (versionName)" to uiState.versionName,
-            "버전 코드 (versionCode)" to uiState.versionCode,
+            "앱 버전" to uiState.versionName,
+            "빌드 번호" to uiState.versionCode,
             "빌드 타입" to uiState.buildType,
             "서버 환경" to uiState.serverEnvironment,
             "서버 주소" to uiState.apiBaseUrl,

@@ -19,7 +19,6 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.developertools.component.DeveloperToolsEntry
-import com.joon.ringout.presentation.developertools.component.DeveloperToolsPendingContent
 
 @Composable
 fun DeveloperToolsHost(
@@ -58,7 +57,7 @@ internal expect fun DeveloperToolsBackHandler(onBack: () -> Unit)
 @Composable
 private fun DeveloperToolsHostPreview() {
     RingoutTheme(ThemeMode.Light) {
-        DeveloperToolsHost(toolsContent = { DeveloperToolsPendingContent(onBack = it) }) { entry ->
+        DeveloperToolsHost(toolsContent = { DeveloperToolsScreen(uiState = DeveloperToolsPreviewState, onBack = it) }) { entry ->
             entry(ThemeMode.Light)
         }
     }

@@ -3,7 +3,7 @@ package com.joon.ringout.domain.developertools
 /** Immutable snapshot of the configuration actually used by this installed app. */
 data class AppBuildInfo(
     val versionName: String,
-    val versionCode: Int,
+    val versionCode: String,
     val buildType: String,
     val apiBaseUrl: String,
 ) {
