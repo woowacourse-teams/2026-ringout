@@ -110,6 +110,7 @@ actual fun PlatformDestinationMap(
     var activeCurrentLocationRequestId by remember { mutableStateOf<Int?>(null) }
     var lastHandledCurrentLocationRequestId by remember { mutableStateOf(0) }
     var lastHandledCurrentLocationCancellationId by remember { mutableStateOf(0) }
+    var currentLocationStartJob by remember { mutableStateOf<Job?>(null) }
     var currentLocationCameraJob by remember { mutableStateOf<Job?>(null) }
     var currentLocationCameraGeneration by remember { mutableStateOf(0) }
     val cameraSettlementTracker = remember { DestinationCameraSettlementTracker() }
@@ -161,6 +162,8 @@ actual fun PlatformDestinationMap(
     }
 
     fun cancelCurrentLocationRequest() {
+        currentLocationStartJob?.cancel()
+        currentLocationStartJob = null
         currentLocationCameraGeneration += 1
         currentLocationCameraJob?.cancel()
         currentLocationCameraJob = null
@@ -244,6 +247,15 @@ actual fun PlatformDestinationMap(
         )
     }
 
+    fun requestCurrentLocationWhenResumed(requestId: Int) {
+        currentLocationStartJob?.cancel()
+        currentLocationStartJob = coroutineScope.launch {
+            if (lifecycleOwner.lifecycle.awaitDestinationLocationReady()) {
+                requestAndMoveToCurrentLocation(requestId)
+            }
+        }
+    }
+
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
@@ -251,7 +263,7 @@ actual fun PlatformDestinationMap(
             ?: return@rememberLauncherForActivityResult
         when {
             context.hasDestinationFineLocationPermission() -> {
-                requestAndMoveToCurrentLocation(requestId)
+                requestCurrentLocationWhenResumed(requestId)
             }
 
             context.hasDestinationLocationPermission() || permissions.values.any { it } -> {
@@ -297,7 +309,7 @@ actual fun PlatformDestinationMap(
         activeCurrentLocationRequestId = currentLocationRequestId
         currentOnCurrentLocationLoadingChange.value(true)
         if (context.hasDestinationFineLocationPermission()) {
-            requestAndMoveToCurrentLocation(currentLocationRequestId)
+            requestCurrentLocationWhenResumed(currentLocationRequestId)
         } else {
             locationPermissionLauncher.launch(DestinationLocationPermissions)
         }
