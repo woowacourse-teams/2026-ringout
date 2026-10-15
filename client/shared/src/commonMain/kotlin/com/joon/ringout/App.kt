@@ -11,6 +11,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.createSavedStateHandle
+import com.joon.ringout.alarm.ForceEndMissionResult
+import com.joon.ringout.presentation.activemission.ForceEndMissionViewModel
+import com.joon.ringout.presentation.activemission.ForceEndPhase
+import com.joon.ringout.presentation.activemission.component.ForceEndMissionStatus
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.DefaultMissionLocationState
@@ -71,7 +76,7 @@ fun App(
     onRequestTemporaryFullAccuracy: () -> Unit = {},
     onRingingAlarmDismiss: (String) -> Unit = {},
     onActiveAlarmMissionExpired: () -> Unit = {},
-    onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit = { _ -> },
+    onActiveAlarmMissionForceEnd: suspend (occurrenceId: String) -> ForceEndMissionResult = { ForceEndMissionResult.Failed },
     onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit = { _ -> },
     onActiveAlarmMissionForceEndHoldCancelled:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
@@ -170,7 +175,7 @@ private fun RingoutAppContent(
     onRequestTemporaryFullAccuracy: () -> Unit,
     onRingingAlarmDismiss: (String) -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
-    onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
+    onActiveAlarmMissionForceEnd: suspend (occurrenceId: String) -> ForceEndMissionResult,
     onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit,
     onActiveAlarmMissionForceEndHoldCancelled:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
@@ -178,6 +183,11 @@ private fun RingoutAppContent(
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
+    val forceEndViewModel = viewModel { ForceEndMissionViewModel(createSavedStateHandle()) }
+    val forceEndState by forceEndViewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(forceEndViewModel) {
+        forceEndViewModel.resumePending(onActiveAlarmMissionForceEnd)
+    }
     val termsViewModel: TermsReagreementViewModel = viewModel {
         TermsReagreementViewModel(appContainer.termsRepository, appContainer.authRepository,
             appContainer.authSession, appContainer.networkMonitor)
@@ -420,7 +430,8 @@ private fun RingoutAppContent(
                 missionLocationState = missionLocationState,
                 onRingingAlarmDismiss = onRingingAlarmDismiss,
                 onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
-                onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
+                onActiveAlarmMissionForceEnd = { forceEndViewModel.request(it, onActiveAlarmMissionForceEnd) },
+                isForceEndEnabled = forceEndState.phase == ForceEndPhase.Idle,
                 onActiveAlarmMissionForceEndHoldStarted =
                     onActiveAlarmMissionForceEndHoldStarted,
                 onActiveAlarmMissionForceEndHoldCancelled =
@@ -446,8 +457,18 @@ private fun RingoutAppContent(
         },
     )
     // 알람 울림과 진행 중 미션의 필수 조작은 기존 우선순위를 유지한다.
-    if (displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking) {
+    if (forceEndState.phase == ForceEndPhase.Idle &&
+        displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking
+    ) {
         TermsReagreementRoute(termsViewModel)
+    }
+    if (ringingAlarm == null) {
+        ForceEndMissionStatus(
+            uiState = forceEndState,
+            onConfirm = forceEndViewModel::dismiss,
+            onRetry = { forceEndViewModel.retry(onActiveAlarmMissionForceEnd) },
+            onDismiss = forceEndViewModel::dismiss,
+        )
     }
 
 }

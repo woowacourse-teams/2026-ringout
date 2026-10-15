@@ -92,7 +92,7 @@ fun MainViewControllerWithContent(
                         coroutineScope.launch { alarmRuntime.handleDeadline() }
                     },
                     onActiveAlarmMissionForceEnd = { occurrenceId ->
-                        coroutineScope.launch { alarmRuntime.forceEndActiveMission(occurrenceId) }
+                        alarmRuntime.requestForceEndActiveMission(occurrenceId)
                     },
                     onActiveAlarmMissionForceEndHoldStarted =
                         alarmRuntime::recordForceEndHoldStarted,

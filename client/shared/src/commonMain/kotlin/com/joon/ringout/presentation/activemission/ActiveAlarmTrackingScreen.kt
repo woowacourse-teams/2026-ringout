@@ -35,7 +35,6 @@ import com.joon.ringout.presentation.activemission.components.ActiveAlarmLocatio
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmMapUnavailable
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingCard
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingHeader
-import com.joon.ringout.presentation.activemission.components.ForceEndCompletedDialog
 import com.joon.ringout.presentation.activemission.components.activeAlarmTrackingColors
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.home.components.formatAlarmMissionRemainingTime
@@ -51,6 +50,7 @@ fun ActiveAlarmTrackingScreen(
     onExpired: () -> Unit,
     locationState: MissionLocationState = DefaultMissionLocationState,
     modifier: Modifier = Modifier,
+    isForceEndEnabled: Boolean = true,
     onForceEndHoldStarted: (occurrenceId: String) -> Unit = {},
     onForceEndHoldCancelled:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
@@ -75,18 +75,7 @@ fun ActiveAlarmTrackingScreen(
     var mapError by remember(mission.occurrenceId) {
         mutableStateOf<String?>(null)
     }
-    var isForceEndDialogVisible by remember(mission.occurrenceId) {
-        mutableStateOf(false)
-    }
-    var isForceEndRequested by remember(mission.occurrenceId) {
-        mutableStateOf(false)
-    }
-
-    PlatformBackHandler(
-        onBack = {
-            if (!isForceEndDialogVisible) onBackClick()
-        },
-    )
+    PlatformBackHandler(onBack = onBackClick)
 
     ActiveAlarmTrackingLayout(
         missionOccurrenceId = mission.occurrenceId,
@@ -106,12 +95,12 @@ fun ActiveAlarmTrackingScreen(
         },
         onBackClick = onBackClick,
         onForceEndHoldStarted = {
-            if (!isForceEndRequested) {
+            if (isForceEndEnabled) {
                 onForceEndHoldStarted(mission.occurrenceId)
             }
         },
         onForceEndHoldCancelled = { holdDurationMillis ->
-            if (!isForceEndRequested) {
+            if (isForceEndEnabled) {
                 onForceEndHoldCancelled(
                     mission.occurrenceId,
                     holdDurationMillis,
@@ -119,23 +108,15 @@ fun ActiveAlarmTrackingScreen(
             }
         },
         onForceEndHoldComplete = { holdDurationMillis ->
-            if (!isForceEndRequested) {
+            if (isForceEndEnabled) {
                 onForceEndHoldCompleted(
                     mission.occurrenceId,
                     holdDurationMillis,
                 )
-                isForceEndDialogVisible = true
-            }
-        },
-        isForceEndEnabled = !isForceEndDialogVisible && !isForceEndRequested,
-        isForceEndDialogVisible = isForceEndDialogVisible,
-        onForceEndConfirm = {
-            if (!isForceEndRequested) {
-                isForceEndRequested = true
-                isForceEndDialogVisible = false
                 onForceEndClick(mission.occurrenceId)
             }
         },
+        isForceEndEnabled = isForceEndEnabled,
         modifier = modifier,
         mapContent = { mapModifier ->
             PlatformActiveAlarmMap(
@@ -162,8 +143,6 @@ private fun ActiveAlarmTrackingLayout(
     onForceEndHoldCancelled: (holdDurationMillis: Long) -> Unit,
     onForceEndHoldComplete: (holdDurationMillis: Long) -> Unit,
     isForceEndEnabled: Boolean,
-    isForceEndDialogVisible: Boolean,
-    onForceEndConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
 ) {
@@ -217,12 +196,6 @@ private fun ActiveAlarmTrackingLayout(
                     isForceEndEnabled = isForceEndEnabled,
                 )
             }
-        }
-
-        if (isForceEndDialogVisible) {
-            ForceEndCompletedDialog(
-                onConfirm = onForceEndConfirm,
-            )
         }
     }
 }
@@ -298,8 +271,6 @@ private fun ActiveAlarmTrackingScreenDarkPreview() {
             onForceEndHoldCancelled = {},
             onForceEndHoldComplete = {},
             isForceEndEnabled = true,
-            isForceEndDialogVisible = false,
-            onForceEndConfirm = {},
             mapContent = { mapModifier ->
                 Box(
                     modifier = mapModifier.background(
@@ -326,8 +297,6 @@ private fun ActiveAlarmTrackingScreenLightPreview() {
             onForceEndHoldCancelled = {},
             onForceEndHoldComplete = {},
             isForceEndEnabled = true,
-            isForceEndDialogVisible = false,
-            onForceEndConfirm = {},
             mapContent = { mapModifier ->
                 Box(
                     modifier = mapModifier.background(
@@ -339,9 +308,9 @@ private fun ActiveAlarmTrackingScreenLightPreview() {
     }
 }
 
-@Preview(name = "Force end completed dialog", widthDp = 402, heightDp = 941)
+@Preview(name = "Force end processing", widthDp = 402, heightDp = 941)
 @Composable
-private fun ActiveAlarmTrackingForceEndDialogPreview() {
+private fun ActiveAlarmTrackingScreenProcessingPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
         ActiveAlarmTrackingLayout(
             missionOccurrenceId = "preview-dialog",
@@ -354,8 +323,6 @@ private fun ActiveAlarmTrackingForceEndDialogPreview() {
             onForceEndHoldCancelled = {},
             onForceEndHoldComplete = {},
             isForceEndEnabled = false,
-            isForceEndDialogVisible = true,
-            onForceEndConfirm = {},
             mapContent = { mapModifier ->
                 Box(
                     modifier = mapModifier.background(

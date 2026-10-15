@@ -201,6 +201,17 @@ class IosAlarmRuntime internal constructor(
             }
         }
 
+    suspend fun requestForceEndActiveMission(occurrenceId: String): ForceEndMissionResult {
+        try {
+            return missionCoordinator.requestForceEnd(occurrenceId)
+        } finally {
+            if (missionCoordinator.hasPendingTerminal()) scheduleTerminalRecovery()
+            syncTracking()
+            scheduleRetryDeliveryRecoveryIfNeeded()
+            nativeCleanup?.requestCleanup()
+        }
+    }
+
     suspend fun forceEndActiveMission(occurrenceId: String? = null) {
         try {
             missionCoordinator.clearActiveMission(occurrenceId)
