@@ -24,7 +24,7 @@ internal fun DestinationRoute(
 
     DestinationMapScreen(
         initialSelection = initialSelection,
-        requestCurrentLocationOnStart = false,
+        requestCurrentLocationOnStart = true,
         isAuthenticated = authSessionState == AuthSessionState.Authenticated,
         onEntered = { if (isActive) viewModel.onScreenEntered() },
         onBackClick = { if (isActive) onBackClick() },
