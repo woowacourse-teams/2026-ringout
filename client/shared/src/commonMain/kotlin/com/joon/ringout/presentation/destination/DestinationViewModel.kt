@@ -46,6 +46,7 @@ class DestinationViewModel(
         private set
 
     private val mutationMutex = Mutex()
+    private val currentLocationCache = DestinationCurrentLocationCache()
     private val scope = coroutineScope ?: viewModelScope
     private var nextSavedEventId = 0L
     private var fetchJob: Job? = null
@@ -59,7 +60,15 @@ class DestinationViewModel(
         refreshDestinations()
     }
 
+    internal fun onCurrentLocationResolved(latitude: Double, longitude: Double) {
+        currentLocationCache.update(latitude, longitude)
+    }
+
+    internal fun initialCurrentLocation(): DestinationSelection? =
+        currentLocationCache.initialLocation()
+
     fun onLoggedOut() {
+        currentLocationCache.clear()
         refreshDestinations(clearDestinations = true)
     }
 

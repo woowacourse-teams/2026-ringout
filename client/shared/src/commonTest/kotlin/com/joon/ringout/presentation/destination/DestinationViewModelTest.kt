@@ -27,6 +27,45 @@ import kotlin.test.assertTrue
 
 class DestinationViewModelTest {
     @Test
+    fun `목적지 화면에 다시 진입해도 마지막 현재 위치를 초기 위치로 유지한다`() =
+        withViewModel { viewModel, _, _ ->
+            viewModel.onCurrentLocationResolved(latitude = 37.5665, longitude = 126.9780)
+
+            viewModel.onScreenEntered()
+            viewModel.onScreenEntered()
+
+            val initialLocation = assertNotNull(viewModel.initialCurrentLocation())
+            assertEquals(37.5665, initialLocation.latitude)
+            assertEquals(126.9780, initialLocation.longitude)
+        }
+
+    @Test
+    fun `사용자가 다른 목적지를 저장해도 현재 위치 캐시는 변경되지 않는다`() =
+        withViewModel { viewModel, _, _ ->
+            viewModel.onCurrentLocationResolved(latitude = 35.1796, longitude = 129.0756)
+
+            viewModel.save(
+                destination = NewDestination,
+                requestId = 1L,
+                loginState = AnalyticsLoginState.LoggedIn,
+            )
+
+            val initialLocation = assertNotNull(viewModel.initialCurrentLocation())
+            assertEquals(35.1796, initialLocation.latitude)
+            assertEquals(129.0756, initialLocation.longitude)
+        }
+
+    @Test
+    fun `로그아웃하면 마지막 현재 위치를 초기 위치로 사용하지 않는다`() =
+        withViewModel { viewModel, _, _ ->
+            viewModel.onCurrentLocationResolved(latitude = 37.5665, longitude = 126.9780)
+
+            viewModel.onLoggedOut()
+
+            assertNull(viewModel.initialCurrentLocation())
+        }
+
+    @Test
     fun successfulNewDestinationSaveRecordsCreationAfterTheRepositoryReturns() =
         withViewModel { viewModel, repository, recorder ->
             repository.saveResult = NewDestination.copy(id = 42L)
