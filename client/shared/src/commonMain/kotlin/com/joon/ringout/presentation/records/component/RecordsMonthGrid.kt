@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.selection.selectableGroup
@@ -24,14 +25,18 @@ internal fun RecordsMonthGrid(
     modifier: Modifier = Modifier,
 ) {
     val dayHeight = recordsCalendarDayHeight()
-    Column(modifier = modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        // Six weeks fit every month. Blank weeks retain their height without becoming selectable.
-        repeat(6) { week ->
-            Row(Modifier.fillMaxWidth().height(dayHeight)) {
+    val weeks = days.chunked(7).ifEmpty { List(6) { emptyList() } }
+    // Keep the six-week height, but distribute actual weeks without trailing empty rows.
+    Column(
+        modifier = modifier.height(dayHeight * 6 + 20.dp).selectableGroup(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        weeks.forEach { week ->
+            Row(Modifier.fillMaxWidth().weight(1f)) {
                 repeat(7) { weekday ->
-                    val day = days.getOrNull(week * 7 + weekday)
+                    val day = week.getOrNull(weekday)
                     if (day == null) Box(Modifier.weight(1f))
-                    else RecordsCalendarDay(day, { onDateSelected(day.date) }, Modifier.weight(1f))
+                    else RecordsCalendarDay(day, { onDateSelected(day.date) }, Modifier.weight(1f).fillMaxHeight())
                 }
             }
         }

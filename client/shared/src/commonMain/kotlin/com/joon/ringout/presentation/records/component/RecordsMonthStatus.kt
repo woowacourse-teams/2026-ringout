@@ -1,12 +1,16 @@
 package com.joon.ringout.presentation.records.component
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +19,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -32,14 +37,23 @@ internal fun RecordsMonthStatus(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (!isLoading && errorMessage == null) return
+
+    val colors = recordsColors()
+    val shape = RoundedCornerShape(10.dp)
     val textStyle = MaterialTheme.typography.bodyMedium
     val messageHeight = with(LocalDensity.current) { textStyle.lineHeight.toDp() * 2 }
     val actionHeight = with(LocalDensity.current) {
         (MaterialTheme.typography.labelLarge.lineHeight.toDp() + 16.dp).coerceAtLeast(48.dp)
     }
-    // Keep both slots even after loading completes so the centered dialog never changes height.
+    // This panel overlays the calendar; it never contributes to the dialog height.
     Column(
-        modifier = modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+        modifier = modifier.fillMaxWidth()
+            .clip(shape)
+            .background(colors.calendarSurface)
+            .border(1.dp, colors.calendarBorder, shape)
+            .padding(12.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -67,12 +81,6 @@ internal fun RecordsMonthStatus(
 @Preview
 @Composable
 private fun RecordsMonthStatusPreview() {
-    RingoutTheme { RecordsMonthStatus(false, null, {}) }
-}
-
-@Preview
-@Composable
-private fun RecordsMonthStatusLoadingPreview() {
     RingoutTheme { RecordsMonthStatus(true, null, {}) }
 }
 

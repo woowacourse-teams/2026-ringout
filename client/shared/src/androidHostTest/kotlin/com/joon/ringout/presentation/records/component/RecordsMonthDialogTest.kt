@@ -38,7 +38,7 @@ class RecordsMonthDialogTest {
     val compose = createEmptyComposeRule()
 
     @Test
-    fun `4주 5주 6주 월과 로딩 성공 오류를 전환해도 다이얼로그와 월 버튼 위치가 유지된다`() {
+    fun `4주 5주 6주 월과 조회 상태가 바뀌어도 위치를 유지하고 하단에 빈 영역을 남기지 않는다`() {
         verifyStableBounds(fontScale = 1f)
     }
 
@@ -113,6 +113,14 @@ class RecordsMonthDialogTest {
                     }
                     assertEquals(dialogBounds, compose.onNodeWithTag("calendar").fetchSemanticsNode().boundsInWindow)
                     assertEquals(buttonBounds, compose.onNodeWithContentDescription("다음 달").fetchSemanticsNode().boundsInWindow)
+                    val lastDate = days(nextMonth, result.value).filterNotNull().last().date
+                    val lastCell = compose.onNodeWithText(lastDate.day.toString()).fetchSemanticsNode().boundsInWindow
+                    assertEquals(
+                        12f * compose.density.density,
+                        dialogBounds.bottom - lastCell.bottom,
+                        absoluteTolerance = 1f,
+                        message = "마지막 날짜 아래에는 다이얼로그 기본 패딩만 남아야 한다",
+                    )
                 }
             }
         } finally {

@@ -63,7 +63,7 @@ internal fun RecordsCalendarDay(
             .semantics(mergeDescendants = true) { contentDescription = description }
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
     ) {
         Text(
             day.date.day.toString(),
@@ -87,7 +87,7 @@ internal fun RecordsCalendarDay(
     }
 }
 
-// Keep every week the same height, including empty weeks and days without a result.
+// Reserve enough space for the date and result icon at the current font scale.
 @Composable
 internal fun recordsCalendarDayHeight(): Dp = with(LocalDensity.current) {
     (16.sp.toDp() + 33.dp).coerceAtLeast(49.dp)

@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.records.component
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -84,8 +85,15 @@ internal fun RecordsMonthDialog(
                             Text(label, Modifier.weight(1f), color = colors.secondaryText, fontSize = 12.sp, textAlign = TextAlign.Center)
                         }
                     }
-                    RecordsMonthGrid(days = days, onDateSelected = onDateSelected)
-                    RecordsMonthStatus(isLoading = isLoading, errorMessage = errorMessage, onRetry = onRetry)
+                    Box {
+                        RecordsMonthGrid(days = days, onDateSelected = onDateSelected)
+                        Box(
+                            modifier = Modifier.matchParentSize().padding(16.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            RecordsMonthStatus(isLoading = isLoading, errorMessage = errorMessage, onRetry = onRetry)
+                        }
+                    }
                 }
             }
         }
