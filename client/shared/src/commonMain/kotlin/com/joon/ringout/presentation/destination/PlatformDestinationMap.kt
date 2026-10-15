@@ -21,6 +21,7 @@ expect fun PlatformDestinationMap(
         placeName: String?,
         address: String?,
     ) -> Unit,
+    onCurrentLocationResolved: (latitude: Double, longitude: Double) -> Unit,
     onCurrentLocationLoadingChange: (Boolean) -> Unit,
     onCurrentLocationError: (String) -> Unit,
     onMapError: (String) -> Unit,

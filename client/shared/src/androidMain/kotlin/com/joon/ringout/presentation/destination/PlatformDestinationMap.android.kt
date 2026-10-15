@@ -68,6 +68,7 @@ actual fun PlatformDestinationMap(
         placeName: String?,
         address: String?,
     ) -> Unit,
+    onCurrentLocationResolved: (latitude: Double, longitude: Double) -> Unit,
     onCurrentLocationLoadingChange: (Boolean) -> Unit,
     onCurrentLocationError: (String) -> Unit,
     onMapError: (String) -> Unit,
@@ -83,6 +84,7 @@ actual fun PlatformDestinationMap(
     val currentOnCameraMoveStarted = rememberUpdatedState(onCameraMoveStarted)
     val currentOnCameraSettled = rememberUpdatedState(onCameraSettled)
     val currentOnAddressResolved = rememberUpdatedState(onAddressResolved)
+    val currentOnCurrentLocationResolved = rememberUpdatedState(onCurrentLocationResolved)
     val currentOnCurrentLocationLoadingChange = rememberUpdatedState(onCurrentLocationLoadingChange)
     val currentOnCurrentLocationError = rememberUpdatedState(onCurrentLocationError)
     val currentOnMapError = rememberUpdatedState(onMapError)
@@ -188,9 +190,22 @@ actual fun PlatformDestinationMap(
                     return@locationCallback
                 }
 
-                val shouldMoveCamera = lastPresentedLocation?.isSameMapFixAs(location) != true
+                currentOnCurrentLocationResolved.value(location.latitude, location.longitude)
+                val center = cameraPositionState.position.target
+                val isCameraAtLocation = !cameraPositionState.isMoving &&
+                    kotlin.math.abs(center.latitude - location.latitude) < CameraCoordinateTolerance &&
+                    kotlin.math.abs(center.longitude - location.longitude) < CameraCoordinateTolerance &&
+                    cameraPositionState.position.zoom == CurrentLocationZoomLevel
+                val shouldMoveCamera = !isCameraAtLocation &&
+                    lastPresentedLocation?.isSameMapFixAs(location) != true
                 lastPresentedLocation = location
                 if (!shouldMoveCamera) {
+                    if (isCameraAtLocation) {
+                        currentLocationCameraGeneration += 1
+                        currentLocationCameraJob?.cancel()
+                        currentLocationCameraJob = null
+                        settleCameraAndResolveAddress(center)
+                    }
                     if (isFinal) {
                         currentOnCurrentLocationLoadingChange.value(false)
                     }
@@ -379,6 +394,11 @@ actual fun PlatformDestinationMap(
         ),
         mapColorScheme = mapColorScheme,
         uiSettings = mapUiSettings,
+        onMapLoaded = {
+            if (!cameraPositionState.isMoving) {
+                settleCameraAndResolveAddress(cameraPositionState.position.target)
+            }
+        },
     )
 }
 
