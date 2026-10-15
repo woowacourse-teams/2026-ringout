@@ -36,8 +36,11 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import kotlinx.coroutines.launch
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.presentation.roomcreate.RoomNameValidation
 import com.joon.ringout.presentation.roomcreate.validateRoomName
+
+private val RoomCreateNameInputLengthRule = TextInputLengthRule(maxLength = 20)
 
 @Composable
 internal fun RoomCreateNameSection(
@@ -73,7 +76,11 @@ internal fun RoomCreateNameSection(
         )
         BasicTextField(
             value = name,
-            onValueChange = onNameChange,
+            onValueChange = { proposed ->
+                if (RoomCreateNameInputLengthRule.allows(name, proposed)) {
+                    onNameChange(proposed)
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)

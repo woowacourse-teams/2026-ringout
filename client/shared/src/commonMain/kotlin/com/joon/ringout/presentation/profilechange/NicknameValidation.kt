@@ -1,5 +1,7 @@
 package com.joon.ringout.presentation.profilechange
 
+import com.joon.ringout.presentation.common.unicodeScalarCount
+
 internal const val NicknameMinLength = 1
 internal const val NicknameMaxLength = 10
 
@@ -21,7 +23,7 @@ internal data class NicknameValidation(
 }
 
 internal fun validateNickname(value: String): NicknameValidation {
-    val characterCount = value.unicodeCharacterCount()
+    val characterCount = value.unicodeScalarCount()
     val isLengthValid = characterCount in NicknameMinLength..NicknameMaxLength
     val hasOnlyAllowedCharacters =
         value.isNotEmpty() && value.all(Char::isAllowedNicknameCharacter)
@@ -38,22 +40,3 @@ private fun Char.isAllowedNicknameCharacter(): Boolean =
         this in 'A'..'Z' ||
         this in 'a'..'z' ||
         this in '0'..'9'
-
-/** Counts Unicode scalar values rather than UTF-16 code units. */
-private fun String.unicodeCharacterCount(): Int {
-    var count = 0
-    var index = 0
-
-    while (index < length) {
-        val current = this[index]
-        val hasSurrogatePair =
-            current in '\uD800'..'\uDBFF' &&
-                index + 1 < length &&
-                this[index + 1] in '\uDC00'..'\uDFFF'
-
-        index += if (hasSurrogatePair) 2 else 1
-        count += 1
-    }
-
-    return count
-}
