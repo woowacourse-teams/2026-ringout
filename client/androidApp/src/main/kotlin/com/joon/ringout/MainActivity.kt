@@ -53,20 +53,23 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            App(
-                appContainer = appContainer,
-                appVersion = BuildConfig.VERSION_NAME,
-                activeAlarmMission = activeAlarmMission,
-                activeAlarmMissionLocation = activeAlarmMissionLocation,
-                onActiveAlarmMissionExpired = ::handleActiveAlarmMissionExpired,
-                onActiveAlarmMissionForceEnd = ::handleActiveAlarmMissionForceEnd,
-                onActiveAlarmMissionForceEndHoldStarted =
-                    alarmMissionCoordinator::recordForceEndHoldStarted,
-                onActiveAlarmMissionForceEndHoldCancelled =
-                    alarmMissionCoordinator::recordForceEndHoldCancelled,
-                onActiveAlarmMissionForceEndHoldCompleted =
-                    alarmMissionCoordinator::recordForceEndHoldCompleted,
-            )
+            PlatformAppHost { extraContent ->
+                App(
+                    appContainer = appContainer,
+                    appVersion = BuildConfig.VERSION_NAME,
+                    myPageExtraContent = extraContent,
+                    activeAlarmMission = activeAlarmMission,
+                    activeAlarmMissionLocation = activeAlarmMissionLocation,
+                    onActiveAlarmMissionExpired = ::handleActiveAlarmMissionExpired,
+                    onActiveAlarmMissionForceEnd = ::handleActiveAlarmMissionForceEnd,
+                    onActiveAlarmMissionForceEndHoldStarted =
+                        alarmMissionCoordinator::recordForceEndHoldStarted,
+                    onActiveAlarmMissionForceEndHoldCancelled =
+                        alarmMissionCoordinator::recordForceEndHoldCancelled,
+                    onActiveAlarmMissionForceEndHoldCompleted =
+                        alarmMissionCoordinator::recordForceEndHoldCompleted,
+                )
+            }
             if (isUpdateDialogVisible) {
                 RingoutTheme(themeMode = ThemeMode.Light) {
                     AppUpdateDialog(
