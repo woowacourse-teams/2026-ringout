@@ -38,9 +38,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.presentation.common.component.DialogWithoutRipple
+import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.RingoutTheme
 
 internal const val DestinationNicknameMaxLength = 12
+private val DestinationNicknameInputLengthRule = TextInputLengthRule(maxLength = DestinationNicknameMaxLength)
 
 private val NicknameDialogScrim = Color.Black.copy(alpha = 0.5f)
 private val NicknameDialogSurface = Color.White
@@ -60,7 +62,7 @@ internal fun DestinationNicknameDialog(
     modifier: Modifier = Modifier,
 ) {
     var nickname by remember(initialNickname) {
-        mutableStateOf(limitDestinationNicknameInput(initialNickname))
+        mutableStateOf(initialNickname)
     }
     val normalizedNickname = normalizeDestinationNickname(nickname)
     val scrimInteractionSource = remember { MutableInteractionSource() }
@@ -86,7 +88,7 @@ internal fun DestinationNicknameDialog(
             nickname = nickname,
             isSaveEnabled = normalizedNickname != null,
             onNicknameChange = {
-                nickname = limitDestinationNicknameInput(it)
+                nickname = applyDestinationNicknameInput(nickname, it)
             },
             onSave = {
                 normalizedNickname?.let(onSave)
@@ -230,8 +232,8 @@ internal fun DestinationNicknameDialogContent(
     }
 }
 
-internal fun limitDestinationNicknameInput(value: String): String =
-    value.take(DestinationNicknameMaxLength)
+internal fun applyDestinationNicknameInput(current: String, proposed: String): String =
+    if (DestinationNicknameInputLengthRule.allows(current, proposed)) proposed else current
 
 internal fun normalizeDestinationNickname(value: String): String? =
     value.trim().takeIf {
