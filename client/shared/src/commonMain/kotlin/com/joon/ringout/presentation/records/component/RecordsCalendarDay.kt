@@ -4,8 +4,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
@@ -17,10 +18,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
@@ -52,7 +55,7 @@ internal fun RecordsCalendarDay(
         }
     }
     Column(
-        modifier = modifier.heightIn(min = 49.dp)
+        modifier = modifier.height(recordsCalendarDayHeight())
             .clip(shape)
             .then(if (day.isSelected) Modifier.background(colors.selectedDay) else Modifier)
             .then(if (day.isToday) Modifier.border(1.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
@@ -66,19 +69,28 @@ internal fun RecordsCalendarDay(
             day.date.day.toString(),
             fontSize = 14.sp,
             lineHeight = 16.sp,
+            maxLines = 1,
             color = if (day.isFuture) colors.secondaryText else colors.text,
         )
-        when (day.result) {
-            MissionResult.SUCCESS -> Image(
-                painterResource(Res.drawable.mypage_mission_stamp), null, modifier = Modifier.size(23.dp),
-            )
-            MissionResult.FAILURE -> Icon(
-                painterResource(Res.drawable.records_failure), null,
-                tint = colors.failure, modifier = Modifier.size(23.dp),
-            )
-            null -> Unit
+        Box(Modifier.size(23.dp), contentAlignment = Alignment.Center) {
+            when (day.result) {
+                MissionResult.SUCCESS -> Image(
+                    painterResource(Res.drawable.mypage_mission_stamp), null, modifier = Modifier.size(23.dp),
+                )
+                MissionResult.FAILURE -> Icon(
+                    painterResource(Res.drawable.records_failure), null,
+                    tint = colors.failure, modifier = Modifier.size(23.dp),
+                )
+                null -> Unit
+            }
         }
     }
+}
+
+// Keep every week the same height, including empty weeks and days without a result.
+@Composable
+internal fun recordsCalendarDayHeight(): Dp = with(LocalDensity.current) {
+    (16.sp.toDp() + 33.dp).coerceAtLeast(49.dp)
 }
 
 @Preview
