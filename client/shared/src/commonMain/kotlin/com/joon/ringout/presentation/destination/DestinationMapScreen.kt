@@ -61,6 +61,7 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
@@ -81,6 +82,8 @@ val DefaultDestinationSelection = DestinationSelection(
     latitude = 37.5665851,
     longitude = 126.9782038,
 )
+
+private val DestinationSearchInputLengthRule = TextInputLengthRule()
 
 @Composable
 fun DestinationMapScreen(
@@ -675,7 +678,11 @@ private fun DestinationSearchPanel(
             }
             TextField(
                 value = query,
-                onValueChange = onQueryChange,
+                onValueChange = { proposed ->
+                    if (DestinationSearchInputLengthRule.allows(query, proposed)) {
+                        onQueryChange(proposed)
+                    }
+                },
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp)

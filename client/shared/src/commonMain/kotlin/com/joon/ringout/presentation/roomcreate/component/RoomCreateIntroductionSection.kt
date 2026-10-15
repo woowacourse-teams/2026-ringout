@@ -34,10 +34,13 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.presentation.roomcreate.RoomIntroductionMaxLength
 import com.joon.ringout.presentation.roomcreate.RoomIntroductionValidation
 import com.joon.ringout.presentation.roomcreate.validateRoomIntroduction
 import kotlinx.coroutines.launch
+
+private val RoomCreateIntroductionInputLengthRule = TextInputLengthRule()
 
 @Composable
 internal fun RoomCreateIntroductionSection(
@@ -73,7 +76,11 @@ internal fun RoomCreateIntroductionSection(
         )
         BasicTextField(
             value = introduction,
-            onValueChange = onIntroductionChange,
+            onValueChange = { proposed ->
+                if (RoomCreateIntroductionInputLengthRule.allows(introduction, proposed)) {
+                    onIntroductionChange(proposed)
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(300.dp)
