@@ -89,6 +89,7 @@ private val DestinationSearchInputLengthRule = TextInputLengthRule()
 fun DestinationMapScreen(
     initialSelection: DestinationSelection,
     requestCurrentLocationOnStart: Boolean = false,
+    onCurrentLocationResolved: (Double, Double) -> Unit = { _, _ -> },
     isAuthenticated: Boolean = false,
     onEntered: () -> Unit = {},
     onBackClick: () -> Unit,
@@ -282,7 +283,7 @@ fun DestinationMapScreen(
                     },
                     onCameraSettled = { latitude, longitude ->
                         val settledSelection = destinationAtCameraPosition(
-                            cameraTarget = cameraTarget,
+                            cameraTarget = cameraTarget ?: selection,
                             latitude = latitude,
                             longitude = longitude,
                         )
@@ -323,6 +324,7 @@ fun DestinationMapScreen(
                             isResolvingAddress = false
                         }
                     },
+                    onCurrentLocationResolved = onCurrentLocationResolved,
                     onCurrentLocationLoadingChange = {
                         isLocatingCurrentLocation = it
                     },

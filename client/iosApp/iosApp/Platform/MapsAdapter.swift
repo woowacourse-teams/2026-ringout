@@ -158,6 +158,15 @@ private final class DestinationMapController: NSObject, @MainActor IosDestinatio
         if let lastCommandId, commandId <= lastCommandId { return }
 
         lastCommandId = commandId
+        let currentCamera = mapView.camera
+        if abs(currentCamera.target.latitude - latitude) < DestinationMapDefaults.coordinateTolerance,
+           abs(currentCamera.target.longitude - longitude) < DestinationMapDefaults.coordinateTolerance,
+           currentCamera.zoom == DestinationMapDefaults.zoom {
+            // A new selection still needs settlement and an address, even without movement.
+            invalidateSettlement()
+            handleCameraSettled(latitude: latitude, longitude: longitude)
+            return
+        }
         invalidateSettlement()
 
         let camera = GMSCameraPosition.camera(

@@ -28,6 +28,7 @@ import com.joon.ringout.presentation.common.component.AppMessageHostState
 import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationRoute
 import com.joon.ringout.presentation.destination.DestinationViewModel
+import com.joon.ringout.presentation.destination.DestinationCurrentLocationCache
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.destination.toDestinationSelection
 import com.joon.ringout.presentation.navigation.AppRoute
@@ -35,6 +36,7 @@ import com.joon.ringout.presentation.navigation.AppRoute
 @Composable
 internal fun OnboardingRoute(
     appContainer: AppContainer,
+    destinationCurrentLocationCache: DestinationCurrentLocationCache,
     missionLocationState: MissionLocationState,
     useSystemLocationPermissionUiOnly: Boolean,
     onRequestWhenInUseLocation: () -> Unit,
@@ -59,7 +61,11 @@ internal fun OnboardingRoute(
         }
     }
     val destinations = viewModel(key = "onboarding-destinations") {
-        DestinationViewModel(appContainer.destinationRepository, appContainer.productAnalyticsRecorder)
+        DestinationViewModel(
+            appContainer.destinationRepository,
+            appContainer.productAnalyticsRecorder,
+            currentLocationCache = destinationCurrentLocationCache,
+        )
     }
     val currentComplete = rememberUpdatedState(onComplete)
     val currentRetryToken = rememberUpdatedState(completionRetryToken)

@@ -68,6 +68,7 @@ actual fun PlatformDestinationMap(
         placeName: String?,
         address: String?,
     ) -> Unit,
+    onCurrentLocationResolved: (latitude: Double, longitude: Double) -> Unit,
     onCurrentLocationLoadingChange: (Boolean) -> Unit,
     onCurrentLocationError: (String) -> Unit,
     onMapError: (String) -> Unit,
@@ -83,6 +84,7 @@ actual fun PlatformDestinationMap(
     val currentOnCameraMoveStarted = rememberUpdatedState(onCameraMoveStarted)
     val currentOnCameraSettled = rememberUpdatedState(onCameraSettled)
     val currentOnAddressResolved = rememberUpdatedState(onAddressResolved)
+    val currentOnCurrentLocationResolved = rememberUpdatedState(onCurrentLocationResolved)
     val currentOnCurrentLocationLoadingChange = rememberUpdatedState(onCurrentLocationLoadingChange)
     val currentOnCurrentLocationError = rememberUpdatedState(onCurrentLocationError)
     val currentOnMapError = rememberUpdatedState(onMapError)
@@ -110,6 +112,7 @@ actual fun PlatformDestinationMap(
     var activeCurrentLocationRequestId by remember { mutableStateOf<Int?>(null) }
     var lastHandledCurrentLocationRequestId by remember { mutableStateOf(0) }
     var lastHandledCurrentLocationCancellationId by remember { mutableStateOf(0) }
+    var currentLocationStartJob by remember { mutableStateOf<Job?>(null) }
     var currentLocationCameraJob by remember { mutableStateOf<Job?>(null) }
     var currentLocationCameraGeneration by remember { mutableStateOf(0) }
     val cameraSettlementTracker = remember { DestinationCameraSettlementTracker() }
@@ -161,6 +164,8 @@ actual fun PlatformDestinationMap(
     }
 
     fun cancelCurrentLocationRequest() {
+        currentLocationStartJob?.cancel()
+        currentLocationStartJob = null
         currentLocationCameraGeneration += 1
         currentLocationCameraJob?.cancel()
         currentLocationCameraJob = null
@@ -185,9 +190,22 @@ actual fun PlatformDestinationMap(
                     return@locationCallback
                 }
 
-                val shouldMoveCamera = lastPresentedLocation?.isSameMapFixAs(location) != true
+                currentOnCurrentLocationResolved.value(location.latitude, location.longitude)
+                val center = cameraPositionState.position.target
+                val isCameraAtLocation = !cameraPositionState.isMoving &&
+                    kotlin.math.abs(center.latitude - location.latitude) < CameraCoordinateTolerance &&
+                    kotlin.math.abs(center.longitude - location.longitude) < CameraCoordinateTolerance &&
+                    cameraPositionState.position.zoom == CurrentLocationZoomLevel
+                val shouldMoveCamera = !isCameraAtLocation &&
+                    lastPresentedLocation?.isSameMapFixAs(location) != true
                 lastPresentedLocation = location
                 if (!shouldMoveCamera) {
+                    if (isCameraAtLocation) {
+                        currentLocationCameraGeneration += 1
+                        currentLocationCameraJob?.cancel()
+                        currentLocationCameraJob = null
+                        settleCameraAndResolveAddress(center)
+                    }
                     if (isFinal) {
                         currentOnCurrentLocationLoadingChange.value(false)
                     }
@@ -244,6 +262,15 @@ actual fun PlatformDestinationMap(
         )
     }
 
+    fun requestCurrentLocationWhenResumed(requestId: Int) {
+        currentLocationStartJob?.cancel()
+        currentLocationStartJob = coroutineScope.launch {
+            if (lifecycleOwner.lifecycle.awaitDestinationLocationReady()) {
+                requestAndMoveToCurrentLocation(requestId)
+            }
+        }
+    }
+
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
@@ -251,7 +278,7 @@ actual fun PlatformDestinationMap(
             ?: return@rememberLauncherForActivityResult
         when {
             context.hasDestinationFineLocationPermission() -> {
-                requestAndMoveToCurrentLocation(requestId)
+                requestCurrentLocationWhenResumed(requestId)
             }
 
             context.hasDestinationLocationPermission() || permissions.values.any { it } -> {
@@ -297,7 +324,7 @@ actual fun PlatformDestinationMap(
         activeCurrentLocationRequestId = currentLocationRequestId
         currentOnCurrentLocationLoadingChange.value(true)
         if (context.hasDestinationFineLocationPermission()) {
-            requestAndMoveToCurrentLocation(currentLocationRequestId)
+            requestCurrentLocationWhenResumed(currentLocationRequestId)
         } else {
             locationPermissionLauncher.launch(DestinationLocationPermissions)
         }
@@ -367,6 +394,11 @@ actual fun PlatformDestinationMap(
         ),
         mapColorScheme = mapColorScheme,
         uiSettings = mapUiSettings,
+        onMapLoaded = {
+            if (!cameraPositionState.isMoving) {
+                settleCameraAndResolveAddress(cameraPositionState.position.target)
+            }
+        },
     )
 }
 

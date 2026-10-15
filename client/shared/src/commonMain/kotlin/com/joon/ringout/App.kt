@@ -20,11 +20,13 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.app.AuthSessionCoordinator
+import com.joon.ringout.presentation.app.AppLocationCacheViewModel
 import com.joon.ringout.presentation.app.ReauthenticationCoordinator
 import com.joon.ringout.presentation.app.AppRuntimeCoordinator
 import com.joon.ringout.presentation.app.rememberAppAlarmController
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
+import com.joon.ringout.presentation.destination.DestinationCurrentLocationCache
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.signup.SignupViewModel
@@ -84,6 +86,9 @@ fun App(
         )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState
+    val appLocationCacheViewModel = viewModel {
+        AppLocationCacheViewModel(appContainer.authSession)
+    }
 
     if (!appBootstrapUiState.isReady) {
         AppBootstrapSurface()
@@ -95,6 +100,7 @@ fun App(
             AppEntryDestination.Onboarding ->
                 OnboardingRoute(
                     appContainer = appContainer,
+                    destinationCurrentLocationCache = appLocationCacheViewModel.destinationCurrentLocationCache,
                     missionLocationState = missionLocationState,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
                     onRequestWhenInUseLocation = onRequestWhenInUseLocation,
@@ -109,6 +115,7 @@ fun App(
             AppEntryDestination.Home ->
                 RingoutAppContent(
                     appContainer = appContainer,
+                    destinationCurrentLocationCache = appLocationCacheViewModel.destinationCurrentLocationCache,
                     themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
                     myPageExtraContent = myPageExtraContent,
@@ -148,6 +155,7 @@ private fun AppBootstrapSurface() = Box(
 @Composable
 private fun RingoutAppContent(
     appContainer: AppContainer,
+    destinationCurrentLocationCache: DestinationCurrentLocationCache,
     themeMode: ThemeMode,
     appVersion: String,
     myPageExtraContent: (@Composable (ThemeMode) -> Unit)?,
@@ -183,7 +191,11 @@ private fun RingoutAppContent(
         ?.let { alarm -> AppRoute.AlarmRinging(alarm.id) }
         ?: navigationState.requestedRoute
     val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
-    val viewModelScopes = rememberNavigationViewModelScopes(appContainer, retainedRoutes)
+    val viewModelScopes = rememberNavigationViewModelScopes(
+        appContainer,
+        retainedRoutes,
+        destinationCurrentLocationCache,
+    )
     val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
     val socialRoomListViewModel = if (AppRoute.Social in retainedRoutes) {
         viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)

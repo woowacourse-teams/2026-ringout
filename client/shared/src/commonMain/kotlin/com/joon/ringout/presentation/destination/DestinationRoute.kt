@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.destination
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.toAnalyticsLoginStateOrNull
@@ -21,10 +22,15 @@ internal fun DestinationRoute(
 ) {
     val uiState = viewModel.uiState
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
+    // A new fix must not change the initial camera of an already displayed map.
+    val entrySelection = remember(viewModel, requestId) {
+        viewModel.initialCurrentLocation() ?: initialSelection
+    }
 
     DestinationMapScreen(
-        initialSelection = initialSelection,
-        requestCurrentLocationOnStart = false,
+        initialSelection = entrySelection,
+        requestCurrentLocationOnStart = true,
+        onCurrentLocationResolved = viewModel::onCurrentLocationResolved,
         isAuthenticated = authSessionState == AuthSessionState.Authenticated,
         onEntered = { if (isActive) viewModel.onScreenEntered() },
         onBackClick = { if (isActive) onBackClick() },
