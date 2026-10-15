@@ -47,6 +47,7 @@
 
         <activity
             android:exported="true"
+            android:screenOrientation="portrait"
             android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -71,6 +72,7 @@
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleTop"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.Ringout.Content" />
 
         <service
