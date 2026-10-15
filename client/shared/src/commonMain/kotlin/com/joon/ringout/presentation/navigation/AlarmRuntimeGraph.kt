@@ -23,6 +23,7 @@ internal fun EntryProviderScope<AppRoute>.alarmRuntimeGraph(
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     onActiveAlarmMissionForceEndHoldCompleted:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
+    isForceEndEnabled: Boolean = true,
 ) {
     entry<AppRoute.AlarmRinging>(clazzContentKey = AppRoute::viewModelStoreKey) {
         ringingAlarm?.let { alarm ->
@@ -49,6 +50,7 @@ internal fun EntryProviderScope<AppRoute>.alarmRuntimeGraph(
                 locationState = missionLocationState,
                 onBackClick = { navigationState.navigate(AppRoute.Home) },
                 onForceEndClick = onActiveAlarmMissionForceEnd,
+                isForceEndEnabled = isForceEndEnabled,
                 onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
                 onForceEndHoldCancelled = onActiveAlarmMissionForceEndHoldCancelled,
                 onForceEndHoldCompleted = onActiveAlarmMissionForceEndHoldCompleted,

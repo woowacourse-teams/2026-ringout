@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.ActiveAlarmMissionStore
+import com.joon.ringout.alarm.ForceEndMissionResult
 import com.joon.ringout.alarm.AlarmMissionCoordinator
 import com.joon.ringout.presentation.update.AppUpdateDialog
 import com.joon.ringout.presentation.update.PlayStoreUpdateChecker
@@ -61,7 +62,7 @@ class MainActivity : ComponentActivity() {
                     activeAlarmMission = activeAlarmMission,
                     activeAlarmMissionLocation = activeAlarmMissionLocation,
                     onActiveAlarmMissionExpired = ::handleActiveAlarmMissionExpired,
-                    onActiveAlarmMissionForceEnd = ::handleActiveAlarmMissionForceEnd,
+                    onActiveAlarmMissionForceEnd = { handleActiveAlarmMissionForceEnd(it) },
                     onActiveAlarmMissionForceEndHoldStarted =
                         alarmMissionCoordinator::recordForceEndHoldStarted,
                     onActiveAlarmMissionForceEndHoldCancelled =
@@ -104,9 +105,10 @@ class MainActivity : ComponentActivity() {
         alarmMissionCoordinator.handleDeadline(activeAlarmMission?.occurrenceId)
     }
 
-    private fun handleActiveAlarmMissionForceEnd(occurrenceId: String) {
-        alarmMissionCoordinator.forceEnd(occurrenceId)
+    private fun handleActiveAlarmMissionForceEnd(occurrenceId: String): ForceEndMissionResult {
+        val result = alarmMissionCoordinator.forceEnd(occurrenceId)
         refreshActiveAlarmMission()
+        return result
     }
 
     private fun refreshActiveAlarmMission() {
