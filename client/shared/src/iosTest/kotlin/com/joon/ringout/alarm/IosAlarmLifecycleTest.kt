@@ -23,6 +23,72 @@ import kotlin.test.assertTrue
 
 class IosAlarmLifecycleTest {
     @Test
+    fun `강제 종료 확정 전에 저장이 실패하면 완료 이벤트 없이 재시도할 수 있다`() = runBlocking {
+        val fixture = forceEndFixture()
+        fixture.inbox.terminalCommitCode = IosAlarmOperationCode.SDK_ERROR
+        assertEquals(ForceEndMissionResult.Failed, fixture.coordinator.requestForceEnd("force-end"))
+        assertNotNull(fixture.coordinator.activeMissionFlow.value)
+        assertEquals(0, fixture.analytics.forceEnds)
+        fixture.inbox.terminalCommitCode = IosAlarmOperationCode.SUCCESS
+        assertEquals(ForceEndMissionResult.Completed, fixture.coordinator.requestForceEnd("force-end"))
+        assertNull(fixture.coordinator.activeMissionFlow.value)
+        assertEquals(1, fixture.analytics.forceEnds)
+        assertEquals(ForceEndMissionResult.NoLongerActive, fixture.coordinator.requestForceEnd("force-end"))
+        assertEquals(1, fixture.analytics.forceEnds)
+    }
+
+    @Test
+    fun `강제 종료 확정 뒤 기록 저장에 실패해도 완료를 반환하고 복구 시 GA를 중복 기록하지 않는다`() = runBlocking {
+        val outcomes = FailOnceLifecycleOutcomeRecorder()
+        val fixture = forceEndFixture(outcomes)
+        assertEquals(ForceEndMissionResult.Completed, fixture.coordinator.requestForceEnd("force-end"))
+        assertNull(fixture.coordinator.activeMissionFlow.value)
+        assertNotNull(fixture.store.loadPendingTerminal())
+        assertEquals(1, fixture.analytics.forceEnds)
+        assertEquals(ForceEndMissionResult.Completed, fixture.coordinator.requestForceEnd("force-end"))
+        fixture.coordinator.recoverPendingTerminal()
+        assertEquals(listOf("force-end"), outcomes.recordedFailures)
+        assertNull(fixture.store.loadPendingTerminal())
+        assertEquals(1, fixture.analytics.forceEnds)
+    }
+
+    @Test
+    fun `목적지 도착이나 시간 만료가 먼저 처리되면 강제 종료 GA를 기록하지 않는다`() = runBlocking {
+        val arrived = forceEndFixture()
+        val now = Clock.System.now().toEpochMilliseconds()
+        arrived.coordinator.onLocationUpdated("force-end", ActiveAlarmMissionLocation(37.5, 127.0, 5f, now))
+        assertEquals(ForceEndMissionResult.NoLongerActive, arrived.coordinator.requestForceEnd("force-end"))
+        assertEquals(0, arrived.analytics.forceEnds)
+        val expired = forceEndFixture()
+        expired.coordinator.handleDeadline("force-end")
+        assertEquals(ForceEndMissionResult.NoLongerActive, expired.coordinator.requestForceEnd("force-end"))
+        assertEquals(0, expired.analytics.forceEnds)
+    }
+
+    private fun forceEndFixture(outcomes: IosMissionOutcomeRecorder = LifecycleOutcomeRecorder()): ForceEndFixture {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val store = LifecycleMissionStore().apply {
+            saveActiveMission(ActiveAlarmMission(CanonicalUuid, "회사", 12, now + 720_000,
+                occurrenceId = "force-end", startedAtEpochMillis = now,
+                destinationLatitude = 37.5, destinationLongitude = 127.0))
+        }
+        val inbox = LifecycleInbox(emptyList())
+        val analytics = ForceEndLifecycleAnalytics()
+        val coordinator = IosAlarmMissionCoordinator(
+            LifecycleAlarmDataSource(listOf(savedAlarm(CanonicalUuid))), inbox,
+            LifecycleScheduler(), outcomes, store, analytics,
+        )
+        return ForceEndFixture(coordinator, store, inbox, analytics)
+    }
+
+    private data class ForceEndFixture(
+        val coordinator: IosAlarmMissionCoordinator,
+        val store: LifecycleMissionStore,
+        val inbox: LifecycleInbox,
+        val analytics: ForceEndLifecycleAnalytics,
+    )
+
+    @Test
     fun `목적지만 수정해도 새 네이티브 snapshot 버전을 예약한다`() = runBlocking {
         val original = savedAlarm(id = CanonicalUuid)
         val data = LifecycleAlarmDataSource(listOf(original))
@@ -1912,6 +1978,11 @@ private class LifecycleInbox(
     private val recordOpenCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
 ) :
     IosAlarmMissionEventInbox {
+    var terminalCommitCode = IosAlarmOperationCode.SUCCESS
+    override fun commitTerminal(
+        chainId: String, outcome: IosAlarmRecoveryAttemptOutcome, completedAtEpochMillis: Long,
+        occurrenceId: String?, callback: (IosAlarmOperationResult) -> Unit,
+    ) { callback(IosAlarmOperationResult(terminalCommitCode)) }
     val eligibility = mutableListOf<IosAlarmRecoveryEligibility>()
     override fun setSourceEligibility(alarmId: String, scheduleVersion: Long,
         eligibility: IosAlarmRecoveryEligibility, callback: (IosAlarmOperationResult) -> Unit) {
@@ -2181,4 +2252,16 @@ private fun nativeAttempt(id: String, chain: String, sequence: Int, expired: Boo
         currentReservation = IosAlarmRecoveryReservationDto("reservation-$id", IosAlarmRecoveryReservationStatus.FAILED),
         missionProjectionAck = false, recordProjectionAck = false, outcome = IosAlarmRecoveryAttemptOutcome.ACTIVE,
     )
+}
+
+private class ForceEndLifecycleAnalytics : com.joon.ringout.analytics.IosAlarmAnalyticsRecorder {
+    var forceEnds = 0
+    override fun recordAlarmRingingStarted(occurrenceId: String, retryAttempt: Int) = Unit
+    override fun recordMissionStarted(occurrenceId: String, retryAttempt: Int) = Unit
+    override fun recordMissionCompleted(occurrenceId: String, retryAttempt: Int, startedAtEpochMillis: Long) = Unit
+    override fun recordMissionExpired(occurrenceId: String, retryAttempt: Int, startedAtEpochMillis: Long) = Unit
+    override fun recordMissionForceEnded(occurrenceId: String, retryAttempt: Int, startedAtEpochMillis: Long) { forceEnds++ }
+    override fun recordForceEndHoldStarted(occurrenceId: String, retryAttempt: Int) = Unit
+    override fun recordForceEndHoldCancelled(occurrenceId: String, holdDurationMillis: Long) = Unit
+    override fun recordForceEndHoldCompleted(occurrenceId: String, holdDurationMillis: Long) = Unit
 }
