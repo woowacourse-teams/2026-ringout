@@ -37,16 +37,16 @@ internal fun DestinationSavedEvent.belongsToDestinationRequest(
     isDestinationScreenVisible: Boolean,
 ): Boolean = isDestinationScreenVisible && requestId == currentRequestId
 
-class DestinationViewModel(
+class DestinationViewModel internal constructor(
     private val repository: DestinationRepository,
     private val productAnalyticsRecorder: ProductAnalyticsRecorder,
     coroutineScope: CoroutineScope? = null,
+    private val currentLocationCache: DestinationCurrentLocationCache = DestinationCurrentLocationCache(),
 ) : ViewModel() {
     var uiState by mutableStateOf(DestinationUiState())
         private set
 
     private val mutationMutex = Mutex()
-    private val currentLocationCache = DestinationCurrentLocationCache()
     private val scope = coroutineScope ?: viewModelScope
     private var nextSavedEventId = 0L
     private var fetchJob: Job? = null
@@ -68,7 +68,6 @@ class DestinationViewModel(
         currentLocationCache.initialLocation()
 
     fun onLoggedOut() {
-        currentLocationCache.clear()
         refreshDestinations(clearDestinations = true)
     }
 

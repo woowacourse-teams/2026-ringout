@@ -7,8 +7,10 @@ import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
 import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.StampMonthChangeDirection
+import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
+import com.joon.ringout.presentation.app.AppLocationCacheViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,34 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DestinationViewModelTest {
+    @Test
+    fun `홈까지 나간 뒤 새 목적지 화면 모델로 진입해도 앱의 현재 위치 캐시를 재사용한다`() {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val appViewModel = AppLocationCacheViewModel(
+            authSession = AuthSession().apply { clear() },
+            coroutineScope = appScope,
+        )
+        try {
+            withViewModel(appViewModel.destinationCurrentLocationCache) { viewModel, _, _ ->
+                viewModel.onLoggedOut()
+                viewModel.onScreenEntered()
+                assertNull(viewModel.initialCurrentLocation())
+                viewModel.onCurrentLocationResolved(latitude = 37.5665, longitude = 126.9780)
+            }
+
+            withViewModel(appViewModel.destinationCurrentLocationCache) { viewModel, _, _ ->
+                viewModel.onLoggedOut()
+                viewModel.onScreenEntered()
+
+                val initialLocation = assertNotNull(viewModel.initialCurrentLocation())
+                assertEquals(37.5665, initialLocation.latitude)
+                assertEquals(126.9780, initialLocation.longitude)
+            }
+        } finally {
+            appScope.cancel()
+        }
+    }
+
     @Test
     fun `목적지 화면에 다시 진입해도 마지막 현재 위치를 초기 위치로 유지한다`() =
         withViewModel { viewModel, _, _ ->
@@ -56,13 +86,15 @@ class DestinationViewModelTest {
         }
 
     @Test
-    fun `로그아웃하면 마지막 현재 위치를 초기 위치로 사용하지 않는다`() =
+    fun `비로그인 화면 상태를 다시 반영해도 마지막 현재 위치를 유지한다`() =
         withViewModel { viewModel, _, _ ->
             viewModel.onCurrentLocationResolved(latitude = 37.5665, longitude = 126.9780)
 
             viewModel.onLoggedOut()
 
-            assertNull(viewModel.initialCurrentLocation())
+            val initialLocation = assertNotNull(viewModel.initialCurrentLocation())
+            assertEquals(37.5665, initialLocation.latitude)
+            assertEquals(126.9780, initialLocation.longitude)
         }
 
     @Test
@@ -224,6 +256,7 @@ class DestinationViewModelTest {
 }
 
 private inline fun withViewModel(
+    currentLocationCache: DestinationCurrentLocationCache = DestinationCurrentLocationCache(),
     block: (
         DestinationViewModel,
         FakeDestinationRepository,
@@ -237,6 +270,7 @@ private inline fun withViewModel(
         repository = repository,
         productAnalyticsRecorder = recorder,
         coroutineScope = scope,
+        currentLocationCache = currentLocationCache,
     )
     try {
         block(viewModel, repository, recorder)

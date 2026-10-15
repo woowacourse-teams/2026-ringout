@@ -18,6 +18,7 @@ import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
 import com.joon.ringout.domain.missionhistory.GetRecordsHistory
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
+import com.joon.ringout.presentation.destination.DestinationCurrentLocationCache
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
@@ -41,6 +42,7 @@ internal fun AppRoute.viewModelStoreKey(): String = Json.encodeToString(AppRoute
 internal fun rememberNavigationViewModelScopes(
     appContainer: AppContainer,
     retainedRoutes: List<AppRoute>,
+    destinationCurrentLocationCache: DestinationCurrentLocationCache,
 ): NavigationViewModelScopes {
     val stores = rememberViewModelStoreProvider(key = "ringout-navigation")
     // 부모 화면이 가려져도 앱 루트의 부수 효과에서 부모 ViewModel을 사용할 수 있다.
@@ -54,7 +56,9 @@ internal fun rememberNavigationViewModelScopes(
             )
         }
     }
-    val factory = remember(appContainer) { navigationViewModelFactory(appContainer) }
+    val factory = remember(appContainer, destinationCurrentLocationCache) {
+        navigationViewModelFactory(appContainer, destinationCurrentLocationCache)
+    }
     return remember(stores, factory) { NavigationViewModelScopes(stores, factory) }
 }
 
@@ -83,7 +87,10 @@ internal class NavigationViewModelScopes(
     }
 }
 
-private fun navigationViewModelFactory(container: AppContainer): ViewModelProvider.Factory =
+private fun navigationViewModelFactory(
+    container: AppContainer,
+    destinationCurrentLocationCache: DestinationCurrentLocationCache,
+): ViewModelProvider.Factory =
     viewModelFactory {
         initializer { HomeViewModel() }
         initializer {
@@ -187,6 +194,7 @@ private fun navigationViewModelFactory(container: AppContainer): ViewModelProvid
             DestinationViewModel(
                 repository = container.destinationRepository,
                 productAnalyticsRecorder = container.productAnalyticsRecorder,
+                currentLocationCache = destinationCurrentLocationCache,
             )
         }
     }
