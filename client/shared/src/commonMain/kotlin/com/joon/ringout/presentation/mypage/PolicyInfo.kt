@@ -28,7 +28,7 @@ private val PrivacyPolicyId = PolicyId("privacy")
 private val TermsPolicyId = PolicyId("terms")
 
 private const val PrivacyPolicyUrl =
-    "https://app.notion.com/p/3b858b8d8e6c80d2be23f7e4c0ff23bd?source=copy_link"
+    "https://sheer-mimosa-20f.notion.site/3b858b8d8e6c80d2be23f7e4c0ff23bd?source=copy_link"
 private const val TermsPolicyUrl =
     "https://sheer-mimosa-20f.notion.site/3b858b8d8e6c80de9724e0cd32000093?source=copy_link"
 

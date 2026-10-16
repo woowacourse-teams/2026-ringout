@@ -82,9 +82,9 @@ class MyPageStateTest {
     }
 
     @Test
-    fun defaultPoliciesPointToTheConfiguredHttpsPages() {
+    fun `기본 정책은 공개된 노션 사이트 주소로 연결된다`() {
         assertEquals(
-            "https://app.notion.com/p/3b858b8d8e6c80d2be23f7e4c0ff23bd?source=copy_link",
+            "https://sheer-mimosa-20f.notion.site/3b858b8d8e6c80d2be23f7e4c0ff23bd?source=copy_link",
             findPolicyUrl(PolicyId("privacy")),
         )
         assertEquals(
