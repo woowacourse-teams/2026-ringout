@@ -32,9 +32,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.presentation.profilechange.component.profileChangeColors
 import com.joon.ringout.presentation.profilechange.component.ProfileChangeUserIconResource
 import org.jetbrains.compose.resources.painterResource
+
+private val NicknameInputLengthRule = TextInputLengthRule(maxLength = 10)
 
 @Composable
 internal fun NicknameInputField(
@@ -55,7 +58,11 @@ internal fun NicknameInputField(
 
     BasicTextField(
         value = nickname,
-        onValueChange = onNicknameChange,
+        onValueChange = { proposed ->
+            if (NicknameInputLengthRule.allows(nickname, proposed)) {
+                onNicknameChange(proposed)
+            }
+        },
         modifier = modifier
             .fillMaxWidth()
             .height(NicknameInputHeight)

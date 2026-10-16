@@ -61,6 +61,7 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
@@ -82,10 +83,13 @@ val DefaultDestinationSelection = DestinationSelection(
     longitude = 126.9782038,
 )
 
+private val DestinationSearchInputLengthRule = TextInputLengthRule()
+
 @Composable
 fun DestinationMapScreen(
     initialSelection: DestinationSelection,
     requestCurrentLocationOnStart: Boolean = false,
+    onCurrentLocationResolved: (Double, Double) -> Unit = { _, _ -> },
     isAuthenticated: Boolean = false,
     onEntered: () -> Unit = {},
     onBackClick: () -> Unit,
@@ -279,7 +283,7 @@ fun DestinationMapScreen(
                     },
                     onCameraSettled = { latitude, longitude ->
                         val settledSelection = destinationAtCameraPosition(
-                            cameraTarget = cameraTarget,
+                            cameraTarget = cameraTarget ?: selection,
                             latitude = latitude,
                             longitude = longitude,
                         )
@@ -320,6 +324,7 @@ fun DestinationMapScreen(
                             isResolvingAddress = false
                         }
                     },
+                    onCurrentLocationResolved = onCurrentLocationResolved,
                     onCurrentLocationLoadingChange = {
                         isLocatingCurrentLocation = it
                     },
@@ -675,7 +680,11 @@ private fun DestinationSearchPanel(
             }
             TextField(
                 value = query,
-                onValueChange = onQueryChange,
+                onValueChange = { proposed ->
+                    if (DestinationSearchInputLengthRule.allows(query, proposed)) {
+                        onQueryChange(proposed)
+                    }
+                },
                 modifier = Modifier
                     .weight(1f)
                     .height(50.dp)

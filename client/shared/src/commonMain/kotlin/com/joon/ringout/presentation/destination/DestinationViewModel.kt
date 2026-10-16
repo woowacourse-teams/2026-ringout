@@ -37,10 +37,11 @@ internal fun DestinationSavedEvent.belongsToDestinationRequest(
     isDestinationScreenVisible: Boolean,
 ): Boolean = isDestinationScreenVisible && requestId == currentRequestId
 
-class DestinationViewModel(
+class DestinationViewModel internal constructor(
     private val repository: DestinationRepository,
     private val productAnalyticsRecorder: ProductAnalyticsRecorder,
     coroutineScope: CoroutineScope? = null,
+    private val currentLocationCache: DestinationCurrentLocationCache = DestinationCurrentLocationCache(),
 ) : ViewModel() {
     var uiState by mutableStateOf(DestinationUiState())
         private set
@@ -58,6 +59,13 @@ class DestinationViewModel(
     fun onScreenEntered() {
         refreshDestinations()
     }
+
+    internal fun onCurrentLocationResolved(latitude: Double, longitude: Double) {
+        currentLocationCache.update(latitude, longitude)
+    }
+
+    internal fun initialCurrentLocation(): DestinationSelection? =
+        currentLocationCache.initialLocation()
 
     fun onLoggedOut() {
         refreshDestinations(clearDestinations = true)

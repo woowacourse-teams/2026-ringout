@@ -1,5 +1,8 @@
 package com.joon.ringout
 
+import androidx.compose.runtime.Composable
+import kotlin.experimental.ExperimentalObjCRefinement
+import kotlin.native.HiddenFromObjC
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -22,7 +25,14 @@ import platform.UIKit.UIViewController
 
 fun MainViewController(
     nativeServices: IosNativeServices,
-    ): UIViewController {
+    ): UIViewController = MainViewControllerWithContent(nativeServices) { content -> content(null) }
+
+@OptIn(ExperimentalObjCRefinement::class)
+@HiddenFromObjC
+fun MainViewControllerWithContent(
+    nativeServices: IosNativeServices,
+    appHost: @Composable (content: @Composable ((@Composable (ThemeMode) -> Unit)?) -> Unit) -> Unit,
+): UIViewController {
     val appContainer = IosAppContainer(nativeServices)
 
     return ComposeUIViewController {
@@ -58,37 +68,40 @@ fun MainViewController(
             )
         }
         CompositionLocalProvider(LocalIosNativeServices provides nativeServices) {
-            App(
-                appContainer = appContainer,
-                appVersion = appVersion,
-                useSystemLocationPermissionUiOnly = true,
-                ringingAlarm = ringingAlarmUiState,
-                activeAlarmMission = activeAlarmMission,
-                activeAlarmMissionLocation = activeAlarmMissionLocation,
-                missionLocationState = missionLocationState,
-                onRequestWhenInUseLocation = alarmRuntime::requestWhenInUseAuthorization,
-                onRequestAlwaysLocation = alarmRuntime::requestAlwaysAuthorization,
-                onConfirmAlwaysLocationResult = alarmRuntime::confirmAlwaysAuthorizationResult,
-                onRequestTemporaryFullAccuracy =
-                    alarmRuntime::requestTemporaryFullAccuracyAuthorization,
-                onRingingAlarmDismiss = { systemAlarmId ->
-                    coroutineScope.launch {
-                        alarmRuntime.dismissRingingAlarm(systemAlarmId)
-                    }
-                },
-                onActiveAlarmMissionExpired = {
-                    coroutineScope.launch { alarmRuntime.handleDeadline() }
-                },
-                onActiveAlarmMissionForceEnd = { occurrenceId ->
-                    coroutineScope.launch { alarmRuntime.forceEndActiveMission(occurrenceId) }
-                },
-                onActiveAlarmMissionForceEndHoldStarted =
-                    alarmRuntime::recordForceEndHoldStarted,
-                onActiveAlarmMissionForceEndHoldCancelled =
-                    alarmRuntime::recordForceEndHoldCancelled,
-                onActiveAlarmMissionForceEndHoldCompleted =
-                    alarmRuntime::recordForceEndHoldCompleted,
-            )
+            appHost { extraContent ->
+                App(
+                    appContainer = appContainer,
+                    appVersion = appVersion,
+                    myPageExtraContent = extraContent,
+                    useSystemLocationPermissionUiOnly = true,
+                    ringingAlarm = ringingAlarmUiState,
+                    activeAlarmMission = activeAlarmMission,
+                    activeAlarmMissionLocation = activeAlarmMissionLocation,
+                    missionLocationState = missionLocationState,
+                    onRequestWhenInUseLocation = alarmRuntime::requestWhenInUseAuthorization,
+                    onRequestAlwaysLocation = alarmRuntime::requestAlwaysAuthorization,
+                    onConfirmAlwaysLocationResult = alarmRuntime::confirmAlwaysAuthorizationResult,
+                    onRequestTemporaryFullAccuracy =
+                        alarmRuntime::requestTemporaryFullAccuracyAuthorization,
+                    onRingingAlarmDismiss = { systemAlarmId ->
+                        coroutineScope.launch {
+                            alarmRuntime.dismissRingingAlarm(systemAlarmId)
+                        }
+                    },
+                    onActiveAlarmMissionExpired = {
+                        coroutineScope.launch { alarmRuntime.handleDeadline() }
+                    },
+                    onActiveAlarmMissionForceEnd = { occurrenceId ->
+                        alarmRuntime.requestForceEndActiveMission(occurrenceId)
+                    },
+                    onActiveAlarmMissionForceEndHoldStarted =
+                        alarmRuntime::recordForceEndHoldStarted,
+                    onActiveAlarmMissionForceEndHoldCancelled =
+                        alarmRuntime::recordForceEndHoldCancelled,
+                    onActiveAlarmMissionForceEndHoldCompleted =
+                        alarmRuntime::recordForceEndHoldCompleted,
+                )
+            }
         }
     }
 }

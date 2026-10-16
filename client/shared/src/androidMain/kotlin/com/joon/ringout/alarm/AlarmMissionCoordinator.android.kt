@@ -105,7 +105,7 @@ class AlarmMissionCoordinator(context: Context) {
         }
     }
 
-    fun forceEnd(expectedOccurrenceId: String): Boolean =
+    fun forceEnd(expectedOccurrenceId: String): ForceEndMissionResult =
         synchronized(AlarmMissionSideEffectLock) {
             val completedAt = currentAlarmActivityTimestamp()
             val pendingMission = store.beginTerminalTransition(
@@ -114,16 +114,30 @@ class AlarmMissionCoordinator(context: Context) {
                 terminalCompletedAt = completedAt.localDate,
                 terminalCompletedAtEpochMillis = completedAt.epochMillis,
             )
-                ?: return@synchronized false
+                ?: return@synchronized when {
+                    store.readStoredMission()?.let {
+                        it.mission.occurrenceId == expectedOccurrenceId &&
+                            it.phase == AlarmMissionPhase.FailurePendingPersistence
+                    } == true -> ForceEndMissionResult.Completed
+                    store.read()?.occurrenceId == expectedOccurrenceId -> ForceEndMissionResult.Failed
+                    else -> ForceEndMissionResult.NoLongerActive
+                }
             analytics?.recordMissionForceEnded(
                 occurrenceId = pendingMission.occurrenceId,
                 retryAttempt = pendingMission.retryAttempt,
                 startedAtEpochMillis = pendingMission.startedAtEpochMillis,
             )
-            schedulePendingActionRetry(pendingMission)
-            requestTrackingStop(pendingMission)
-            deliverPendingAction(pendingMission.occurrenceId)
-            true
+            // A cleanup failure must not turn an already committed stop into a UI failure.
+            listOf<() -> Unit>(
+                { schedulePendingActionRetry(pendingMission) },
+                { requestTrackingStop(pendingMission) },
+                { deliverPendingAction(pendingMission.occurrenceId) },
+            ).forEach { action ->
+                runCatching(action).onFailure { error ->
+                    Log.w(MissionAnalyticsLogTag, "강제 종료 후속 처리는 복구 시 재시도합니다.", error)
+                }
+            }
+            ForceEndMissionResult.Completed
         }
 
     fun recordForceEndHoldStarted(expectedOccurrenceId: String) {

@@ -644,6 +644,24 @@ class IosAlarmMissionCoordinator(
         completeTerminalLocked(current, IosPendingMissionOutcome.FAILURE)
     }
 
+    suspend fun requestForceEnd(occurrenceId: String): ForceEndMissionResult = mutex.withLock {
+        missionStore.loadPendingTerminal()?.takeIf { it.occurrenceId == occurrenceId }?.let {
+            return@withLock if (it.outcome == IosPendingMissionOutcome.FAILURE)
+                ForceEndMissionResult.Completed else ForceEndMissionResult.NoLongerActive
+        }
+        val current = activeMission.value?.takeIf { it.occurrenceId == occurrenceId }
+            ?: return@withLock ForceEndMissionResult.NoLongerActive
+        var committed = false
+        try {
+            completeTerminalLocked(current, IosPendingMissionOutcome.FAILURE) { committed = true }
+            ForceEndMissionResult.Completed
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            if (committed) ForceEndMissionResult.Completed else ForceEndMissionResult.Failed
+        }
+    }
+
     fun recordForceEndHoldStarted(occurrenceId: String) {
         val mission = activeMission.value?.takeIf { it.occurrenceId == occurrenceId } ?: return
         analytics?.recordForceEndHoldStarted(
@@ -837,6 +855,7 @@ class IosAlarmMissionCoordinator(
     private suspend fun completeTerminalLocked(
         mission: ActiveAlarmMission,
         outcome: IosPendingMissionOutcome,
+        onCommitted: () -> Unit = {},
     ) {
         val completedAtEpochMillis = Clock.System.now().toEpochMilliseconds()
         inbox.commitTerminalAwait(
@@ -872,10 +891,11 @@ class IosAlarmMissionCoordinator(
                 startedAtEpochMillis = mission.startedAtEpochMillis,
             )
         }
+        onCommitted()
+        activeMission.value = null
         missionStore.clearActiveMission()
         missionStore.clearLastLocation()
         missionStore.clearDeadlineLocation()
-        activeMission.value = null
         recoverPendingTerminalLocked()
     }
 

@@ -52,6 +52,10 @@ actual fun PlatformDestinationMap(
         placeName: String?,
         address: String?,
     ) -> Unit,
+    onCurrentLocationResolved: (
+        latitude: Double,
+        longitude: Double,
+    ) -> Unit,
     onCurrentLocationLoadingChange: (Boolean) -> Unit,
     onCurrentLocationError: (String) -> Unit,
     onMapError: (String) -> Unit,
@@ -65,6 +69,7 @@ actual fun PlatformDestinationMap(
     val currentOnCameraMoveStarted by rememberUpdatedState(onCameraMoveStarted)
     val currentOnCameraSettled by rememberUpdatedState(onCameraSettled)
     val currentOnAddressResolved by rememberUpdatedState(onAddressResolved)
+    val currentOnCurrentLocationResolved by rememberUpdatedState(onCurrentLocationResolved)
     val currentOnCurrentLocationLoadingChange by rememberUpdatedState(
         onCurrentLocationLoadingChange,
     )
@@ -140,6 +145,7 @@ actual fun PlatformDestinationMap(
     }
 
     fun moveToLocation(location: IosDestinationLocation) {
+        currentOnCurrentLocationResolved(location.latitude, location.longitude)
         cameraCommandId += 1
         mapController.moveCamera(
             latitude = location.latitude,

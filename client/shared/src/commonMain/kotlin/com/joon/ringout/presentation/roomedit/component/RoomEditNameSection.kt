@@ -33,9 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.presentation.roomedit.model.RoomEditNameValidation
 import com.joon.ringout.presentation.roomedit.model.validateRoomEditName
 import kotlinx.coroutines.launch
+
+private val RoomEditNameInputLengthRule = TextInputLengthRule(maxLength = 20)
 
 @Composable
 internal fun RoomEditNameSection(
@@ -61,7 +64,11 @@ internal fun RoomEditNameSection(
         )
         BasicTextField(
             value = value,
-            onValueChange = onValueChange,
+            onValueChange = { proposed ->
+                if (RoomEditNameInputLengthRule.allows(value, proposed)) {
+                    onValueChange(proposed)
+                }
+            },
             enabled = enabled,
             modifier = Modifier
                 .fillMaxWidth()

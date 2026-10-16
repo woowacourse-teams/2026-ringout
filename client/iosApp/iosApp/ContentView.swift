@@ -6,7 +6,11 @@ struct ComposeView: UIViewControllerRepresentable {
     let nativeServices: IosNativeServices
 
     func makeUIViewController(context: Self.Context) -> UIViewController {
+        #if DEBUG
+        DebugMainViewControllerKt.DebugMainViewController(nativeServices: nativeServices)
+        #else
         MainViewControllerKt.MainViewController(nativeServices: nativeServices)
+        #endif
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Self.Context) {}

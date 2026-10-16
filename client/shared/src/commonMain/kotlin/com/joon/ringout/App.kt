@@ -11,6 +11,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.createSavedStateHandle
+import com.joon.ringout.alarm.ForceEndMissionResult
+import com.joon.ringout.presentation.activemission.ForceEndMissionViewModel
+import com.joon.ringout.presentation.activemission.ForceEndPhase
+import com.joon.ringout.presentation.activemission.component.ForceEndMissionStatus
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.ActiveAlarmMissionLocation
 import com.joon.ringout.alarm.DefaultMissionLocationState
@@ -20,11 +25,13 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.app.AuthSessionCoordinator
+import com.joon.ringout.presentation.app.AppLocationCacheViewModel
 import com.joon.ringout.presentation.app.ReauthenticationCoordinator
 import com.joon.ringout.presentation.app.AppRuntimeCoordinator
 import com.joon.ringout.presentation.app.rememberAppAlarmController
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
+import com.joon.ringout.presentation.destination.DestinationCurrentLocationCache
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.login.LoginViewModel
 import com.joon.ringout.presentation.signup.SignupViewModel
@@ -57,6 +64,7 @@ import com.joon.ringout.presentation.to24HourTimeString
 fun App(
     appContainer: AppContainer,
     appVersion: String = "",
+    myPageExtraContent: (@Composable (ThemeMode) -> Unit)? = null,
     useSystemLocationPermissionUiOnly: Boolean = false,
     ringingAlarm: AlarmRingingUiState? = null,
     activeAlarmMission: ActiveAlarmMission? = null,
@@ -68,7 +76,7 @@ fun App(
     onRequestTemporaryFullAccuracy: () -> Unit = {},
     onRingingAlarmDismiss: (String) -> Unit = {},
     onActiveAlarmMissionExpired: () -> Unit = {},
-    onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit = { _ -> },
+    onActiveAlarmMissionForceEnd: suspend (occurrenceId: String) -> ForceEndMissionResult = { ForceEndMissionResult.Failed },
     onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit = { _ -> },
     onActiveAlarmMissionForceEndHoldCancelled:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
@@ -83,6 +91,9 @@ fun App(
         )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState
+    val appLocationCacheViewModel = viewModel {
+        AppLocationCacheViewModel(appContainer.authSession)
+    }
 
     if (!appBootstrapUiState.isReady) {
         AppBootstrapSurface()
@@ -94,6 +105,7 @@ fun App(
             AppEntryDestination.Onboarding ->
                 OnboardingRoute(
                     appContainer = appContainer,
+                    destinationCurrentLocationCache = appLocationCacheViewModel.destinationCurrentLocationCache,
                     missionLocationState = missionLocationState,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
                     onRequestWhenInUseLocation = onRequestWhenInUseLocation,
@@ -108,8 +120,10 @@ fun App(
             AppEntryDestination.Home ->
                 RingoutAppContent(
                     appContainer = appContainer,
+                    destinationCurrentLocationCache = appLocationCacheViewModel.destinationCurrentLocationCache,
                     themeMode = appBootstrapUiState.themeMode,
                     appVersion = appVersion,
+                    myPageExtraContent = myPageExtraContent,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
                     ringingAlarm = ringingAlarm,
                     activeAlarmMission = activeAlarmMission,
@@ -146,8 +160,10 @@ private fun AppBootstrapSurface() = Box(
 @Composable
 private fun RingoutAppContent(
     appContainer: AppContainer,
+    destinationCurrentLocationCache: DestinationCurrentLocationCache,
     themeMode: ThemeMode,
     appVersion: String,
+    myPageExtraContent: (@Composable (ThemeMode) -> Unit)?,
     useSystemLocationPermissionUiOnly: Boolean,
     ringingAlarm: AlarmRingingUiState?,
     activeAlarmMission: ActiveAlarmMission?,
@@ -159,7 +175,7 @@ private fun RingoutAppContent(
     onRequestTemporaryFullAccuracy: () -> Unit,
     onRingingAlarmDismiss: (String) -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
-    onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
+    onActiveAlarmMissionForceEnd: suspend (occurrenceId: String) -> ForceEndMissionResult,
     onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit,
     onActiveAlarmMissionForceEndHoldCancelled:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
@@ -167,6 +183,11 @@ private fun RingoutAppContent(
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
+    val forceEndViewModel = viewModel { ForceEndMissionViewModel(createSavedStateHandle()) }
+    val forceEndState by forceEndViewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(forceEndViewModel) {
+        forceEndViewModel.resumePending(onActiveAlarmMissionForceEnd)
+    }
     val termsViewModel: TermsReagreementViewModel = viewModel {
         TermsReagreementViewModel(appContainer.termsRepository, appContainer.authRepository,
             appContainer.authSession, appContainer.networkMonitor)
@@ -180,7 +201,11 @@ private fun RingoutAppContent(
         ?.let { alarm -> AppRoute.AlarmRinging(alarm.id) }
         ?: navigationState.requestedRoute
     val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
-    val viewModelScopes = rememberNavigationViewModelScopes(appContainer, retainedRoutes)
+    val viewModelScopes = rememberNavigationViewModelScopes(
+        appContainer,
+        retainedRoutes,
+        destinationCurrentLocationCache,
+    )
     val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
     val socialRoomListViewModel = if (AppRoute.Social in retainedRoutes) {
         viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
@@ -370,6 +395,7 @@ private fun RingoutAppContent(
                 myPageViewModel = myPageViewModel,
                 themeMode = themeMode,
                 appVersion = appVersion,
+                myPageExtraContent = myPageExtraContent,
                 alarmController = alarmController,
                 activeAlarmMission = activeAlarmMission,
                 onThemeModeChange = onThemeModeChange,
@@ -404,7 +430,8 @@ private fun RingoutAppContent(
                 missionLocationState = missionLocationState,
                 onRingingAlarmDismiss = onRingingAlarmDismiss,
                 onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
-                onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
+                onActiveAlarmMissionForceEnd = { forceEndViewModel.request(it, onActiveAlarmMissionForceEnd) },
+                isForceEndEnabled = forceEndState.phase == ForceEndPhase.Idle,
                 onActiveAlarmMissionForceEndHoldStarted =
                     onActiveAlarmMissionForceEndHoldStarted,
                 onActiveAlarmMissionForceEndHoldCancelled =
@@ -430,8 +457,18 @@ private fun RingoutAppContent(
         },
     )
     // 알람 울림과 진행 중 미션의 필수 조작은 기존 우선순위를 유지한다.
-    if (displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking) {
+    if (forceEndState.phase == ForceEndPhase.Idle &&
+        displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking
+    ) {
         TermsReagreementRoute(termsViewModel)
+    }
+    if (ringingAlarm == null) {
+        ForceEndMissionStatus(
+            uiState = forceEndState,
+            onConfirm = forceEndViewModel::dismiss,
+            onRetry = { forceEndViewModel.retry(onActiveAlarmMissionForceEnd) },
+            onDismiss = forceEndViewModel::dismiss,
+        )
     }
 
 }
