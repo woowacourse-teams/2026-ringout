@@ -7,6 +7,8 @@ object AlarmOccurrenceRetryPolicy {
         return (5_000L * (1L shl (attemptCount - 1).coerceAtMost(8))).coerceAtMost(900_000L)
     }
 
-    fun isRetryableHttpStatus(statusCode: Int): Boolean =
-        statusCode == 408 || statusCode == 429 || statusCode in 500..599
+    fun isRetryableHttpStatus(statusCode: Int): Boolean = when (statusCode) {
+        408, 429, in 500..599 -> true
+        else -> false
+    }
 }
