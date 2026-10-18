@@ -60,7 +60,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
-          cache-read-only: true
+          # Same-repository PRs retain caches for later commits and reruns.
+          cache-read-only: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
       - name: Install Android SDK packages
         # The runner image installs sdkmanager without adding it to PATH.
         run: |
@@ -68,14 +69,10 @@ jobs:
             'platforms;android-36' 'build-tools;36.0.0'
       - name: Test CI routing and artifact checks
         run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
-      - name: Test shared code and run Android Lint
+      - name: Test, lint, and build unsigned release AAB
         run: |
-          ./gradlew :shared:testAndroidHostTest :androidApp:lintRelease \
-            -PciVerification=true --no-daemon --no-configuration-cache --stacktrace
-      - name: Build unsigned release AAB
-        run: |
-          ./gradlew :androidApp:bundleRelease \
-            -PciVerification=true --no-daemon --no-configuration-cache --stacktrace
+          ./gradlew :shared:testAndroidHostTest :androidApp:lintRelease :androidApp:bundleRelease \
+            -PciVerification=true --no-daemon --no-configuration-cache --stacktrace --profile
       - name: Verify R8 outputs and absence of signing
         run: |
           python3 ci/pipeline.py verify-r8
@@ -86,6 +83,7 @@ jobs:
         with:
           name: client-ci-reports-pr-${{ github.event.pull_request.number }}-attempt${{ github.run_attempt }}
           path: |
+            client/build/reports/profile/
             client/shared/build/test-results/testAndroidHostTest/
             client/shared/build/reports/tests/testAndroidHostTest/
             client/androidApp/build/reports/lint-results-release.*
