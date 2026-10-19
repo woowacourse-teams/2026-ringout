@@ -7,6 +7,7 @@ import com.ringout.api.file.status.FileErrorStatus;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,6 +30,7 @@ public class S3ImageStorage implements ImageStorage {
 
     private static final long MAX_IMAGE_SIZE = 5L * 1024 * 1024;
     private static final Pattern DIRECTORY_PATTERN = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9/_-]*$");
+    private static final Pattern OBJECT_PATH_PATTERN = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9/_.-]*$");
     private static final Pattern EXTENSION_PATTERN = Pattern.compile("^[A-Za-z0-9]{1,10}$");
 
     private final S3Client s3Client;
@@ -39,7 +41,8 @@ public class S3ImageStorage implements ImageStorage {
     public String upload(MultipartFile image, String directory) {
         validateImage(image);
         String normalizedDirectory = normalizeDirectory(directory);
-        String objectKey = normalizedDirectory + "/" + UUID.randomUUID() + resolveExtension(image);
+        String objectKey = normalizeDirectory(properties.rootDirectory()) + "/"
+            + normalizedDirectory + "/" + UUID.randomUUID() + resolveExtension(image);
 
         PutObjectRequest request = PutObjectRequest.builder()
             .bucket(requireBucket(FileErrorStatus.IMAGE_UPLOAD_FAILED))
@@ -64,10 +67,11 @@ public class S3ImageStorage implements ImageStorage {
         }
 
         try {
+            String relativePath = relativeObjectPath(objectKey);
             URI baseUri = requireCloudFrontBaseUri();
             String baseUrl = baseUri.toString();
             String separator = baseUrl.endsWith("/") ? "" : "/";
-            return URI.create(baseUrl + separator + objectKey);
+            return URI.create(baseUrl + separator + relativePath);
         } catch (IllegalArgumentException exception) {
             log.error("CloudFront 이미지 조회 URL 생성 실패. objectKey={}", objectKey, exception);
             throw new GeneralException(FileErrorStatus.IMAGE_URL_CREATE_FAILED);
@@ -77,6 +81,7 @@ public class S3ImageStorage implements ImageStorage {
     @Override
     public void delete(String objectKey) {
         try {
+            relativeObjectPath(objectKey);
             s3Client.deleteObject(DeleteObjectRequest.builder()
                 .bucket(requireBucket(FileErrorStatus.IMAGE_UPLOAD_FAILED))
                 .key(objectKey)
@@ -104,11 +109,26 @@ public class S3ImageStorage implements ImageStorage {
             ? directory.substring(0, directory.length() - 1)
             : directory;
         if (!DIRECTORY_PATTERN.matcher(normalized).matches()
+            || normalized.endsWith("/")
             || normalized.contains("//")
             || normalized.contains("..")) {
             throw new GeneralException(FileErrorStatus.IMAGE_DIRECTORY_INVALID);
         }
         return normalized;
+    }
+
+    private String relativeObjectPath(String objectKey) {
+        String rootPrefix = normalizeDirectory(properties.rootDirectory()) + "/";
+        if (objectKey == null || !objectKey.startsWith(rootPrefix)) {
+            throw new IllegalArgumentException("이미지 객체 키가 AWS_S3_ROOT_DIRECTORY 범위 밖에 있습니다.");
+        }
+        String relativePath = objectKey.substring(rootPrefix.length());
+        if (!OBJECT_PATH_PATTERN.matcher(relativePath).matches()
+            || Arrays.stream(relativePath.split("/", -1))
+                .anyMatch(segment -> segment.isEmpty() || segment.equals(".") || segment.equals(".."))) {
+            throw new IllegalArgumentException("유효하지 않은 이미지 객체 경로입니다.");
+        }
+        return relativePath;
     }
 
     private String resolveExtension(MultipartFile image) {
