@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-ci-${{ github.ref }}
+  group: ${{ github.event.action == 'edited' && !github.event.changes.base && format('android-ci-metadata-{0}', github.event.pull_request.number) || format('android-ci-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -33,7 +33,10 @@ defaults:
 
 jobs:
   changes:
-    name: Check client changes and PR route
+    # Metadata-only edits use distinct check names, so a skipped job cannot
+    # replace a failed build check or cancel an in-flight code verification.
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata changes skipped' || 'Check client changes and PR route' }}
+    if: github.event.action != 'edited' || github.event.changes.base
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -49,7 +52,7 @@ jobs:
         run: python3 ci/pipeline.py changes
 
   quality:
-    name: Android tests, lint, and release verification
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata build skipped' || 'Android tests, lint, and release verification' }}
     needs: changes
     if: needs.changes.outputs.client_changed == 'true'
     runs-on: ubuntu-24.04
@@ -100,8 +103,8 @@ jobs:
 
   result:
     # Summarize triggered runs; path-filtered workflows must not be required for every PR.
-    name: Android CI
-    if: always()
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata gate skipped' || 'Android CI' }}
+    if: always() && (github.event.action != 'edited' || github.event.changes.base)
     needs: [changes, quality]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
