@@ -17,7 +17,7 @@ import pipeline as ci
 
 
 class RoutingTest(unittest.TestCase):
-    def event(self, base="develop", head="feature/test", repository="team/repo"):
+    def event(self, base="client/develop", head="feature/test", repository="team/repo"):
         return {
             "repository": {"full_name": "team/repo"},
             "pull_request": {"base": {"ref": base}, "head": {"ref": head, "repo": {"full_name": repository}}},
@@ -25,10 +25,41 @@ class RoutingTest(unittest.TestCase):
 
     def test_main_requires_same_repository_develop(self):
         ci.validate_pr_route(self.event())
-        ci.validate_pr_route(self.event(base="main", head="develop"))
-        for event in (self.event(base="main"), self.event(base="main", head="develop", repository="fork/repo")):
+        ci.validate_pr_route(self.event(base="main", head="client/release"))
+        for event in (self.event(base="main"), self.event(base="main", head="client/release", repository="fork/repo")):
             with self.subTest(event=event), self.assertRaises(ci.CIError):
                 ci.validate_pr_route(event)
+
+    def test_승격_PR은_같은_저장소의_직전_브랜치만_허용한다(self):
+        ci.validate_pr_route(self.event(base="client/release", head="client/develop"))
+        for base, head, repo in (
+            ("develop", "feature/test", "team/repo"),
+            ("client/release", "feature/test", "team/repo"),
+            ("client/release", "client/develop", "fork/repo"),
+            ("main", "client/develop", "team/repo"),
+            ("main", "client/release", "fork/repo"),
+        ):
+            with self.subTest(base=base, head=head, repo=repo), self.assertRaises(ci.CIError):
+                ci.validate_pr_route(self.event(base, head, repo))
+
+    def test_iOS는_Android_전용_변경을_생략하고_공유_변경을_검증한다(self):
+        for path in (b"client/androidApp/App.kt", b"client/shared/src/androidMain/App.kt",
+                     b"client/shared/src/androidHostTest/Test.kt", b"client/docs/guide.md"):
+            self.assertFalse(ci.is_client_path(path, "ios"), path)
+        for path in (b"client/iosApp/App.swift", b"client/shared/src/iosMain/App.kt",
+                     b"client/shared/src/commonTest/Test.kt", b".github/workflows/ios-ci.yml"):
+            self.assertTrue(ci.is_client_path(path, "ios"), path)
+
+    def test_기준_세_브랜치_push만_검증하고_개발_브랜치에서는_서명을_금지한다(self):
+        for branch in ("client/develop", "client/release", "main"):
+            with self.subTest(branch=branch):
+                with patch.object(ci, "push_changed_files", return_value=[b"client/iosApp/iosApp/App.swift"]):
+                    self.assertTrue(ci.verification_required({
+                        "ref": f"refs/heads/{branch}", "before": "0" * 40, "after": "b" * 40,
+                    }, "push", "ios"))
+        for branch in ("develop", "client/develop", "feature/test"):
+            with self.subTest(branch=branch), self.assertRaises(ci.CIError):
+                ci.expected_firebase_project(f"refs/heads/{branch}")
 
     def test_required_gate_does_not_hide_failed_or_skipped_checks(self):
         ci.check_gate("success", "true", "success")
@@ -43,7 +74,6 @@ class RoutingTest(unittest.TestCase):
 
     def test_안드로이드와_공유_입력은_검증하고_iOS와_문서는_제외한다(self):
         for path in (b"client/androidApp/build.gradle.kts", b"client/shared/test.kt", b".github/workflows/android-ci.yml",
-                     b".github/workflows/build-release-aab.yml", b".github/workflows/android-internal-cd.yml",
                      b".github/actions/setup/action.yml"):
             self.assertTrue(ci.is_client_path(path), path)
         self.assertFalse(ci.is_client_path(b"server/App.java"))
@@ -55,7 +85,7 @@ class RoutingTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse(ci.is_client_path(path))
         for path in (b"client/gradle/libs.versions.toml", b"client/settings.gradle.kts",
-                     b"client/gradle.properties", b"client/ci/pipeline.py",
+                     b"client/gradle.properties",
                      b"client/developerTools/src/commonMain/Tools.kt", b"client/new-build-input"):
             with self.subTest(path=path):
                 self.assertTrue(ci.is_client_path(path))
@@ -82,23 +112,61 @@ class RoutingTest(unittest.TestCase):
 
 
     def test_기준_브랜치_push는_이전과_이후_트리를_비교한다(self):
-        event = {"ref": "refs/heads/develop", "before": "a" * 40, "after": "b" * 40}
+        event = {"ref": "refs/heads/client/release", "before": "a" * 40, "after": "b" * 40}
         with patch.object(ci, "changed_files", return_value=[b"client/shared/code.kt"]) as diff:
             self.assertTrue(ci.verification_required(event, "push"))
             diff.assert_called_once_with(ci.CLIENT_ROOT.parent, event["before"], event["after"], merge_base=False)
         with patch.object(ci, "changed_files", return_value=[b"server/App.java"]):
             self.assertFalse(ci.verification_required(event, "push"))
 
-    def test_최초_push는_전체_검증하고_잘못된_이벤트는_거부한다(self):
-        event = {"ref": "refs/heads/develop", "before": "0" * 40, "after": "b" * 40}
-        with patch.object(ci, "changed_files") as diff:
+    def test_최초_push는_첫_커밋의_부모부터_전체_push를_비교한다(self):
+        event = {"ref": "refs/heads/client/release", "before": "0" * 40, "after": "c" * 40,
+                 "commits": [{"id": "b" * 40}, {"id": "c" * 40}], "size": 2}
+        with patch.object(ci, "run_tool", return_value=f"{'b' * 40} {'a' * 40}\n".encode()), patch.object(ci, "changed_files", return_value=[b"client/androidApp/src/main/App.kt"]) as diff:
             self.assertTrue(ci.verification_required(event, "push"))
-            diff.assert_not_called()
+            diff.assert_called_once_with(ci.CLIENT_ROOT.parent, "a" * 40, "c" * 40, merge_base=False)
         for changed in ({"ref": "refs/heads/feature/test"}, {"deleted": True}):
             with self.subTest(changed=changed), self.assertRaises(ci.CIError):
                 ci.verification_required(dict(event, **changed), "push")
         with self.assertRaises(ci.CIError):
             ci.verification_required(event, "workflow_dispatch")
+        with self.assertRaises(ci.CIError):
+            ci.push_changed_files(dict(event, size=3))
+
+    def test_새_브랜치의_여러_커밋은_앞선_앱_변경도_검증한다(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "client").mkdir()
+            def git(*args):
+                return subprocess.check_output(["git", *args], cwd=root, stderr=subprocess.DEVNULL).decode().strip()
+            git("init")
+            git("config", "user.name", "CI Test")
+            git("config", "user.email", "ci@example.invalid")
+            (root / "server.txt").write_text("initial")
+            git("add", ".")
+            git("commit", "-m", "initial")
+            source = root / "client/androidApp/src/main/App.kt"
+            source.parent.mkdir(parents=True)
+            source.write_text("app change")
+            git("add", ".")
+            git("commit", "-m", "android")
+            first = git("rev-parse", "HEAD")
+            (root / "client/README.md").write_text("docs change")
+            git("add", ".")
+            git("commit", "-m", "docs")
+            head = git("rev-parse", "HEAD")
+            event = {"ref": "refs/heads/client/release", "before": "0" * 40, "after": head,
+                     "commits": [{"id": first}, {"id": head}], "size": 2}
+            with patch.object(ci, "CLIENT_ROOT", root / "client"):
+                self.assertTrue(ci.verification_required(event, "push", "android"))
+                self.assertFalse(ci.verification_required(event, "push", "ios"))
+
+    def test_Python_보조코드나_반대_플랫폼_CI는_앱_검증을_시작하지_않는다(self):
+        for path in (b"client/ci/pipeline.py", b"client/ci/test_pipeline.py", b".github/workflows/client-python-ci.yml"):
+            for platform in ("android", "ios"):
+                self.assertFalse(ci.is_client_path(path, platform), (path, platform))
+        self.assertFalse(ci.is_client_path(b".github/workflows/ios-ci.yml", "android"))
+        self.assertFalse(ci.is_client_path(b".github/workflows/android-ci.yml", "ios"))
 
     def test_PR은_병합_기준점을_사용하고_main_진입_규칙을_유지한다(self):
         event = self.event()
@@ -116,7 +184,7 @@ class ConfigurationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             env_file = Path(directory) / "github-env"
             env_file.touch()
-            with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/develop", "GITHUB_ENV": str(env_file)}):
+            with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/client/release", "GITHUB_ENV": str(env_file)}):
                 ci.select_build()
             self.assertEqual(env_file.read_text(), "AAB_CHANNEL=internal\n")
             with patch.dict(os.environ, {"GITHUB_REF": "refs/heads/main", "GITHUB_ENV": str(env_file)}):
@@ -142,7 +210,7 @@ class ConfigurationTest(unittest.TestCase):
         fixture["project_info"]["storage_bucket"] = "ringout-8abf2.invalid"
         fixture["client"][0]["api_key"][0]["current_key"] = "test-config-key"
         data = json.dumps(fixture).encode()
-        ci.validate_google_services(data, ci.expected_firebase_project("refs/heads/develop"))
+        ci.validate_google_services(data, ci.expected_firebase_project("refs/heads/client/release"))
         with self.assertRaises(ci.CIError):
             ci.validate_google_services(data, ci.expected_firebase_project("refs/heads/main"))
         with self.assertRaises(ci.CIError):
@@ -207,7 +275,7 @@ class ArtifactTest(unittest.TestCase):
             'package="com.joon.ringout" android:versionCode="42" android:versionName="1.1.0"/>'
         )
         env = {"AAB_CHANNEL": "internal", "GITHUB_SHA": "a" * 40,
-               "GITHUB_REF_NAME": "develop", "GITHUB_RUN_ID": "10", "GITHUB_RUN_ATTEMPT": "1"}
+               "GITHUB_REF_NAME": "client/release", "GITHUB_RUN_ID": "10", "GITHUB_RUN_ATTEMPT": "1"}
         with patch.dict(os.environ, env):
             self.assertEqual(ci.release_metadata(self.root)["versionCode"], 42)
             source.write_text('versionCode = 43\nversionName = "1.1.0"\n')
@@ -295,7 +363,7 @@ class SignatureTest(unittest.TestCase):
         github_env.touch()
         values = {
             "RUNNER_TEMP": str(self.root), "GITHUB_ENV": str(github_env),
-            "GITHUB_REF": "refs/heads/develop",
+            "GITHUB_REF": "refs/heads/client/release",
             "ANDROID_KEYSTORE_BASE64": base64.b64encode(self.store.read_bytes()).decode(),
             "ANDROID_KEY_ALIAS": "upload", "ANDROID_KEY_PASSWORD": "wrong-password",
             "MAPS_API_KEY": "test-maps-key",

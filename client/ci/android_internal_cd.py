@@ -15,6 +15,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import zipfile
 
+from change_policy import deployment_required
+from ios_cd_gate import release_changes, wait_for_ci
 from pipeline import APPLICATION_ID, CLIENT_ROOT, declared_android_version, expected_certificate
 
 
@@ -64,7 +66,7 @@ def request_json(url, token, method="GET", body=None, content_type="application/
         raise CDError(f"API 요청 실패: HTTP {error.code} ({method} {url.split('?')[0]}){detail}") from error
 
 
-def choose_run(runs, sha, repository, branch="develop"):
+def choose_run(runs, sha, repository, branch="client/release"):
     candidates = [run for run in runs if (
         run.get("head_sha") == sha
         and run.get("head_branch") == branch
@@ -79,7 +81,7 @@ def choose_run(runs, sha, repository, branch="develop"):
     return ("deploy" if run.get("conclusion") == "success" else "fail"), run
 
 
-def gate(branch="develop"):
+def gate(branch="client/release"):
     production = branch == "main"
     if os.environ.get("GITHUB_EVENT_NAME") != "push" or os.environ.get("GITHUB_REF") != f"refs/heads/{branch}":
         raise CDError("Android CD는 대상 브랜치의 push에서만 실행할 수 있습니다.")
@@ -88,6 +90,13 @@ def gate(branch="develop"):
     if not re.fullmatch(r"[0-9a-f]{40}", sha) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise CDError("커밋 또는 저장소 형식이 잘못되었습니다.")
     token = required("GITHUB_TOKEN")
+    paths = release_changes()
+    if not deployment_required(paths, "android", branch):
+        with Path(required("GITHUB_OUTPUT")).open("a", encoding="utf-8") as output:
+            output.write("eligible=false\n")
+        print("Android deployment skipped: no application or deployment changes")
+        return
+    wait_for_ci(repository, sha, token, branch, paths)
     query = urlencode({"branch": branch, "event": "push", "head_sha": sha, "per_page": 100})
     url = f"{GITHUB_API}/repos/{repository}/actions/workflows/build-release-aab.yml/runs?{query}"
     deadline = time.monotonic() + MAX_WAIT_SECONDS
@@ -101,7 +110,7 @@ def gate(branch="develop"):
             channel = "release" if production else "internal"
             artifact_name = f"ringout-{channel}-aab-{code}-{sha[:12]}-attempt{run['run_attempt']}"
             with Path(required("GITHUB_OUTPUT")).open("a", encoding="utf-8") as output:
-                output.write(f"run_id={run['id']}\nrun_attempt={run['run_attempt']}\nartifact_name={artifact_name}\n")
+                output.write(f"eligible=true\nrun_id={run['id']}\nrun_attempt={run['run_attempt']}\nartifact_name={artifact_name}\n")
             print(f"같은 대상 커밋의 서명 AAB 빌드 통과: {run['html_url']}")
             return
         if result == "fail":
@@ -110,7 +119,7 @@ def gate(branch="develop"):
     raise CDError("같은 커밋의 서명 AAB 빌드를 기다리다 시간 초과되었습니다.")
 
 
-def verify_artifact(directory, sha, run_id, run_attempt, branch="develop"):
+def verify_artifact(directory, sha, run_id, run_attempt, branch="client/release"):
     production = branch == "main"
     channel = "release" if production else "internal"
     root = Path(directory)
@@ -162,7 +171,7 @@ def verify_artifact(directory, sha, run_id, run_attempt, branch="develop"):
     return aab, metadata
 
 
-def verify(branch="develop"):
+def verify(branch="client/release"):
     aab, metadata = verify_artifact(required("AAB_DOWNLOAD_DIR"), required("GITHUB_SHA"), required("AAB_RUN_ID"), required("AAB_RUN_ATTEMPT"), branch)
     with Path(required("GITHUB_OUTPUT")).open("a", encoding="utf-8") as output:
         output.write(f"aab_path={aab}\nversion_code={metadata['versionCode']}\nversion_name={metadata['versionName']}\n")

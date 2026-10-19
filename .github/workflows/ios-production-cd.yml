@@ -6,15 +6,35 @@ on:
     paths:
       - 'client/iosApp/**'
       - 'client/shared/**'
-      - 'client/ci/**'
+      - 'client/developerTools/**'
+      - '!client/shared/src/android*/**'
+      - '!client/developerTools/src/android*/**'
+      - 'client/*'
       - 'client/gradle/**'
-      - 'client/gradlew'
-      - 'client/build.gradle.kts'
-      - 'client/settings.gradle.kts'
-      - 'client/gradle.properties'
-      - '.github/workflows/ios-ci.yml'
+      - 'client/buildSrc/**'
+      - 'client/build-logic/**'
+      - 'client/config/**'
+      - 'client/configuration/**'
+      - '!client/**/src/*Test*/**'
+      - '!client/**/src/test*/**'
+      - '!client/**/src/androidTest/**'
+      - '!client/iosApp/**/Tests/**'
+      - '!client/iosApp/**/*Tests/**'
+      - '!client/iosApp/**/*UITests/**'
+      - 'client/ci/pipeline.py'
+      - 'client/ci/api_config.py'
+      - 'client/ci/production_config.py'
+      - 'client/ci/ios_cd_gate.py'
+      - 'client/ci/change_policy.py'
+      - 'client/ci/ios_internal.py'
+      - 'client/ci/verify_ios_firebase.py'
+      - 'client/ci/verify_ios_version.py'
       - '.github/workflows/ios-internal-cd.yml'
       - '.github/workflows/ios-production-cd.yml'
+      - '.github/actions/**'
+      - '!client/**/*.md'
+      - '!client/**/docs/**'
+
 
 permissions:
   contents: read
@@ -30,7 +50,7 @@ defaults:
 
 jobs:
   gate:
-    name: Wait for matching iOS CI success
+    name: Check deployment changes and required CI
     runs-on: ubuntu-24.04
     timeout-minutes: 95
     permissions:
@@ -43,8 +63,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - name: Wait for successful iOS CI on this commit
+      - name: Wait for applicable CI on this commit
         id: check
         env:
           GITHUB_TOKEN: ${{ github.token }}

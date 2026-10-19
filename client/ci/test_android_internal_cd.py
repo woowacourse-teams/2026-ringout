@@ -15,7 +15,7 @@ class AndroidInternalCDTest(unittest.TestCase):
             item = {
                 "id": identifier,
                 "head_sha": "a" * 40,
-                "head_branch": "develop",
+                "head_branch": "client/release",
                 "event": "push",
                 "head_repository": {"full_name": "woowacourse-teams/2026-ringout"},
                 "status": "completed",
@@ -36,6 +36,31 @@ class AndroidInternalCDTest(unittest.TestCase):
         self.assertEqual(cd.choose_run([run(5, conclusion="failure")], sha, repository)[0], "fail")
         self.assertEqual(cd.choose_run([run(6, status="in_progress")], sha, repository)[0], "wait")
         self.assertEqual(cd.choose_run(runs[:3], sha, repository)[0], "wait")
+
+    def test_failed_platform_ci_blocks_aab_lookup(self):
+        env = {
+            "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/client/release",
+            "GITHUB_SHA": "a" * 40, "GITHUB_REPOSITORY": "team/ringout", "GITHUB_TOKEN": "token",
+        }
+        with patch.dict(os.environ, env), patch.object(cd, "release_changes", return_value=[b"client/androidApp/src/main/App.kt"]), patch.object(cd, "wait_for_ci", side_effect=ValueError("CI failed")) as wait, patch.object(cd, "request_json") as request:
+            with self.assertRaisesRegex(ValueError, "CI failed"):
+                cd.gate()
+        wait.assert_called_once_with("team/ringout", "a" * 40, "token", "client/release", [b"client/androidApp/src/main/App.kt"])
+        request.assert_not_called()
+
+    def test_문서나_iOS_전용_변경은_AAB를_기다리거나_배포하지_않는다(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            env = {
+                "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/client/release",
+                "GITHUB_SHA": "a" * 40, "GITHUB_REPOSITORY": "team/ringout", "GITHUB_TOKEN": "token",
+                "GITHUB_OUTPUT": str(output),
+            }
+            with patch.dict(os.environ, env), patch.object(cd, "release_changes", return_value=[b"client/iosApp/iosApp/App.swift"]), patch.object(cd, "wait_for_ci") as wait, patch.object(cd, "request_json") as request:
+                cd.gate()
+            self.assertEqual(output.read_text(), "eligible=false\n")
+            wait.assert_not_called()
+            request.assert_not_called()
 
     def test_메타데이터가_없거나_다르면_업로드_전에_거부한다(self):
         with tempfile.TemporaryDirectory() as directory:
