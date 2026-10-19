@@ -5,6 +5,18 @@ on:
     branches: [client/develop, client/release, main]
     types: [opened, synchronize, reopened]
     paths:
+      - 'client/ci/pipeline.py'
+      - 'client/ci/api_config.py'
+      - 'client/ci/production_config.py'
+      - 'client/ci/ios_cd_gate.py'
+      - 'client/ci/change_policy.py'
+      - 'client/ci/android_internal_cd.py'
+      - 'client/ci/android_production_cd.py'
+      - 'client/ci/verify_developer_tools.py'
+      - 'client/ci/upload-certificate.sha256'
+      - '.github/workflows/build-release-aab.yml'
+      - '.github/workflows/android-internal-cd.yml'
+      - '.github/workflows/android-production-cd.yml'
       - 'client/androidApp/**'
       - 'client/shared/**'
       - 'client/developerTools/**'
@@ -71,7 +83,7 @@ jobs:
         run: python3 ci/pipeline.py changes
 
   quality:
-    name: Android tests and lint
+    name: Android tests, lint, and promotion build verification
     needs: changes
     if: needs.changes.outputs.client_changed == 'true'
     runs-on: ubuntu-24.04
@@ -100,6 +112,16 @@ jobs:
         run: |
           ./gradlew :shared:testAndroidHostTest :androidApp:lintRelease \
             -PciVerification=true --no-daemon --no-configuration-cache --stacktrace --profile
+      - name: Build unsigned release AAB for promotion PR
+        if: github.event_name == 'pull_request' && (github.base_ref == 'client/release' || github.base_ref == 'main')
+        run: |
+          ./gradlew :androidApp:bundleRelease \
+            -PciVerification=true --no-daemon --no-configuration-cache --stacktrace --profile
+      - name: Verify promotion AAB structure, R8 outputs, and absence of signing
+        if: github.event_name == 'pull_request' && (github.base_ref == 'client/release' || github.base_ref == 'main')
+        run: |
+          python3 ci/pipeline.py verify-r8
+          python3 ci/pipeline.py verify-unsigned
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -110,6 +132,7 @@ jobs:
             client/shared/build/test-results/testAndroidHostTest/
             client/shared/build/reports/tests/testAndroidHostTest/
             client/androidApp/build/reports/lint-results-release.*
+            client/androidApp/build/outputs/mapping/release/
           if-no-files-found: warn
           retention-days: 14
 

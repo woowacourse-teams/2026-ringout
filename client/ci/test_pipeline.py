@@ -61,6 +61,27 @@ class RoutingTest(unittest.TestCase):
             with self.subTest(branch=branch), self.assertRaises(ci.CIError):
                 ci.expected_firebase_project(f"refs/heads/{branch}")
 
+    def test_승격_PR은_배포설정_변경에도_플랫폼_검증을_요구한다(self):
+        for platform in ("android", "ios"):
+            path = f".github/workflows/{platform}-internal-cd.yml".encode()
+            for base, head, expected in (("client/develop", "feature/test", False),
+                                         ("client/release", "client/develop", True),
+                                         ("main", "client/release", True)):
+                event = self.event(base, head)
+                event["pull_request"]["base"]["sha"] = "a" * 40
+                event["pull_request"]["head"]["sha"] = "b" * 40
+                with self.subTest(platform=platform, base=base), patch.object(ci, "changed_files", return_value=[path]):
+                    self.assertEqual(ci.verification_required(event, "pull_request", platform), expected)
+
+    def test_승격_PR에서도_Python_변경_판정을_지원한다(self):
+        event = self.event("main", "client/release")
+        event["pull_request"]["base"]["sha"] = "a" * 40
+        event["pull_request"]["head"]["sha"] = "b" * 40
+        for path, expected in ((b"client/ci/pipeline.py", True),
+                               (b"client/shared/src/commonMain/App.kt", False)):
+            with self.subTest(path=path), patch.object(ci, "changed_files", return_value=[path]):
+                self.assertEqual(ci.verification_required(event, "pull_request", "python"), expected)
+
     def test_required_gate_does_not_hide_failed_or_skipped_checks(self):
         ci.check_gate("success", "true", "success")
         ci.check_gate("success", "false", "skipped")
