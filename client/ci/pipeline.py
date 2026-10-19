@@ -69,6 +69,18 @@ def validate_pr_route(event):
 
 
 def is_client_path(path):
+    # Keep unknown client files conservative, but exclude known iOS/docs inputs.
+    if path.startswith((
+        b"client/iosApp/", b"client/docs/",
+        b"client/shared/src/iosMain/", b"client/shared/src/iosTest/",
+        b"client/developerTools/src/iosMain/", b"client/developerTools/src/iosTest/",
+    )):
+        return False
+    if path.startswith(b"client/") and (
+        path.rsplit(b"/", 1)[-1] in (b"README.md", b"AGENTS.md", b"CONTRIBUTING.md")
+        or b"/docs/" in path
+    ):
+        return False
     return path.startswith(b"client/") or path in (
         b".github/workflows/android-ci.yml", b".github/workflows/build-release-aab.yml",
         b".github/workflows/android-internal-cd.yml", b".github/workflows/android-production-cd.yml",
@@ -353,9 +365,12 @@ def package_aab():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("changes", "gate", "channel", "prepare-signing", "verify-r8", "verify-unsigned", "package", "cleanup"))
+    parser.add_argument("command", choices=("route", "changes", "gate", "channel", "prepare-signing", "verify-r8", "verify-unsigned", "package", "cleanup"))
     command = parser.parse_args().command
-    if command == "changes":
+    if command == "route":
+        validate_pr_route(json.loads(Path(require_env("GITHUB_EVENT_PATH")).read_text()))
+        print("클라이언트 PR 대상 브랜치 규칙을 통과했습니다.")
+    elif command == "changes":
         detect_changes()
     elif command == "gate":
         check_gate(require_env("CHANGES_RESULT"), require_env("CLIENT_CHANGED"), require_env("QUALITY_RESULT"))

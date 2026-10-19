@@ -1,0 +1,37 @@
+name: Client PR route
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, edited]
+    paths:
+      - 'client/**'
+      - '.github/workflows/client-pr-route.yml'
+      - '.github/workflows/android-ci.yml'
+      - '.github/workflows/ios-ci.yml'
+      - '.github/workflows/build-release-aab.yml'
+      - '.github/workflows/android-internal-cd.yml'
+      - '.github/workflows/android-production-cd.yml'
+      - '.github/workflows/ios-internal-cd.yml'
+      - '.github/workflows/ios-production-cd.yml'
+      - '.github/actions/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-pr-route-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  route:
+    name: Client PR route
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate destination without rebuilding on metadata edits
+        working-directory: client
+        run: python3 ci/pipeline.py route

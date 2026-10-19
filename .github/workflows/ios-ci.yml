@@ -17,6 +17,13 @@ on:
       - '.github/workflows/ios-ci.yml'
       - '.github/workflows/ios-internal-cd.yml'
       - '.github/workflows/ios-production-cd.yml'
+      - '!client/shared/src/androidMain/**'
+      - '!client/shared/src/androidHostTest/**'
+      - '!client/developerTools/src/androidMain/**'
+      - '!client/**/README.md'
+      - '!client/**/AGENTS.md'
+      - '!client/**/CONTRIBUTING.md'
+      - '!client/**/docs/**'
   push:
     branches: [develop, main]
     paths:
@@ -74,6 +81,11 @@ jobs:
         with:
           path: ~/.konan
           key: konan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.build }}-${{ hashFiles('client/gradle/libs.versions.toml', 'client/gradle/wrapper/gradle-wrapper.properties', 'client/gradle.properties', 'client/shared/build.gradle.kts', 'client/developerTools/build.gradle.kts') }}
+      - name: Cache Swift package sources and binary artifacts
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/Library/Caches/ringout-swift-packages
+          key: swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.build }}-${{ hashFiles('client/iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'client/iosApp/iosApp.xcodeproj/project.pbxproj') }}
       - name: Test iOS CI/CD helper checks
         run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
       - name: Test native alarm recovery journal
@@ -85,6 +97,8 @@ jobs:
       - name: Test shared Kotlin code on iOS simulator
         run: ./gradlew :shared:iosSimulatorArm64Test --stacktrace --profile
       - name: Build unsigned iOS simulator app
+        env:
+          RINGOUT_GRADLE_PROFILE: 'true'
         run: |
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
@@ -93,6 +107,8 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/ringout-ios-derived-data" \
+            -clonedSourcePackagesDirPath "$HOME/Library/Caches/ringout-swift-packages" \
+            -disableAutomaticPackageResolution \
             -showBuildTimingSummary \
             CODE_SIGNING_ALLOWED=NO \
             build

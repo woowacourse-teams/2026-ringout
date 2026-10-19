@@ -41,13 +41,24 @@ class RoutingTest(unittest.TestCase):
             with self.subTest(quality=quality), self.assertRaises(ci.CIError):
                 ci.check_gate(changes, changed, quality)
 
-    def test_client_and_ci_changes_are_detected(self):
-        for path in (b"client/README.md", b"client/shared/test.kt", b".github/workflows/android-ci.yml",
+    def test_안드로이드와_공유_입력은_검증하고_iOS와_문서는_제외한다(self):
+        for path in (b"client/androidApp/build.gradle.kts", b"client/shared/test.kt", b".github/workflows/android-ci.yml",
                      b".github/workflows/build-release-aab.yml", b".github/workflows/android-internal-cd.yml",
                      b".github/actions/setup/action.yml"):
             self.assertTrue(ci.is_client_path(path), path)
         self.assertFalse(ci.is_client_path(b"server/App.java"))
         self.assertFalse(ci.is_client_path(b"README.md"))
+        for path in (b"client/README.md", b"client/iosApp/iosApp/View.swift",
+                     b"client/shared/src/iosMain/Platform.kt", b"client/shared/src/iosTest/PlatformTest.kt",
+                     b"client/developerTools/src/iosMain/Tools.kt",
+                     b"client/docs/ci.md", b"client/shared/README.md", b"client/AGENTS.md"):
+            with self.subTest(path=path):
+                self.assertFalse(ci.is_client_path(path))
+        for path in (b"client/gradle/libs.versions.toml", b"client/settings.gradle.kts",
+                     b"client/gradle.properties", b"client/ci/pipeline.py",
+                     b"client/developerTools/src/commonMain/Tools.kt", b"client/new-build-input"):
+            with self.subTest(path=path):
+                self.assertTrue(ci.is_client_path(path))
 
     def test_moving_client_file_outside_client_is_still_a_client_change(self):
         with tempfile.TemporaryDirectory() as tmp:
