@@ -61,22 +61,49 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn(":shared:iosSimulatorArm64Test", self.text("ios-ci"))
         self.assertIn("ci/swift/AlarmRecoveryJournalTests.swift", self.text("ios-ci"))
 
-    def test_승격_PR은_품질_job에서_실제_앱_산출물을_검증한다(self):
-        condition = "if: github.event_name == 'pull_request' && (github.base_ref == 'client/release' || github.base_ref == 'main')"
+    def test_승격_빌드는_테스트와_별도_job으로_실행하고_최종_판정에_포함한다(self):
         commands = {
             "android-ci": (":androidApp:bundleRelease", "pipeline.py verify-r8", "pipeline.py verify-unsigned"),
-            "ios-ci": ('xcodebuild \\', "CODE_SIGNING_ALLOWED=NO", "verify_ios_firebase.py"),
+            "ios-ci": ("CODE_SIGNING_ALLOWED=NO", "verify_ios_firebase.py"),
         }
         for name, required in commands.items():
-            quality = self.text(name).split("  quality:\n")[1].split("  result:\n")[0]
+            text = self.text(name)
+            quality, build = text.split("  quality:\n")[1].split("  promotion-build:\n")
+            build, result = build.split("  result:\n")
+            self.assertIn("if: needs.changes.outputs.promotion_build_required == 'true'", build)
+            self.assertIn("needs: [changes, quality]", build)
+            self.assertIn("needs: [changes, quality, promotion-build]", result)
+            self.assertIn("PROMOTION_BUILD_REQUIRED: ${{ needs.changes.outputs.promotion_build_required }}", result)
+            self.assertIn("PROMOTION_BUILD_RESULT: ${{ needs.promotion-build.result }}", result)
+            self.assertIn("no deployment", build)
             for command in required:
                 with self.subTest(workflow=name, command=command):
-                    self.assertIn(command, quality)
-            steps = quality.split("      - name: ")[1:]
-            for step in steps:
-                if any(command in step for command in required):
-                    self.assertIn(condition, step)
-                    self.assertNotIn("continue-on-error", step)
+                    self.assertNotIn(command, quality)
+                    self.assertIn(command, build)
+            self.assertNotIn("continue-on-error", build)
+
+    def test_승격_PR은_검증_성공한_앱_파일을_별도_artifact로_보관한다(self):
+        expected = {
+            "android-ci": ("Verify promotion AAB", "android-pr-aab-", "client/androidApp/build/outputs/bundle/release/*.aab"),
+            "ios-ci": ("Verify embedded development Firebase", "ios-pr-simulator-app-", "${{ runner.temp }}/Ringout-simulator.app.zip"),
+        }
+        for name, (verification, artifact, path) in expected.items():
+            build = self.text(name).split("  promotion-build:\n")[1].split("  result:\n")[0]
+            steps = build.split("      - name: ")[1:]
+            uploads = [step for step in steps if artifact in step]
+            self.assertEqual(len(uploads), 1)
+            upload = uploads[0]
+            self.assertIn("actions/upload-artifact@", upload)
+            self.assertIn(path, upload)
+            self.assertIn("if-no-files-found: error", upload)
+            self.assertIn("retention-days: 14", upload)
+            self.assertNotIn("if: always()", upload)
+            self.assertNotIn("continue-on-error", upload)
+            self.assertLess(build.index(verification), build.index(artifact))
+        ios = self.text("ios-ci")
+        self.assertIn('ditto -c -k --sequesterRsrc --keepParent', ios)
+        self.assertIn('"$RUNNER_TEMP/ringout-ios-derived-data/Build/Products/Debug-iphonesimulator/Ringout.app"', ios)
+        self.assertIn('"$RUNNER_TEMP/Ringout-simulator.app.zip"', ios)
 
     def test_서명_AAB는_동일_커밋의_통합_CI_성공_후_생성한다(self):
         text = self.text("build-release-aab")

@@ -82,6 +82,33 @@ class RoutingTest(unittest.TestCase):
             with self.subTest(path=path), patch.object(ci, "changed_files", return_value=[path]):
                 self.assertEqual(ci.verification_required(event, "pull_request", "python"), expected)
 
+    def test_승격_빌드_출력은_관련_승격_PR에서만_활성화된다(self):
+        cases = (("pull_request", "client/develop", True, "false"),
+                 ("pull_request", "client/release", True, "true"),
+                 ("pull_request", "main", True, "true"),
+                 ("pull_request", "main", False, "false"),
+                 ("push", "client/release", True, "false"),
+                 ("push", "main", True, "false"))
+        with tempfile.TemporaryDirectory() as directory:
+            event_file = Path(directory) / "event.json"
+            for event_name, base, changed, expected in cases:
+                event_file.write_text(json.dumps({"pull_request": {"base": {"ref": base}}}))
+                env = {"GITHUB_EVENT_NAME": event_name, "GITHUB_EVENT_PATH": str(event_file)}
+                with self.subTest(event=event_name, base=base, changed=changed), patch.dict(os.environ, env), patch.object(ci, "verification_required", return_value=changed), patch.object(ci, "github_value") as output:
+                    ci.detect_changes()
+                    self.assertEqual(output.call_args_list[-1].args,
+                                     ("GITHUB_OUTPUT", "promotion_build_required", expected))
+
+    def test_최종_CI는_필수_승격_빌드의_실패나_생략을_허용하지_않는다(self):
+        ci.check_gate("success", "true", "success", "true", "success")
+        ci.check_gate("success", "true", "success", "false", "skipped")
+        ci.check_gate("success", "false", "skipped", "false", "skipped")
+        for required, result in (("true", "failure"), ("true", "cancelled"),
+                                 ("true", "skipped"), ("true", ""),
+                                 ("false", "failure"), ("", "skipped")):
+            with self.subTest(required=required, result=result), self.assertRaises(ci.CIError):
+                ci.check_gate("success", "true", "success", required, result)
+
     def test_required_gate_does_not_hide_failed_or_skipped_checks(self):
         ci.check_gate("success", "true", "success")
         ci.check_gate("success", "false", "skipped")
