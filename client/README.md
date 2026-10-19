@@ -137,7 +137,7 @@ PR 산출물은 빌드 가능 여부를 병합 전에 확인하기 위한 것입
 
 `Client Python CI`의 `python-checks` job은 Ubuntu와 JDK 21 환경에서 아래 전체 Python 회귀 테스트를 관련 입력이 변경된 PR·push마다 한 번 실행합니다. 입력은 Python 보조 코드·검증 설정·테스트 fixture, Kotlin 프레임워크 빌드 스크립트, 검증 대상 클라이언트 워크플로와 공통 Actions입니다. 공유 Kotlin 앱 코드만 변경된 경우에는 실행하지 않습니다. Android CI·iOS CI·서명 AAB 빌드에서는 이 전체 테스트를 중복 실행하지 않습니다. 현재 Python 테스트는 모두 운영체제에 독립적입니다. Apple `security`와 Gradle 호출은 모의 구현으로 검증하고, 서명 검사는 JDK 도구를 사용하므로 별도의 macOS Python 테스트는 없습니다. Swift 저널 테스트와 Kotlin 플랫폼 테스트는 각 플랫폼 CI에 유지합니다.
 
-CI 보조 스크립트의 회귀 테스트는 임시 테스트 키로 서명 변조·미서명 항목 검출을 확인합니다. 실제 업로드 키는 사용하지 않습니다.
+CI 보조 스크립트의 회귀 테스트는 임시 테스트 키로 서명 변조·미서명 항목 검출을 확인합니다. 실제 업로드 키는 사용하지 않습니다. 배포 API를 모의 처리하는 테스트의 `GITHUB_STEP_SUMMARY`·`GITHUB_OUTPUT`은 임시 파일로 격리하므로, 테스트가 실제 Actions 실행 요약에 배포 완료 문구나 출력을 기록하지 않습니다.
 
 ```bash
 python3 -B -m unittest discover -s ci -p 'test_*.py' -v
@@ -158,6 +158,20 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 
 위 표의 CI·CD는 각 워크플로의 변경 경로 조건을 만족할 때 실행합니다. 앱 코드 변경만으로 공통 Python 검증이 실행되지는 않으며, 배포 대상 플랫폼에 영향을 주지 않는 변경은 해당 CD를 시작하지 않습니다.
 
+플랫폼 CI의 작업은 GitHub Actions에서 다음 job으로 구분합니다. PR 빌드 검증도 CI이며, 실제 CD 워크플로와 분리되어 있습니다.
+
+| job | Android 표시 이름 | iOS 표시 이름 | 실행 조건 |
+| --- | --- | --- | --- |
+| `changes` | 변경 감지 | 변경 감지 | 실행된 워크플로에서 검증 필요 여부 판정 |
+| `quality` | `Android tests and lint` | `iOS Kotlin and Swift journal tests` | 해당 플랫폼 검증이 필요한 변경 |
+| `promotion-build` | `Android PR build verification (no deployment)` | `iOS PR build verification (no deployment)` | 해당 플랫폼 검증이 필요한 `client/release`·`main` 대상 PR이며 `quality` 성공 |
+| `result` | `Android CI` | `iOS CI` | 변경 감지·품질 검사·PR 빌드 검증 결과의 최종 판정 |
+
+`promotion-build`는 별도 러너에서 필요한 도구와 캐시를 준비한 뒤 앱 빌드·산출물 검증을 수행합니다. `client/develop` 대상 PR과 기준 브랜치 push에서는 의도적으로 생략합니다. 최종 판정은 승격 PR의 빌드 성공을 요구하며, 필요했던 검사나 빌드가 실패·취소·생략되면 실패합니다.
+
+승격 PR의 빌드·검증 성공 후 Actions 실행 상세의 **Artifacts**에서 앱 파일도 다운로드할 수 있습니다. Android는 `android-pr-aab-<PR 번호>-<실행 ID>-attempt<재실행 번호>`에 미서명 release `.aab`를, iOS는 `ios-pr-simulator-app-<PR 번호>-<실행 ID>-attempt<재실행 번호>`에 `Ringout-simulator.app.zip`을 보관합니다. iOS ZIP은 앱 번들의 실행 권한과 심볼릭 링크를 보존하도록 압축합니다. 보관 기간은 14일이며, 파일 누락이나 업로드 실패도 빌드 job과 최종 CI를 실패시킵니다. 별도 `*-pr-build-reports-*`에는 검증 보고서를 보관합니다. 이 iOS 앱은 시뮬레이터용이며 기기 설치·TestFlight용 IPA가 아닙니다.
+
+
 경량 PR 라우팅은 [client-pr-route.yml](../.github/workflows/client-pr-route.yml)에서 관리합니다. 공통 Python 검증은 [client-python-ci.yml](../.github/workflows/client-python-ci.yml), 플랫폼 품질 검사는 [android-ci.yml](../.github/workflows/android-ci.yml), [ios-ci.yml](../.github/workflows/ios-ci.yml)에 있습니다. 배포는 [build-release-aab.yml](../.github/workflows/build-release-aab.yml), [android-internal-cd.yml](../.github/workflows/android-internal-cd.yml), [ios-internal-cd.yml](../.github/workflows/ios-internal-cd.yml), [android-production-cd.yml](../.github/workflows/android-production-cd.yml), [ios-production-cd.yml](../.github/workflows/ios-production-cd.yml)에서 수행합니다. 운영 설정과 재실행 절차는 [운영 CD 실행 안내](docs/release/PRODUCTION_CD_RUNBOOK.md)를 확인합니다.
 
 ### PR 검증과 병합 조건
@@ -167,7 +181,7 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 - 변경 경로 정책은 `ci/change_policy.py`의 `CI_PATHS`·`CD_PATHS`에서 관리하며 회귀 테스트가 YAML 필터와 일치하는지 확인합니다. 플랫폼 CI는 해당 플랫폼·공유 앱·빌드 설정과 해당 CI 설정을 감지합니다. `client/release`·`main` 대상 PR은 해당 플랫폼의 CD 경로도 포함하여 배포 설정만 변경해도 앱 빌드·산출물 검증을 수행합니다. 기준 브랜치 push의 CI 경로는 기존 플랫폼 CI 입력 범위를 유지합니다. Python CI는 보조 코드와 검증 대상 워크플로를, CD는 해당 앱·빌드·배포 설정을 감지합니다. Android AAB producer와 배포 consumer는 같은 Android CD 경로를 사용합니다. 서버의 기존 브랜치 전략은 유지합니다.
 - 서버나 루트 문서만 변경한 경우 클라이언트 워크플로의 경로 필터가 실행을 생략합니다. 클라이언트 브랜치 경로 규칙도 클라이언트 관련 변경에만 적용합니다.
 - PR 경로 검사는 마지막 커밋이 아닌 PR 전체 변경을 기준으로 하며, 삭제와 `client` 밖으로의 이동도 확인합니다.
-- 필요한 검사의 실패·취소·예상치 못한 건너뛰기는 최종 판정을 실패시킵니다. 변경 감지가 명시적으로 불필요하다고 판단한 플랫폼 테스트만 생략할 수 있습니다.
+- 필요한 검사의 실패·취소·예상치 못한 건너뛰기는 최종 판정을 실패시킵니다. 변경 감지가 명시적으로 불필요하다고 판단한 플랫폼 검사와 승격 PR이 아닌 경우의 `promotion-build`만 생략할 수 있습니다.
 - 추가 커밋이 올라오면 이전 PR 실행을 취소하고 최신 PR 병합 커밋을 검사합니다.
 - 업로드 키를 PR에 제공하지 않습니다. `pull_request_target`이나 PR 아티팩트 전달을 통한 서명도 사용하지 않습니다.
 

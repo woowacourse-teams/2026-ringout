@@ -4,10 +4,18 @@
 
 - 클라이언트 경로는 작업 브랜치 → `client/develop` → `client/release` → `main`이다. `client/release` PR은 같은 저장소의 `client/develop`에서, `main` PR은 같은 저장소의 `client/release`에서만 허용한다. 서버의 기존 `develop`/`main` 흐름은 유지한다.
 - 각 단계 PR과 세 기준 브랜치 push에서 변경 경로에 해당하는 플랫폼 테스트·Lint·Swift 저널 테스트 또는 Python 보조·산출물 검사 회귀 테스트를 수행한다. 플랫폼 CI는 변경 감지·최종 판정을 포함한다. `client/develop` 대상 PR과 기준 브랜치 push는 경량 CI를 유지한다. `client/release`·`main` 대상 PR은 PR 병합 커밋에서 Android 미서명 release AAB의 R8·미서명 상태를 검사하고, iOS 미서명 Xcode Debug 시뮬레이터 앱을 빌드하여 포함된 개발 Firebase 설정을 검증한다. 실패하면 최종 플랫폼 CI 판정도 실패한다. PR에는 배포 시크릿을 제공하지 않으며, 병합 후 CD는 실제 서명·환경 설정으로 새로 빌드한다. PR 산출물은 배포에 재사용하지 않는다.
+- 승격 PR 빌드 검증 성공 후 미서명 Android AAB와 iOS 시뮬레이터 앱 ZIP을 Actions Artifacts에 14일간 보관한다. 이름은 `android-pr-aab-<PR 번호>-<실행 ID>-attempt<재실행 번호>`, `ios-pr-simulator-app-<PR 번호>-<실행 ID>-attempt<재실행 번호>`이다. 검증 보고서는 `*-pr-build-reports-*`에서 확인한다. 앱 파일 누락·압축·업로드 실패는 최종 CI 실패로 반영한다. iOS ZIP은 시뮬레이터용이며 기기 설치·TestFlight 배포용 IPA가 아니다.
+
 - `client/develop` push는 경량 CI만 실행한다. `client/release` push는 변경에 필요한 동일 SHA의 CI가 성공한 후 해당 플랫폼의 내부 AAB·iOS Archive를 만들고 Play 내부 테스트·TestFlight에 업로드한다.
 - `main` push의 운영 빌드도 변경에 필요한 동일 SHA의 CI 성공만 요구한다. Android는 `Build Signed Release AAB` 성공 결과를 다운로드·검증하고 Google Play `production` **draft**를 만든다. 새 릴리스는 자동 공개하지 않는다. 앱 전체 변경 사항의 심사·게시 상태는 Play Console에서 확인한다.
 - iOS는 운영 Archive를 생성하여 App Store Connect에 업로드한다. 내부 TestFlight 전용 제한이 없는 빌드이며, Apple 처리 결과 확인·심사 제출·공개는 수동이다.
 - PR 병합, 직접 push 제한, 원격 브랜치 생성과 보호 규칙은 저장소 관리자가 설정한다. 워크플로 변경이 이러한 GitHub 설정을 자동 적용하지 않는다.
+
+## Actions에서 CI와 CD 구분
+
+플랫폼 워크플로는 `changes` → `quality` → `promotion-build` → `result`로 역할을 나눈다. `quality`의 표시 이름은 `Android tests and lint` 또는 `iOS Kotlin and Swift journal tests`이며 테스트와 Lint만 수행한다. `promotion-build`는 `Android PR build verification (no deployment)` 또는 `iOS PR build verification (no deployment)`로 표시한다. 해당 플랫폼 검증이 필요한 `client/release`·`main` 대상 PR에서 `quality` 성공 후 별도 러너의 도구·캐시를 준비하고 앱을 빌드·검증한다. `client/develop` 대상 PR과 기준 브랜치 push에서는 이 job을 생략한다.
+
+최종 `Android CI`·`iOS CI`는 `quality`와 `promotion-build` 결과를 모두 확인한다. 승격 PR의 빌드는 성공해야 하며, 필요한 검사의 실패·취소·예상치 못한 생략은 최종 CI 실패다. PR 빌드 검증은 스토어에 업로드하지 않는다. 실제 서명 빌드·배포는 병합 후 별도 AAB·내부 CD·운영 CD 워크플로에서 수행한다.
 
 ## 빌드 입력과 버전
 
@@ -109,6 +117,8 @@ Firebase 설정은 빌드 전에 복원하고 프로젝트·번들 ID를 검사�
 ## 공통 Python 검증
 
 `Client Python CI` (`client-python-ci.yml`)의 `python-checks` job이 Ubuntu·JDK 21 환경에서 `ci/test_*.py` 전체를 관련 입력이 변경된 PR·push마다 한 번 실행한다. 입력은 Python 보조 코드·검증 설정·테스트 fixture, Kotlin 프레임워크 빌드 스크립트, 검증 대상 클라이언트 워크플로와 공통 Actions이다. 공유 Kotlin 앱 코드만 바뀌면 실행하지 않는다. Android CI·iOS CI·서명 AAB 빌드는 전체 Python 테스트를 다시 실행하지 않는다. 현재 모든 Python 테스트는 이 환경에서 실행 가능하며, Apple `security`와 Gradle 호출은 모의 구현으로 검증하므로 macOS 전용 Python 테스트는 없다. Swift 알람 복구 저널과 Kotlin 플랫폼 테스트는 각 플랫폼 CI에서 실행한다. 서명 빌드와 업로드는 해당 push에 Python 검증 대상 변경이 있을 때만 같은 SHA의 공통 검증 성공도 요구한다.
+
+배포 API를 모의 처리하는 Python 테스트는 `GITHUB_STEP_SUMMARY`·`GITHUB_OUTPUT`을 임시 파일로 격리한다. 따라서 테스트의 배포 완료 문구는 실제 Actions 실행 요약에 기록되지 않으며, Python CI의 성공은 실제 배포 완료를 의미하지 않는다.
 
 ## 클라이언트 변경 경로 필터
 
