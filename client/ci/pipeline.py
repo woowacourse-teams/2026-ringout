@@ -1,4 +1,4 @@
-"""Android CI helpers. Standard library only; never print secret values."""
+"""Client CI helpers. Standard library only; never print secret values."""
 
 import argparse
 import base64
@@ -13,11 +13,13 @@ import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
+from change_policy import ci_required
+
 
 CLIENT_ROOT = Path(__file__).resolve().parents[1]
 APPLICATION_ID = "com.joon.ringout"
 FIREBASE_PROJECT_BY_REF = {
-    "refs/heads/develop": "ringout-8abf2",
+    "refs/heads/client/release": "ringout-8abf2",
     "refs/heads/main": "ringout-prod",
 }
 MAX_VERSION_CODE = 2_100_000_000
@@ -59,32 +61,20 @@ def run_tool(arguments, cwd=None):
 def validate_pr_route(event):
     pr = event["pull_request"]
     base = pr["base"]["ref"]
-    if base not in ("develop", "main"):
-        raise CIError("클라이언트 PR의 대상 브랜치는 develop 또는 main이어야 합니다.")
-    if base == "main" and (
-        pr["head"]["ref"] != "develop"
+    sources = {"client/release": "client/develop", "main": "client/release"}
+    if base not in ("client/develop", *sources):
+        raise CIError("클라이언트 PR 대상은 client/develop, client/release, main이어야 합니다.")
+    if base in sources and (
+        pr["head"]["ref"] != sources[base]
         or pr["head"]["repo"]["full_name"] != event["repository"]["full_name"]
     ):
-        raise CIError("main에는 같은 저장소의 develop 브랜치에서만 PR을 보낼 수 있습니다.")
+        raise CIError(f"{base}에는 같은 저장소의 {sources[base]}에서만 PR을 보낼 수 있습니다.")
 
 
-def is_client_path(path):
-    # Keep unknown client files conservative, but exclude known iOS/docs inputs.
-    if path.startswith((
-        b"client/iosApp/", b"client/docs/",
-        b"client/shared/src/iosMain/", b"client/shared/src/iosTest/",
-        b"client/developerTools/src/iosMain/", b"client/developerTools/src/iosTest/",
-    )):
-        return False
-    if path.startswith(b"client/") and (
-        path.rsplit(b"/", 1)[-1] in (b"README.md", b"AGENTS.md", b"CONTRIBUTING.md")
-        or b"/docs/" in path
-    ):
-        return False
-    return path.startswith(b"client/") or path in (
-        b".github/workflows/android-ci.yml", b".github/workflows/build-release-aab.yml",
-        b".github/workflows/android-internal-cd.yml", b".github/workflows/android-production-cd.yml",
-    ) or path.startswith(b".github/actions/")
+def is_client_path(path, platform="android"):
+    if platform not in ("android", "ios", "python"):
+        raise CIError("지원하지 않는 플랫폼입니다.")
+    return ci_required([path], platform)
 
 
 def changed_files(repository, base, head, *, merge_base=True):
@@ -99,26 +89,46 @@ def changed_files(repository, base, head, *, merge_base=True):
     ).split(b"\0")
 
 
-def verification_required(event, event_name):
+def push_changed_files(event):
+    """Match the complete push range, including new branches and moved/deleted files."""
+    before, after = event["before"], event["after"]
+    if not all(re.fullmatch(r"[0-9a-f]{40,64}", sha) for sha in (before, after)):
+        raise CIError("변경 검사에는 커밋 SHA만 사용할 수 있습니다.")
+    if before == "0" * len(before):
+        # GitHub compares a new branch against the parent of its oldest pushed
+        # commit. Do not substitute the entire repository or just HEAD's diff.
+        commits = event.get("commits", [])
+        if event.get("size", len(commits)) > len(commits):
+            raise CIError("최초 push 커밋 목록이 잘려 변경 기준을 확인할 수 없습니다.")
+        oldest = commits[0]["id"] if commits else after
+        if not re.fullmatch(r"[0-9a-f]{40,64}", oldest):
+            raise CIError("최초 push 커밋 SHA가 잘못되었습니다.")
+        parents = run_tool(["git", "rev-list", "--parents", "-n", "1", oldest], cwd=CLIENT_ROOT.parent).split()
+        if not parents or parents[0].decode() != oldest:
+            raise CIError("최초 push의 기준 커밋을 확인할 수 없습니다.")
+        if len(parents) == 1:
+            return run_tool(["git", "ls-tree", "-r", "--name-only", "-z", after], cwd=CLIENT_ROOT.parent).split(b"\0")
+        before = parents[1].decode()
+    return changed_files(CLIENT_ROOT.parent, before, after, merge_base=False)
+
+
+def verification_required(event, event_name, platform="android"):
     if event_name == "pull_request":
         validate_pr_route(event)
         pr = event["pull_request"]
         paths = changed_files(CLIENT_ROOT.parent, pr["base"]["sha"], pr["head"]["sha"])
     elif event_name == "push":
-        if event.get("ref") not in ("refs/heads/develop", "refs/heads/main") or event.get("deleted"):
-            raise CIError("공통 캐시는 develop/main의 유효한 push에서만 생성합니다.")
-        if event["before"] == "0" * 40:
-            return True
-        # A push compares the actual before/after trees, including force pushes.
-        paths = changed_files(CLIENT_ROOT.parent, event["before"], event["after"], merge_base=False)
+        if event.get("ref") not in ("refs/heads/client/develop", "refs/heads/client/release", "refs/heads/main") or event.get("deleted"):
+            raise CIError("공통 캐시는 클라이언트 기준 브랜치의 유효한 push에서만 생성합니다.")
+        paths = push_changed_files(event)
     else:
         raise CIError("지원하지 않는 CI 이벤트입니다.")
-    return any(is_client_path(path) for path in paths)
+    return any(is_client_path(path, platform) for path in paths)
 
 
-def detect_changes():
+def detect_changes(platform="android"):
     event = json.loads(Path(require_env("GITHUB_EVENT_PATH")).read_text())
-    changed = verification_required(event, require_env("GITHUB_EVENT_NAME"))
+    changed = verification_required(event, require_env("GITHUB_EVENT_NAME"), platform)
     github_value("GITHUB_OUTPUT", "client_changed", str(changed).lower())
     print(f"클라이언트 검증 필요: {changed}")
 
@@ -136,7 +146,7 @@ def check_gate(changes_result, client_changed, quality_result):
 def select_build():
     branch = require_env("GITHUB_REF")
     expected_firebase_project(branch)
-    channel = "internal" if branch == "refs/heads/develop" else "release"
+    channel = "internal" if branch == "refs/heads/client/release" else "release"
     github_value("GITHUB_ENV", "AAB_CHANNEL", channel)
     print(f"AAB 채널: {channel}")
 
@@ -156,7 +166,7 @@ def expected_firebase_project(branch=None):
     try:
         return FIREBASE_PROJECT_BY_REF[branch]
     except KeyError:
-        raise CIError("서명 AAB는 develop 또는 main에서만 생성할 수 있습니다.") from None
+        raise CIError("서명 AAB는 client/release 또는 main에서만 생성할 수 있습니다.") from None
 
 
 def validate_google_services(data, expected_project_id=None):
@@ -366,15 +376,17 @@ def package_aab():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("route", "changes", "gate", "channel", "prepare-signing", "verify-r8", "verify-unsigned", "package", "cleanup"))
-    command = parser.parse_args().command
+    parser.add_argument("--platform", choices=("android", "ios"), default="android")
+    args = parser.parse_args()
+    command = args.command
     if command == "route":
         validate_pr_route(json.loads(Path(require_env("GITHUB_EVENT_PATH")).read_text()))
         print("클라이언트 PR 대상 브랜치 규칙을 통과했습니다.")
     elif command == "changes":
-        detect_changes()
+        detect_changes(args.platform)
     elif command == "gate":
         check_gate(require_env("CHANGES_RESULT"), require_env("CLIENT_CHANGED"), require_env("QUALITY_RESULT"))
-        print("Android CI 검증을 통과했습니다.")
+        print("클라이언트 CI 검증을 통과했습니다.")
     elif command == "channel":
         select_build()
     elif command == "prepare-signing":
