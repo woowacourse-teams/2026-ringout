@@ -70,6 +70,36 @@ class RoutingTest(unittest.TestCase):
             self.assertIn(b"client/test.txt", files)
 
 
+    def test_기준_브랜치_push는_이전과_이후_트리를_비교한다(self):
+        event = {"ref": "refs/heads/develop", "before": "a" * 40, "after": "b" * 40}
+        with patch.object(ci, "changed_files", return_value=[b"client/shared/code.kt"]) as diff:
+            self.assertTrue(ci.verification_required(event, "push"))
+            diff.assert_called_once_with(ci.CLIENT_ROOT.parent, event["before"], event["after"], merge_base=False)
+        with patch.object(ci, "changed_files", return_value=[b"server/App.java"]):
+            self.assertFalse(ci.verification_required(event, "push"))
+
+    def test_최초_push는_전체_검증하고_잘못된_이벤트는_거부한다(self):
+        event = {"ref": "refs/heads/develop", "before": "0" * 40, "after": "b" * 40}
+        with patch.object(ci, "changed_files") as diff:
+            self.assertTrue(ci.verification_required(event, "push"))
+            diff.assert_not_called()
+        for changed in ({"ref": "refs/heads/feature/test"}, {"deleted": True}):
+            with self.subTest(changed=changed), self.assertRaises(ci.CIError):
+                ci.verification_required(dict(event, **changed), "push")
+        with self.assertRaises(ci.CIError):
+            ci.verification_required(event, "workflow_dispatch")
+
+    def test_PR은_병합_기준점을_사용하고_main_진입_규칙을_유지한다(self):
+        event = self.event()
+        event["pull_request"]["base"]["sha"] = "a" * 40
+        event["pull_request"]["head"]["sha"] = "b" * 40
+        with patch.object(ci, "changed_files", return_value=[b"client/shared/code.kt"]) as diff:
+            self.assertTrue(ci.verification_required(event, "pull_request"))
+            diff.assert_called_once_with(ci.CLIENT_ROOT.parent, "a" * 40, "b" * 40)
+        with self.assertRaises(ci.CIError):
+            ci.verification_required(self.event(base="main"), "pull_request")
+
+
 class ConfigurationTest(unittest.TestCase):
     def test_channel_selection_does_not_allocate_a_version(self):
         with tempfile.TemporaryDirectory() as directory:
