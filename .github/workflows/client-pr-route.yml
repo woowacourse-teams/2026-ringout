@@ -2,12 +2,15 @@ name: Client PR route
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [client/develop, client/release, main]
     types: [opened, synchronize, reopened, edited]
     paths:
       - 'client/**'
       - '.github/workflows/client-pr-route.yml'
+      - '.github/workflows/client-python-ci.yml'
       - '.github/workflows/android-ci.yml'
+      - '.github/workflows/android-pr-build.yml'
+      - '.github/workflows/ios-pr-build.yml'
       - '.github/workflows/ios-ci.yml'
       - '.github/workflows/build-release-aab.yml'
       - '.github/workflows/android-internal-cd.yml'

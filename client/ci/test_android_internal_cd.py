@@ -10,12 +10,24 @@ import android_internal_cd as cd
 
 
 class AndroidInternalCDTest(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.summary = Path(directory.name) / "summary"
+        environment = patch.dict(os.environ, {
+            "GITHUB_STEP_SUMMARY": str(self.summary),
+            "GITHUB_OUTPUT": str(Path(directory.name) / "output"),
+            "GITHUB_ENV": str(Path(directory.name) / "env"),
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_같은_저장소의_같은_커밋에서_성공한_빌드만_선택한다(self):
         def run(identifier, **changes):
             item = {
                 "id": identifier,
                 "head_sha": "a" * 40,
-                "head_branch": "develop",
+                "head_branch": "client/release",
                 "event": "push",
                 "head_repository": {"full_name": "woowacourse-teams/2026-ringout"},
                 "status": "completed",
@@ -36,6 +48,31 @@ class AndroidInternalCDTest(unittest.TestCase):
         self.assertEqual(cd.choose_run([run(5, conclusion="failure")], sha, repository)[0], "fail")
         self.assertEqual(cd.choose_run([run(6, status="in_progress")], sha, repository)[0], "wait")
         self.assertEqual(cd.choose_run(runs[:3], sha, repository)[0], "wait")
+
+    def test_failed_platform_ci_blocks_aab_lookup(self):
+        env = {
+            "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/client/release",
+            "GITHUB_SHA": "a" * 40, "GITHUB_REPOSITORY": "team/ringout", "GITHUB_TOKEN": "token",
+        }
+        with patch.dict(os.environ, env), patch.object(cd, "release_changes", return_value=[b"client/androidApp/src/main/App.kt"]), patch.object(cd, "wait_for_ci", side_effect=ValueError("CI failed")) as wait, patch.object(cd, "request_json") as request:
+            with self.assertRaisesRegex(ValueError, "CI failed"):
+                cd.gate()
+        wait.assert_called_once_with("team/ringout", "a" * 40, "token", "client/release", [b"client/androidApp/src/main/App.kt"])
+        request.assert_not_called()
+
+    def test_문서나_iOS_전용_변경은_AAB를_기다리거나_배포하지_않는다(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            env = {
+                "GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/client/release",
+                "GITHUB_SHA": "a" * 40, "GITHUB_REPOSITORY": "team/ringout", "GITHUB_TOKEN": "token",
+                "GITHUB_OUTPUT": str(output),
+            }
+            with patch.dict(os.environ, env), patch.object(cd, "release_changes", return_value=[b"client/iosApp/iosApp/App.swift"]), patch.object(cd, "wait_for_ci") as wait, patch.object(cd, "request_json") as request:
+                cd.gate()
+            self.assertEqual(output.read_text(), "eligible=false\n")
+            wait.assert_not_called()
+            request.assert_not_called()
 
     def test_메타데이터가_없거나_다르면_업로드_전에_거부한다(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -77,6 +114,13 @@ class AndroidInternalCDTest(unittest.TestCase):
                 "track": "internal",
                 "releases": [{"status": "completed", "versionCodes": ["261000007"]}],
             })
+            self.assertEqual(self.summary.read_text(), (
+                "### Google Play 내부 테스트 업로드\n\n"
+                f"- 앱: `{cd.APPLICATION_ID}`\n"
+                "- versionCode: `261000007`\n"
+                f"- 커밋: `{'a' * 40}`\n"
+                "- [Play Console](https://play.google.com/console/)에서 출시 상태 확인\n"
+            ))
 
 
 if __name__ == "__main__":

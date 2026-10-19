@@ -4,11 +4,39 @@ on:
   push:
     branches: [main]
     paths:
-      - 'client/**'
-      - '.github/workflows/android-ci.yml'
+      - 'client/androidApp/**'
+      - 'client/shared/**'
+      - 'client/developerTools/**'
+      - '!client/shared/src/ios*/**'
+      - '!client/developerTools/src/ios*/**'
+      - 'client/*'
+      - 'client/gradle/**'
+      - 'client/buildSrc/**'
+      - 'client/build-logic/**'
+      - 'client/config/**'
+      - 'client/configuration/**'
+      - '!client/**/src/*Test*/**'
+      - '!client/**/src/test*/**'
+      - '!client/**/src/androidTest/**'
+      - '!client/androidApp/**/Tests/**'
+      - '!client/androidApp/**/*Tests/**'
+      - '!client/androidApp/**/*UITests/**'
+      - 'client/ci/pipeline.py'
+      - 'client/ci/api_config.py'
+      - 'client/ci/production_config.py'
+      - 'client/ci/ios_cd_gate.py'
+      - 'client/ci/change_policy.py'
+      - 'client/ci/android_internal_cd.py'
+      - 'client/ci/android_production_cd.py'
+      - 'client/ci/verify_developer_tools.py'
+      - 'client/ci/upload-certificate.sha256'
       - '.github/workflows/build-release-aab.yml'
+      - '.github/workflows/android-internal-cd.yml'
       - '.github/workflows/android-production-cd.yml'
       - '.github/actions/**'
+      - '!client/**/*.md'
+      - '!client/**/docs/**'
+
 
 permissions:
   contents: read
@@ -24,13 +52,14 @@ defaults:
 
 jobs:
   gate:
-    name: Wait for matching signed AAB build
+    name: Check Android deployment changes, required CI, and signed AAB
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 150
     permissions:
       contents: read
       actions: read
     outputs:
+      eligible: ${{ steps.check.outputs.eligible }}
       run_id: ${{ steps.check.outputs.run_id }}
       run_attempt: ${{ steps.check.outputs.run_attempt }}
       artifact_name: ${{ steps.check.outputs.artifact_name }}
@@ -39,6 +68,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - name: Wait for the matching signed AAB run
         id: check
@@ -49,6 +79,7 @@ jobs:
   publish:
     name: Publish verified AAB to Play production draft
     needs: gate
+    if: needs.gate.outputs.eligible == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production
