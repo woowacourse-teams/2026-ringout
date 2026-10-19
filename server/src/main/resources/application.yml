@@ -54,11 +54,12 @@ springdoc:
 app:
   file:
     image:
-      profile-directory: ${AWS_S3_PROFILE_IMAGE_DIRECTORY:}
-      room-directory: ${AWS_S3_ROOM_IMAGE_DIRECTORY:}
+      profile-directory: ${AWS_S3_PROFILE_IMAGE_DIRECTORY:profiles}
+      room-directory: ${AWS_S3_ROOM_IMAGE_DIRECTORY:rooms}
   aws:
     s3:
       bucket: ${AWS_S3_BUCKET:}
+      root-directory: ${AWS_S3_ROOT_DIRECTORY:}
       region: ${AWS_REGION:ap-northeast-2}
     cloudfront:
       base-url: ${AWS_CLOUDFRONT_BASE_URL:}
