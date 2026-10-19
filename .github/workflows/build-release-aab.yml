@@ -2,14 +2,40 @@ name: Build Signed Release AAB
 
 on:
   push:
-    branches: [develop, main]
+    branches: [client/release, main]
     paths:
-      - 'client/**'
-      - '.github/workflows/android-ci.yml'
+      - 'client/androidApp/**'
+      - 'client/shared/**'
+      - 'client/developerTools/**'
+      - '!client/shared/src/ios*/**'
+      - '!client/developerTools/src/ios*/**'
+      - 'client/*'
+      - 'client/gradle/**'
+      - 'client/buildSrc/**'
+      - 'client/build-logic/**'
+      - 'client/config/**'
+      - 'client/configuration/**'
+      - '!client/**/src/*Test*/**'
+      - '!client/**/src/test*/**'
+      - '!client/**/src/androidTest/**'
+      - '!client/androidApp/**/Tests/**'
+      - '!client/androidApp/**/*Tests/**'
+      - '!client/androidApp/**/*UITests/**'
+      - 'client/ci/pipeline.py'
+      - 'client/ci/api_config.py'
+      - 'client/ci/production_config.py'
+      - 'client/ci/ios_cd_gate.py'
+      - 'client/ci/change_policy.py'
+      - 'client/ci/android_internal_cd.py'
+      - 'client/ci/android_production_cd.py'
+      - 'client/ci/verify_developer_tools.py'
+      - 'client/ci/upload-certificate.sha256'
       - '.github/workflows/build-release-aab.yml'
       - '.github/workflows/android-internal-cd.yml'
       - '.github/workflows/android-production-cd.yml'
       - '.github/actions/**'
+      - '!client/**/*.md'
+      - '!client/**/docs/**'
   # Recovery only. Normal builds start automatically after a protected-branch merge.
   workflow_dispatch:
 
@@ -26,9 +52,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate:
+    name: Check deployment changes and required CI
+    if: github.ref == 'refs/heads/client/release' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      eligible: ${{ steps.check.outputs.eligible }}
+    steps:
+      - name: Checkout the triggering commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Wait for applicable CI on this commit
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 ci/ios_cd_gate.py --platform android --allow-dispatch
+
   build-release-aab:
+    needs: gate
     name: Build signed ${{ github.ref_name == 'main' && 'release' || 'internal' }} AAB
-    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    if: needs.gate.outputs.eligible == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: ${{ github.ref_name == 'main' && 'production' || 'internal' }}
@@ -58,8 +108,6 @@ jobs:
         run: |
           "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
             'platforms;android-36' 'build-tools;36.0.0'
-      - name: Test CI routing and artifact checks
-        run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
       - name: Restore and validate app configuration and upload key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -107,7 +155,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: client-aab-reports-${{ github.ref_name }}-attempt${{ github.run_attempt }}
+          name: client-aab-reports-${{ github.ref_name == 'main' && 'main' || 'client-release' }}-attempt${{ github.run_attempt }}
           path: |
             client/shared/build/test-results/testAndroidHostTest/
             client/shared/build/reports/tests/testAndroidHostTest/
