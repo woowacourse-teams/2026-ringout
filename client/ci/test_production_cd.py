@@ -20,6 +20,18 @@ import verify_ios_firebase
 
 
 class ProductionCDTest(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.summary = Path(directory.name) / 'summary'
+        environment = patch.dict(os.environ, {
+            'GITHUB_STEP_SUMMARY': str(self.summary),
+            'GITHUB_OUTPUT': str(Path(directory.name) / 'output'),
+            'GITHUB_ENV': str(Path(directory.name) / 'env'),
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_운영_빌드_번호는_내부_빌드와_다르며_범위를_넘지_않는다(self):
         self.assertEqual(config.production_number('261010020'), '261010021')
         with self.assertRaises(ValueError):
@@ -160,8 +172,13 @@ class ProductionCDTest(unittest.TestCase):
                 if commit_error:
                     with self.assertRaisesRegex(internal.CDError, 'Changes already in review'):
                         production.publish()
+                    self.assertFalse(self.summary.exists())
                 else:
                     production.publish()
+                    self.assertEqual(self.summary.read_text(), (
+                        f'Google Play production 업로드 확인: versionCode 11, commit {"a" * 40}. '
+                        '새 릴리스는 자동 공개하지 않습니다. Play Console에서 심사·게시 상태를 확인하세요.\n'
+                    ))
             update = next(call for call in calls if call[1] == 'PUT')
             self.assertEqual(update[2]['releases'][-1]['status'], 'draft')
             self.assertTrue(calls[-1][0].endswith(':commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW'))

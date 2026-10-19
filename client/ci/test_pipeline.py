@@ -61,6 +61,37 @@ class RoutingTest(unittest.TestCase):
             with self.subTest(branch=branch), self.assertRaises(ci.CIError):
                 ci.expected_firebase_project(f"refs/heads/{branch}")
 
+    def test_배포설정만_변경하면_플랫폼_테스트는_실행하지_않는다(self):
+        for platform in ("android", "ios"):
+            path = f".github/workflows/{platform}-internal-cd.yml".encode()
+            for base, head, expected in (("client/develop", "feature/test", False),
+                                         ("client/release", "client/develop", False),
+                                         ("main", "client/release", False)):
+                event = self.event(base, head)
+                event["pull_request"]["base"]["sha"] = "a" * 40
+                event["pull_request"]["head"]["sha"] = "b" * 40
+                with self.subTest(platform=platform, base=base), patch.object(ci, "changed_files", return_value=[path]):
+                    self.assertEqual(ci.verification_required(event, "pull_request", platform), expected)
+
+    def test_승격_PR에서도_Python_변경_판정을_지원한다(self):
+        event = self.event("main", "client/release")
+        event["pull_request"]["base"]["sha"] = "a" * 40
+        event["pull_request"]["head"]["sha"] = "b" * 40
+        for path, expected in ((b"client/ci/pipeline.py", True),
+                               (b"client/shared/src/commonMain/App.kt", False)):
+            with self.subTest(path=path), patch.object(ci, "changed_files", return_value=[path]):
+                self.assertEqual(ci.verification_required(event, "pull_request", "python"), expected)
+
+    def test_변경_감지는_플랫폼_테스트_필요_여부만_출력한다(self):
+        with tempfile.TemporaryDirectory() as directory:
+            event_file = Path(directory) / "event.json"
+            event_file.write_text("{}")
+            env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": str(event_file)}
+            for changed in (True, False):
+                with self.subTest(changed=changed), patch.dict(os.environ, env), patch.object(ci, "verification_required", return_value=changed), patch.object(ci, "github_value") as output:
+                    ci.detect_changes()
+                    output.assert_called_once_with("GITHUB_OUTPUT", "client_changed", str(changed).lower())
+
     def test_required_gate_does_not_hide_failed_or_skipped_checks(self):
         ci.check_gate("success", "true", "success")
         ci.check_gate("success", "false", "skipped")
@@ -162,11 +193,27 @@ class RoutingTest(unittest.TestCase):
                 self.assertFalse(ci.verification_required(event, "push", "ios"))
 
     def test_Python_보조코드나_반대_플랫폼_CI는_앱_검증을_시작하지_않는다(self):
-        for path in (b"client/ci/pipeline.py", b"client/ci/test_pipeline.py", b".github/workflows/client-python-ci.yml"):
+        for path in (b"client/ci/test_pipeline.py", b".github/workflows/client-python-ci.yml"):
             for platform in ("android", "ios"):
                 self.assertFalse(ci.is_client_path(path, platform), (path, platform))
         self.assertFalse(ci.is_client_path(b".github/workflows/ios-ci.yml", "android"))
         self.assertFalse(ci.is_client_path(b".github/workflows/android-ci.yml", "ios"))
+
+    def test_CI_판정_코드나_빌드_분리_설정_변경에도_플랫폼_테스트를_실행한다(self):
+        for platform in ("android", "ios"):
+            paths = (b"client/ci/pipeline.py", b"client/ci/change_policy.py",
+                     f".github/workflows/{platform}-pr-build.yml".encode())
+            for path in paths:
+                for base, head in (("client/develop", "fix/ci"),
+                                   ("client/release", "client/develop"),
+                                   ("main", "client/release")):
+                    event = self.event(base, head)
+                    event["pull_request"]["base"]["sha"] = "a" * 40
+                    event["pull_request"]["head"]["sha"] = "b" * 40
+                    with self.subTest(platform=platform, path=path, base=base), patch.object(
+                        ci, "changed_files", return_value=[path]
+                    ):
+                        self.assertTrue(ci.verification_required(event, "pull_request", platform))
 
     def test_PR은_병합_기준점을_사용하고_main_진입_규칙을_유지한다(self):
         event = self.event()

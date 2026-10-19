@@ -9,6 +9,8 @@ on:
       - '.github/workflows/client-pr-route.yml'
       - '.github/workflows/client-python-ci.yml'
       - '.github/workflows/android-ci.yml'
+      - '.github/workflows/android-pr-build.yml'
+      - '.github/workflows/ios-pr-build.yml'
       - '.github/workflows/ios-ci.yml'
       - '.github/workflows/build-release-aab.yml'
       - '.github/workflows/android-internal-cd.yml'

@@ -14,6 +14,8 @@ on:
       - '.github/workflows/client-python-ci.yml'
       - '.github/workflows/android-ci.yml'
       - '.github/workflows/ios-ci.yml'
+      - '.github/workflows/android-pr-build.yml'
+      - '.github/workflows/ios-pr-build.yml'
       - '.github/workflows/build-release-aab.yml'
       - '.github/workflows/android-internal-cd.yml'
       - '.github/workflows/android-production-cd.yml'
@@ -32,13 +34,14 @@ on:
       - '.github/workflows/client-python-ci.yml'
       - '.github/workflows/android-ci.yml'
       - '.github/workflows/ios-ci.yml'
+      - '.github/workflows/android-pr-build.yml'
+      - '.github/workflows/ios-pr-build.yml'
       - '.github/workflows/build-release-aab.yml'
       - '.github/workflows/android-internal-cd.yml'
       - '.github/workflows/android-production-cd.yml'
       - '.github/workflows/ios-internal-cd.yml'
       - '.github/workflows/ios-production-cd.yml'
       - '.github/actions/**'
-
 permissions:
   contents: read
 

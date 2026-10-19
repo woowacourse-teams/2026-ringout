@@ -136,11 +136,9 @@ def detect_changes(platform="android"):
 def check_gate(changes_result, client_changed, quality_result):
     if changes_result != "success":
         raise CIError("브랜치 또는 변경 경로 검사가 실패했습니다.")
-    if client_changed == "true" and quality_result == "success":
-        return
-    if client_changed == "false" and quality_result == "skipped":
-        return
-    raise CIError("필요한 클라이언트 검증이 성공하지 않았습니다.")
+    if not ((client_changed == "true" and quality_result == "success")
+            or (client_changed == "false" and quality_result == "skipped")):
+        raise CIError("필요한 클라이언트 테스트가 성공하지 않았습니다.")
 
 
 def select_build():

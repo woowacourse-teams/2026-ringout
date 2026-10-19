@@ -11,6 +11,7 @@ import re
 
 CLIENT_WORKFLOWS = (
     "client-pr-route", "client-python-ci", "android-ci", "ios-ci",
+    "android-pr-build", "ios-pr-build",
     "build-release-aab", "android-internal-cd", "android-production-cd",
     "ios-internal-cd", "ios-production-cd",
 )
@@ -31,7 +32,9 @@ def _app_paths(platform):
 CI_PATHS = {
     platform: (
         *_app_paths(platform), ".github/actions/**",
+        "client/ci/pipeline.py", "client/ci/change_policy.py",
         f".github/workflows/{platform}-ci.yml",
+        f".github/workflows/{platform}-pr-build.yml",
         *(("client/ci/swift/**",) if platform == "ios" else ()),
         *(("client/ci/google-services.ci.json",) if platform == "android" else ()),
         *_DOC_EXCLUSIONS,
@@ -74,6 +77,17 @@ def _deployment_paths(platform):
 
 
 CD_PATHS = {platform: _deployment_paths(platform) for platform in ("android", "ios")}
+
+
+# Separate promotion build workflows validate CI and deployment inputs.
+PR_CI_PATHS = {
+    platform: (
+        *(path for path in CD_PATHS[platform]
+          if not path.startswith("!") and path not in CI_PATHS[platform]),
+        *CI_PATHS[platform],
+    )
+    for platform in ("android", "ios")
+}
 
 
 @lru_cache(maxsize=None)

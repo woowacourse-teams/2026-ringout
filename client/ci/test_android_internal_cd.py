@@ -10,6 +10,18 @@ import android_internal_cd as cd
 
 
 class AndroidInternalCDTest(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.summary = Path(directory.name) / "summary"
+        environment = patch.dict(os.environ, {
+            "GITHUB_STEP_SUMMARY": str(self.summary),
+            "GITHUB_OUTPUT": str(Path(directory.name) / "output"),
+            "GITHUB_ENV": str(Path(directory.name) / "env"),
+        })
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_같은_저장소의_같은_커밋에서_성공한_빌드만_선택한다(self):
         def run(identifier, **changes):
             item = {
@@ -102,6 +114,13 @@ class AndroidInternalCDTest(unittest.TestCase):
                 "track": "internal",
                 "releases": [{"status": "completed", "versionCodes": ["261000007"]}],
             })
+            self.assertEqual(self.summary.read_text(), (
+                "### Google Play 내부 테스트 업로드\n\n"
+                f"- 앱: `{cd.APPLICATION_ID}`\n"
+                "- versionCode: `261000007`\n"
+                f"- 커밋: `{'a' * 40}`\n"
+                "- [Play Console](https://play.google.com/console/)에서 출시 상태 확인\n"
+            ))
 
 
 if __name__ == "__main__":
