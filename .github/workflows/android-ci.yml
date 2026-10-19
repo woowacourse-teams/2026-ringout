@@ -3,7 +3,7 @@ name: Android CI
 on:
   pull_request:
     branches: [client/develop, client/release, main]
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
     paths:
       - 'client/androidApp/**'
       - 'client/shared/**'
@@ -45,7 +45,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event.action == 'edited' && !github.event.changes.base && format('android-ci-metadata-{0}', github.event.pull_request.number) || format('android-ci-{0}-{1}', github.event_name, github.ref) }}
+  group: android-ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -55,10 +55,7 @@ defaults:
 
 jobs:
   changes:
-    # Metadata-only edits use distinct check names, so a skipped job cannot
-    # replace a failed build check or cancel an in-flight code verification.
-    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata changes skipped' || 'Check client changes and PR route' }}
-    if: github.event.action != 'edited' || github.event.changes.base
+    name: Check client changes and PR route
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -74,7 +71,7 @@ jobs:
         run: python3 ci/pipeline.py changes
 
   quality:
-    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata build skipped' || 'Android tests and lint' }}
+    name: Android tests and lint
     needs: changes
     if: needs.changes.outputs.client_changed == 'true'
     runs-on: ubuntu-24.04
@@ -118,8 +115,8 @@ jobs:
 
   result:
     # Summarize triggered runs; path-filtered workflows must not be required for every PR.
-    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata gate skipped' || 'Android CI' }}
-    if: always() && (github.event.action != 'edited' || github.event.changes.base)
+    name: Android CI
+    if: always()
     needs: [changes, quality]
     runs-on: ubuntu-24.04
     timeout-minutes: 5

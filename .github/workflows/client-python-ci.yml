@@ -3,7 +3,7 @@ name: Client Python CI
 on:
   pull_request:
     branches: [client/develop, client/release, main]
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
     paths:
       - 'client/ci/*.py'
       - 'client/ci/*.json'
@@ -43,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event.action == 'edited' && !github.event.changes.base && format('client-python-ci-metadata-{0}', github.event.pull_request.number) || format('client-python-ci-{0}-{1}', github.event_name, github.ref) }}
+  group: client-python-ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -53,8 +53,7 @@ defaults:
 
 jobs:
   python-checks:
-    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Python metadata checks skipped' || 'Common Python checks' }}
-    if: github.event.action != 'edited' || github.event.changes.base
+    name: Common Python checks
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

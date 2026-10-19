@@ -77,7 +77,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("uses: actions/setup-java@", common)
         self.assertIn("keytool -help", common)
         self.assertIn("jarsigner -help", common)
-        self.assertIn("github.event.changes.base", common)
+        self.assertIn("types: [opened, synchronize, reopened]", common)
 
     def test_CD는_배포_필요_출력과_전체_이력으로_후속_job을_제어한다(self):
         for name in CD:

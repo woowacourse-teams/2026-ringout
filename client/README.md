@@ -152,7 +152,7 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 | `client/release` → `main` PR | `Client PR route`, `Client Python CI`, `Android CI`, `iOS CI` | 같은 품질 검사와 출발 브랜치 검사 | 검증 보고서 |
 | `main`에 클라이언트 변경 병합 | 변경에 필요한 CI, Android AAB 빌드·각 플랫폼 운영 CD | 변경에 필요한 동일 SHA의 CI 성공 후 운영 AAB·iOS Archive 빌드·검증, Play production draft·App Store Connect 업로드 | 운영 빌드 |
 | 클라이언트 PR 본문·제목 수정 | `Client PR route` | 브랜치 규칙 재검사 | 경로 검사 결과 |
-| 클라이언트 PR 대상 브랜치 변경 | `Client PR route`, `Client Python CI`, `Android CI`, `iOS CI` | 경로·브랜치 규칙과 공통 Python·두 플랫폼 CI 재검사 | 검증 보고서 |
+| 클라이언트 PR 대상 브랜치 변경 | `Client PR route` | 경로·브랜치 규칙 재검사 | 경로 검사 결과 |
 
 위 표의 CI·CD는 각 워크플로의 변경 경로 조건을 만족할 때 실행합니다. 앱 코드 변경만으로 공통 Python 검증이 실행되지는 않으며, 배포 대상 플랫폼에 영향을 주지 않는 변경은 해당 CD를 시작하지 않습니다.
 
@@ -174,7 +174,7 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 - `client/develop`·`client/release`·`main` push의 CI가 기준 브랜치 캐시를 저장합니다. 해당 브랜치 대상 PR은 키와 버전이 맞는 캐시를 복원할 수 있습니다.
 - PR 실행이 저장한 캐시는 해당 PR의 후속 커밋·재실행용이며 다른 PR에서 직접 사용하지 않습니다. 외부 fork PR의 Gradle 캐시는 읽기 전용입니다.
 - Android 전용 변경은 Android CI·CD만, iOS 전용 변경은 iOS CI·CD만 실행합니다. 공유 운영 코드·공통 빌드 설정은 양쪽 플랫폼 CI·CD를 실행합니다. `commonTest` 변경은 양쪽 CI만 실행하고, 문서·테스트 코드·CI 전용 설정 변경은 배포하지 않습니다. 배포는 `client/release`·`main`에서만 수행합니다.
-- PR 본문·제목 수정은 별도 `Client PR route`에서 브랜치 규칙만 검사합니다. 공통 Python·두 플랫폼 CI의 검증 job은 `opened`, `synchronize`, `reopened`와 대상 브랜치를 변경한 `edited`에서 실행합니다. 본문·제목만 수정한 실행은 검증 job을 생략하고 별도 concurrency 그룹을 사용하므로 진행 중인 검사를 취소하지 않습니다.
+- PR 본문·제목·대상 브랜치 수정은 별도 `Client PR route`에서 브랜치 규칙만 검사합니다. 공통 Python·두 플랫폼 CI는 `opened`, `synchronize`, `reopened`에서 실행하며 PR 편집으로는 재실행하지 않습니다.
 - iOS는 Gradle 외에 `~/.konan`을 캐시합니다. 배포 빌드의 Swift 패키지는 `Package.resolved`에 기록된 버전을 사용합니다.
 
 ### 성능 보고서
