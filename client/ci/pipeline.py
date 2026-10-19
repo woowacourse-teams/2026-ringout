@@ -13,7 +13,7 @@ import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
-from change_policy import ci_required
+from change_policy import PR_CI_PATHS, ci_required, matches
 
 
 CLIENT_ROOT = Path(__file__).resolve().parents[1]
@@ -117,6 +117,8 @@ def verification_required(event, event_name, platform="android"):
         validate_pr_route(event)
         pr = event["pull_request"]
         paths = changed_files(CLIENT_ROOT.parent, pr["base"]["sha"], pr["head"]["sha"])
+        if platform in PR_CI_PATHS and pr["base"]["ref"] in ("client/release", "main"):
+            return matches(paths, PR_CI_PATHS[platform])
     elif event_name == "push":
         if event.get("ref") not in ("refs/heads/client/develop", "refs/heads/client/release", "refs/heads/main") or event.get("deleted"):
             raise CIError("공통 캐시는 클라이언트 기준 브랜치의 유효한 push에서만 생성합니다.")

@@ -3,7 +3,7 @@
 ## 실행 범위
 
 - 클라이언트 경로는 작업 브랜치 → `client/develop` → `client/release` → `main`이다. `client/release` PR은 같은 저장소의 `client/develop`에서, `main` PR은 같은 저장소의 `client/release`에서만 허용한다. 서버의 기존 `develop`/`main` 흐름은 유지한다.
-- 각 단계 PR과 세 기준 브랜치 push에서 변경 경로에 해당하는 플랫폼 테스트·Lint·Swift 저널 테스트 또는 Python 보조·산출물 검사 회귀 테스트를 수행한다. 플랫폼 CI는 변경 감지·최종 판정을 포함한다. 경량 CI에서는 서명 없는 AAB나 Xcode 시뮬레이터 앱을 빌드하지 않는다.
+- 각 단계 PR과 세 기준 브랜치 push에서 변경 경로에 해당하는 플랫폼 테스트·Lint·Swift 저널 테스트 또는 Python 보조·산출물 검사 회귀 테스트를 수행한다. 플랫폼 CI는 변경 감지·최종 판정을 포함한다. `client/develop` 대상 PR과 기준 브랜치 push는 경량 CI를 유지한다. `client/release`·`main` 대상 PR은 PR 병합 커밋에서 Android 미서명 release AAB의 R8·미서명 상태를 검사하고, iOS 미서명 Xcode Debug 시뮬레이터 앱을 빌드하여 포함된 개발 Firebase 설정을 검증한다. 실패하면 최종 플랫폼 CI 판정도 실패한다. PR에는 배포 시크릿을 제공하지 않으며, 병합 후 CD는 실제 서명·환경 설정으로 새로 빌드한다. PR 산출물은 배포에 재사용하지 않는다.
 - `client/develop` push는 경량 CI만 실행한다. `client/release` push는 변경에 필요한 동일 SHA의 CI가 성공한 후 해당 플랫폼의 내부 AAB·iOS Archive를 만들고 Play 내부 테스트·TestFlight에 업로드한다.
 - `main` push의 운영 빌드도 변경에 필요한 동일 SHA의 CI 성공만 요구한다. Android는 `Build Signed Release AAB` 성공 결과를 다운로드·검증하고 Google Play `production` **draft**를 만든다. 새 릴리스는 자동 공개하지 않는다. 앱 전체 변경 사항의 심사·게시 상태는 Play Console에서 확인한다.
 - iOS는 운영 Archive를 생성하여 App Store Connect에 업로드한다. 내부 TestFlight 전용 제한이 없는 빌드이며, Apple 처리 결과 확인·심사 제출·공개는 수동이다.
@@ -112,9 +112,9 @@ Firebase 설정은 빌드 전에 복원하고 프로젝트·번들 ID를 검사�
 
 ## 클라이언트 변경 경로 필터
 
-변경 경로 정책의 기준은 `ci/change_policy.py`의 `CI_PATHS`·`CD_PATHS`이다. 회귀 테스트가 정책과 YAML 필터의 일치를 검사한다. Android AAB 생성과 내부·운영 배포는 같은 Android CD 경로를 사용한다.
+변경 경로 정책의 기준은 `ci/change_policy.py`의 `CI_PATHS`·`CD_PATHS`이다. 회귀 테스트가 정책과 YAML 필터의 일치를 검사한다. Android AAB 생성과 내부·운영 배포는 같은 Android CD 경로를 사용한다. 플랫폼 CI의 `client/release`·`main` 대상 PR 필터는 해당 플랫폼의 CI·CD 경로를 모두 포함한다. 따라서 배포 설정만 변경한 PR도 해당 앱을 빌드하고 산출물을 검증한다. `client/develop` 대상 PR과 기준 브랜치 push의 플랫폼 CI는 기존 CI 경로를 사용한다.
 
-| 변경 | 필요한 CI | `client/release`·`main` 배포 |
+| 변경 | 필요한 push CI | `client/release`·`main` 배포 |
 | --- | --- | --- |
 | Android 전용 앱 코드 | Android | Android |
 | iOS 전용 앱 코드 | iOS | iOS |
@@ -127,7 +127,7 @@ Firebase 설정은 빌드 전에 복원하고 프로젝트·번들 ID를 검사�
 | `ci/google-services.ci.json` | Android + Python | 없음 |
 | 문서·서버 코드·서버 전용 워크플로 | 클라이언트 CI 없음 | 없음 |
 
-여러 종류의 파일을 함께 변경하면 필요한 검사를 합친다. 공통 앱 변경도 Python 입력이 함께 바뀌지 않으면 Python CI를 요구하지 않는다. 테스트 전용 변경·CI 전용 설정·문서 변경만으로는 앱을 배포하지 않는다. Swift 저널 테스트 변경은 iOS CI만 실행한다. 플랫폼 CI는 해당 플랫폼 앱·공유 앱·빌드 설정·관련 CI 설정을 감지하며 반대 플랫폼 소스는 제외한다.
+위 CI 열은 병합 후 push와 CD 선행 판정 기준이다. `client/release`·`main` 대상 PR에서는 배포 보조 코드·CD 워크플로 변경에도 해당 플랫폼 CI의 앱 빌드·산출물 검증이 추가된다. 여러 종류의 파일을 함께 변경하면 필요한 검사를 합친다. 공통 앱 변경도 Python 입력이 함께 바뀌지 않으면 Python CI를 요구하지 않는다. 테스트 전용 변경·CI 전용 설정·문서 변경만으로는 앱을 배포하지 않는다. Swift 저널 테스트 변경은 iOS CI만 실행한다. 플랫폼 CI는 해당 플랫폼 앱·공유 앱·빌드 설정·관련 CI 설정을 감지하며 반대 플랫폼 소스는 제외한다.
 
 CD gate는 전체 Git 이력을 checkout하여 실제 push의 `before`·`after` 범위를 검사한다. 여러 커밋, 삭제·이동 및 강제 push도 이 범위로 판단하며 마지막 커밋만 검사하지 않는다. 최초 브랜치 push는 push된 가장 오래된 커밋의 첫 부모를 기준으로 한다. 필요한 검사만 같은 저장소·브랜치·SHA의 `push` 실행 성공을 확인한다. 불필요한 검사는 기다리지 않으며, 필수 실행의 누락은 시간 초과로, 실패·취소는 오류로 배포를 막는다. 현재 브랜치에 해당하지 않는 내부·운영 CD 설정만 바뀌면 gate가 배포를 생략할 수 있다.
 

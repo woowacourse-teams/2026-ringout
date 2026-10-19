@@ -76,6 +76,17 @@ def _deployment_paths(platform):
 CD_PATHS = {platform: _deployment_paths(platform) for platform in ("android", "ios")}
 
 
+# Promotion PRs also validate build inputs owned by CD; ordinary push CI stays light.
+PR_CI_PATHS = {
+    platform: (
+        *(path for path in CD_PATHS[platform]
+          if not path.startswith("!") and path not in CI_PATHS[platform]),
+        *CI_PATHS[platform],
+    )
+    for platform in ("android", "ios")
+}
+
+
 @lru_cache(maxsize=None)
 def _glob(pattern):
     expression = ""
