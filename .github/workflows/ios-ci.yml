@@ -2,49 +2,56 @@ name: iOS CI
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [client/develop, client/release, main]
     types: [opened, synchronize, reopened]
     paths:
       - 'client/iosApp/**'
       - 'client/shared/**'
       - 'client/developerTools/**'
-      - 'client/ci/**'
+      - '!client/shared/src/android*/**'
+      - '!client/developerTools/src/android*/**'
+      - 'client/*'
       - 'client/gradle/**'
-      - 'client/gradlew'
-      - 'client/build.gradle.kts'
-      - 'client/settings.gradle.kts'
-      - 'client/gradle.properties'
+      - 'client/buildSrc/**'
+      - 'client/build-logic/**'
+      - 'client/config/**'
+      - 'client/configuration/**'
+      - '.github/actions/**'
+      - 'client/ci/pipeline.py'
+      - 'client/ci/change_policy.py'
       - '.github/workflows/ios-ci.yml'
-      - '.github/workflows/ios-internal-cd.yml'
-      - '.github/workflows/ios-production-cd.yml'
-      - '!client/shared/src/androidMain/**'
-      - '!client/shared/src/androidHostTest/**'
-      - '!client/developerTools/src/androidMain/**'
-      - '!client/**/README.md'
-      - '!client/**/AGENTS.md'
-      - '!client/**/CONTRIBUTING.md'
+      - '.github/workflows/ios-pr-build.yml'
+      - 'client/ci/swift/**'
+      - '!client/**/*.md'
       - '!client/**/docs/**'
   push:
-    branches: [develop, main]
+    branches: [client/develop, client/release, main]
     paths:
       - 'client/iosApp/**'
       - 'client/shared/**'
       - 'client/developerTools/**'
-      - 'client/ci/**'
+      - '!client/shared/src/android*/**'
+      - '!client/developerTools/src/android*/**'
+      - 'client/*'
       - 'client/gradle/**'
-      - 'client/gradlew'
-      - 'client/build.gradle.kts'
-      - 'client/settings.gradle.kts'
-      - 'client/gradle.properties'
+      - 'client/buildSrc/**'
+      - 'client/build-logic/**'
+      - 'client/config/**'
+      - 'client/configuration/**'
+      - '.github/actions/**'
+      - 'client/ci/pipeline.py'
+      - 'client/ci/change_policy.py'
       - '.github/workflows/ios-ci.yml'
-      - '.github/workflows/ios-internal-cd.yml'
-      - '.github/workflows/ios-production-cd.yml'
+      - '.github/workflows/ios-pr-build.yml'
+      - 'client/ci/swift/**'
+      - '!client/**/*.md'
+      - '!client/**/docs/**'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-ci-${{ github.ref }}
+  group: ios-ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -53,8 +60,26 @@ defaults:
     working-directory: client
 
 jobs:
-  verify:
-    name: Kotlin tests and iOS simulator build
+  changes:
+    name: Check client changes and PR route
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      client_changed: ${{ steps.changes.outputs.client_changed }}
+    steps:
+      - name: Checkout PR merge commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check changed paths and PR route
+        id: changes
+        run: python3 ci/pipeline.py changes --platform ios
+
+  quality:
+    name: iOS Kotlin and Swift journal tests
+    needs: changes
+    if: needs.changes.outputs.client_changed == 'true'
     runs-on: macos-26
     timeout-minutes: 90
     steps:
@@ -81,13 +106,6 @@ jobs:
         with:
           path: ~/.konan
           key: konan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.build }}-${{ hashFiles('client/gradle/libs.versions.toml', 'client/gradle/wrapper/gradle-wrapper.properties', 'client/gradle.properties', 'client/shared/build.gradle.kts', 'client/developerTools/build.gradle.kts') }}
-      - name: Cache Swift package sources and binary artifacts
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: ~/Library/Caches/ringout-swift-packages
-          key: swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.build }}-${{ hashFiles('client/iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'client/iosApp/iosApp.xcodeproj/project.pbxproj') }}
-      - name: Test iOS CI/CD helper checks
-        run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
       - name: Test native alarm recovery journal
         run: |
           swiftc iosApp/iosApp/Platform/AlarmRecoveryJournal.swift \
@@ -96,32 +114,33 @@ jobs:
           "$RUNNER_TEMP/ringout-alarm-recovery-journal-tests"
       - name: Test shared Kotlin code on iOS simulator
         run: ./gradlew :shared:iosSimulatorArm64Test --stacktrace --profile
-      - name: Build unsigned iOS simulator app
-        env:
-          RINGOUT_GRADLE_PROFILE: 'true'
-        run: |
-          xcodebuild \
-            -project iosApp/iosApp.xcodeproj \
-            -scheme iosApp \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/ringout-ios-derived-data" \
-            -clonedSourcePackagesDirPath "$HOME/Library/Caches/ringout-swift-packages" \
-            -disableAutomaticPackageResolution \
-            -showBuildTimingSummary \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-      - name: Verify embedded development Firebase config
-        run: |
-          python3 ci/verify_ios_firebase.py \
-            --source iosApp/iosApp/GoogleService-Info.plist \
-            --app "$RUNNER_TEMP/ringout-ios-derived-data/Build/Products/Debug-iphonesimulator/Ringout.app"
       - name: Upload Kotlin build timing reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ios-ci-profile-${{ github.run_id }}-attempt${{ github.run_attempt }}
-          path: client/build/reports/profile/
+          path: |
+            client/build/reports/profile/
+            client/shared/build/test-results/iosSimulatorArm64Test/
+            client/shared/build/reports/tests/iosSimulatorArm64Test/
           if-no-files-found: warn
           retention-days: 14
+
+  result:
+    # Summarize triggered runs; path-filtered workflows must not be required for every PR.
+    name: iOS CI
+    if: always()
+    needs: [changes, quality]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require all applicable checks to pass
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CLIENT_CHANGED: ${{ needs.changes.outputs.client_changed }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+        run: python3 ci/pipeline.py gate

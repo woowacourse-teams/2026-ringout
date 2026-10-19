@@ -2,28 +2,56 @@ name: Android CI
 
 on:
   pull_request:
-    branches: [develop, main]
-    types: [opened, synchronize, reopened, edited]
+    branches: [client/develop, client/release, main]
+    types: [opened, synchronize, reopened]
     paths:
-      - 'client/**'
-      - '.github/workflows/android-ci.yml'
-      - '.github/workflows/build-release-aab.yml'
-      - '.github/workflows/android-internal-cd.yml'
-      - '.github/workflows/android-production-cd.yml'
+      - 'client/androidApp/**'
+      - 'client/shared/**'
+      - 'client/developerTools/**'
+      - '!client/shared/src/ios*/**'
+      - '!client/developerTools/src/ios*/**'
+      - 'client/*'
+      - 'client/gradle/**'
+      - 'client/buildSrc/**'
+      - 'client/build-logic/**'
+      - 'client/config/**'
+      - 'client/configuration/**'
       - '.github/actions/**'
-
+      - 'client/ci/pipeline.py'
+      - 'client/ci/change_policy.py'
+      - '.github/workflows/android-ci.yml'
+      - '.github/workflows/android-pr-build.yml'
+      - 'client/ci/google-services.ci.json'
+      - '!client/**/*.md'
+      - '!client/**/docs/**'
   push:
-    branches: [develop, main]
+    branches: [client/develop, client/release, main]
     paths:
-      - 'client/**'
-      - '.github/workflows/android-ci.yml'
+      - 'client/androidApp/**'
+      - 'client/shared/**'
+      - 'client/developerTools/**'
+      - '!client/shared/src/ios*/**'
+      - '!client/developerTools/src/ios*/**'
+      - 'client/*'
+      - 'client/gradle/**'
+      - 'client/buildSrc/**'
+      - 'client/build-logic/**'
+      - 'client/config/**'
+      - 'client/configuration/**'
       - '.github/actions/**'
+      - 'client/ci/pipeline.py'
+      - 'client/ci/change_policy.py'
+      - '.github/workflows/android-ci.yml'
+      - '.github/workflows/android-pr-build.yml'
+      - 'client/ci/google-services.ci.json'
+      - '!client/**/*.md'
+      - '!client/**/docs/**'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event.action == 'edited' && !github.event.changes.base && format('android-ci-metadata-{0}', github.event.pull_request.number) || format('android-ci-{0}-{1}', github.event_name, github.ref) }}
+  group: android-ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -33,10 +61,7 @@ defaults:
 
 jobs:
   changes:
-    # Metadata-only edits use distinct check names, so a skipped job cannot
-    # replace a failed build check or cancel an in-flight code verification.
-    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata changes skipped' || 'Check client changes and PR route' }}
-    if: github.event.action != 'edited' || github.event.changes.base
+    name: Check client changes and PR route
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -52,7 +77,7 @@ jobs:
         run: python3 ci/pipeline.py changes
 
   quality:
-    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata build skipped' || 'Android tests, lint, and release verification' }}
+    name: Android tests and lint
     needs: changes
     if: needs.changes.outputs.client_changed == 'true'
     runs-on: ubuntu-24.04
@@ -77,16 +102,10 @@ jobs:
         run: |
           "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
             'platforms;android-36' 'build-tools;36.0.0'
-      - name: Test CI routing and artifact checks
-        run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
-      - name: Test, lint, and build unsigned release AAB
+      - name: Test and lint Android
         run: |
-          ./gradlew :shared:testAndroidHostTest :androidApp:lintRelease :androidApp:bundleRelease \
+          ./gradlew :shared:testAndroidHostTest :androidApp:lintRelease \
             -PciVerification=true --no-daemon --no-configuration-cache --stacktrace --profile
-      - name: Verify R8 outputs and absence of signing
-        run: |
-          python3 ci/pipeline.py verify-r8
-          python3 ci/pipeline.py verify-unsigned
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -97,14 +116,13 @@ jobs:
             client/shared/build/test-results/testAndroidHostTest/
             client/shared/build/reports/tests/testAndroidHostTest/
             client/androidApp/build/reports/lint-results-release.*
-            client/androidApp/build/outputs/mapping/release/
           if-no-files-found: warn
           retention-days: 14
 
   result:
     # Summarize triggered runs; path-filtered workflows must not be required for every PR.
-    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata gate skipped' || 'Android CI' }}
-    if: always() && (github.event.action != 'edited' || github.event.changes.base)
+    name: Android CI
+    if: always()
     needs: [changes, quality]
     runs-on: ubuntu-24.04
     timeout-minutes: 5

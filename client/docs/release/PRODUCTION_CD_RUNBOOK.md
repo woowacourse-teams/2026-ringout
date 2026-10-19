@@ -2,11 +2,22 @@
 
 ## 실행 범위
 
-- `main` push에서 Android 및 iOS 운영 업로드를 실행한다. main에는 develop PR만 병합하는 기존 정책을 유지하고 직접 push는 브랜치 보호로 제한한다.
-- Android는 동일 SHA의 `Build Signed Release AAB` 성공 결과를 다운로드·검증하고 Google Play `production` **draft**를 만든다. 새 릴리스는 자동 공개하지 않는다. 앱 전체 변경 사항의 심사·게시 상태는 Play Console에서 확인한다.
-- iOS는 동일 SHA의 `iOS CI` 성공 후 운영 Archive를 생성하여 App Store Connect에 업로드한다. 내부 TestFlight 전용 제한이 없는 빌드이며, Apple 처리 결과 확인·심사 제출·공개는 수동이다.
-- Android는 client/ 및 관련 Android workflow 변경에 반응한다. producer/consumer 경로 필터를 함께 유지해야 gate 대기가 발생하지 않는다. iOS는 main/develop push마다 CI를 실행한다.
-- develop의 기존 내부 Play / 내부 TestFlight 배포는 유지한다.
+- 클라이언트 경로는 작업 브랜치 → `client/develop` → `client/release` → `main`이다. `client/release` PR은 같은 저장소의 `client/develop`에서, `main` PR은 같은 저장소의 `client/release`에서만 허용한다. 서버의 기존 `develop`/`main` 흐름은 유지한다.
+- 각 단계 PR과 세 기준 브랜치 push에서 변경 경로에 해당하는 플랫폼 테스트·Lint·Swift 저널 테스트 또는 Python 보조·산출물 검사 회귀 테스트를 수행한다. 플랫폼 CI는 변경 감지·최종 판정을 포함한다. `client/develop` 대상 PR과 기준 브랜치 push는 경량 CI를 유지한다. `client/release`·`main` 대상 PR은 PR 병합 커밋에서 Android 미서명 release AAB의 R8·미서명 상태를 검사하고, iOS 미서명 Xcode Debug 시뮬레이터 앱을 빌드하여 포함된 개발 Firebase 설정을 검증한다. 빌드·검증은 별도 `Android PR Build`·`iOS PR Build` 워크플로에서 수행하며, 실패하면 해당 빌드 체크가 실패한다. PR에는 배포 시크릿을 제공하지 않으며, 병합 후 CD는 실제 서명·환경 설정으로 새로 빌드한다. PR 산출물은 배포에 재사용하지 않는다.
+- 승격 PR 빌드 검증 성공 후 미서명 Android AAB와 iOS 시뮬레이터 앱 ZIP을 Actions Artifacts에 14일간 보관한다. 이름은 `android-pr-aab-<PR 번호>-<실행 ID>-attempt<재실행 번호>`, `ios-pr-simulator-app-<PR 번호>-<실행 ID>-attempt<재실행 번호>`이다. 검증 보고서는 `*-pr-build-reports-*`에서 확인한다. 앱 파일 누락·압축·업로드 실패는 해당 PR Build 체크 실패로 반영한다. iOS ZIP은 시뮬레이터용이며 기기 설치·TestFlight 배포용 IPA가 아니다.
+
+- `client/develop` push는 경량 CI만 실행한다. `client/release` push는 변경에 필요한 동일 SHA의 CI가 성공한 후 해당 플랫폼의 내부 AAB·iOS Archive를 만들고 Play 내부 테스트·TestFlight에 업로드한다.
+- `main` push의 운영 빌드도 변경에 필요한 동일 SHA의 CI 성공만 요구한다. Android는 `Build Signed Release AAB` 성공 결과를 다운로드·검증하고 Google Play `production` **draft**를 만든다. 새 릴리스는 자동 공개하지 않는다. 앱 전체 변경 사항의 심사·게시 상태는 Play Console에서 확인한다.
+- iOS는 운영 Archive를 생성하여 App Store Connect에 업로드한다. 내부 TestFlight 전용 제한이 없는 빌드이며, Apple 처리 결과 확인·심사 제출·공개는 수동이다.
+- PR 병합, 직접 push 제한, 원격 브랜치 생성과 보호 규칙은 저장소 관리자가 설정한다. 워크플로 변경이 이러한 GitHub 설정을 자동 적용하지 않는다.
+
+## Actions에서 CI와 CD 구분
+
+`Android CI`·`iOS CI`는 `changes` → `quality` → `result`로 구성하며 테스트만 담당한다. `quality` 표시 이름은 `Android tests and lint` 또는 `iOS Kotlin and Swift journal tests`이다. 최종 플랫폼 CI는 변경 감지와 필요한 테스트의 성공을 판정하며 앱 빌드 결과를 합치지 않는다.
+
+`android-pr-build.yml`의 `Android PR Build`, `ios-pr-build.yml`의 `iOS PR Build`는 별도 워크플로다. `pull_request` 대상이 `client/release`·`main`이고 관련 경로가 변경된 경우에만 실행한다. `client/develop` 대상 PR과 기준 브랜치 push에는 빌드 워크플로와 체크가 생성되지 않는다. 각 워크플로의 `build` job은 출발 브랜치 규칙을 확인하고 앱 빌드·검증·산출물 업로드를 수행한다. 플랫폼 테스트와 빌드는 병렬로 실행할 수 있으며 각 체크의 성공을 별도로 확인한다.
+
+PR 빌드 검증은 스토어에 업로드하지 않는다. 실제 서명 빌드·배포는 병합 후 별도 AAB·내부 CD·운영 CD 워크플로에서 수행한다.
 
 ## 빌드 입력과 버전
 
@@ -32,7 +43,7 @@ Xcode Run Scheme의 런타임 환경변수는 빌드 설정 주입을 대신하�
 
 `ci/production_config.py`는 CI의 임시 checkout에서 커밋된 원본(`git show HEAD:...`)을 기준으로 운영 빌드 번호만 준비한다. 로컬 소스의 버전은 변경하지 않는다.
 
-| 항목 | develop | main |
+| 항목 | client/release | main |
 | --- | --- | --- |
 | API | 기존 개발 설정 | `https://api.ringout.my` |
 | Firebase | `ringout-8abf2` | `ringout-prod` |
@@ -45,6 +56,8 @@ Xcode Run Scheme의 런타임 환경변수는 빌드 설정 주입을 대신하�
 같은 커밋을 재실행하면 같은 번호를 사용한다. 준비 단계를 반복해도 두 번 증가하지 않는다. Android는 2,100,000,000 범위를 검사한다. 운영 준비가 적용된 빌드 설정과 실제 앱 버전이 일치하는지 확인한다.
 
 ## 사전 설정
+
+GitHub Environment의 Deployment branches and tags는 `internal`·`ios-internal`에 `client/release`만, `production`·`ios-production`에 `main`만 허용한다. 기존 내부 환경이 `develop`으로 제한되어 있다면 저장소 관리자가 `client/release`로 변경해야 한다. OIDC의 ref 제한을 별도로 사용하는 경우에도 같은 브랜치 경로를 반영한다. 클라이언트 브랜치와 보호 규칙, 환경 및 인증 설정은 이 변경으로 원격에 자동 적용되지 않는다.
 
 ### Android: GitHub Environment `production`
 
@@ -87,7 +100,7 @@ Firebase 설정은 빌드 전에 복원하고 프로젝트·번들 ID를 검사�
 ## 검증
 
 - `python3 -B -m unittest discover -s ci -p 'test_*.py' -v`
-- `actionlint -shellcheck= -pyflakes= .github/workflows/{android-ci,android-internal-cd,android-production-cd,build-release-aab,ios-ci,ios-production-cd}.yml` (저장소 루트)
+- `actionlint -shellcheck= -pyflakes= .github/workflows/{client-pr-route,client-python-ci,android-ci,android-internal-cd,android-production-cd,build-release-aab,ios-ci,ios-internal-cd,ios-production-cd}.yml` (저장소 루트)
 - main 병합 전 사전 설정을 완료한다. 병합 후 Actions summary의 SHA·버전과 Play Console / App Store Connect의 실제 업로드를 대조한다. 로컬 테스트만으로 실제 스토어 업로드 성공을 판단하지 않는다.
 
 ## 참고
@@ -103,10 +116,34 @@ Firebase 설정은 빌드 전에 복원하고 프로젝트·번들 ID를 검사�
 
 진행 중인 심사가 있으면 CD는 실패하며, 보호 옵션을 제거해 재시도하거나 기존 심사를 취소하지 않는다. Play Console에서 심사 완료를 확인한 뒤 CD를 재실행한다. 새 릴리스의 `status=draft`는 유지하지만 앱 전체 변경 사항의 자동 심사 여부까지 차단하는 옵션은 아니므로, 업로드 후 심사·게시 상태를 확인한다.
 
+## 공통 Python 검증
+
+`Client Python CI` (`client-python-ci.yml`)의 `python-checks` job이 Ubuntu·JDK 21 환경에서 `ci/test_*.py` 전체를 관련 입력이 변경된 PR·push마다 한 번 실행한다. 입력은 Python 보조 코드·검증 설정·테스트 fixture, Kotlin 프레임워크 빌드 스크립트, 검증 대상 클라이언트 워크플로와 공통 Actions이다. 공유 Kotlin 앱 코드만 바뀌면 실행하지 않는다. Android CI·iOS CI·서명 AAB 빌드는 전체 Python 테스트를 다시 실행하지 않는다. 현재 모든 Python 테스트는 이 환경에서 실행 가능하며, Apple `security`와 Gradle 호출은 모의 구현으로 검증하므로 macOS 전용 Python 테스트는 없다. Swift 알람 복구 저널과 Kotlin 플랫폼 테스트는 각 플랫폼 CI에서 실행한다. 서명 빌드와 업로드는 해당 push에 Python 검증 대상 변경이 있을 때만 같은 SHA의 공통 검증 성공도 요구한다.
+
+배포 API를 모의 처리하는 Python 테스트는 `GITHUB_STEP_SUMMARY`·`GITHUB_OUTPUT`을 임시 파일로 격리한다. 따라서 테스트의 배포 완료 문구는 실제 Actions 실행 요약에 기록되지 않으며, Python CI의 성공은 실제 배포 완료를 의미하지 않는다.
+
 ## 클라이언트 변경 경로 필터
 
-iOS CI의 develop/main push와 내부·운영 CD는 동일한 경로 목록을 사용한다. `client/iosApp/**`, `client/shared/**`, `client/ci/**`, Gradle 설정 및 세 iOS 워크플로 변경 시 실행한다. 서버 코드·서버 전용 워크플로만 변경한 push는 실행하지 않는다. PR의 기존 iOS 경로 필터도 유지한다.
+변경 경로 정책의 기준은 `ci/change_policy.py`의 `CI_PATHS`·`PR_CI_PATHS`·`CD_PATHS`이다. 회귀 테스트가 정책과 YAML 필터의 일치를 검사한다. Android AAB 생성과 내부·운영 배포는 같은 Android CD 경로를 사용한다. 플랫폼 CI는 PR·push 모두 `CI_PATHS`를 사용한다. 별도 PR Build의 `PR_CI_PATHS`는 해당 플랫폼의 CI·CD 입력과 자체 빌드 워크플로 변경을 포함하므로 배포 설정만 변경한 승격 PR도 앱을 빌드하고 산출물을 검증한다.
 
-경로 목록을 수정할 때는 세 워크플로를 함께 수정해야 한다. CI는 생략됐는데 CD만 시작되면 동일 SHA의 선행 CI를 기다리다 시간 초과될 수 있다. iOS 워크플로는 현재 저장소의 로컬 공통 action을 사용하지 않는다. 이후 로컬 action을 도입하면 해당 경로를 세 필터에 함께 추가한다.
+| 변경 | 필요한 push CI | `client/release`·`main` 배포 |
+| --- | --- | --- |
+| Android 전용 앱 코드 | Android | Android |
+| iOS 전용 앱 코드 | iOS | iOS |
+| 공유 운영 Kotlin·공통 빌드 설정 | Android + iOS | 양쪽 플랫폼 |
+| 공유 `commonTest` | Android + iOS | 없음 |
+| Python 테스트·fixture | Python | 없음 |
+| 공통 실행 판정 코드 (`pipeline.py`·`change_policy.py`) | Android + iOS + Python | 양쪽 플랫폼 |
+| 그 외 배포 보조 Python 코드 | Python | 영향을 받는 플랫폼 |
+| Android/iOS CI·PR Build 워크플로 | 해당 플랫폼 + Python | 없음 |
+| CD 워크플로 | Python | 해당 플랫폼·현재 브랜치의 배포 설정인 경우 |
+| `ci/google-services.ci.json` | Android + Python | 없음 |
+| 문서·서버 코드·서버 전용 워크플로 | 클라이언트 CI 없음 | 없음 |
 
-Android는 기존 경로 필터를 유지한다. 서버·클라이언트 혼합 변경은 관련 클라이언트 파일을 포함하므로 필요한 파이프라인이 실행된다. main 적용에는 develop → main 병합이 필요하다. 추후 필수 상태 검사를 설정할 때는 경로 필터로 생략된 워크플로가 PR 병합을 차단하지 않는지 함께 확인한다.
+위 CI 열은 병합 후 push와 CD 선행 판정 기준이다. `client/release`·`main` 대상 PR에서는 배포 보조 코드·CD 워크플로 변경에도 별도 해당 플랫폼 PR Build의 앱 빌드·산출물 검증을 실행한다. 여러 종류의 파일을 함께 변경하면 필요한 검사를 합친다. 공통 앱 변경도 Python 입력이 함께 바뀌지 않으면 Python CI를 요구하지 않는다. 테스트 전용 변경·CI 전용 설정·문서 변경만으로는 앱을 배포하지 않는다. Swift 저널 테스트 변경은 iOS CI만 실행한다. 플랫폼 CI는 해당 플랫폼 앱·공유 앱·빌드 설정·관련 CI 설정을 감지하며 반대 플랫폼 소스는 제외한다.
+
+CD gate는 전체 Git 이력을 checkout하여 실제 push의 `before`·`after` 범위를 검사한다. 여러 커밋, 삭제·이동 및 강제 push도 이 범위로 판단하며 마지막 커밋만 검사하지 않는다. 최초 브랜치 push는 push된 가장 오래된 커밋의 첫 부모를 기준으로 한다. 필요한 검사만 같은 저장소·브랜치·SHA의 `push` 실행 성공을 확인한다. 불필요한 검사는 기다리지 않으며, 필수 실행의 누락은 시간 초과로, 실패·취소는 오류로 배포를 막는다. 현재 브랜치에 해당하지 않는 내부·운영 CD 설정만 바뀌면 gate가 배포를 생략할 수 있다.
+
+서명 AAB의 수동 실행은 복구용이며 빌드를 강제한다. 변경 범위는 선택한 SHA와 첫 부모 사이이고, 필요한 동일 SHA의 push CI가 없는 경우에도 배포를 허용하지 않는다. 운영 업로드 복구는 원래 push 실행을 재실행한다.
+
+PR 제목·본문·대상 브랜치를 수정하면 `Client PR route`에서 경로 규칙을 다시 검사한다. 테스트·PR Build는 `opened`, `synchronize`, `reopened`에서 실행하므로 대상 브랜치 변경 후에는 PR을 닫았다 다시 열거나 새 커밋을 올려 다시 검사한다. 경로 검사 실행은 별도 concurrency 그룹을 사용하므로 진행 중인 검사를 취소하지 않는다. 보호 규칙에 경로 필터가 있는 워크플로를 일괄 필수 검사로 지정할 때는 서버 PR에서 생략된 체크가 `Pending`으로 남아 병합을 막지 않는지 확인한다. `Android PR Build`·`iOS PR Build` 필수 검사는 `client/release`·`main`에만 적용하고 `client/develop`에는 요구하지 않는다. 빌드 워크플로도 경로 필터를 사용하므로 해당 플랫폼 변경이 없는 PR의 필수 체크가 `Pending`으로 남는지도 검토한다. 원격 보호 규칙 설정은 저장소 관리자의 적용 작업이다.

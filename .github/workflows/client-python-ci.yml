@@ -1,0 +1,77 @@
+name: Client Python CI
+
+on:
+  pull_request:
+    branches: [client/develop, client/release, main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'client/ci/*.py'
+      - 'client/ci/*.json'
+      - 'client/ci/*.sha256'
+      - 'client/ci/fixtures/**'
+      - 'client/iosApp/scripts/build-kotlin-framework.sh'
+      - '.github/workflows/client-pr-route.yml'
+      - '.github/workflows/client-python-ci.yml'
+      - '.github/workflows/android-ci.yml'
+      - '.github/workflows/ios-ci.yml'
+      - '.github/workflows/android-pr-build.yml'
+      - '.github/workflows/ios-pr-build.yml'
+      - '.github/workflows/build-release-aab.yml'
+      - '.github/workflows/android-internal-cd.yml'
+      - '.github/workflows/android-production-cd.yml'
+      - '.github/workflows/ios-internal-cd.yml'
+      - '.github/workflows/ios-production-cd.yml'
+      - '.github/actions/**'
+  push:
+    branches: [client/develop, client/release, main]
+    paths:
+      - 'client/ci/*.py'
+      - 'client/ci/*.json'
+      - 'client/ci/*.sha256'
+      - 'client/ci/fixtures/**'
+      - 'client/iosApp/scripts/build-kotlin-framework.sh'
+      - '.github/workflows/client-pr-route.yml'
+      - '.github/workflows/client-python-ci.yml'
+      - '.github/workflows/android-ci.yml'
+      - '.github/workflows/ios-ci.yml'
+      - '.github/workflows/android-pr-build.yml'
+      - '.github/workflows/ios-pr-build.yml'
+      - '.github/workflows/build-release-aab.yml'
+      - '.github/workflows/android-internal-cd.yml'
+      - '.github/workflows/android-production-cd.yml'
+      - '.github/workflows/ios-internal-cd.yml'
+      - '.github/workflows/ios-production-cd.yml'
+      - '.github/actions/**'
+permissions:
+  contents: read
+
+concurrency:
+  group: client-python-ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: client
+
+jobs:
+  python-checks:
+    name: Common Python checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Corretto JDK 21 for signature regression tests
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: corretto
+          java-version: '21'
+      - name: Require signature test tools
+        run: |
+          keytool -help > /dev/null 2>&1
+          jarsigner -help > /dev/null 2>&1
+      - name: Test CI helpers, artifact verification, and workflow contracts
+        run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
