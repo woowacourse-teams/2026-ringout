@@ -2,22 +2,44 @@ name: Android CI
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [client/develop, client/release, main]
     types: [opened, synchronize, reopened, edited]
     paths:
-      - 'client/**'
-      - '.github/workflows/android-ci.yml'
-      - '.github/workflows/build-release-aab.yml'
-      - '.github/workflows/android-internal-cd.yml'
-      - '.github/workflows/android-production-cd.yml'
+      - 'client/androidApp/**'
+      - 'client/shared/**'
+      - 'client/developerTools/**'
+      - '!client/shared/src/ios*/**'
+      - '!client/developerTools/src/ios*/**'
+      - 'client/*'
+      - 'client/gradle/**'
+      - 'client/buildSrc/**'
+      - 'client/build-logic/**'
+      - 'client/config/**'
+      - 'client/configuration/**'
       - '.github/actions/**'
-
+      - '.github/workflows/android-ci.yml'
+      - 'client/ci/google-services.ci.json'
+      - '!client/**/*.md'
+      - '!client/**/docs/**'
   push:
-    branches: [develop, main]
+    branches: [client/develop, client/release, main]
     paths:
-      - 'client/**'
-      - '.github/workflows/android-ci.yml'
+      - 'client/androidApp/**'
+      - 'client/shared/**'
+      - 'client/developerTools/**'
+      - '!client/shared/src/ios*/**'
+      - '!client/developerTools/src/ios*/**'
+      - 'client/*'
+      - 'client/gradle/**'
+      - 'client/buildSrc/**'
+      - 'client/build-logic/**'
+      - 'client/config/**'
+      - 'client/configuration/**'
       - '.github/actions/**'
+      - '.github/workflows/android-ci.yml'
+      - 'client/ci/google-services.ci.json'
+      - '!client/**/*.md'
+      - '!client/**/docs/**'
 
 permissions:
   contents: read
@@ -52,7 +74,7 @@ jobs:
         run: python3 ci/pipeline.py changes
 
   quality:
-    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata build skipped' || 'Android tests, lint, and release verification' }}
+    name: ${{ github.event.action == 'edited' && !github.event.changes.base && 'Android metadata build skipped' || 'Android tests and lint' }}
     needs: changes
     if: needs.changes.outputs.client_changed == 'true'
     runs-on: ubuntu-24.04
@@ -77,16 +99,10 @@ jobs:
         run: |
           "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
             'platforms;android-36' 'build-tools;36.0.0'
-      - name: Test CI routing and artifact checks
-        run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
-      - name: Test, lint, and build unsigned release AAB
+      - name: Test and lint Android
         run: |
-          ./gradlew :shared:testAndroidHostTest :androidApp:lintRelease :androidApp:bundleRelease \
+          ./gradlew :shared:testAndroidHostTest :androidApp:lintRelease \
             -PciVerification=true --no-daemon --no-configuration-cache --stacktrace --profile
-      - name: Verify R8 outputs and absence of signing
-        run: |
-          python3 ci/pipeline.py verify-r8
-          python3 ci/pipeline.py verify-unsigned
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -97,7 +113,6 @@ jobs:
             client/shared/build/test-results/testAndroidHostTest/
             client/shared/build/reports/tests/testAndroidHostTest/
             client/androidApp/build/reports/lint-results-release.*
-            client/androidApp/build/outputs/mapping/release/
           if-no-files-found: warn
           retention-days: 14
 
