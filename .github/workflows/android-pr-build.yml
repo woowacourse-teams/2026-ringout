@@ -5,12 +5,9 @@ on:
     branches: [client/release, main]
     types: [opened, synchronize, reopened]
     paths:
-      - '.github/workflows/android-pr-build.yml'
-      - 'client/ci/pipeline.py'
       - 'client/ci/api_config.py'
       - 'client/ci/production_config.py'
       - 'client/ci/ios_cd_gate.py'
-      - 'client/ci/change_policy.py'
       - 'client/ci/android_internal_cd.py'
       - 'client/ci/android_production_cd.py'
       - 'client/ci/verify_developer_tools.py'
@@ -30,7 +27,10 @@ on:
       - 'client/config/**'
       - 'client/configuration/**'
       - '.github/actions/**'
+      - 'client/ci/pipeline.py'
+      - 'client/ci/change_policy.py'
       - '.github/workflows/android-ci.yml'
+      - '.github/workflows/android-pr-build.yml'
       - 'client/ci/google-services.ci.json'
       - '!client/**/*.md'
       - '!client/**/docs/**'

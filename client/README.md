@@ -88,7 +88,7 @@ Apple Silicon Mac에서 공통 테스트와 iOS 테스트를 실행합니다.
 
 Android CI에는 이 태스크를 포함하지 않습니다. `client/develop`, `client/release`, `main` 대상 클라이언트 PR과 해당 브랜치 push에서 별도의 iOS CI가 변경 감지와 최종 결과 판정을 수행합니다.
 
-iOS CI는 macOS 26 러너에서 공유 Kotlin iOS 테스트와 Swift 알람 복구 저널 테스트를 실행합니다. 앱 빌드 검증은 별도 `iOS PR Build` 워크플로가 `client/release`·`main` 대상 PR에서 수행합니다. `client/develop` 대상 PR에는 빌드 워크플로와 빌드 체크가 생성되지 않습니다. iOS 앱·공유 Kotlin·공통 빌드 설정·iOS CI 설정·Swift 저널 테스트 변경이 있을 때 실행합니다. Android 전용 변경과 문서 변경은 iOS CI를 시작하지 않습니다. 실행된 워크플로에서는 변경 감지와 최종 `iOS CI` 판정을 수행합니다.
+iOS CI는 macOS 26 러너에서 공유 Kotlin iOS 테스트와 Swift 알람 복구 저널 테스트를 실행합니다. 앱 빌드 검증은 별도 `iOS PR Build` 워크플로가 `client/release`·`main` 대상 PR에서 수행합니다. `client/develop` 대상 PR에는 빌드 워크플로와 빌드 체크가 생성되지 않습니다. iOS 앱·공유 Kotlin·공통 빌드 설정·iOS CI 및 PR Build 설정·Swift 저널 테스트 변경이 있을 때 실행합니다. 두 플랫폼 CI의 실행 여부와 결과를 제어하는 `ci/pipeline.py`·`ci/change_policy.py` 변경도 양쪽 플랫폼 테스트를 실행합니다. Android 전용 변경과 문서 변경은 iOS CI를 시작하지 않습니다. 실행된 워크플로에서는 변경 감지와 최종 `iOS CI` 판정을 수행합니다.
 
 `client/release` 푸시에서는 별도 `iOS Internal TestFlight CD`가 해당 push 변경에 필요한 동일 SHA의 CI 성공을 확인한 뒤 개발 Firebase로 서명 아카이브를 만들고, Firebase·서명·버전을 검증한 다음 TestFlight 내부 테스트 전용 빌드로 업로드합니다. 필수 CI가 실패하거나 취소되면 배포하지 않습니다.
 
@@ -177,7 +177,7 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 
 - `client/develop` 대상 PR은 `feature`, `fix`, `chore` 등 작업 브랜치 이름으로 제한하지 않습니다.
 - `client/release` 대상 클라이언트 PR은 **같은 저장소의 `client/develop`**, `main` 대상은 **같은 저장소의 `client/release`**에서만 허용합니다. fork의 동명 브랜치도 실패합니다.
-- 변경 경로 정책은 `ci/change_policy.py`의 `CI_PATHS`·`PR_CI_PATHS`·`CD_PATHS`에서 관리하며 회귀 테스트가 YAML 필터와 일치하는지 확인합니다. 플랫폼 CI는 해당 플랫폼·공유 앱·빌드 설정과 해당 CI 설정을 감지합니다. 플랫폼 CI는 PR과 push 모두 `CI_PATHS`를 사용합니다. 별도 PR Build는 `PR_CI_PATHS`로 해당 플랫폼의 CI·CD 입력과 자체 워크플로 변경을 감지하므로, 배포 설정만 변경한 승격 PR도 앱 빌드·산출물 검증을 수행합니다. Python CI는 보조 코드와 검증 대상 워크플로를, CD는 해당 앱·빌드·배포 설정을 감지합니다. Android AAB producer와 배포 consumer는 같은 Android CD 경로를 사용합니다. 서버의 기존 브랜치 전략은 유지합니다.
+- 변경 경로 정책은 `ci/change_policy.py`의 `CI_PATHS`·`PR_CI_PATHS`·`CD_PATHS`에서 관리하며 회귀 테스트가 YAML 필터와 일치하는지 확인합니다. 플랫폼 CI는 해당 플랫폼·공유 앱·빌드 설정과 해당 CI·PR Build 설정, 공통 실행 판정 코드(`ci/pipeline.py`·`ci/change_policy.py`)를 감지합니다. 공통 판정 코드 변경은 Python 회귀 테스트와 양쪽 플랫폼 테스트를 함께 실행합니다. 플랫폼 CI는 PR과 push 모두 `CI_PATHS`를 사용합니다. 별도 PR Build는 `PR_CI_PATHS`로 해당 플랫폼의 CI·CD 입력과 자체 워크플로 변경을 감지하므로, 배포 설정만 변경한 승격 PR도 앱 빌드·산출물 검증을 수행합니다. Python CI는 보조 코드와 검증 대상 워크플로를, CD는 해당 앱·빌드·배포 설정을 감지합니다. Android AAB producer와 배포 consumer는 같은 Android CD 경로를 사용합니다. 서버의 기존 브랜치 전략은 유지합니다.
 - 서버나 루트 문서만 변경한 경우 클라이언트 워크플로의 경로 필터가 실행을 생략합니다. 클라이언트 브랜치 경로 규칙도 클라이언트 관련 변경에만 적용합니다.
 - PR 경로 검사는 마지막 커밋이 아닌 PR 전체 변경을 기준으로 하며, 삭제와 `client` 밖으로의 이동도 확인합니다.
 - 필요한 검사의 실패·취소·예상치 못한 건너뛰기는 최종 판정을 실패시킵니다. 플랫폼 테스트는 변경 감지가 명시적으로 불필요하다고 판단한 경우만 생략할 수 있습니다. PR Build 결과는 플랫폼 CI의 최종 판정에 합치지 않고 별도로 확인합니다.

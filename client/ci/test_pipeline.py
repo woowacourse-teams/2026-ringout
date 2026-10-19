@@ -193,11 +193,27 @@ class RoutingTest(unittest.TestCase):
                 self.assertFalse(ci.verification_required(event, "push", "ios"))
 
     def test_Python_보조코드나_반대_플랫폼_CI는_앱_검증을_시작하지_않는다(self):
-        for path in (b"client/ci/pipeline.py", b"client/ci/test_pipeline.py", b".github/workflows/client-python-ci.yml"):
+        for path in (b"client/ci/test_pipeline.py", b".github/workflows/client-python-ci.yml"):
             for platform in ("android", "ios"):
                 self.assertFalse(ci.is_client_path(path, platform), (path, platform))
         self.assertFalse(ci.is_client_path(b".github/workflows/ios-ci.yml", "android"))
         self.assertFalse(ci.is_client_path(b".github/workflows/android-ci.yml", "ios"))
+
+    def test_CI_판정_코드나_빌드_분리_설정_변경에도_플랫폼_테스트를_실행한다(self):
+        for platform in ("android", "ios"):
+            paths = (b"client/ci/pipeline.py", b"client/ci/change_policy.py",
+                     f".github/workflows/{platform}-pr-build.yml".encode())
+            for path in paths:
+                for base, head in (("client/develop", "fix/ci"),
+                                   ("client/release", "client/develop"),
+                                   ("main", "client/release")):
+                    event = self.event(base, head)
+                    event["pull_request"]["base"]["sha"] = "a" * 40
+                    event["pull_request"]["head"]["sha"] = "b" * 40
+                    with self.subTest(platform=platform, path=path, base=base), patch.object(
+                        ci, "changed_files", return_value=[path]
+                    ):
+                        self.assertTrue(ci.verification_required(event, "pull_request", platform))
 
     def test_PR은_병합_기준점을_사용하고_main_진입_규칙을_유지한다(self):
         event = self.event()

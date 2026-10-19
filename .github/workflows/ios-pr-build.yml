@@ -5,12 +5,9 @@ on:
     branches: [client/release, main]
     types: [opened, synchronize, reopened]
     paths:
-      - '.github/workflows/ios-pr-build.yml'
-      - 'client/ci/pipeline.py'
       - 'client/ci/api_config.py'
       - 'client/ci/production_config.py'
       - 'client/ci/ios_cd_gate.py'
-      - 'client/ci/change_policy.py'
       - 'client/ci/ios_internal.py'
       - 'client/ci/verify_ios_firebase.py'
       - 'client/ci/verify_ios_version.py'
@@ -28,7 +25,10 @@ on:
       - 'client/config/**'
       - 'client/configuration/**'
       - '.github/actions/**'
+      - 'client/ci/pipeline.py'
+      - 'client/ci/change_policy.py'
       - '.github/workflows/ios-ci.yml'
+      - '.github/workflows/ios-pr-build.yml'
       - 'client/ci/swift/**'
       - '!client/**/*.md'
       - '!client/**/docs/**'

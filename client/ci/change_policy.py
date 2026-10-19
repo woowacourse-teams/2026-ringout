@@ -32,7 +32,9 @@ def _app_paths(platform):
 CI_PATHS = {
     platform: (
         *_app_paths(platform), ".github/actions/**",
+        "client/ci/pipeline.py", "client/ci/change_policy.py",
         f".github/workflows/{platform}-ci.yml",
+        f".github/workflows/{platform}-pr-build.yml",
         *(("client/ci/swift/**",) if platform == "ios" else ()),
         *(("client/ci/google-services.ci.json",) if platform == "android" else ()),
         *_DOC_EXCLUSIONS,
@@ -80,7 +82,6 @@ CD_PATHS = {platform: _deployment_paths(platform) for platform in ("android", "i
 # Separate promotion build workflows validate CI and deployment inputs.
 PR_CI_PATHS = {
     platform: (
-        f".github/workflows/{platform}-pr-build.yml",
         *(path for path in CD_PATHS[platform]
           if not path.startswith("!") and path not in CI_PATHS[platform]),
         *CI_PATHS[platform],

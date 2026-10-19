@@ -133,8 +133,9 @@ Firebase 설정은 빌드 전에 복원하고 프로젝트·번들 ID를 검사�
 | 공유 운영 Kotlin·공통 빌드 설정 | Android + iOS | 양쪽 플랫폼 |
 | 공유 `commonTest` | Android + iOS | 없음 |
 | Python 테스트·fixture | Python | 없음 |
-| 배포 보조 Python 코드 | Python | 영향을 받는 플랫폼 |
-| Android/iOS CI 워크플로 | 해당 플랫폼 + Python | 없음 |
+| 공통 실행 판정 코드 (`pipeline.py`·`change_policy.py`) | Android + iOS + Python | 양쪽 플랫폼 |
+| 그 외 배포 보조 Python 코드 | Python | 영향을 받는 플랫폼 |
+| Android/iOS CI·PR Build 워크플로 | 해당 플랫폼 + Python | 없음 |
 | CD 워크플로 | Python | 해당 플랫폼·현재 브랜치의 배포 설정인 경우 |
 | `ci/google-services.ci.json` | Android + Python | 없음 |
 | 문서·서버 코드·서버 전용 워크플로 | 클라이언트 CI 없음 | 없음 |
