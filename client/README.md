@@ -88,7 +88,7 @@ Apple Silicon Mac에서 공통 테스트와 iOS 테스트를 실행합니다.
 
 Android CI에는 이 태스크를 포함하지 않습니다. `client/develop`, `client/release`, `main` 대상 클라이언트 PR과 해당 브랜치 push에서 별도의 iOS CI가 변경 감지와 최종 결과 판정을 수행합니다.
 
-iOS CI는 macOS 26 러너에서 공유 Kotlin iOS 테스트와 Swift 알람 복구 저널 테스트를 실행합니다. `client/release`·`main` 대상 PR에서는 서명 없는 Xcode Debug 시뮬레이터 앱도 빌드하고, 앱에 포함된 개발 Firebase 설정을 검증합니다. `client/develop` 대상 PR과 기준 브랜치 push에서는 테스트만 실행합니다. iOS 앱·공유 Kotlin·공통 빌드 설정·iOS CI 설정·Swift 저널 테스트 변경이 있을 때 실행합니다. Android 전용 변경과 문서 변경은 iOS CI를 시작하지 않습니다. 실행된 워크플로에서는 변경 감지와 최종 `iOS CI` 판정을 수행합니다.
+iOS CI는 macOS 26 러너에서 공유 Kotlin iOS 테스트와 Swift 알람 복구 저널 테스트를 실행합니다. 앱 빌드 검증은 별도 `iOS PR Build` 워크플로가 `client/release`·`main` 대상 PR에서 수행합니다. `client/develop` 대상 PR에는 빌드 워크플로와 빌드 체크가 생성되지 않습니다. iOS 앱·공유 Kotlin·공통 빌드 설정·iOS CI 설정·Swift 저널 테스트 변경이 있을 때 실행합니다. Android 전용 변경과 문서 변경은 iOS CI를 시작하지 않습니다. 실행된 워크플로에서는 변경 감지와 최종 `iOS CI` 판정을 수행합니다.
 
 `client/release` 푸시에서는 별도 `iOS Internal TestFlight CD`가 해당 push 변경에 필요한 동일 SHA의 CI 성공을 확인한 뒤 개발 Firebase로 서명 아카이브를 만들고, Firebase·서명·버전을 검증한 다음 TestFlight 내부 테스트 전용 빌드로 업로드합니다. 필수 CI가 실패하거나 취소되면 배포하지 않습니다.
 
@@ -129,7 +129,7 @@ CD는 `client/release` 푸시 직후 별도 실행으로 시작해 GitHub Action
 
 `-PciVerification=true`는 Maps·카카오 키를 검증용 값으로 고정하고 Firebase에 `ci/google-services.ci.json`을 사용합니다. 업로드 서명과 Crashlytics mapping 업로드를 끕니다. 실제 로컬 설정 파일은 덮어쓰지 않습니다.
 
-`client/develop` 대상 PR과 기준 브랜치 push는 위 경량 검사를 수행합니다. `client/develop` → `client/release`, `client/release` → `main` PR에서는 같은 검증 모드로 `:androidApp:bundleRelease`를 추가 실행하고, 생성한 release AAB의 R8 산출물과 미서명 상태를 검증합니다. Android와 iOS 모두 PR 병합 커밋을 빌드하며, 빌드나 산출물 검증이 실패하면 최종 플랫폼 CI 판정도 실패합니다.
+Android CI는 모든 대상 브랜치에서 위 경량 검사만 수행합니다. 별도 `Android PR Build`가 `client/develop` → `client/release`, `client/release` → `main` PR에서 같은 검증 모드로 `:androidApp:bundleRelease`를 추가 실행하고, 생성한 release AAB의 R8 산출물과 미서명 상태를 검증합니다. Android와 iOS 모두 PR 병합 커밋을 빌드하며, 빌드나 산출물 검증이 실패하면 해당 `Android PR Build`·`iOS PR Build` 체크가 실패합니다.
 
 PR 산출물은 빌드 가능 여부를 병합 전에 확인하기 위한 것입니다. 업로드 키·Apple 배포 인증서·운영 서비스 설정은 사용하지 않습니다. 실제 서명·운영 Firebase·버전 검증과 스토어 업로드는 병합 후 CD에서 새로 빌드한 산출물을 대상으로 수행하며, PR 산출물을 배포에 재사용하지 않습니다.
 
@@ -149,39 +149,38 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 | --- | --- | --- | --- |
 | 작업 브랜치 → `client/develop` PR | `Client PR route`, `Client Python CI`, `Android CI`, `iOS CI` | Android 테스트·Lint, Kotlin iOS·Swift 저널 테스트, CI 보조·산출물 검사 회귀 테스트, 변경 감지·최종 판정 | 검증 보고서 |
 | `client/develop` push | `Client Python CI`, `Android CI`, `iOS CI` | 같은 경량 CI와 기준 브랜치 캐시 저장 | 검증 보고서·캐시 |
-| `client/develop` → `client/release` PR | `Client PR route`, `Client Python CI`, `Android CI`, `iOS CI` | 품질·출발 브랜치 검사 + 미서명 release AAB의 R8·미서명 검증 + 미서명 iOS Debug 시뮬레이터 앱 빌드·개발 Firebase 검증 | 검증 보고서·빌드 산출물 |
+| `client/develop` → `client/release` PR | `Client PR route`, `Client Python CI`, `Android CI`, `iOS CI`, `Android PR Build`, `iOS PR Build` | 품질·출발 브랜치 검사 + 미서명 release AAB의 R8·미서명 검증 + 미서명 iOS Debug 시뮬레이터 앱 빌드·개발 Firebase 검증 | 검증 보고서·빌드 산출물 |
 | `client/release`에 클라이언트 변경 병합 | 변경에 필요한 CI, Android AAB 빌드·각 플랫폼 내부 CD | 변경에 필요한 동일 SHA의 CI 성공 후 내부 AAB·iOS Archive 빌드·검증, Play 내부 테스트·TestFlight 업로드 | 내부 테스트 빌드 |
-| `client/release` → `main` PR | `Client PR route`, `Client Python CI`, `Android CI`, `iOS CI` | 품질·출발 브랜치 검사 + 미서명 release AAB의 R8·미서명 검증 + 미서명 iOS Debug 시뮬레이터 앱 빌드·개발 Firebase 검증 | 검증 보고서·빌드 산출물 |
+| `client/release` → `main` PR | `Client PR route`, `Client Python CI`, `Android CI`, `iOS CI`, `Android PR Build`, `iOS PR Build` | 품질·출발 브랜치 검사 + 미서명 release AAB의 R8·미서명 검증 + 미서명 iOS Debug 시뮬레이터 앱 빌드·개발 Firebase 검증 | 검증 보고서·빌드 산출물 |
 | `main`에 클라이언트 변경 병합 | 변경에 필요한 CI, Android AAB 빌드·각 플랫폼 운영 CD | 변경에 필요한 동일 SHA의 CI 성공 후 운영 AAB·iOS Archive 빌드·검증, Play production draft·App Store Connect 업로드 | 운영 빌드 |
 | 클라이언트 PR 본문·제목 수정 | `Client PR route` | 브랜치 규칙 재검사 | 경로 검사 결과 |
 | 클라이언트 PR 대상 브랜치 변경 | `Client PR route` | 경로·브랜치 규칙 재검사 | 경로 검사 결과 |
 
 위 표의 CI·CD는 각 워크플로의 변경 경로 조건을 만족할 때 실행합니다. 앱 코드 변경만으로 공통 Python 검증이 실행되지는 않으며, 배포 대상 플랫폼에 영향을 주지 않는 변경은 해당 CD를 시작하지 않습니다.
 
-플랫폼 CI의 작업은 GitHub Actions에서 다음 job으로 구분합니다. PR 빌드 검증도 CI이며, 실제 CD 워크플로와 분리되어 있습니다.
+플랫폼 CI와 승격 PR 빌드는 별도 워크플로로 구분합니다.
 
-| job | Android 표시 이름 | iOS 표시 이름 | 실행 조건 |
-| --- | --- | --- | --- |
-| `changes` | 변경 감지 | 변경 감지 | 실행된 워크플로에서 검증 필요 여부 판정 |
-| `quality` | `Android tests and lint` | `iOS Kotlin and Swift journal tests` | 해당 플랫폼 검증이 필요한 변경 |
-| `promotion-build` | `Android PR build verification (no deployment)` | `iOS PR build verification (no deployment)` | 해당 플랫폼 검증이 필요한 `client/release`·`main` 대상 PR이며 `quality` 성공 |
-| `result` | `Android CI` | `iOS CI` | 변경 감지·품질 검사·PR 빌드 검증 결과의 최종 판정 |
+| 워크플로 | job | 역할 |
+| --- | --- | --- |
+| `Android CI`·`iOS CI` | `changes` → `quality` → `result` | 변경 감지, `Android tests and lint` 또는 `iOS Kotlin and Swift journal tests`, 최종 플랫폼 테스트 판정 |
+| `Android PR Build` | `build` | 승격 PR 경로 확인, 미서명 release AAB 빌드·검증·업로드 |
+| `iOS PR Build` | `build` | 승격 PR 경로 확인, 미서명 시뮬레이터 앱 빌드·검증·업로드 |
 
-`promotion-build`는 별도 러너에서 필요한 도구와 캐시를 준비한 뒤 앱 빌드·산출물 검증을 수행합니다. `client/develop` 대상 PR과 기준 브랜치 push에서는 의도적으로 생략합니다. 최종 판정은 승격 PR의 빌드 성공을 요구하며, 필요했던 검사나 빌드가 실패·취소·생략되면 실패합니다.
+`Android PR Build`·`iOS PR Build`는 `pull_request`의 대상 브랜치가 `client/release`·`main`일 때만 시작합니다. `client/develop` 대상 PR과 기준 브랜치 push에는 빌드 워크플로가 실행되지 않으므로 생략된 빌드 체크도 표시되지 않습니다. 승격 PR에서는 플랫폼 테스트와 빌드 워크플로가 병렬로 실행될 수 있으며, 각각의 결과를 확인해야 합니다. 테스트의 최종 판정과 빌드 검증 결과는 독립된 체크입니다.
 
-승격 PR의 빌드·검증 성공 후 Actions 실행 상세의 **Artifacts**에서 앱 파일도 다운로드할 수 있습니다. Android는 `android-pr-aab-<PR 번호>-<실행 ID>-attempt<재실행 번호>`에 미서명 release `.aab`를, iOS는 `ios-pr-simulator-app-<PR 번호>-<실행 ID>-attempt<재실행 번호>`에 `Ringout-simulator.app.zip`을 보관합니다. iOS ZIP은 앱 번들의 실행 권한과 심볼릭 링크를 보존하도록 압축합니다. 보관 기간은 14일이며, 파일 누락이나 업로드 실패도 빌드 job과 최종 CI를 실패시킵니다. 별도 `*-pr-build-reports-*`에는 검증 보고서를 보관합니다. 이 iOS 앱은 시뮬레이터용이며 기기 설치·TestFlight용 IPA가 아닙니다.
+승격 PR의 빌드·검증 성공 후 Actions 실행 상세의 **Artifacts**에서 앱 파일도 다운로드할 수 있습니다. Android는 `android-pr-aab-<PR 번호>-<실행 ID>-attempt<재실행 번호>`에 미서명 release `.aab`를, iOS는 `ios-pr-simulator-app-<PR 번호>-<실행 ID>-attempt<재실행 번호>`에 `Ringout-simulator.app.zip`을 보관합니다. iOS ZIP은 앱 번들의 실행 권한과 심볼릭 링크를 보존하도록 압축합니다. 보관 기간은 14일이며, 파일 누락이나 업로드 실패도 해당 PR Build 체크를 실패시킵니다. 별도 `*-pr-build-reports-*`에는 검증 보고서를 보관합니다. 이 iOS 앱은 시뮬레이터용이며 기기 설치·TestFlight용 IPA가 아닙니다.
 
 
-경량 PR 라우팅은 [client-pr-route.yml](../.github/workflows/client-pr-route.yml)에서 관리합니다. 공통 Python 검증은 [client-python-ci.yml](../.github/workflows/client-python-ci.yml), 플랫폼 품질 검사는 [android-ci.yml](../.github/workflows/android-ci.yml), [ios-ci.yml](../.github/workflows/ios-ci.yml)에 있습니다. 배포는 [build-release-aab.yml](../.github/workflows/build-release-aab.yml), [android-internal-cd.yml](../.github/workflows/android-internal-cd.yml), [ios-internal-cd.yml](../.github/workflows/ios-internal-cd.yml), [android-production-cd.yml](../.github/workflows/android-production-cd.yml), [ios-production-cd.yml](../.github/workflows/ios-production-cd.yml)에서 수행합니다. 운영 설정과 재실행 절차는 [운영 CD 실행 안내](docs/release/PRODUCTION_CD_RUNBOOK.md)를 확인합니다.
+경량 PR 라우팅은 [client-pr-route.yml](../.github/workflows/client-pr-route.yml)에서 관리합니다. 공통 Python 검증은 [client-python-ci.yml](../.github/workflows/client-python-ci.yml), 플랫폼 품질 검사는 [android-ci.yml](../.github/workflows/android-ci.yml), [ios-ci.yml](../.github/workflows/ios-ci.yml)에 있습니다. 승격 PR 빌드는 [android-pr-build.yml](../.github/workflows/android-pr-build.yml), [ios-pr-build.yml](../.github/workflows/ios-pr-build.yml)에 있습니다. 배포는 [build-release-aab.yml](../.github/workflows/build-release-aab.yml), [android-internal-cd.yml](../.github/workflows/android-internal-cd.yml), [ios-internal-cd.yml](../.github/workflows/ios-internal-cd.yml), [android-production-cd.yml](../.github/workflows/android-production-cd.yml), [ios-production-cd.yml](../.github/workflows/ios-production-cd.yml)에서 수행합니다. 운영 설정과 재실행 절차는 [운영 CD 실행 안내](docs/release/PRODUCTION_CD_RUNBOOK.md)를 확인합니다.
 
 ### PR 검증과 병합 조건
 
 - `client/develop` 대상 PR은 `feature`, `fix`, `chore` 등 작업 브랜치 이름으로 제한하지 않습니다.
 - `client/release` 대상 클라이언트 PR은 **같은 저장소의 `client/develop`**, `main` 대상은 **같은 저장소의 `client/release`**에서만 허용합니다. fork의 동명 브랜치도 실패합니다.
-- 변경 경로 정책은 `ci/change_policy.py`의 `CI_PATHS`·`CD_PATHS`에서 관리하며 회귀 테스트가 YAML 필터와 일치하는지 확인합니다. 플랫폼 CI는 해당 플랫폼·공유 앱·빌드 설정과 해당 CI 설정을 감지합니다. `client/release`·`main` 대상 PR은 해당 플랫폼의 CD 경로도 포함하여 배포 설정만 변경해도 앱 빌드·산출물 검증을 수행합니다. 기준 브랜치 push의 CI 경로는 기존 플랫폼 CI 입력 범위를 유지합니다. Python CI는 보조 코드와 검증 대상 워크플로를, CD는 해당 앱·빌드·배포 설정을 감지합니다. Android AAB producer와 배포 consumer는 같은 Android CD 경로를 사용합니다. 서버의 기존 브랜치 전략은 유지합니다.
+- 변경 경로 정책은 `ci/change_policy.py`의 `CI_PATHS`·`PR_CI_PATHS`·`CD_PATHS`에서 관리하며 회귀 테스트가 YAML 필터와 일치하는지 확인합니다. 플랫폼 CI는 해당 플랫폼·공유 앱·빌드 설정과 해당 CI 설정을 감지합니다. 플랫폼 CI는 PR과 push 모두 `CI_PATHS`를 사용합니다. 별도 PR Build는 `PR_CI_PATHS`로 해당 플랫폼의 CI·CD 입력과 자체 워크플로 변경을 감지하므로, 배포 설정만 변경한 승격 PR도 앱 빌드·산출물 검증을 수행합니다. Python CI는 보조 코드와 검증 대상 워크플로를, CD는 해당 앱·빌드·배포 설정을 감지합니다. Android AAB producer와 배포 consumer는 같은 Android CD 경로를 사용합니다. 서버의 기존 브랜치 전략은 유지합니다.
 - 서버나 루트 문서만 변경한 경우 클라이언트 워크플로의 경로 필터가 실행을 생략합니다. 클라이언트 브랜치 경로 규칙도 클라이언트 관련 변경에만 적용합니다.
 - PR 경로 검사는 마지막 커밋이 아닌 PR 전체 변경을 기준으로 하며, 삭제와 `client` 밖으로의 이동도 확인합니다.
-- 필요한 검사의 실패·취소·예상치 못한 건너뛰기는 최종 판정을 실패시킵니다. 변경 감지가 명시적으로 불필요하다고 판단한 플랫폼 검사와 승격 PR이 아닌 경우의 `promotion-build`만 생략할 수 있습니다.
+- 필요한 검사의 실패·취소·예상치 못한 건너뛰기는 최종 판정을 실패시킵니다. 플랫폼 테스트는 변경 감지가 명시적으로 불필요하다고 판단한 경우만 생략할 수 있습니다. PR Build 결과는 플랫폼 CI의 최종 판정에 합치지 않고 별도로 확인합니다.
 - 추가 커밋이 올라오면 이전 PR 실행을 취소하고 최신 PR 병합 커밋을 검사합니다.
 - 업로드 키를 PR에 제공하지 않습니다. `pull_request_target`이나 PR 아티팩트 전달을 통한 서명도 사용하지 않습니다.
 
@@ -197,7 +196,7 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 
 - Actions 실행 요약에서 전체·job·step 시간을 확인합니다. 캐시 복원·저장 비용도 포함해 비교합니다.
 - Android 아티팩트 `client-ci-reports-<run_id>-attempt<번호>`와 iOS 아티팩트 `ios-ci-profile-<run_id>-attempt<번호>`의 `profile-*.html`에서 Gradle 작업별 시간을 확인합니다.
-- 경량 iOS CI는 Kotlin 테스트 프로파일을 수집합니다. `client/release`·`main` 대상 PR에서는 Xcode 시뮬레이터 앱 빌드도 수행하며, 서명 Archive는 내부·운영 CD에서 생성합니다.
+- 경량 iOS CI는 Kotlin 테스트 프로파일을 수집합니다. `client/release`·`main` 대상 PR의 별도 `iOS PR Build`에서는 Xcode 시뮬레이터 앱을 빌드하며, 서명 Archive는 내부·운영 CD에서 생성합니다.
 - 동일 커밋 재실행, 소스 변경, 신규 PR 첫 실행을 구분합니다. 단일 실행의 차이를 일반적인 평균 개선율로 해석하지 않습니다.
 
 ### 서명 AAB 생성
@@ -272,11 +271,11 @@ Android의 `internal`·`production` 환경에는 다음 시크릿이 모두 필�
 ### 브랜치 보호와 최초 적용
 
 1. 저장소 관리자가 `client/develop`·`client/release` 브랜치와 Ruleset 또는 Branch protection을 준비합니다. YAML 변경만으로 원격 브랜치나 보호 규칙이 생성되지는 않습니다.
-2. 작업 브랜치 → `client/develop` → `client/release` → `main` 경로에서 클라이언트 PR의 `Client PR route`와 변경에 필요한 `Client Python CI`·최종 `Android CI`·`iOS CI` 판정을 확인합니다. 대상 브랜치 변경 시 경로와 품질 검사가 다시 실행되는지도 확인합니다.
+2. 작업 브랜치 → `client/develop` → `client/release` → `main` 경로에서 클라이언트 PR의 `Client PR route`와 변경에 필요한 `Client Python CI`·최종 `Android CI`·`iOS CI` 판정을 확인합니다. PR 편집 시 `Client PR route`가 경로 규칙을 재검사하는지도 확인합니다. 테스트·PR Build는 `opened`, `synchronize`, `reopened`에서 실행하므로 대상 브랜치를 바꾼 경우 닫았다 다시 열거나 새 커밋을 올려 다시 검사합니다.
 3. 경로 필터로 실행하지 않는 클라이언트 체크를 서버 PR에도 일괄 필수 검사로 지정하면 `Pending`으로 남을 수 있습니다. 기존 필수 검사 규칙과 서버 PR을 함께 검토하여 적용합니다.
 4. PR 병합과 최신 기준 브랜치 반영을 요구하고 직접 push·강제 push·삭제 및 우회 권한을 검토합니다. YAML 자체는 직접 push를 막지 못합니다.
 5. `internal`·`ios-internal` 환경의 허용 브랜치를 `client/release`로 변경하고, 운영 환경은 `main`으로 제한합니다. 원격 설정은 관리자가 별도로 적용합니다.
-6. `client/release`·`main` 대상 PR에서 변경에 필요한 플랫폼의 앱 빌드·산출물 검증이 최종 CI 판정에 반영되는지 확인합니다. `client/develop` 병합에서는 경량 CI만 실행되는지, `client/release` 병합에서는 내부 빌드·업로드가, `main` 병합에서는 운영 빌드·업로드가 실행되는지 확인합니다. 배포 SHA·버전·인증서·체크섬을 대조합니다.
+6. `client/release`·`main` 대상 PR에서 변경에 필요한 플랫폼의 `Android PR Build`·`iOS PR Build` 체크와 앱 산출물을 별도로 확인합니다. 두 빌드 체크를 필수로 지정한다면 `client/release`·`main`에만 적용하고 `client/develop`에는 적용하지 않습니다. 빌드 워크플로에도 경로 필터가 있으므로 해당 플랫폼 변경이 없는 PR에서 필수 체크가 `Pending`으로 남는지 함께 검토합니다. `client/develop` 병합에서는 경량 CI만 실행되는지, `client/release` 병합에서는 내부 빌드·업로드가, `main` 병합에서는 운영 빌드·업로드가 실행되는지 확인합니다. 배포 SHA·버전·인증서·체크섬을 대조합니다.
 
 모든 PR에 공통 Python·두 플랫폼 CI 필수 검사를 유지하려면 워크플로우 경로 필터를 제거하고 내부 변경 검사와 최종 체크를 항상 실행하도록 별도 설계해야 합니다. 현재 merge queue는 지원하지 않습니다. 향후 도입 시 `merge_group` 이벤트와 변경 경로 판정을 함께 추가해야 합니다.
 

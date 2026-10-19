@@ -61,12 +61,12 @@ class RoutingTest(unittest.TestCase):
             with self.subTest(branch=branch), self.assertRaises(ci.CIError):
                 ci.expected_firebase_project(f"refs/heads/{branch}")
 
-    def test_승격_PR은_배포설정_변경에도_플랫폼_검증을_요구한다(self):
+    def test_배포설정만_변경하면_플랫폼_테스트는_실행하지_않는다(self):
         for platform in ("android", "ios"):
             path = f".github/workflows/{platform}-internal-cd.yml".encode()
             for base, head, expected in (("client/develop", "feature/test", False),
-                                         ("client/release", "client/develop", True),
-                                         ("main", "client/release", True)):
+                                         ("client/release", "client/develop", False),
+                                         ("main", "client/release", False)):
                 event = self.event(base, head)
                 event["pull_request"]["base"]["sha"] = "a" * 40
                 event["pull_request"]["head"]["sha"] = "b" * 40
@@ -82,32 +82,15 @@ class RoutingTest(unittest.TestCase):
             with self.subTest(path=path), patch.object(ci, "changed_files", return_value=[path]):
                 self.assertEqual(ci.verification_required(event, "pull_request", "python"), expected)
 
-    def test_승격_빌드_출력은_관련_승격_PR에서만_활성화된다(self):
-        cases = (("pull_request", "client/develop", True, "false"),
-                 ("pull_request", "client/release", True, "true"),
-                 ("pull_request", "main", True, "true"),
-                 ("pull_request", "main", False, "false"),
-                 ("push", "client/release", True, "false"),
-                 ("push", "main", True, "false"))
+    def test_변경_감지는_플랫폼_테스트_필요_여부만_출력한다(self):
         with tempfile.TemporaryDirectory() as directory:
             event_file = Path(directory) / "event.json"
-            for event_name, base, changed, expected in cases:
-                event_file.write_text(json.dumps({"pull_request": {"base": {"ref": base}}}))
-                env = {"GITHUB_EVENT_NAME": event_name, "GITHUB_EVENT_PATH": str(event_file)}
-                with self.subTest(event=event_name, base=base, changed=changed), patch.dict(os.environ, env), patch.object(ci, "verification_required", return_value=changed), patch.object(ci, "github_value") as output:
+            event_file.write_text("{}")
+            env = {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": str(event_file)}
+            for changed in (True, False):
+                with self.subTest(changed=changed), patch.dict(os.environ, env), patch.object(ci, "verification_required", return_value=changed), patch.object(ci, "github_value") as output:
                     ci.detect_changes()
-                    self.assertEqual(output.call_args_list[-1].args,
-                                     ("GITHUB_OUTPUT", "promotion_build_required", expected))
-
-    def test_최종_CI는_필수_승격_빌드의_실패나_생략을_허용하지_않는다(self):
-        ci.check_gate("success", "true", "success", "true", "success")
-        ci.check_gate("success", "true", "success", "false", "skipped")
-        ci.check_gate("success", "false", "skipped", "false", "skipped")
-        for required, result in (("true", "failure"), ("true", "cancelled"),
-                                 ("true", "skipped"), ("true", ""),
-                                 ("false", "failure"), ("", "skipped")):
-            with self.subTest(required=required, result=result), self.assertRaises(ci.CIError):
-                ci.check_gate("success", "true", "success", required, result)
+                    output.assert_called_once_with("GITHUB_OUTPUT", "client_changed", str(changed).lower())
 
     def test_required_gate_does_not_hide_failed_or_skipped_checks(self):
         ci.check_gate("success", "true", "success")

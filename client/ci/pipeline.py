@@ -13,7 +13,7 @@ import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
-from change_policy import PR_CI_PATHS, ci_required, matches
+from change_policy import ci_required
 
 
 CLIENT_ROOT = Path(__file__).resolve().parents[1]
@@ -117,8 +117,6 @@ def verification_required(event, event_name, platform="android"):
         validate_pr_route(event)
         pr = event["pull_request"]
         paths = changed_files(CLIENT_ROOT.parent, pr["base"]["sha"], pr["head"]["sha"])
-        if platform in PR_CI_PATHS and pr["base"]["ref"] in ("client/release", "main"):
-            return matches(paths, PR_CI_PATHS[platform])
     elif event_name == "push":
         if event.get("ref") not in ("refs/heads/client/develop", "refs/heads/client/release", "refs/heads/main") or event.get("deleted"):
             raise CIError("공통 캐시는 클라이언트 기준 브랜치의 유효한 push에서만 생성합니다.")
@@ -132,24 +130,15 @@ def detect_changes(platform="android"):
     event = json.loads(Path(require_env("GITHUB_EVENT_PATH")).read_text())
     changed = verification_required(event, require_env("GITHUB_EVENT_NAME"), platform)
     github_value("GITHUB_OUTPUT", "client_changed", str(changed).lower())
-    promotion_build = changed and require_env("GITHUB_EVENT_NAME") == "pull_request" and event["pull_request"]["base"]["ref"] in ("client/release", "main")
-    github_value("GITHUB_OUTPUT", "promotion_build_required", str(promotion_build).lower())
-    print(f"클라이언트 검증 필요: {changed}; 승격 PR 빌드 검증 필요: {promotion_build}")
+    print(f"클라이언트 검증 필요: {changed}")
 
 
-def check_gate(changes_result, client_changed, quality_result,
-               promotion_build_required="false", promotion_build_result="skipped"):
+def check_gate(changes_result, client_changed, quality_result):
     if changes_result != "success":
         raise CIError("브랜치 또는 변경 경로 검사가 실패했습니다.")
     if not ((client_changed == "true" and quality_result == "success")
             or (client_changed == "false" and quality_result == "skipped")):
         raise CIError("필요한 클라이언트 테스트가 성공하지 않았습니다.")
-    if (promotion_build_required == "true" and client_changed == "true"
-            and promotion_build_result == "success"):
-        return
-    if promotion_build_required == "false" and promotion_build_result == "skipped":
-        return
-    raise CIError("승격 PR 빌드 검증이 성공하지 않았거나 생략 상태가 잘못되었습니다.")
 
 
 def select_build():
@@ -394,8 +383,7 @@ def main():
     elif command == "changes":
         detect_changes(args.platform)
     elif command == "gate":
-        check_gate(require_env("CHANGES_RESULT"), require_env("CLIENT_CHANGED"), require_env("QUALITY_RESULT"),
-                   require_env("PROMOTION_BUILD_REQUIRED"), require_env("PROMOTION_BUILD_RESULT"))
+        check_gate(require_env("CHANGES_RESULT"), require_env("CLIENT_CHANGED"), require_env("QUALITY_RESULT"))
         print("클라이언트 CI 검증을 통과했습니다.")
     elif command == "channel":
         select_build()

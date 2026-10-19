@@ -11,6 +11,7 @@ import re
 
 CLIENT_WORKFLOWS = (
     "client-pr-route", "client-python-ci", "android-ci", "ios-ci",
+    "android-pr-build", "ios-pr-build",
     "build-release-aab", "android-internal-cd", "android-production-cd",
     "ios-internal-cd", "ios-production-cd",
 )
@@ -76,9 +77,10 @@ def _deployment_paths(platform):
 CD_PATHS = {platform: _deployment_paths(platform) for platform in ("android", "ios")}
 
 
-# Promotion PRs also validate build inputs owned by CD; ordinary push CI stays light.
+# Separate promotion build workflows validate CI and deployment inputs.
 PR_CI_PATHS = {
     platform: (
+        f".github/workflows/{platform}-pr-build.yml",
         *(path for path in CD_PATHS[platform]
           if not path.startswith("!") and path not in CI_PATHS[platform]),
         *CI_PATHS[platform],

@@ -5,16 +5,6 @@ on:
     branches: [client/develop, client/release, main]
     types: [opened, synchronize, reopened]
     paths:
-      - 'client/ci/pipeline.py'
-      - 'client/ci/api_config.py'
-      - 'client/ci/production_config.py'
-      - 'client/ci/ios_cd_gate.py'
-      - 'client/ci/change_policy.py'
-      - 'client/ci/ios_internal.py'
-      - 'client/ci/verify_ios_firebase.py'
-      - 'client/ci/verify_ios_version.py'
-      - '.github/workflows/ios-internal-cd.yml'
-      - '.github/workflows/ios-production-cd.yml'
       - 'client/iosApp/**'
       - 'client/shared/**'
       - 'client/developerTools/**'
@@ -70,7 +60,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       client_changed: ${{ steps.changes.outputs.client_changed }}
-      promotion_build_required: ${{ steps.changes.outputs.promotion_build_required }}
     steps:
       - name: Checkout PR merge commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,89 +120,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  promotion-build:
-    name: iOS PR build verification (no deployment)
-    needs: [changes, quality]
-    if: needs.changes.outputs.promotion_build_required == 'true'
-    runs-on: macos-26
-    timeout-minutes: 90
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Set up Corretto JDK 21
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: corretto
-          java-version: '21'
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
-        with:
-          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-      - name: Identify Xcode toolchain
-        id: xcode
-        run: |
-          xcodebuild -version
-          echo "build=$(xcodebuild -version | awk '/Build version/ {print $3}')" >> "$GITHUB_OUTPUT"
-      - name: Cache Kotlin Native compiler and dependencies
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: ~/.konan
-          key: konan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.build }}-${{ hashFiles('client/gradle/libs.versions.toml', 'client/gradle/wrapper/gradle-wrapper.properties', 'client/gradle.properties', 'client/shared/build.gradle.kts', 'client/developerTools/build.gradle.kts') }}
-      - name: Cache Swift package sources and binary artifacts
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: ~/Library/Caches/ringout-swift-packages
-          key: swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.build }}-${{ hashFiles('client/iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'client/iosApp/iosApp.xcodeproj/project.pbxproj') }}
-      - name: Build unsigned iOS simulator app for promotion PR
-        env:
-          RINGOUT_GRADLE_PROFILE: 'true'
-        run: |
-          xcodebuild \
-            -project iosApp/iosApp.xcodeproj \
-            -scheme iosApp \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/ringout-ios-derived-data" \
-            -clonedSourcePackagesDirPath "$HOME/Library/Caches/ringout-swift-packages" \
-            -disableAutomaticPackageResolution \
-            -showBuildTimingSummary \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-      - name: Verify embedded development Firebase config
-        run: |
-          python3 ci/verify_ios_firebase.py \
-            --source iosApp/iosApp/GoogleService-Info.plist \
-            --app "$RUNNER_TEMP/ringout-ios-derived-data/Build/Products/Debug-iphonesimulator/Ringout.app"
-      - name: Package verified iOS simulator app
-        run: |
-          ditto -c -k --sequesterRsrc --keepParent \
-            "$RUNNER_TEMP/ringout-ios-derived-data/Build/Products/Debug-iphonesimulator/Ringout.app" \
-            "$RUNNER_TEMP/Ringout-simulator.app.zip"
-      - name: Upload verified iOS simulator app
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ios-pr-simulator-app-${{ github.event.pull_request.number }}-${{ github.run_id }}-attempt${{ github.run_attempt }}
-          path: ${{ runner.temp }}/Ringout-simulator.app.zip
-          if-no-files-found: error
-          retention-days: 14
-      - name: Upload promotion build verification reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ios-pr-build-reports-${{ github.run_id }}-attempt${{ github.run_attempt }}
-          path: |
-            client/build/reports/profile/
-          if-no-files-found: warn
-          retention-days: 14
-
   result:
     # Summarize triggered runs; path-filtered workflows must not be required for every PR.
     name: iOS CI
     if: always()
-    needs: [changes, quality, promotion-build]
+    needs: [changes, quality]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -226,6 +137,4 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           CLIENT_CHANGED: ${{ needs.changes.outputs.client_changed }}
           QUALITY_RESULT: ${{ needs.quality.result }}
-          PROMOTION_BUILD_REQUIRED: ${{ needs.changes.outputs.promotion_build_required }}
-          PROMOTION_BUILD_RESULT: ${{ needs.promotion-build.result }}
         run: python3 ci/pipeline.py gate
