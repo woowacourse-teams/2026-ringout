@@ -118,13 +118,11 @@ CD는 `develop` 푸시 직후 별도 실행으로 시작해 GitHub Actions API�
 
 ## PR 검증 모드
 
-PR은 서명 키와 실제 서비스 설정 없이 다음 검사를 수행합니다.
+PR과 develop/main의 Android CI는 서명 키와 실제 서비스 설정 없이 다음 검사를 수행합니다.
 
 ```bash
-./gradlew :shared:testAndroidHostTest :androidApp:lintRelease \
-  -PciVerification=true --no-daemon --no-configuration-cache
-./gradlew :androidApp:bundleRelease \
-  -PciVerification=true --no-daemon --no-configuration-cache
+./gradlew :shared:testAndroidHostTest :androidApp:lintRelease :androidApp:bundleRelease \
+  -PciVerification=true --no-daemon --no-configuration-cache --profile
 python3 ci/pipeline.py verify-r8
 python3 ci/pipeline.py verify-unsigned
 ```
@@ -151,15 +149,18 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 
 | 시점 | 워크플로우 | 실행 내용 | 산출물 |
 | --- | --- | --- | --- |
-| 작업 브랜치 → `develop` 클라이언트 변경 PR 생성·수정·재오픈 | `Android CI` | 테스트, Android Lint, 서명 없는 release AAB 빌드, R8 검사 | 검증 보고서 |
-| 작업 브랜치 → `develop` iOS 관련 변경 PR 생성·수정·재오픈 | `iOS CI` | 공유 Kotlin iOS 테스트, 서명 없는 시뮬레이터 빌드, 개발 Firebase 확인 | 검사 결과 |
+| 작업 브랜치 → `develop` 클라이언트 변경 PR 생성·커밋 추가·재오픈 | `Android CI` | 테스트, Android Lint, 서명 없는 release AAB 빌드, R8 검사 | 검증 보고서 |
+| 작업 브랜치 → `develop` iOS 관련 변경 PR 생성·커밋 추가·재오픈 | `iOS CI` | 공유 Kotlin iOS 테스트, 서명 없는 시뮬레이터 빌드, 개발 Firebase 확인 | 검사 결과 |
+| `develop`/`main`에 Android 검증 대상 변경 push | `Android CI` | 서명 없는 검증 빌드와 기준 브랜치 캐시 저장 | 검증 보고서·캐시 |
+| 클라이언트 PR 본문·제목 수정 | `Client PR route` | 대상 브랜치 규칙만 검사, 앱 빌드 없음 | 경로 검사 결과 |
+| 클라이언트 PR 대상 브랜치 변경 | `Client PR route`, `Android CI` | 브랜치 규칙과 Android 전체 검증 | 검증 보고서 |
 | `develop`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 내부 테스트용 AAB |
 | `develop`에 병합 | `iOS CI` | 공유 Kotlin 테스트, 시뮬레이터 빌드, 개발 Firebase 확인 | 검사 결과 |
 | 동일 `develop` 커밋의 iOS CI 성공 | `iOS Internal TestFlight CD` | 개발 Firebase로 서명 아카이브 생성·검증·TestFlight 내부 테스트 업로드 | 내부 테스트 빌드 |
-| `develop` → `main` 클라이언트 변경 PR 생성·수정·재오픈 | `Android CI` | 같은 품질 검사와 출발 브랜치 검사 | 검증 보고서 |
+| `develop` → `main` 클라이언트 변경 PR 생성·커밋 추가·재오픈 | `Android CI` | 같은 품질 검사와 출발 브랜치 검사 | 검증 보고서 |
 | `main`에 클라이언트 변경 병합 | `Build Signed Release AAB` | 해당 커밋의 테스트·Lint, 서명 AAB 빌드·검증 | 릴리스용 AAB |
 
-워크플로우는 저장소 루트의 [android-ci.yml](../.github/workflows/android-ci.yml), [ios-ci.yml](../.github/workflows/ios-ci.yml), [ios-internal-cd.yml](../.github/workflows/ios-internal-cd.yml), [build-release-aab.yml](../.github/workflows/build-release-aab.yml)에 있습니다.
+경량 PR 라우팅은 [client-pr-route.yml](../.github/workflows/client-pr-route.yml)에서 관리합니다. 빌드 워크플로우는 저장소 루트의 [android-ci.yml](../.github/workflows/android-ci.yml), [ios-ci.yml](../.github/workflows/ios-ci.yml), [ios-internal-cd.yml](../.github/workflows/ios-internal-cd.yml), [build-release-aab.yml](../.github/workflows/build-release-aab.yml)에 있습니다.
 
 ### PR 검증과 병합 조건
 
@@ -171,6 +172,22 @@ python3 -B -m unittest discover -s ci -p 'test_*.py' -v
 - 필요한 검사의 실패·취소·예상치 못한 건너뛰기는 최종 `Android CI` 실패로 이어집니다.
 - 추가 커밋이 올라오면 이전 PR 실행을 취소하고 최신 PR 병합 커밋을 검사합니다.
 - 업로드 키를 PR에 제공하지 않습니다. `pull_request_target`이나 PR 아티팩트 전달을 통한 서명도 사용하지 않습니다.
+
+### 캐시와 실행 범위
+
+- `develop`/`main` push의 CI가 기준 브랜치 캐시를 저장합니다. 해당 브랜치 대상 PR은 키와 버전이 맞는 캐시를 복원할 수 있습니다.
+- PR 실행이 저장한 캐시는 해당 PR의 후속 커밋·재실행용이며 다른 PR에서 직접 사용하지 않습니다. 외부 fork PR의 Gradle 캐시는 읽기 전용입니다.
+- Android는 iOS 앱, `shared`·`developerTools`의 `iosMain`/`iosTest`, 문서 경로와 README·AGENTS·CONTRIBUTING 변경만 있으면 무거운 빌드를 생략합니다. 경량 경로 검사와 최종 gate는 실행합니다.
+- iOS PR은 Android 전용 `androidMain`/`androidHostTest`와 위 문서 변경을 제외합니다. 공통 소스·빌드 설정·CI 도우미 변경은 계속 검증합니다. iOS push 검증은 동일 커밋을 기다리는 CD gate와의 정합성을 위해 기존 범위를 유지합니다.
+- PR 메타데이터 수정은 별도 `Client PR route`에서 출발·대상 브랜치를 검사합니다. Android 전체 빌드는 `opened`, `synchronize`, `reopened`와 대상 브랜치를 변경한 `edited`에서 실행합니다. 본문·제목만 바꾸면 별도 이름의 건너뛴 체크를 남겨 기존 실패 체크를 성공으로 덮거나 진행 중인 빌드를 취소하지 않습니다.
+- iOS는 Gradle 외에 `~/.konan`과 Swift 패키지 소스·바이너리를 캐시합니다. Swift 패키지는 `Package.resolved`에 기록된 버전을 사용하며 캐시 키에 Xcode·플랫폼·의존성 설정을 포함합니다.
+
+### 성능 보고서
+
+- Actions 실행 요약에서 전체·job·step 시간을 확인합니다. 캐시 복원·저장 비용도 포함해 비교합니다.
+- Android 아티팩트 `client-ci-reports-<run_id>-attempt<번호>`와 iOS 아티팩트 `ios-ci-profile-<run_id>-attempt<번호>`의 `profile-*.html`에서 Gradle 작업별 시간을 확인합니다.
+- iOS CI는 테스트 명령과 Xcode가 호출하는 framework 빌드 모두 프로파일을 수집합니다. Xcode 로그에는 `Build Timing Summary`가 출력됩니다.
+- 동일 커밋 재실행, 소스 변경, 신규 PR 첫 실행을 구분합니다. 단일 실행의 차이를 일반적인 평균 개선율로 해석하지 않습니다.
 
 ### 서명 AAB 생성
 
