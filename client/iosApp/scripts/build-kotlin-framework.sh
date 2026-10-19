@@ -9,4 +9,8 @@ case "${CONFIGURATION:?Xcode CONFIGURATION is required}" in
     *) echo "Unsupported Xcode configuration: $CONFIGURATION" >&2; exit 1 ;;
 esac
 cd "$SRCROOT/.."
-./gradlew ":$module:embedAndSignAppleFrameworkForXcode"
+set -- ":$module:embedAndSignAppleFrameworkForXcode"
+if [ "${RINGOUT_GRADLE_PROFILE:-false}" = "true" ]; then
+    set -- "$@" --profile
+fi
+./gradlew "$@"

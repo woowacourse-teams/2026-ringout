@@ -41,13 +41,24 @@ class RoutingTest(unittest.TestCase):
             with self.subTest(quality=quality), self.assertRaises(ci.CIError):
                 ci.check_gate(changes, changed, quality)
 
-    def test_client_and_ci_changes_are_detected(self):
-        for path in (b"client/README.md", b"client/shared/test.kt", b".github/workflows/android-ci.yml",
+    def test_안드로이드와_공유_입력은_검증하고_iOS와_문서는_제외한다(self):
+        for path in (b"client/androidApp/build.gradle.kts", b"client/shared/test.kt", b".github/workflows/android-ci.yml",
                      b".github/workflows/build-release-aab.yml", b".github/workflows/android-internal-cd.yml",
                      b".github/actions/setup/action.yml"):
             self.assertTrue(ci.is_client_path(path), path)
         self.assertFalse(ci.is_client_path(b"server/App.java"))
         self.assertFalse(ci.is_client_path(b"README.md"))
+        for path in (b"client/README.md", b"client/iosApp/iosApp/View.swift",
+                     b"client/shared/src/iosMain/Platform.kt", b"client/shared/src/iosTest/PlatformTest.kt",
+                     b"client/developerTools/src/iosMain/Tools.kt",
+                     b"client/docs/ci.md", b"client/shared/README.md", b"client/AGENTS.md"):
+            with self.subTest(path=path):
+                self.assertFalse(ci.is_client_path(path))
+        for path in (b"client/gradle/libs.versions.toml", b"client/settings.gradle.kts",
+                     b"client/gradle.properties", b"client/ci/pipeline.py",
+                     b"client/developerTools/src/commonMain/Tools.kt", b"client/new-build-input"):
+            with self.subTest(path=path):
+                self.assertTrue(ci.is_client_path(path))
 
     def test_moving_client_file_outside_client_is_still_a_client_change(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -68,6 +79,36 @@ class RoutingTest(unittest.TestCase):
             git("commit", "-m", "move")
             files = ci.changed_files(root, base, git("rev-parse", "HEAD"))
             self.assertIn(b"client/test.txt", files)
+
+
+    def test_기준_브랜치_push는_이전과_이후_트리를_비교한다(self):
+        event = {"ref": "refs/heads/develop", "before": "a" * 40, "after": "b" * 40}
+        with patch.object(ci, "changed_files", return_value=[b"client/shared/code.kt"]) as diff:
+            self.assertTrue(ci.verification_required(event, "push"))
+            diff.assert_called_once_with(ci.CLIENT_ROOT.parent, event["before"], event["after"], merge_base=False)
+        with patch.object(ci, "changed_files", return_value=[b"server/App.java"]):
+            self.assertFalse(ci.verification_required(event, "push"))
+
+    def test_최초_push는_전체_검증하고_잘못된_이벤트는_거부한다(self):
+        event = {"ref": "refs/heads/develop", "before": "0" * 40, "after": "b" * 40}
+        with patch.object(ci, "changed_files") as diff:
+            self.assertTrue(ci.verification_required(event, "push"))
+            diff.assert_not_called()
+        for changed in ({"ref": "refs/heads/feature/test"}, {"deleted": True}):
+            with self.subTest(changed=changed), self.assertRaises(ci.CIError):
+                ci.verification_required(dict(event, **changed), "push")
+        with self.assertRaises(ci.CIError):
+            ci.verification_required(event, "workflow_dispatch")
+
+    def test_PR은_병합_기준점을_사용하고_main_진입_규칙을_유지한다(self):
+        event = self.event()
+        event["pull_request"]["base"]["sha"] = "a" * 40
+        event["pull_request"]["head"]["sha"] = "b" * 40
+        with patch.object(ci, "changed_files", return_value=[b"client/shared/code.kt"]) as diff:
+            self.assertTrue(ci.verification_required(event, "pull_request"))
+            diff.assert_called_once_with(ci.CLIENT_ROOT.parent, "a" * 40, "b" * 40)
+        with self.assertRaises(ci.CIError):
+            ci.verification_required(self.event(base="main"), "pull_request")
 
 
 class ConfigurationTest(unittest.TestCase):

@@ -7,6 +7,7 @@ on:
     paths:
       - 'client/iosApp/**'
       - 'client/shared/**'
+      - 'client/developerTools/**'
       - 'client/ci/**'
       - 'client/gradle/**'
       - 'client/gradlew'
@@ -16,11 +17,19 @@ on:
       - '.github/workflows/ios-ci.yml'
       - '.github/workflows/ios-internal-cd.yml'
       - '.github/workflows/ios-production-cd.yml'
+      - '!client/shared/src/androidMain/**'
+      - '!client/shared/src/androidHostTest/**'
+      - '!client/developerTools/src/androidMain/**'
+      - '!client/**/README.md'
+      - '!client/**/AGENTS.md'
+      - '!client/**/CONTRIBUTING.md'
+      - '!client/**/docs/**'
   push:
     branches: [develop, main]
     paths:
       - 'client/iosApp/**'
       - 'client/shared/**'
+      - 'client/developerTools/**'
       - 'client/ci/**'
       - 'client/gradle/**'
       - 'client/gradlew'
@@ -61,9 +70,22 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
-          cache-read-only: true
-      - name: Print Xcode version
-        run: xcodebuild -version
+          cache-read-only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+      - name: Identify Xcode toolchain
+        id: xcode
+        run: |
+          xcodebuild -version
+          echo "build=$(xcodebuild -version | awk '/Build version/ {print $3}')" >> "$GITHUB_OUTPUT"
+      - name: Cache Kotlin Native compiler and dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.konan
+          key: konan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.build }}-${{ hashFiles('client/gradle/libs.versions.toml', 'client/gradle/wrapper/gradle-wrapper.properties', 'client/gradle.properties', 'client/shared/build.gradle.kts', 'client/developerTools/build.gradle.kts') }}
+      - name: Cache Swift package sources and binary artifacts
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/Library/Caches/ringout-swift-packages
+          key: swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.build }}-${{ hashFiles('client/iosApp/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'client/iosApp/iosApp.xcodeproj/project.pbxproj') }}
       - name: Test iOS CI/CD helper checks
         run: python3 -B -m unittest discover -s ci -p 'test_*.py' -v
       - name: Test native alarm recovery journal
@@ -73,8 +95,10 @@ jobs:
             -o "$RUNNER_TEMP/ringout-alarm-recovery-journal-tests"
           "$RUNNER_TEMP/ringout-alarm-recovery-journal-tests"
       - name: Test shared Kotlin code on iOS simulator
-        run: ./gradlew :shared:iosSimulatorArm64Test --no-daemon --stacktrace
+        run: ./gradlew :shared:iosSimulatorArm64Test --stacktrace --profile
       - name: Build unsigned iOS simulator app
+        env:
+          RINGOUT_GRADLE_PROFILE: 'true'
         run: |
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
@@ -83,6 +107,9 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/ringout-ios-derived-data" \
+            -clonedSourcePackagesDirPath "$HOME/Library/Caches/ringout-swift-packages" \
+            -disableAutomaticPackageResolution \
+            -showBuildTimingSummary \
             CODE_SIGNING_ALLOWED=NO \
             build
       - name: Verify embedded development Firebase config
@@ -90,3 +117,11 @@ jobs:
           python3 ci/verify_ios_firebase.py \
             --source iosApp/iosApp/GoogleService-Info.plist \
             --app "$RUNNER_TEMP/ringout-ios-derived-data/Build/Products/Debug-iphonesimulator/Ringout.app"
+      - name: Upload Kotlin build timing reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-ci-profile-${{ github.run_id }}-attempt${{ github.run_attempt }}
+          path: client/build/reports/profile/
+          if-no-files-found: warn
+          retention-days: 14

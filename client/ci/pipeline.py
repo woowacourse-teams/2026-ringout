@@ -69,30 +69,56 @@ def validate_pr_route(event):
 
 
 def is_client_path(path):
+    # Keep unknown client files conservative, but exclude known iOS/docs inputs.
+    if path.startswith((
+        b"client/iosApp/", b"client/docs/",
+        b"client/shared/src/iosMain/", b"client/shared/src/iosTest/",
+        b"client/developerTools/src/iosMain/", b"client/developerTools/src/iosTest/",
+    )):
+        return False
+    if path.startswith(b"client/") and (
+        path.rsplit(b"/", 1)[-1] in (b"README.md", b"AGENTS.md", b"CONTRIBUTING.md")
+        or b"/docs/" in path
+    ):
+        return False
     return path.startswith(b"client/") or path in (
         b".github/workflows/android-ci.yml", b".github/workflows/build-release-aab.yml",
         b".github/workflows/android-internal-cd.yml", b".github/workflows/android-production-cd.yml",
     ) or path.startswith(b".github/actions/")
 
 
-def changed_files(repository, base, head):
+def changed_files(repository, base, head, *, merge_base=True):
     for revision in (base, head):
         if not re.fullmatch(r"[0-9a-f]{40,64}", revision):
             raise CIError("변경 검사에는 커밋 SHA만 사용할 수 있습니다.")
     # --no-renames includes the old path when a client file moves outside client/.
     return run_tool(
-        ["git", "diff", "--name-only", "--no-renames", "-z", f"{base}...{head}"],
+        ["git", "diff", "--name-only", "--no-renames", "-z",
+         *([f"{base}...{head}"] if merge_base else [base, head])],
         cwd=repository,
     ).split(b"\0")
 
 
+def verification_required(event, event_name):
+    if event_name == "pull_request":
+        validate_pr_route(event)
+        pr = event["pull_request"]
+        paths = changed_files(CLIENT_ROOT.parent, pr["base"]["sha"], pr["head"]["sha"])
+    elif event_name == "push":
+        if event.get("ref") not in ("refs/heads/develop", "refs/heads/main") or event.get("deleted"):
+            raise CIError("공통 캐시는 develop/main의 유효한 push에서만 생성합니다.")
+        if event["before"] == "0" * 40:
+            return True
+        # A push compares the actual before/after trees, including force pushes.
+        paths = changed_files(CLIENT_ROOT.parent, event["before"], event["after"], merge_base=False)
+    else:
+        raise CIError("지원하지 않는 CI 이벤트입니다.")
+    return any(is_client_path(path) for path in paths)
+
+
 def detect_changes():
     event = json.loads(Path(require_env("GITHUB_EVENT_PATH")).read_text())
-    validate_pr_route(event)
-    pr = event["pull_request"]
-    changed = any(is_client_path(p) for p in changed_files(
-        CLIENT_ROOT.parent, pr["base"]["sha"], pr["head"]["sha"],
-    ))
+    changed = verification_required(event, require_env("GITHUB_EVENT_NAME"))
     github_value("GITHUB_OUTPUT", "client_changed", str(changed).lower())
     print(f"클라이언트 검증 필요: {changed}")
 
@@ -339,9 +365,12 @@ def package_aab():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("changes", "gate", "channel", "prepare-signing", "verify-r8", "verify-unsigned", "package", "cleanup"))
+    parser.add_argument("command", choices=("route", "changes", "gate", "channel", "prepare-signing", "verify-r8", "verify-unsigned", "package", "cleanup"))
     command = parser.parse_args().command
-    if command == "changes":
+    if command == "route":
+        validate_pr_route(json.loads(Path(require_env("GITHUB_EVENT_PATH")).read_text()))
+        print("클라이언트 PR 대상 브랜치 규칙을 통과했습니다.")
+    elif command == "changes":
         detect_changes()
     elif command == "gate":
         check_gate(require_env("CHANGES_RESULT"), require_env("CLIENT_CHANGED"), require_env("QUALITY_RESULT"))
