@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            PlatformAppHost { extraContent ->
+            PlatformAppHost(appContainer) { extraContent ->
                 App(
                     appContainer = appContainer,
                     appVersion = BuildConfig.VERSION_NAME,

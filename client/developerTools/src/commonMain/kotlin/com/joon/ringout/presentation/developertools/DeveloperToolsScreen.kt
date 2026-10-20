@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.developertools.component.BuildInfoSection
+import com.joon.ringout.presentation.developertools.component.PushTokenRegistrationSection
 
 @Composable
 internal fun DeveloperToolsScreen(
@@ -38,6 +39,7 @@ internal fun DeveloperToolsScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
             BuildInfoSection(uiState = uiState)
+            PushTokenRegistrationSection(status = uiState.pushTokenRegistrationStatus)
             Text(
                 "서버 환경은 앱에 설정된 주소를 기준으로 표시해요. 서버 연결 상태를 확인하는 기능은 아니에요.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

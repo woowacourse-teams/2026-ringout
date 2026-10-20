@@ -16,6 +16,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.joon.ringout.alarm.createIosAlarmRuntime
 import com.joon.ringout.di.IosAppContainer
+import com.joon.ringout.di.AppContainer
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.platform.IosNativeServices
 import com.joon.ringout.platform.LocalIosNativeServices
@@ -25,13 +26,13 @@ import platform.UIKit.UIViewController
 
 fun MainViewController(
     nativeServices: IosNativeServices,
-    ): UIViewController = MainViewControllerWithContent(nativeServices) { content -> content(null) }
+    ): UIViewController = MainViewControllerWithContent(nativeServices) { _, content -> content(null) }
 
 @OptIn(ExperimentalObjCRefinement::class)
 @HiddenFromObjC
 fun MainViewControllerWithContent(
     nativeServices: IosNativeServices,
-    appHost: @Composable (content: @Composable ((@Composable (ThemeMode) -> Unit)?) -> Unit) -> Unit,
+    appHost: @Composable (AppContainer, @Composable ((@Composable (ThemeMode) -> Unit)?) -> Unit) -> Unit,
 ): UIViewController {
     val appContainer = IosAppContainer(nativeServices)
 
@@ -68,7 +69,7 @@ fun MainViewControllerWithContent(
             )
         }
         CompositionLocalProvider(LocalIosNativeServices provides nativeServices) {
-            appHost { extraContent ->
+            appHost(appContainer) { extraContent ->
                 App(
                     appContainer = appContainer,
                     appVersion = appVersion,
