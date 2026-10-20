@@ -46,7 +46,8 @@ class DestinationMapDisplayNameTest {
 
     @Test
     fun `목적지를 삭제한 뒤 지도에 재진입하면 알람 원본은 유지하고 주소를 표시한다`() = withMap { fixture ->
-        compose.onNodeWithText(Favorite.name).assertIsDisplayed()
+        compose.onNodeWithText(DisplayAddress).assertIsDisplayed()
+        compose.onNodeWithText(Favorite.name).assertDoesNotExist()
         compose.onNodeWithContentDescription("뒤로가기").performClick()
         val originalRequest = requireNotNull(fixture.editor.createScheduleRequest())
         compose.runOnIdle {
@@ -64,16 +65,17 @@ class DestinationMapDisplayNameTest {
     }
 
     @Test
-    fun `지도 진입 후 목록 조회가 완료되어도 삭제된 별명 대신 주소를 표시한다`() =
+    fun `지도 진입 후 목록 조회가 완료되기 전과 후 모두 주소만 표시한다`() =
         withMap(initialFavorites = null) { fixture ->
-            compose.onNodeWithText(Favorite.name).assertIsDisplayed()
+            compose.onNodeWithText(DisplayAddress).assertIsDisplayed()
+            compose.onNodeWithText(Favorite.name).assertDoesNotExist()
             compose.runOnIdle { fixture.repository.items.value = emptyList() }
             compose.onNodeWithText(DisplayAddress).assertIsDisplayed()
             compose.onNodeWithText(Favorite.name).assertDoesNotExist()
         }
 
     @Test
-    fun `목록 갱신으로 표시 이름이 바뀌어도 열려 있는 검색창과 입력은 유지한다`() = withMap { fixture ->
+    fun `목록이 갱신되어도 열려 있는 검색창과 입력은 유지한다`() = withMap { fixture ->
         compose.onNodeWithContentDescription("검색").performClick()
         compose.onNodeWithContentDescription("장소 또는 주소 검색").performTextInput("강남")
         compose.runOnIdle { fixture.repository.items.value = emptyList() }
@@ -84,15 +86,17 @@ class DestinationMapDisplayNameTest {
     }
 
     @Test
-    fun `설정된 알람 목적지가 없으면 기본 지도 위치의 이름을 그대로 표시한다`() =
+    fun `설정된 알람 목적지가 없으면 기본 지도 위치의 주소만 표시한다`() =
         withMap(initialFavorites = emptyList(), hasAlarmDestination = false) {
-            compose.onNodeWithText(DefaultDestinationSelection.name).assertIsDisplayed()
+            compose.onNodeWithText(DefaultDestinationSelection.address).assertIsDisplayed()
+            compose.onNodeWithText(DefaultDestinationSelection.name).assertDoesNotExist()
         }
 
     @Test
-    fun `현재 위치로 진입하면 삭제된 알람 목적지의 표시 규칙을 적용하지 않는다`() =
+    fun `현재 위치로 진입하면 위치 제목 없이 주소 조회 상태만 표시한다`() =
         withMap(initialFavorites = emptyList(), hasCurrentLocation = true) {
-            compose.onNodeWithText(SelectedDestinationFallbackName).assertIsDisplayed()
+            compose.onNodeWithText(ResolvingDestinationAddress).assertIsDisplayed()
+            compose.onNodeWithText(SelectedDestinationFallbackName).assertDoesNotExist()
             compose.onNodeWithText(Favorite.name).assertDoesNotExist()
             compose.onNodeWithText(DisplayAddress).assertDoesNotExist()
         }

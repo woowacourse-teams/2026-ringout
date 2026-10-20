@@ -17,9 +17,13 @@ internal data class DestinationManagementColors(
     val cancelAction: Color,
     val addressText: Color,
     val confirmActionShadow: Color,
+    val pinFill: Color,
+    val pinShadow: Color,
 )
 
 internal val DestinationManagementPalette = DestinationManagementColors(
+    pinFill = Color(0xFFFF6B2C),
+    pinShadow = Color.Black.copy(alpha = 0.2f),
     confirmActionShadow = Color(0x404338CA),
     addressText = Color(0xFF8C8C8C),
     destructive = Color(0xFFFF0000),

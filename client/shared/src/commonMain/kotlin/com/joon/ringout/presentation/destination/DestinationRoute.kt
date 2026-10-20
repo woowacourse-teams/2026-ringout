@@ -7,7 +7,6 @@ import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.toAnalyticsLoginStateOrNull
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.destination.SavedDestination
-import com.joon.ringout.domain.destination.resolveDestinationDisplayName
 
 @Composable
 internal fun DestinationRoute(
@@ -25,25 +24,12 @@ internal fun DestinationRoute(
     val uiState = viewModel.uiState
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
     // A new fix must not change the initial camera of an already displayed map.
-    val entry = remember(viewModel, requestId) {
-        val currentLocation = viewModel.initialCurrentLocation()
-        DestinationMapEntry(
-            selection = currentLocation ?: initialSelection ?: DefaultDestinationSelection,
-            fromAlarm = currentLocation == null && initialSelection != null,
-        )
+    val entrySelection = remember(viewModel, requestId) {
+        viewModel.initialCurrentLocation() ?: initialSelection ?: DefaultDestinationSelection
     }
-    val displayName = if (entry.fromAlarm) {
-        with(entry.selection) {
-            resolveDestinationDisplayName(
-                name, address, latitude, longitude,
-                uiState.destinations.takeIf { uiState.hasLoadedDestinations },
-            )
-        }
-    } else entry.selection.name
 
     DestinationMapScreen(
-        initialSelection = entry.selection,
-        initialSelectionDisplayName = displayName,
+        initialSelection = entrySelection,
         requestCurrentLocationOnStart = true,
         onCurrentLocationResolved = viewModel::onCurrentLocationResolved,
         isAuthenticated = authSessionState == AuthSessionState.Authenticated,
@@ -78,8 +64,3 @@ internal fun DestinationRoute(
         modifier = modifier,
     )
 }
-
-private data class DestinationMapEntry(
-    val selection: DestinationSelection,
-    val fromAlarm: Boolean,
-)

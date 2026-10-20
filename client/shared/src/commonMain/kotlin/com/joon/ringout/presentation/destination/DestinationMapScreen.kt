@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -44,9 +43,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -75,7 +72,7 @@ import com.joon.ringout.presentation.destination.component.DestinationSaveDialog
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbar
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbarTouchWidth
-import com.joon.ringout.presentation.destination.component.DestinationManagementAddressBubble
+import com.joon.ringout.presentation.destination.component.DestinationMapMarker
 import com.joon.ringout.presentation.destination.component.DestinationManagementDialog
 import com.joon.ringout.presentation.destination.component.DestinationNicknameDialog
 import org.jetbrains.compose.resources.painterResource
@@ -117,10 +114,8 @@ fun DestinationMapScreen(
     modifier: Modifier = Modifier,
     bottomContent: (@Composable (DestinationSelection, Boolean) -> Unit)? = null,
     mapContent: (@Composable (Modifier) -> Unit)? = null,
-    initialSelectionDisplayName: String = initialSelection.name,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
-    var isInitialSelection by remember(initialSelection) { mutableStateOf(true) }
     var isCameraMoving by remember { mutableStateOf(false) }
     var isResolvingAddress by remember { mutableStateOf(false) }
     var mapError by remember { mutableStateOf<String?>(null) }
@@ -215,7 +210,7 @@ fun DestinationMapScreen(
         modifier = modifier.fillMaxSize(),
     ) {
         DestinationMapLayout(
-            selection = if (isInitialSelection) selection.copy(name = initialSelectionDisplayName) else selection,
+            selection = selection,
             isCameraMoving = isCameraMoving,
             isResolvingAddress = isResolvingAddress,
             mapError = mapError,
@@ -251,7 +246,6 @@ fun DestinationMapScreen(
                 }
             },
             onSearchResultClick = { result ->
-                isInitialSelection = false
                 selection = result
                 cameraTarget = result
                 selectedSavedDestination = null
@@ -301,9 +295,6 @@ fun DestinationMapScreen(
                             longitude = longitude,
                         )
                         val shouldResolveAddress = settledSelection.requiresAddressResolution()
-                        isInitialSelection = isInitialSelection &&
-                            initialSelection.hasSameCoordinates(latitude, longitude) &&
-                            settledSelection.name == initialSelection.name
                         selection = settledSelection
                         selectedSavedDestination = selectedSavedDestination?.takeIf { saved ->
                             saved.toDestinationSelection().hasSameCoordinates(
@@ -330,7 +321,6 @@ fun DestinationMapScreen(
                                 longitude = longitude,
                                 address = address,
                             )
-                            isInitialSelection = isInitialSelection && resolvedSelection.name == initialSelection.name
                             selection = resolvedSelection
                             pendingSelection = pendingSelection?.withResolvedAddress(
                                 latitude = latitude,
@@ -543,22 +533,14 @@ internal fun DestinationMapLayout(
         }
 
         if (mapError == null) {
-            val title = when {
-                isCameraMoving -> "위치를 선택하는 중..."
-                isResolvingAddress -> "주소를 찾는 중..."
-                else -> selection.name
+            val address = when {
+                isCameraMoving -> "지도를 움직여 위치를 선택하세요"
+                isResolvingAddress -> ResolvingDestinationAddress
+                else -> selection.address.ifBlank { UnavailableDestinationAddress }
             }
-            val address = if (isCameraMoving) "지도를 움직여 위치를 선택하세요" else selection.address
-            val bubbleModifier = Modifier.align(Alignment.Center).offset(y = (-110).dp)
-            if (bottomContent == null) {
-                AddressBubble(title, address, bubbleModifier)
-            } else {
-                DestinationManagementAddressBubble(title, address, bubbleModifier)
-            }
-            CenterDestinationPin(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = (-29).dp),
+            DestinationMapMarker(
+                address = address,
+                modifier = Modifier.align(Alignment.Center),
             )
         }
 
@@ -839,102 +821,6 @@ private fun SearchResultRow(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-    }
-}
-
-@Composable
-private fun AddressBubble(
-    title: String,
-    address: String,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .padding(horizontal = 32.dp)
-            .shadow(12.dp, RoundedCornerShape(18.dp))
-            .background(Color.White, RoundedCornerShape(18.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        MiniPinIcon()
-        Column(
-            modifier = Modifier.weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = title,
-                color = PrimaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                ),
-            )
-            Text(
-                text = address,
-                color = SecondaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun CenterDestinationPin(modifier: Modifier = Modifier) {
-    Canvas(modifier.size(54.dp, 80.dp)) {
-        drawOval(
-            color = Color(0x33000000),
-            topLeft = Offset(size.width * .17f, size.height * .84f),
-            size = Size(size.width * .66f, size.height * .12f),
-        )
-
-        val pin = Path().apply {
-            moveTo(size.width / 2f, size.height * .86f)
-            cubicTo(
-                size.width * .42f,
-                size.height * .72f,
-                size.width * .12f,
-                size.height * .52f,
-                size.width * .12f,
-                size.height * .32f,
-            )
-            cubicTo(
-                size.width * .12f,
-                size.height * .12f,
-                size.width * .29f,
-                size.height * .04f,
-                size.width / 2f,
-                size.height * .04f,
-            )
-            cubicTo(
-                size.width * .71f,
-                size.height * .04f,
-                size.width * .88f,
-                size.height * .12f,
-                size.width * .88f,
-                size.height * .32f,
-            )
-            cubicTo(
-                size.width * .88f,
-                size.height * .52f,
-                size.width * .58f,
-                size.height * .72f,
-                size.width / 2f,
-                size.height * .86f,
-            )
-            close()
-        }
-        drawPath(pin, Orange)
-        drawPath(pin, Color.White, style = Stroke(width = 3.dp.toPx()))
-        drawCircle(
-            color = Color.White,
-            radius = size.width * .16f,
-            center = Offset(size.width / 2f, size.height * .3f),
-        )
     }
 }
 
