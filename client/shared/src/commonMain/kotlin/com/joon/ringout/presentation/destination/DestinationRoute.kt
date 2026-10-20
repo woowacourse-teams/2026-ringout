@@ -7,11 +7,12 @@ import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.toAnalyticsLoginStateOrNull
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.destination.SavedDestination
+import com.joon.ringout.domain.destination.resolveDestinationDisplayName
 
 @Composable
 internal fun DestinationRoute(
     viewModel: DestinationViewModel,
-    initialSelection: DestinationSelection,
+    initialSelection: DestinationSelection?,
     requestId: Long,
     authSessionState: AuthSessionState,
     productAnalyticsRecorder: ProductAnalyticsRecorder,
@@ -23,12 +24,25 @@ internal fun DestinationRoute(
     val uiState = viewModel.uiState
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
     // A new fix must not change the initial camera of an already displayed map.
-    val entrySelection = remember(viewModel, requestId) {
-        viewModel.initialCurrentLocation() ?: initialSelection
+    val entry = remember(viewModel, requestId) {
+        val currentLocation = viewModel.initialCurrentLocation()
+        DestinationMapEntry(
+            selection = currentLocation ?: initialSelection ?: DefaultDestinationSelection,
+            fromAlarm = currentLocation == null && initialSelection != null,
+        )
     }
+    val displayName = if (entry.fromAlarm) {
+        with(entry.selection) {
+            resolveDestinationDisplayName(
+                name, address, latitude, longitude,
+                uiState.destinations.takeIf { uiState.hasLoadedDestinations },
+            )
+        }
+    } else entry.selection.name
 
     DestinationMapScreen(
-        initialSelection = entrySelection,
+        initialSelection = entry.selection,
+        initialSelectionDisplayName = displayName,
         requestCurrentLocationOnStart = true,
         onCurrentLocationResolved = viewModel::onCurrentLocationResolved,
         isAuthenticated = authSessionState == AuthSessionState.Authenticated,
@@ -60,3 +74,8 @@ internal fun DestinationRoute(
         modifier = modifier,
     )
 }
+
+private data class DestinationMapEntry(
+    val selection: DestinationSelection,
+    val fromAlarm: Boolean,
+)

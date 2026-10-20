@@ -9,7 +9,6 @@ import com.joon.ringout.presentation.destination.component.DestinationEntry
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.alarmsound.AlarmSoundRoute
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupRoute
-import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationRoute
 import com.joon.ringout.presentation.destination.DestinationManagementRoute
 
@@ -36,8 +35,7 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
         if (navigation.hasValidDraft()) {
             DestinationRoute(
                 viewModel = navigation.destinationViewModel,
-                initialSelection = navigation.alarmSetupViewModel.uiState.destination
-                    ?: DefaultDestinationSelection,
+                initialSelection = navigation.alarmSetupViewModel.uiState.destination,
                 requestId = route.requestId,
                 authSessionState = authSessionState,
                 productAnalyticsRecorder = productAnalyticsRecorder,

@@ -115,8 +115,10 @@ fun DestinationMapScreen(
     modifier: Modifier = Modifier,
     bottomContent: (@Composable (DestinationSelection, Boolean) -> Unit)? = null,
     mapContent: (@Composable (Modifier) -> Unit)? = null,
+    initialSelectionDisplayName: String = initialSelection.name,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
+    var isInitialSelection by remember(initialSelection) { mutableStateOf(true) }
     var isCameraMoving by remember { mutableStateOf(false) }
     var isResolvingAddress by remember { mutableStateOf(false) }
     var mapError by remember { mutableStateOf<String?>(null) }
@@ -208,7 +210,7 @@ fun DestinationMapScreen(
         modifier = modifier.fillMaxSize(),
     ) {
         DestinationMapLayout(
-            selection = selection,
+            selection = if (isInitialSelection) selection.copy(name = initialSelectionDisplayName) else selection,
             isCameraMoving = isCameraMoving,
             isResolvingAddress = isResolvingAddress,
             mapError = mapError,
@@ -244,6 +246,7 @@ fun DestinationMapScreen(
                 }
             },
             onSearchResultClick = { result ->
+                isInitialSelection = false
                 selection = result
                 cameraTarget = result
                 selectedSavedDestination = null
@@ -293,6 +296,9 @@ fun DestinationMapScreen(
                             longitude = longitude,
                         )
                         val shouldResolveAddress = settledSelection.requiresAddressResolution()
+                        isInitialSelection = isInitialSelection &&
+                            initialSelection.hasSameCoordinates(latitude, longitude) &&
+                            settledSelection.name == initialSelection.name
                         selection = settledSelection
                         selectedSavedDestination = selectedSavedDestination?.takeIf { saved ->
                             saved.toDestinationSelection().hasSameCoordinates(
@@ -314,12 +320,14 @@ fun DestinationMapScreen(
                                 longitude = longitude,
                             )
                         ) {
-                            selection = selection.withResolvedAddress(
+                            val resolvedSelection = selection.withResolvedAddress(
                                 latitude = latitude,
                                 longitude = longitude,
                                 placeName = placeName,
                                 address = address,
                             )
+                            isInitialSelection = isInitialSelection && resolvedSelection.name == initialSelection.name
+                            selection = resolvedSelection
                             pendingSelection = pendingSelection?.withResolvedAddress(
                                 latitude = latitude,
                                 longitude = longitude,

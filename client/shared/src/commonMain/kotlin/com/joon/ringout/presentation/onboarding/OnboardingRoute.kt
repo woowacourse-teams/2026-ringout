@@ -29,7 +29,6 @@ import com.joon.ringout.presentation.alarmsetup.DefaultAlarmTime
 import com.joon.ringout.presentation.alarmsetup.rememberDeviceAlarmSoundController
 import com.joon.ringout.presentation.common.component.AppMessageHost
 import com.joon.ringout.presentation.common.component.AppMessageHostState
-import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationRoute
 import com.joon.ringout.presentation.destination.DestinationManagementRoute
 import com.joon.ringout.presentation.destination.DestinationViewModel
@@ -141,7 +140,7 @@ internal fun OnboardingRoute(
     } else if (state.isDestinationOpen) {
         DestinationRoute(
             viewModel = destinations,
-            initialSelection = editor.uiState.destination ?: DefaultDestinationSelection,
+            initialSelection = editor.uiState.destination,
             requestId = state.destinationRequestId,
             authSessionState = AuthSessionState.Unauthenticated,
             productAnalyticsRecorder = appContainer.productAnalyticsRecorder,
