@@ -1,42 +1,10 @@
 name: ${COMPOSE_PROJECT_NAME:-ringout}
 
 services:
-  mysql:
-    image: mysql:8.4
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${DB_NAME:?DB_NAME is required}
-      MYSQL_USER: ${DB_USERNAME:?DB_USERNAME is required}
-      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD is required}
-      TZ: Asia/Seoul
-    ports:
-      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
-    volumes:
-      - mysql-data:/var/lib/mysql
-
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_0900_ai_ci
-    healthcheck:
-      test: [ "CMD-SHELL", "mysqladmin ping --host=127.0.0.1 --user=root --password=\"$${MYSQL_ROOT_PASSWORD}\" --silent" ]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 30s
-    networks:
-      - backend
-
   server:
-    image: ${SERVER_IMAGE:-ringout-server}
+    image: ${SERVER_IMAGE:?SERVER_IMAGE is required}
     container_name: ${SERVER_CONTAINER_NAME:-ringout-server}
-    build:
-      context: .
-      dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
     environment:
       DB_URL: ${DB_URL:?DB_URL is required}
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
@@ -47,9 +15,9 @@ services:
       JWT_ACCESS_TOKEN_EXPIRATION_MILLIS: ${JWT_ACCESS_TOKEN_EXPIRATION_MILLIS:?JWT_ACCESS_TOKEN_EXPIRATION_MILLIS is required}
       JWT_REFRESH_TOKEN_EXPIRATION_MILLIS: ${JWT_REFRESH_TOKEN_EXPIRATION_MILLIS:?JWT_REFRESH_TOKEN_EXPIRATION_MILLIS is required}
       JWT_SIGNUP_TOKEN_EXPIRATION_MILLIS: ${JWT_SIGNUP_TOKEN_EXPIRATION_MILLIS:?JWT_SIGNUP_TOKEN_EXPIRATION_MILLIS is required}
-      IS_TEST_LOGIN_ENABLED: ${IS_TEST_LOGIN_ENABLED:?IS_TEST_LOGIN_ENABLED is required}
-      TEST_LOGIN_SECRET: ${TEST_LOGIN_SECRET:?TEST_LOGIN_SECRET is required}
-      TEST_LOGIN_ALLOWED_PROVIDER_IDS: ${TEST_LOGIN_ALLOWED_PROVIDER_IDS:?TEST_LOGIN_ALLOWED_PROVIDER_IDS is required}
+      IS_TEST_LOGIN_ENABLED: ${IS_TEST_LOGIN_ENABLED:-false}
+      TEST_LOGIN_SECRET: ${TEST_LOGIN_SECRET:-}
+      TEST_LOGIN_ALLOWED_PROVIDER_IDS: ${TEST_LOGIN_ALLOWED_PROVIDER_IDS:-}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:?AWS_S3_BUCKET is required}
       AWS_REGION: ${AWS_REGION:-ap-northeast-2}
       AWS_CLOUDFRONT_BASE_URL: ${AWS_CLOUDFRONT_BASE_URL:?AWS_CLOUDFRONT_BASE_URL is required}
@@ -58,17 +26,30 @@ services:
       AWS_S3_ROOM_IMAGE_DIRECTORY: ${AWS_S3_ROOM_IMAGE_DIRECTORY:-rooms}
       AWS_EC2_METADATA_V1_DISABLED: "true"
       TZ: Asia/Seoul
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      APP_ENV: ${APP_ENV:-prod}
       JAVA_TOOL_OPTIONS: >-
         -XX:MaxRAMPercentage=70
+        -Duser.timezone=Asia/Seoul
         -javaagent:/otel/opentelemetry-javaagent.jar
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:?OTEL_SERVICE_NAME is required}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT is required}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:?OTEL_EXPORTER_OTLP_PROTOCOL is required}
       OTEL_METRICS_EXPORTER: none
     volumes:
-      - /opt/opentelemetry/opentelemetry-javaagent.jar:/otel/opentelemetry-javaagent.jar:ro
+      - type: bind
+        source: ${OTEL_AGENT_PATH:-/opt/opentelemetry/opentelemetry-javaagent.jar}
+        target: /otel/opentelemetry-javaagent.jar
+        read_only: true
+        bind:
+          create_host_path: false
     ports:
-      - "${SERVER_BIND_ADDRESS:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
+      - "${SERVER_BIND_ADDRESS:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     security_opt:
       - no-new-privileges:true
     networks:
@@ -77,6 +58,3 @@ services:
 networks:
   backend:
     driver: bridge
-
-volumes:
-  mysql-data:

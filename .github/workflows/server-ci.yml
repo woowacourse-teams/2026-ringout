@@ -8,7 +8,6 @@ on:
       - "!server/docs/**"
       - ".github/workflows/server-ci.yml"
       - ".github/workflows/server-cd.yml"
-      - ".github/workflows/server-dev-cd.yml"
   push:
     branches: [develop, main]
     paths:
@@ -16,7 +15,6 @@ on:
       - "!server/docs/**"
       - ".github/workflows/server-ci.yml"
       - ".github/workflows/server-cd.yml"
-      - ".github/workflows/server-dev-cd.yml"
 
 concurrency:
   group: server-ci-${{ github.workflow }}-${{ github.ref }}
