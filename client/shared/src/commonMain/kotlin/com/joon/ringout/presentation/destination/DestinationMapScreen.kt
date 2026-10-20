@@ -76,7 +76,6 @@ import com.joon.ringout.presentation.destination.component.DestinationSearchScro
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbarTouchWidth
 import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
 import com.joon.ringout.presentation.destination.components.DestinationNicknameDialog
-import com.joon.ringout.presentation.destination.components.DestinationShortcutRow
 import org.jetbrains.compose.resources.painterResource
 
 data class DestinationSelection(
@@ -216,7 +215,6 @@ fun DestinationMapScreen(
             searchResults = searchResults,
             isSearching = isSearching,
             searchError = searchError,
-            savedDestinations = savedDestinations,
             isLocatingCurrentLocation = isLocatingCurrentLocation,
             isSaveInProgress = isSaveInProgress,
             isDestinationActionEnabled = isDestinationActionEnabled,
@@ -257,24 +255,6 @@ fun DestinationMapScreen(
                 currentLocationError = null
                 isLocatingCurrentLocation = true
                 currentLocationRequestId += 1
-            },
-            onDestinationManagementClick = {
-                isSearchOpen = false
-                isDestinationManagementOpen = true
-            },
-            onSavedDestinationClick = { savedDestination, source ->
-                if (isDestinationActionEnabled) {
-                    val savedSelection = savedDestination.toDestinationSelection()
-                    selection = savedSelection
-                    cameraTarget = savedSelection
-                    selectedSavedDestination = savedDestination
-                    onSavedDestinationSelected(source)
-                    mapError = null
-                    currentLocationError = null
-                    isSearchOpen = false
-                    searchResults = emptyList()
-                    searchError = null
-                }
             },
             onConfirmClick = {
                 if (isDestinationActionEnabled) {
@@ -425,7 +405,6 @@ internal fun DestinationMapLayout(
     searchResults: List<DestinationSelection>,
     isSearching: Boolean,
     searchError: String?,
-    savedDestinations: List<SavedDestination>,
     isLocatingCurrentLocation: Boolean,
     isSaveInProgress: Boolean,
     isDestinationActionEnabled: Boolean,
@@ -436,8 +415,6 @@ internal fun DestinationMapLayout(
     onSearchSubmit: () -> Unit,
     onSearchResultClick: (DestinationSelection) -> Unit,
     onCurrentLocationClick: () -> Unit,
-    onDestinationManagementClick: () -> Unit,
-    onSavedDestinationClick: (SavedDestination, DestinationSelectionSource) -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
@@ -512,26 +489,6 @@ internal fun DestinationMapLayout(
                 onSearchClick = onSearchClick,
                 onSubmit = onSearchSubmit,
                 modifier = Modifier.padding(horizontal = 10.5.dp),
-            )
-            DestinationShortcutRow(
-                destinations = savedDestinations,
-                onManagementClick = onDestinationManagementClick,
-                onDestinationClick = { savedDestination ->
-                    onSavedDestinationClick(
-                        savedDestination,
-                        if (isSearchOpen) {
-                            DestinationSelectionSource.SearchShortcut
-                        } else {
-                            DestinationSelectionSource.MapShortcut
-                        },
-                    )
-                },
-                modifier = Modifier.padding(
-                    start = 3.dp,
-                    top = 10.dp,
-                    end = 17.dp,
-                ),
-                enabled = isDestinationActionEnabled,
             )
             if (isSearchOpen && (isSearching || searchError != null || searchResults.isNotEmpty())) {
                 DestinationSearchResultsPanel(
@@ -1036,30 +993,6 @@ private val CurrentLocationIconColor = Color(0xFFF5F5F6)
 private const val DisabledControlAlpha = 0.45f
 private const val InitialCurrentLocationRequestId = 1
 
-private val DestinationPreviewSavedDestinations = listOf(
-    SavedDestination(
-        id = 1L,
-        name = "런닝",
-        address = "서울 중구 세종대로 110",
-        latitude = 37.5665851,
-        longitude = 126.9782038,
-    ),
-    SavedDestination(
-        id = 2L,
-        name = "공부하러가야지",
-        address = "서울 서초구 반포대로 201",
-        latitude = 37.5001,
-        longitude = 127.0001,
-    ),
-    SavedDestination(
-        id = 3L,
-        name = "헬스장",
-        address = "서울 강남구 테헤란로 123",
-        latitude = 37.5012,
-        longitude = 127.0396,
-    ),
-)
-
 @Preview
 @Composable
 private fun DestinationMapScreenPreview() {
@@ -1075,7 +1008,6 @@ private fun DestinationMapScreenPreview() {
             searchResults = emptyList(),
             isSearching = false,
             searchError = null,
-            savedDestinations = DestinationPreviewSavedDestinations,
             isLocatingCurrentLocation = false,
             isSaveInProgress = false,
             isDestinationActionEnabled = true,
@@ -1086,8 +1018,6 @@ private fun DestinationMapScreenPreview() {
             onSearchSubmit = {},
             onSearchResultClick = {},
             onCurrentLocationClick = {},
-            onDestinationManagementClick = {},
-            onSavedDestinationClick = { _, _ -> },
             onConfirmClick = {},
             mapContent = { mapModifier -> Box(mapModifier.background(MapFallback)) },
         )
@@ -1109,7 +1039,6 @@ private fun DestinationMapScreenSearchPreview() {
             searchResults = listOf(DefaultDestinationSelection),
             isSearching = false,
             searchError = null,
-            savedDestinations = DestinationPreviewSavedDestinations,
             isLocatingCurrentLocation = false,
             isSaveInProgress = false,
             isDestinationActionEnabled = true,
@@ -1120,8 +1049,6 @@ private fun DestinationMapScreenSearchPreview() {
             onSearchSubmit = {},
             onSearchResultClick = {},
             onCurrentLocationClick = {},
-            onDestinationManagementClick = {},
-            onSavedDestinationClick = { _, _ -> },
             onConfirmClick = {},
             mapContent = { mapModifier -> Box(mapModifier.background(MapFallback)) },
         )
