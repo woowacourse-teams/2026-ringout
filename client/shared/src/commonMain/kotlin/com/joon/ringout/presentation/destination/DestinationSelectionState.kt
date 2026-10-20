@@ -41,17 +41,11 @@ internal fun destinationAtCameraPosition(
 internal fun DestinationSelection.withResolvedAddress(
     latitude: Double,
     longitude: Double,
-    placeName: String?,
     address: String?,
 ): DestinationSelection {
     if (!hasSameCoordinates(latitude, longitude)) return this
 
     return copy(
-        name = if (name == SelectedDestinationFallbackName) {
-            placeName?.takeIf(String::isNotBlank) ?: name
-        } else {
-            name
-        },
         address = address?.takeIf(String::isNotBlank) ?: UnavailableDestinationAddress,
     )
 }

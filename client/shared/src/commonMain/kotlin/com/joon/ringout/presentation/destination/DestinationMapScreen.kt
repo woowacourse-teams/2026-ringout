@@ -315,7 +315,7 @@ fun DestinationMapScreen(
                         isCameraMoving = false
                         isResolvingAddress = shouldResolveAddress
                     },
-                    onAddressResolved = { latitude, longitude, placeName, address ->
+                    onAddressResolved = { latitude, longitude, _, address ->
                         if (
                             shouldApplyResolvedAddress(
                                 isResolvingAddress = isResolvingAddress,
@@ -328,7 +328,6 @@ fun DestinationMapScreen(
                             val resolvedSelection = selection.withResolvedAddress(
                                 latitude = latitude,
                                 longitude = longitude,
-                                placeName = placeName,
                                 address = address,
                             )
                             isInitialSelection = isInitialSelection && resolvedSelection.name == initialSelection.name
@@ -336,13 +335,11 @@ fun DestinationMapScreen(
                             pendingSelection = pendingSelection?.withResolvedAddress(
                                 latitude = latitude,
                                 longitude = longitude,
-                                placeName = placeName,
                                 address = address,
                             )
                             pendingSaveDecision = pendingSaveDecision?.withResolvedAddress(
                                 latitude = latitude,
                                 longitude = longitude,
-                                placeName = placeName,
                                 address = address,
                             )
                             isResolvingAddress = false

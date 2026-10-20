@@ -10,12 +10,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.text.AnnotatedString
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.component.DestinationSaveDialogContent
@@ -57,13 +62,31 @@ class DestinationSaveFlowTest {
         compose.onNodeWithText("저장하기").performClick()
         compose.onNodeWithText("목적지 저장").assertDoesNotExist()
         compose.onNodeWithText("목적지 별명 설정").assertIsDisplayed()
+        compose.onNodeWithContentDescription("목적지 별명")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onNodeWithText("저장").assertIsNotEnabled()
         compose.runOnIdle { assertTrue(state.saves.isEmpty()) }
-        compose.onNodeWithContentDescription("목적지 별명").performTextInput(" 우리 회사 ")
+        compose.onNodeWithContentDescription("목적지 별명").performTextReplacement(" 우리 회사 ")
         compose.onNodeWithText("저장").performClick()
         compose.runOnIdle {
             assertEquals(listOf(SelectedLocation.toSavedDestination().copy(name = "우리 회사")), state.saves)
             assertTrue(state.withoutSave.isEmpty())
         }
+    }
+
+    @Test
+    fun `별명 입력을 취소하고 다시 열면 이전 입력 없이 빈 값으로 시작한다`() = withMap { state, activity ->
+        compose.onNodeWithText("이 위치를 목적지로 설정").performClick()
+        compose.onNodeWithText("저장하기").performClick()
+        compose.onNodeWithContentDescription("목적지 별명").performTextReplacement("우리 회사")
+        compose.runOnIdle { activity.onBackPressedDispatcher.onBackPressed() }
+        compose.onNodeWithContentDescription("목적지 별명").assertDoesNotExist()
+        compose.onNodeWithText("이 위치를 목적지로 설정").performClick()
+        compose.onNodeWithText("저장하기").performClick()
+        compose.onNodeWithContentDescription("목적지 별명")
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onNodeWithText("저장").assertIsNotEnabled()
+        compose.runOnIdle { assertTrue(state.saves.isEmpty()) }
     }
 
     @Test
