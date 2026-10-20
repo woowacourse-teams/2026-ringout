@@ -73,6 +73,7 @@ import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbar
+import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbarTouchWidth
 import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
 import com.joon.ringout.presentation.destination.components.DestinationNicknameDialog
 import com.joon.ringout.presentation.destination.components.DestinationShortcutRow
@@ -767,7 +768,7 @@ private fun DestinationSearchResultsPanel(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(end = 12.dp),
+                        .padding(end = DestinationSearchScrollbarTouchWidth),
                 ) {
                     item {
                         Text(
@@ -781,12 +782,10 @@ private fun DestinationSearchResultsPanel(
                         SearchResultRow(result = result, onClick = { onResultClick(result) })
                     }
                 }
-                listState.scrollIndicatorState?.let { scrollIndicatorState ->
-                    DestinationSearchScrollbar(
-                        state = scrollIndicatorState,
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                    )
-                }
+                DestinationSearchScrollbar(
+                    state = listState,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                )
             }
         }
     }

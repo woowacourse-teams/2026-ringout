@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import org.junit.Rule
@@ -72,7 +73,25 @@ class DestinationSearchDismissTest {
         }
     }
 
-    private fun withSearchLayout(verify: (SearchFixture) -> Unit) {
+    @Test
+    fun `스크롤바를 드래그해도 결과가 선택되거나 검색창이 닫히지 않는다`() {
+        withSearchLayout(resultCount = 15) { state ->
+            compose.onNodeWithContentDescription("검색 결과 스크롤").performTouchInput {
+                swipe(
+                    start = Offset(center.x, height * 0.05f),
+                    end = Offset(center.x, height + 100f),
+                    durationMillis = 500,
+                )
+            }
+            compose.onNodeWithText("검색 결과 15").assertExists()
+            compose.runOnIdle {
+                assertTrue(state.isOpen.value)
+                assertEquals(null, state.selected)
+            }
+        }
+    }
+
+    private fun withSearchLayout(resultCount: Int = 1, verify: (SearchFixture) -> Unit) {
         val state = SearchFixture()
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
@@ -86,7 +105,10 @@ class DestinationSearchDismissTest {
                         onBackClick = {},
                         isSearchOpen = state.isOpen.value,
                         searchQuery = state.query.value,
-                        searchResults = listOf(DefaultDestinationSelection),
+                        searchResults = List(resultCount) { index ->
+                            if (resultCount == 1) DefaultDestinationSelection
+                            else DefaultDestinationSelection.copy(name = "검색 결과 ${index + 1}")
+                        },
                         isSearching = false,
                         searchError = null,
                         savedDestinations = emptyList(),
