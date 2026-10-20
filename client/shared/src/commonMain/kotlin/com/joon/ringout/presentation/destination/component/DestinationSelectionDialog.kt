@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -78,6 +80,8 @@ internal fun DestinationSelectionDialogContent(
     onRetry: () -> Unit = {},
 ) {
     val colors = DestinationManagementPalette
+    val listState = rememberLazyListState()
+    val showScrollbar = destinations.size > 3
     DialogWithoutRipple {
         Column(
             modifier = modifier.widthIn(max = 360.dp).fillMaxWidth()
@@ -116,13 +120,24 @@ internal fun DestinationSelectionDialogContent(
                         Text("목적지를 불러오지 못했어요.", color = colors.itemText)
                         TextButton(onClick = onRetry) { Text("다시 시도", color = colors.primaryAction) }
                     }
-                    else -> LazyColumn(
-                        modifier = Modifier.fillMaxWidth().height(194.dp)
-                            .semantics { contentDescription = "저장된 목적지 목록" },
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        items(destinations, key = SavedDestination::id) { destination ->
-                            DestinationSelectionRow(destination, onSelect = { onSelect(destination) })
+                    else -> {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxWidth().height(194.dp)
+                                .semantics { contentDescription = "저장된 목적지 목록" },
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(destinations, key = SavedDestination::id) { destination ->
+                                DestinationSelectionRow(destination, onSelect = { onSelect(destination) })
+                            }
+                        }
+                        if (showScrollbar) {
+                            DestinationSearchScrollbar(
+                                state = listState,
+                                // 행의 기존 오른쪽 패딩 안에서만 터치를 처리한다.
+                                modifier = Modifier.align(Alignment.CenterEnd).width(10.dp),
+                                scrollDescription = "저장된 목적지 스크롤",
+                            )
                         }
                     }
                 }

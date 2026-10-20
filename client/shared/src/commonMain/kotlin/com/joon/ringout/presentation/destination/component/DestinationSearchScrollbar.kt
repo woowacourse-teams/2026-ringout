@@ -41,6 +41,7 @@ internal val DestinationSearchScrollbarTouchWidth = 48.dp
 internal fun DestinationSearchScrollbar(
     state: LazyListState,
     modifier: Modifier = Modifier,
+    scrollDescription: String = "검색 결과 스크롤",
 ) {
     val indicator = state.scrollIndicatorState ?: return
     val scope = rememberCoroutineScope()
@@ -67,7 +68,7 @@ internal fun DestinationSearchScrollbar(
                 if (canScroll) {
                     Modifier
                         .semantics {
-                            contentDescription = "검색 결과 스크롤"
+                            contentDescription = scrollDescription
                             val range = (indicator.contentSize - indicator.viewportSize).coerceAtLeast(1)
                             progressBarRangeInfo = ProgressBarRangeInfo(
                                 (indicator.scrollOffset.toFloat() / range).coerceIn(0f, 1f),
