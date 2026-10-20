@@ -74,6 +74,7 @@ import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbar
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbarTouchWidth
+import com.joon.ringout.presentation.destination.component.DestinationManagementAddressBubble
 import com.joon.ringout.presentation.destination.component.DestinationManagementDialog
 import com.joon.ringout.presentation.destination.component.DestinationNicknameDialog
 import org.jetbrains.compose.resources.painterResource
@@ -112,6 +113,8 @@ fun DestinationMapScreen(
     isDestinationActionEnabled: Boolean = true,
     isBackHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier,
+    bottomContent: (@Composable (DestinationSelection, Boolean) -> Unit)? = null,
+    mapContent: (@Composable (Modifier) -> Unit)? = null,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
     var isCameraMoving by remember { mutableStateOf(false) }
@@ -268,8 +271,11 @@ fun DestinationMapScreen(
                 }
             },
             modifier = Modifier.fillMaxSize(),
+            bottomContent = bottomContent,
             mapContent = { mapModifier ->
-                PlatformDestinationMap(
+                if (mapContent != null) mapContent(mapModifier)
+                else if (LocalInspectionMode.current) Box(mapModifier)
+                else PlatformDestinationMap(
                     initialLatitude = initialSelection.latitude,
                     initialLongitude = initialSelection.longitude,
                     cameraTarget = cameraTarget,
@@ -418,6 +424,7 @@ internal fun DestinationMapLayout(
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
+    bottomContent: (@Composable (DestinationSelection, Boolean) -> Unit)? = null,
 ) {
     Box(
         modifier = modifier
@@ -502,20 +509,18 @@ internal fun DestinationMapLayout(
         }
 
         if (mapError == null) {
-            AddressBubble(
-                title = when {
-                    isCameraMoving -> "위치를 선택하는 중..."
-                    isResolvingAddress -> "주소를 찾는 중..."
-                    else -> selection.name
-                },
-                address = when {
-                    isCameraMoving -> "지도를 움직여 위치를 선택하세요"
-                    else -> selection.address
-                },
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = (-110).dp),
-            )
+            val title = when {
+                isCameraMoving -> "위치를 선택하는 중..."
+                isResolvingAddress -> "주소를 찾는 중..."
+                else -> selection.name
+            }
+            val address = if (isCameraMoving) "지도를 움직여 위치를 선택하세요" else selection.address
+            val bubbleModifier = Modifier.align(Alignment.Center).offset(y = (-110).dp)
+            if (bottomContent == null) {
+                AddressBubble(title, address, bubbleModifier)
+            } else {
+                DestinationManagementAddressBubble(title, address, bubbleModifier)
+            }
             CenterDestinationPin(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -526,15 +531,20 @@ internal fun DestinationMapLayout(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(start = 24.dp, end = 24.dp, bottom = 18.dp),
+                .then(if (bottomContent == null) Modifier.navigationBarsPadding() else Modifier)
+                .padding(
+                    start = if (bottomContent == null) 24.dp else 0.dp,
+                    end = if (bottomContent == null) 24.dp else 0.dp,
+                    bottom = if (bottomContent == null) 18.dp else 0.dp,
+                ),
             horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (bottomContent == null) 12.dp else 4.dp),
         ) {
             currentLocationError?.let {
                 CurrentLocationErrorMessage(message = it)
             }
             CurrentLocationButton(
+                modifier = if (bottomContent == null) Modifier else Modifier.padding(end = 17.dp),
                 enabled = canConfirmDestination(
                     isCameraMoving = isCameraMoving,
                     isLocatingCurrentLocation = isLocatingCurrentLocation,
@@ -544,7 +554,14 @@ internal fun DestinationMapLayout(
                 isLoading = isLocatingCurrentLocation,
                 onClick = onCurrentLocationClick,
             )
-            ConfirmDestinationButton(
+            if (bottomContent != null) {
+                bottomContent(
+                    selection,
+                    isDestinationActionEnabled && !isResolvingAddress &&
+                        selection.isConfiguredDestination() && currentLocationError == null &&
+                        canConfirmDestination(isCameraMoving, isLocatingCurrentLocation, mapError, isSaveInProgress),
+                )
+            } else ConfirmDestinationButton(
                 enabled = isDestinationActionEnabled &&
                     selection.isConfiguredDestination() &&
                     currentLocationError == null &&

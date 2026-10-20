@@ -9,6 +9,7 @@ import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
+import com.joon.ringout.presentation.destination.component.normalizeDestinationNickname
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -24,6 +25,7 @@ data class DestinationUiState(
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
     val savedEvent: DestinationSavedEvent? = null,
+    val managedDestination: SavedDestination? = null,
 )
 
 data class DestinationSavedEvent(
@@ -216,6 +218,52 @@ class DestinationViewModel internal constructor(
                     isSaving = false,
                     errorMessage = error.message ?: "목적지를 삭제하지 못했어요.",
                 )
+            }
+        }
+    }
+
+    fun beginManagement(destinationId: Long): Boolean {
+        if (uiState.isSaving) return false
+        val destination = uiState.destinations.firstOrNull { it.id == destinationId } ?: return false
+        uiState = uiState.copy(managedDestination = destination, errorMessage = null)
+        return true
+    }
+
+    fun closeManagement() {
+        if (!uiState.isSaving) uiState = uiState.copy(managedDestination = null, errorMessage = null)
+    }
+
+    fun saveManagedDestination(destination: SavedDestination) {
+        val original = uiState.managedDestination ?: return
+        if (uiState.isSaving || original.id != destination.id) return
+        val nickname = normalizeDestinationNickname(destination.name)
+            ?: return
+        mutateManagedDestination {
+            val saved = repository.save(destination.copy(name = nickname))
+            uiState = uiState.copy(destinations = uiState.destinations.map { if (it.id == saved.id) saved else it })
+        }
+    }
+
+    fun deleteManagedDestination() {
+        val destination = uiState.managedDestination ?: return
+        if (uiState.isSaving) return
+        mutateManagedDestination {
+            check(repository.delete(destination.id)) { "삭제할 목적지를 찾지 못했어요." }
+            uiState = uiState.copy(destinations = uiState.destinations.filterNot { it.id == destination.id })
+        }
+    }
+
+    private fun mutateManagedDestination(action: suspend () -> Unit) {
+        uiState = uiState.copy(isSaving = true, errorMessage = null)
+        scope.launch {
+            try {
+                mutationMutex.withLock { action() }
+                // 목적지 선택 이벤트를 발생시키지 않는다. 알람 초안은 사용자가 선택할 때만 바뀐다.
+                uiState = uiState.copy(isSaving = false, managedDestination = null)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                uiState = uiState.copy(isSaving = false, errorMessage = error.message ?: "목적지를 변경하지 못했어요.")
             }
         }
     }

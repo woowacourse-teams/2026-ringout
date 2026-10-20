@@ -32,6 +32,48 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class AlarmEditorNavigationTest {
     @Test
+    fun `관리 화면에서 돌아오면 목록을 다시 요청하고 알람 초안을 유지한다`() = runTest {
+        val fixture = AlarmEditorFixture(backgroundScope)
+        fixture.repository.destinations.value = listOf(SelectedDestination)
+        runCurrent()
+        fixture.navigation.startEditing(SavedAlarm)
+        val parent = assertNotNull(fixture.state.editorRoute)
+        val draft = fixture.alarmSetup.uiState
+        fixture.navigation.onManageDestination(parent, parent, SelectedDestination)
+        val route = AppRoute.DestinationManagement(SelectedDestination.id)
+        assertEquals(route, fixture.state.requestedRoute)
+        assertEquals(SelectedDestination, fixture.destination.uiState.managedDestination)
+        fixture.navigation.onBack(route, route)
+        assertEquals(parent, fixture.state.requestedRoute)
+        assertEquals(1L, fixture.navigation.destinationDialogRequestId)
+        assertEquals(draft, fixture.alarmSetup.uiState)
+        assertNull(fixture.destination.uiState.managedDestination)
+        assertTrue(fixture.repository.saveRequests.isEmpty())
+    }
+
+    @Test
+    fun `관리 저장 중 뒤로가기를 차단하고 완료 후 원래 화면으로 돌아온다`() = runTest {
+        val fixture = AlarmEditorFixture(backgroundScope)
+        fixture.repository.destinations.value = listOf(SelectedDestination)
+        runCurrent()
+        fixture.navigation.startCreating("07:00")
+        fixture.navigation.onManageDestination(AppRoute.AddAlarm, AppRoute.AddAlarm, SelectedDestination)
+        val route = AppRoute.DestinationManagement(SelectedDestination.id)
+        val gate = CompletableDeferred<Unit>()
+        fixture.repository.saveGate = gate
+        fixture.destination.saveManagedDestination(SelectedDestination.copy(name = "헬스장"))
+        runCurrent()
+        fixture.navigation.onBack(route, route)
+        assertTrue(fixture.navigation.isBackBlocked(route))
+        assertEquals(route, fixture.state.requestedRoute)
+        gate.complete(Unit)
+        runCurrent()
+        assertNull(fixture.destination.uiState.savedEvent)
+        fixture.navigation.onBack(route, route)
+        assertEquals(AppRoute.AddAlarm, fixture.state.requestedRoute)
+    }
+
+    @Test
     fun `생성과 수정 진입은 해당 경로에 맞는 초안을 준비한다`() = runTest {
         val fixture = AlarmEditorFixture(backgroundScope)
 
@@ -363,7 +405,8 @@ private class EditorDestinationRepository : DestinationRepository {
     val saveRequests = mutableListOf<SavedDestination>()
     var saveGate: CompletableDeferred<Unit>? = null
 
-    override fun observeAll(): Flow<List<SavedDestination>> = flowOf(emptyList())
+    val destinations = kotlinx.coroutines.flow.MutableStateFlow(emptyList<SavedDestination>())
+    override fun observeAll(): Flow<List<SavedDestination>> = destinations
 
     override suspend fun fetchAll(): List<SavedDestination> = emptyList()
 

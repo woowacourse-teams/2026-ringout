@@ -31,6 +31,27 @@ class DestinationEntryTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
+    fun `관리는 목적지를 선택하지 않고 관리 화면을 요청하고 복귀 시 목록을 다시 표시한다`() = withEntry(listOf(Destination)) { state ->
+        compose.onNodeWithText("목적지 설정").performClick()
+        compose.onNodeWithContentDescription("헬스장 관리").performClick()
+        compose.runOnIdle {
+            assertEquals(Destination, state.managed)
+            assertNull(state.selected)
+            assertEquals(0, state.mapEntries)
+            state.active.value = false
+        }
+        compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
+        compose.runOnIdle {
+            state.openRequest.value += 1L
+            state.active.value = true
+        }
+        compose.onNodeWithText("저장된 목적지").assertIsDisplayed()
+        compose.onNodeWithContentDescription("저장된 목적지 닫기").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
+    }
+
+    @Test
     fun `저장된 목적지가 없으면 다이얼로그 없이 지도로 이동한다`() = withEntry(emptyList()) { state ->
         compose.onNodeWithText("목적지 설정").performClick()
         compose.runOnIdle { assertEquals(1, state.mapEntries) }
@@ -151,6 +172,8 @@ class DestinationEntryTest {
                         isActive = state.active.value,
                         onFindInMap = { state.mapEntries++ },
                         onSelect = { state.selected = it },
+                        onManage = { state.managed = it },
+                        openRequestId = state.openRequest.value,
                         onRetry = { state.retries++ },
                     ) { onClick -> TextButton(onClick = onClick) { Text("목적지 설정") } }
                 }
@@ -163,6 +186,8 @@ class DestinationEntryTest {
 
     private class Fixture(initial: DestinationUiState) {
         val ui = mutableStateOf(initial)
+        val openRequest = mutableStateOf(0L)
+        var managed: SavedDestination? = null
         val active = mutableStateOf(true)
         var retries = 0
         var mapEntries = 0

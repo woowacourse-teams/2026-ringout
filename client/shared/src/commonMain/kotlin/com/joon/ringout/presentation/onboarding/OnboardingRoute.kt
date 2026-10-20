@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -30,6 +31,7 @@ import com.joon.ringout.presentation.common.component.AppMessageHost
 import com.joon.ringout.presentation.common.component.AppMessageHostState
 import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationRoute
+import com.joon.ringout.presentation.destination.DestinationManagementRoute
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.destination.DestinationCurrentLocationCache
 import com.joon.ringout.presentation.destination.PlatformBackHandler
@@ -99,6 +101,8 @@ internal fun OnboardingRoute(
             null
         }
     }
+    var managementOpen by rememberSaveable { mutableStateOf(false) }
+    var destinationDialogRequestId by rememberSaveable { mutableStateOf(0L) }
     val editable = !editor.uiState.isSaveInProgress && completionEnabled && !state.isAlarmSaved
     val sounds = soundController.sounds.ifEmpty { listOf(editor.uiState.alarmSound) }
     LaunchedEffect(sounds) {
@@ -118,10 +122,19 @@ internal fun OnboardingRoute(
             destinations.consumeSavedEvent(event.eventId)
         }
     }
-    PlatformBackHandler(enabled = !state.isDestinationOpen && state.step != OnboardingStep.Time) {
+    PlatformBackHandler(enabled = !managementOpen && !state.isDestinationOpen && state.step != OnboardingStep.Time) {
         if (editable) flow.back()
     }
-    if (state.isDestinationOpen) {
+    if (managementOpen) {
+        DestinationManagementRoute(
+            viewModel = destinations,
+            onFinished = {
+                managementOpen = false
+                destinationDialogRequestId += 1
+            },
+            modifier = modifier,
+        )
+    } else if (state.isDestinationOpen) {
         DestinationRoute(
             viewModel = destinations,
             initialSelection = editor.uiState.destination ?: DefaultDestinationSelection,
@@ -152,6 +165,10 @@ internal fun OnboardingRoute(
                 }
             },
             onRetry = destinations::onScreenEntered,
+            onManage = { destination ->
+                if (editable && destinations.beginManagement(destination.id)) managementOpen = true
+            },
+            openRequestId = destinationDialogRequestId,
         ) { onDestinationClick ->
             OnboardingScreen(
                 uiState = state,
@@ -213,7 +230,11 @@ internal fun OnboardingRoute(
         onConfirmAlwaysLocationResult = onConfirmAlwaysLocationResult,
         onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
     )
-    val error = if (state.isDestinationOpen) destinations.uiState.errorMessage else editor.uiState.errorMessage
+    val error = when {
+        managementOpen -> null
+        state.isDestinationOpen -> destinations.uiState.errorMessage
+        else -> editor.uiState.errorMessage
+    }
     AppMessageHost(
         state = error?.let { AppMessageHostState("설정을 저장하지 못했어요", it) },
         onDismiss = { if (state.isDestinationOpen) destinations.clearError() else editor.clearError() },

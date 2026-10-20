@@ -50,6 +50,7 @@ internal fun DestinationSelectionDialog(
     isLoading: Boolean = false,
     errorMessage: String? = null,
     onRetry: () -> Unit = {},
+    onManage: (SavedDestination) -> Unit = {},
 ) {
     Dialog(
         onDismissRequest = onDismissRequest,
@@ -64,6 +65,7 @@ internal fun DestinationSelectionDialog(
             isLoading = isLoading,
             errorMessage = errorMessage,
             onRetry = onRetry,
+            onManage = onManage,
         )
     }
 }
@@ -78,6 +80,7 @@ internal fun DestinationSelectionDialogContent(
     isLoading: Boolean = false,
     errorMessage: String? = null,
     onRetry: () -> Unit = {},
+    onManage: (SavedDestination) -> Unit = {},
 ) {
     val colors = DestinationManagementPalette
     val listState = rememberLazyListState()
@@ -128,7 +131,7 @@ internal fun DestinationSelectionDialogContent(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             items(destinations, key = SavedDestination::id) { destination ->
-                                DestinationSelectionRow(destination, onSelect = { onSelect(destination) })
+                                DestinationSelectionRow(destination, onSelect = { onSelect(destination) }, onManage = { onManage(destination) })
                             }
                         }
                         if (showScrollbar) {
@@ -162,6 +165,7 @@ internal fun DestinationSelectionDialogContent(
 private fun DestinationSelectionRow(
     destination: SavedDestination,
     onSelect: () -> Unit,
+    onManage: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = DestinationManagementPalette
@@ -185,8 +189,12 @@ private fun DestinationSelectionRow(
                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
             )
         }
-        // 관리 플로우는 다음 단계에서 연결한다.
-        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier.size(48.dp)
+                .semantics { contentDescription = "${destination.name} 관리" }
+                .clickable(role = Role.Button, onClick = onManage),
+            contentAlignment = Alignment.Center,
+        ) {
             Text("관리", color = colors.secondaryAction, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
         Box(

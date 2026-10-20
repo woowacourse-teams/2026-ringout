@@ -11,6 +11,7 @@ import com.joon.ringout.presentation.alarmsound.AlarmSoundRoute
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupRoute
 import com.joon.ringout.presentation.destination.DefaultDestinationSelection
 import com.joon.ringout.presentation.destination.DestinationRoute
+import com.joon.ringout.presentation.destination.DestinationManagementRoute
 
 // 편집 흐름이 백스택에서 제거될 때까지 AlarmSetup과 Destination은 Add/Edit 부모 저장소를 공유한다.
 internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
@@ -45,6 +46,16 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
                 onSavedDestinationConfirmClick = { destination ->
                     navigation.onSavedDestinationSelected(route, displayedRoute, destination)
                 },
+            )
+        }
+    }
+
+    entry<AppRoute.DestinationManagement>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        if (navigation.hasValidDraft()) {
+            DestinationManagementRoute(
+                viewModel = navigation.destinationViewModel,
+                isActive = navigation.isActive(route, displayedRoute),
+                onFinished = { navigation.onBack(route, displayedRoute) },
             )
         }
     }
@@ -85,6 +96,8 @@ private fun AlarmEditorDestinationEntry(
             }
         },
         onRetry = navigation.destinationViewModel::onScreenEntered,
+        onManage = { navigation.onManageDestination(route, displayedRoute, it) },
+        openRequestId = navigation.destinationDialogRequestId,
     ) { onDestinationClick ->
         AlarmSetupRoute(
             viewModel = navigation.alarmSetupViewModel,

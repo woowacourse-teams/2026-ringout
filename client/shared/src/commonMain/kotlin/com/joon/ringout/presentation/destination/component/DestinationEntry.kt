@@ -21,9 +21,18 @@ internal fun DestinationEntry(
     onFindInMap: () -> Unit,
     onSelect: (SavedDestination) -> Unit,
     onRetry: () -> Unit,
+    onManage: (SavedDestination) -> Unit = {},
+    openRequestId: Long = 0,
     content: @Composable (onDestinationClick: () -> Unit) -> Unit,
 ) {
     var isRequested by rememberSaveable { mutableStateOf(false) }
+    var consumedOpenRequest by rememberSaveable { mutableStateOf(0L) }
+    LaunchedEffect(isActive, openRequestId) {
+        if (isActive && openRequestId > consumedOpenRequest) {
+            consumedOpenRequest = openRequestId
+            isRequested = true
+        }
+    }
     val canOpenMap = !uiState.isLoading && uiState.errorMessage == null && uiState.destinations.isEmpty()
 
     LaunchedEffect(isActive, isRequested, canOpenMap) {
@@ -54,6 +63,10 @@ internal fun DestinationEntry(
             isLoading = uiState.isLoading,
             errorMessage = uiState.errorMessage,
             onRetry = onRetry,
+            onManage = {
+                isRequested = false
+                onManage(it)
+            },
         )
     }
 }
