@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,7 +55,8 @@ internal fun DestinationDeleteDialogContent(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("목적지 삭제", color = colors.confirmTitle,
+            Text("목적지 삭제", modifier = Modifier.fillMaxWidth(), color = colors.confirmTitle,
+                textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold))
             Text("저장된 목적지 목록에서 삭제할까요?\n이미 알람에 설정한 목적지는 유지됩니다.", color = colors.confirmBody,
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 19.2.sp, fontWeight = FontWeight.Medium))
