@@ -26,7 +26,6 @@ data class DestinationUiState(
     val errorMessage: String? = null,
     val savedEvent: DestinationSavedEvent? = null,
     val managedDestination: SavedDestination? = null,
-    val managementDeletedDestinationId: Long? = null,
 )
 
 data class DestinationSavedEvent(
@@ -228,7 +227,6 @@ class DestinationViewModel internal constructor(
         val destination = uiState.destinations.firstOrNull { it.id == destinationId } ?: return false
         uiState = uiState.copy(
             managedDestination = destination,
-            managementDeletedDestinationId = null,
             errorMessage = null,
         )
         return true
@@ -238,7 +236,6 @@ class DestinationViewModel internal constructor(
         if (!uiState.isSaving) {
             uiState = uiState.copy(
                 managedDestination = null,
-                managementDeletedDestinationId = null,
                 errorMessage = null,
             )
         }
@@ -262,7 +259,6 @@ class DestinationViewModel internal constructor(
             check(repository.delete(destination.id)) { "삭제할 목적지를 찾지 못했어요." }
             uiState = uiState.copy(
                 destinations = uiState.destinations.filterNot { it.id == destination.id },
-                managementDeletedDestinationId = destination.id,
             )
         }
     }
@@ -272,7 +268,7 @@ class DestinationViewModel internal constructor(
         scope.launch {
             try {
                 mutationMutex.withLock { action() }
-                // 목적지 선택 이벤트 대신 관리 화면 복귀 시 저장·삭제 결과를 처리한다.
+                // 관리 완료는 목적지 선택 이벤트 없이 화면 복귀로 처리한다.
                 uiState = uiState.copy(isSaving = false, managedDestination = null)
             } catch (error: CancellationException) {
                 throw error

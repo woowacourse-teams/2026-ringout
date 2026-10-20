@@ -56,7 +56,7 @@ internal fun DestinationDeleteDialogContent(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("목적지 삭제", color = colors.confirmTitle,
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold))
-            Text("정말 해당 목적지를 삭제하시겠습니까?", color = colors.confirmBody,
+            Text("저장된 목적지 목록에서 삭제할까요?\n이미 알람에 설정한 목적지는 유지됩니다.", color = colors.confirmBody,
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 19.2.sp, fontWeight = FontWeight.Medium))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -104,9 +104,6 @@ internal class AlarmEditorNavigation(
         if (!isActive(route, displayedRoute) || isBackBlocked(displayedRoute)) return
         if (route is AppRoute.DestinationManagement) {
             val destinationState = destinationViewModel.uiState
-            if (destinationState.managementDeletedDestinationId != null) {
-                alarmSetupViewModel.clearDestination()
-            }
             if (destinationState.destinations.isNotEmpty()) {
                 destinationDialogRequestId += 1
             }

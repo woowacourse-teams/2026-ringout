@@ -32,7 +32,7 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class AlarmEditorNavigationTest {
     @Test
-    fun `마지막 목적지를 삭제하면 알람 목적지를 비우고 목록 재요청 없이 알람 설정으로 복귀한다`() = runTest {
+    fun `마지막 즐겨찾기 목적지를 삭제해도 알람 목적지를 유지하고 목록 재요청 없이 설정으로 복귀한다`() = runTest {
         for (editing in listOf(false, true)) {
             val fixture = AlarmEditorFixture(backgroundScope)
             fixture.repository.destinations.value = listOf(SelectedDestination)
@@ -46,24 +46,23 @@ class AlarmEditorNavigationTest {
 
             fixture.destination.deleteManagedDestination()
             runCurrent()
-            assertEquals(SelectedDestination.id, fixture.destination.uiState.managementDeletedDestinationId)
             fixture.navigation.onBack(route, route)
 
             assertEquals(listOf(AppRoute.Home, parent), fixture.state.backStack.toList())
-            assertEquals(draft.copy(destination = null), fixture.alarmSetup.uiState)
-            assertFalse(fixture.alarmSetup.uiState.canSave)
+            assertEquals(draft, fixture.alarmSetup.uiState)
+            assertEquals(draft.canSave, fixture.alarmSetup.uiState.canSave)
             assertEquals(0L, fixture.navigation.destinationDialogRequestId)
             assertTrue(fixture.destination.uiState.destinations.isEmpty())
-            assertNull(fixture.destination.uiState.managementDeletedDestinationId)
         }
     }
 
     @Test
-    fun `목적지가 남아도 삭제 후 알람 목적지를 초기화하고 다음 관리 취소에는 삭제 결과를 재사용하지 않는다`() = runTest {
+    fun `선택한 즐겨찾기를 삭제해도 알람 목적지를 유지하고 남은 목록에서 다시 선택할 수 있다`() = runTest {
         val fixture = AlarmEditorFixture(backgroundScope)
         fixture.repository.destinations.value = listOf(SelectedDestination, OriginalDestination)
         runCurrent()
         fixture.navigation.startEditing(SavedAlarm)
+        fixture.alarmSetup.updateDestination(SelectedDestination.toDestinationSelection())
         val parent = assertNotNull(fixture.state.editorRoute)
         fixture.navigation.onManageDestination(parent, parent, SelectedDestination)
         val route = AppRoute.DestinationManagement(SelectedDestination.id)
@@ -71,7 +70,7 @@ class AlarmEditorNavigationTest {
         runCurrent()
         fixture.navigation.onBack(route, route)
 
-        assertNull(fixture.alarmSetup.uiState.destination)
+        assertEquals(SelectedDestination.toDestinationSelection(), fixture.alarmSetup.uiState.destination)
         assertEquals(1L, fixture.navigation.destinationDialogRequestId)
         assertEquals(listOf(OriginalDestination), fixture.destination.uiState.destinations)
         fixture.navigation.onStoredDestinationSelected(parent, parent, OriginalDestination)
@@ -95,7 +94,6 @@ class AlarmEditorNavigationTest {
         fixture.destination.deleteManagedDestination()
         runCurrent()
         assertNotNull(fixture.destination.uiState.errorMessage)
-        assertNull(fixture.destination.uiState.managementDeletedDestinationId)
         assertEquals(route, fixture.state.requestedRoute)
         fixture.navigation.onBack(route, route)
         assertEquals(draft, fixture.alarmSetup.uiState)

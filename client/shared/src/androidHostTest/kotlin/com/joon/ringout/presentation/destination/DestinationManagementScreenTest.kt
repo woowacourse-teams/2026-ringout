@@ -86,7 +86,8 @@ class DestinationManagementScreenTest {
                 }
             }
             compose.onNodeWithContentDescription("목적지 삭제").performClick()
-            compose.onNodeWithText("정말 해당 목적지를 삭제하시겠습니까?").assertIsDisplayed()
+            compose.onNodeWithText("저장된 목적지 목록에서 삭제할까요?", substring = true).assertIsDisplayed()
+            compose.onNodeWithText("이미 알람에 설정한 목적지는 유지됩니다.", substring = true).assertIsDisplayed()
             compose.runOnIdle { assertEquals(0, deletes) }
             compose.onNodeWithText("취소").performClick()
             compose.onNodeWithText("목적지 삭제").assertDoesNotExist()

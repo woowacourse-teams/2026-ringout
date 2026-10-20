@@ -130,9 +130,6 @@ internal fun OnboardingRoute(
             viewModel = destinations,
             onFinished = {
                 val destinationState = destinations.uiState
-                if (destinationState.managementDeletedDestinationId != null) {
-                    editor.clearDestination()
-                }
                 if (destinationState.destinations.isNotEmpty()) {
                     destinationDialogRequestId += 1
                 }
