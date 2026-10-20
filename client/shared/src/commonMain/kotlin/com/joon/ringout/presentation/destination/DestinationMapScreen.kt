@@ -612,6 +612,8 @@ private fun FloatingMapHeader(
             modifier = Modifier
                 .size(44.dp)
                 .clickable(
+                    interactionSource = null,
+                    indication = null,
                     role = Role.Button,
                     onClickLabel = "이전 화면으로 이동",
                     onClick = onBackClick,
@@ -717,7 +719,11 @@ private fun DestinationSearchPanel(
                 modifier = Modifier
                     .size(50.dp)
                     .background(Orange, RoundedCornerShape(18.dp))
-                    .clickable(onClick = onSubmit),
+                    .clickable(
+                        interactionSource = null,
+                        indication = null,
+                        onClick = onSubmit,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 SearchIcon()
