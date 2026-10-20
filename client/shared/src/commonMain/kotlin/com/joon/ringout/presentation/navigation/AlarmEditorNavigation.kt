@@ -14,6 +14,7 @@ import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
 import com.joon.ringout.presentation.destination.DestinationSavedEvent
+import com.joon.ringout.presentation.destination.DestinationSelection
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.destination.belongsToDestinationRequest
 import com.joon.ringout.presentation.destination.toDestinationSelection
@@ -149,8 +150,16 @@ internal class AlarmEditorNavigation(
         displayedRoute: AppRoute,
         destination: SavedDestination,
     ) {
+        onDestinationSelected(route, displayedRoute, destination.toDestinationSelection())
+    }
+
+    fun onDestinationSelected(
+        route: AppRoute.Destination,
+        displayedRoute: AppRoute,
+        destination: DestinationSelection,
+    ) {
         if (!isActive(route, displayedRoute)) return
-        alarmSetupViewModel.updateDestination(destination.toDestinationSelection())
+        alarmSetupViewModel.updateDestination(destination)
         navigationState.popBackStack(route)
     }
 

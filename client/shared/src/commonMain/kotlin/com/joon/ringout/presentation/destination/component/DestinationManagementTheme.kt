@@ -16,9 +16,11 @@ internal data class DestinationManagementColors(
     val confirmBody: Color,
     val cancelAction: Color,
     val addressText: Color,
+    val confirmActionShadow: Color,
 )
 
 internal val DestinationManagementPalette = DestinationManagementColors(
+    confirmActionShadow = Color(0x404338CA),
     addressText = Color(0xFF8C8C8C),
     destructive = Color(0xFFFF0000),
     confirmTitle = Color(0xFF1F2937),

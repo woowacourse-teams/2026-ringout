@@ -44,6 +44,9 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
                 onSavedDestinationConfirmClick = { destination ->
                     navigation.onSavedDestinationSelected(route, displayedRoute, destination)
                 },
+                onConfirmWithoutSave = { destination ->
+                    navigation.onDestinationSelected(route, displayedRoute, destination)
+                },
             )
         }
     }

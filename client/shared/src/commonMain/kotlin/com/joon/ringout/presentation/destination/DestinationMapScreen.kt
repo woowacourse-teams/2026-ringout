@@ -71,6 +71,7 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.analytics.DestinationSelectionSource
+import com.joon.ringout.presentation.destination.component.DestinationSaveDialog
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbar
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbarTouchWidth
@@ -105,6 +106,7 @@ fun DestinationMapScreen(
     onBackClick: () -> Unit,
     onConfirmClick: (SavedDestination) -> Unit,
     onSavedDestinationConfirmClick: (SavedDestination) -> Unit,
+    onConfirmWithoutSave: (DestinationSelection) -> Unit,
     savedDestinations: List<SavedDestination> = emptyList(),
     onSavedDestinationRename: (Long, String) -> Unit = { _, _ -> },
     onSavedDestinationDeleteClick: (Long) -> Unit = {},
@@ -139,6 +141,7 @@ fun DestinationMapScreen(
     }
     var currentLocationError by remember { mutableStateOf<String?>(null) }
     var pendingSelection by remember { mutableStateOf<DestinationSelection?>(null) }
+    var pendingSaveDecision by remember { mutableStateOf<DestinationSelection?>(null) }
     var isDestinationManagementOpen by remember { mutableStateOf(false) }
     var nicknameEditingDestination by remember { mutableStateOf<SavedDestination?>(null) }
     var selectedSavedDestination by remember { mutableStateOf<SavedDestination?>(null) }
@@ -150,6 +153,7 @@ fun DestinationMapScreen(
     LaunchedEffect(isDestinationActionEnabled) {
         if (!isDestinationActionEnabled) {
             pendingSelection = null
+            pendingSaveDecision = null
             nicknameEditingDestination = null
             isDestinationManagementOpen = false
         }
@@ -158,13 +162,14 @@ fun DestinationMapScreen(
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
         isBackEnabled = isBackHandlerEnabled && (
-            nicknameEditingDestination != null || pendingSelection != null ||
+            nicknameEditingDestination != null || pendingSelection != null || pendingSaveDecision != null ||
                 isDestinationManagementOpen || isSearchOpen
             ),
         onBackCompleted = {
             when {
                 nicknameEditingDestination != null -> nicknameEditingDestination = null
                 pendingSelection != null -> pendingSelection = null
+                pendingSaveDecision != null -> pendingSaveDecision = null
                 isDestinationManagementOpen -> isDestinationManagementOpen = false
                 isSearchOpen -> isSearchOpen = false
                 else -> onBackClick()
@@ -267,7 +272,7 @@ fun DestinationMapScreen(
                     currentLocationCancellationId += 1
                     val savedDestination = savedDestinations.findAtLocation(selection)
                     if (savedDestination == null) {
-                        pendingSelection = selection
+                        pendingSaveDecision = selection
                     } else {
                         onSavedDestinationConfirmClick(savedDestination)
                     }
@@ -334,6 +339,12 @@ fun DestinationMapScreen(
                                 placeName = placeName,
                                 address = address,
                             )
+                            pendingSaveDecision = pendingSaveDecision?.withResolvedAddress(
+                                latitude = latitude,
+                                longitude = longitude,
+                                placeName = placeName,
+                                address = address,
+                            )
                             isResolvingAddress = false
                         }
                     },
@@ -384,6 +395,24 @@ fun DestinationMapScreen(
                     onSavedDestinationRename(savedDestination.id, nickname)
                 },
                 modifier = Modifier.zIndex(3f),
+            )
+        }
+
+        pendingSaveDecision?.let { selectedDestination ->
+            DestinationSaveDialog(
+                onDismissRequest = { pendingSaveDecision = null },
+                onSkipSave = {
+                    if (pendingSaveDecision != null && isDestinationActionEnabled) {
+                        pendingSaveDecision = null
+                        onConfirmWithoutSave(selectedDestination)
+                    }
+                },
+                onSave = {
+                    if (pendingSaveDecision != null && isDestinationActionEnabled) {
+                        pendingSaveDecision = null
+                        pendingSelection = selectedDestination
+                    }
+                },
             )
         }
 

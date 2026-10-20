@@ -13,6 +13,7 @@ import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.destination.toDestinationSelection
+import com.joon.ringout.presentation.destination.withAddressAsName
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,6 +32,43 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AlarmEditorNavigationTest {
+    @Test
+    fun `저장 안함은 즐겨찾기를 추가하지 않고 생성과 수정 초안에 주소를 적용한 뒤 복귀한다`() = runTest {
+        for (editing in listOf(false, true)) {
+            val fixture = AlarmEditorFixture(backgroundScope)
+            if (editing) fixture.navigation.startEditing(SavedAlarm) else fixture.navigation.startCreating("07:00")
+            val parent = assertNotNull(fixture.state.editorRoute)
+            val draft = fixture.alarmSetup.uiState
+            val route = fixture.openDestination()
+            val selected = SelectedDestination.toDestinationSelection().withAddressAsName()
+
+            fixture.navigation.onDestinationSelected(route, route, selected)
+
+            assertEquals(draft.copy(destination = selected), fixture.alarmSetup.uiState)
+            assertEquals(listOf(AppRoute.Home, parent), fixture.state.backStack.toList())
+            assertTrue(fixture.repository.saveRequests.isEmpty())
+            assertNull(fixture.destination.uiState.savedEvent)
+            assertNull(fixture.alarmSetup.uiState.pendingSaveRequest)
+            assertEquals(selected.name, fixture.alarmSetup.uiState.destinationDisplayName)
+        }
+    }
+
+    @Test
+    fun `닫힌 지도에서 늦게 도착한 저장 안함 선택은 현재 초안에 적용하지 않는다`() = runTest {
+        val fixture = AlarmEditorFixture(backgroundScope)
+        fixture.navigation.startEditing(SavedAlarm)
+        val draft = fixture.alarmSetup.uiState
+        val first = fixture.openDestination()
+        fixture.navigation.onBack(first, first)
+        val second = fixture.openDestination()
+
+        fixture.navigation.onDestinationSelected(first, first, SelectedDestination.toDestinationSelection().withAddressAsName())
+
+        assertEquals(draft, fixture.alarmSetup.uiState)
+        assertEquals(second, fixture.state.requestedRoute)
+        assertTrue(fixture.repository.saveRequests.isEmpty())
+    }
+
     @Test
     fun `마지막 즐겨찾기 목적지를 삭제해도 알람 목적지를 유지하고 목록 재요청 없이 설정으로 복귀한다`() = runTest {
         for (editing in listOf(false, true)) {

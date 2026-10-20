@@ -9,6 +9,26 @@ import kotlin.test.assertTrue
 
 class DestinationSelectionStateTest {
     @Test
+    fun `저장하지 않는 목적지는 주소를 이름으로 사용하고 좌표를 유지한다`() {
+        val selection = DestinationSelection("검색한 장소", "대한민국 서울 중구 세종대로 110", 37.5665, 126.978)
+        assertEquals(
+            selection.copy(name = "서울 중구 세종대로 110"),
+            selection.withAddressAsName(),
+        )
+    }
+
+    @Test
+    fun `저장하지 않을 때 주소 조회 중 문구나 빈 주소를 알람 이름으로 남기지 않는다`() {
+        for (address in listOf("", " ", ResolvingDestinationAddress)) {
+            val selection = DestinationSelection("검색한 장소", address, 37.5665, 126.978)
+            assertEquals(
+                selection.copy(name = UnavailableDestinationAddress, address = UnavailableDestinationAddress),
+                selection.withAddressAsName(),
+            )
+        }
+    }
+
+    @Test
     fun destinationWithNameAndValidCoordinatesIsConfigured() {
         assertTrue(
             DestinationSelection(

@@ -151,6 +151,11 @@ internal fun OnboardingRoute(
                     editor.updateDestination(destination.toDestinationSelection())
                 }
             },
+            onConfirmWithoutSave = { destination ->
+                if (flow.acceptDestination(state.destinationRequestId)) {
+                    editor.updateDestination(destination)
+                }
+            },
             modifier = modifier,
         )
     } else {

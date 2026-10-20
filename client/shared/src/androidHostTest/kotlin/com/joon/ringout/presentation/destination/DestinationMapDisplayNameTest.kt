@@ -120,6 +120,7 @@ class DestinationMapDisplayNameTest {
                                 isActive = true,
                                 onBackClick = { fixture.open.value = false },
                                 onSavedDestinationConfirmClick = {},
+                                onConfirmWithoutSave = {},
                             )
                         }
                     }

@@ -50,6 +50,7 @@ internal fun DestinationManagementScreen(
             mapContent = mapContent,
             onConfirmClick = {},
             onSavedDestinationConfirmClick = {},
+            onConfirmWithoutSave = {},
             isSaveInProgress = isSaving,
             isDestinationActionEnabled = isActive && !isSaving && !showDeleteConfirmation,
             isBackHandlerEnabled = isActive && !showDeleteConfirmation && !isSaving,
