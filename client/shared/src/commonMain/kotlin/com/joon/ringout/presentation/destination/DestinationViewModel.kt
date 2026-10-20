@@ -22,6 +22,7 @@ import kotlinx.coroutines.sync.withLock
 data class DestinationUiState(
     val destinations: List<SavedDestination> = emptyList(),
     val isLoading: Boolean = true,
+    val hasLoadedDestinations: Boolean = false,
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
     val savedEvent: DestinationSavedEvent? = null,
@@ -78,6 +79,7 @@ class DestinationViewModel internal constructor(
         val currentRequestId = ++fetchRequestId
         uiState = uiState.copy(
             destinations = if (clearDestinations) emptyList() else uiState.destinations,
+            hasLoadedDestinations = !clearDestinations && uiState.hasLoadedDestinations,
             isLoading = true,
             errorMessage = null,
         )
@@ -87,6 +89,7 @@ class DestinationViewModel internal constructor(
                 if (currentRequestId != fetchRequestId) return@launch
                 uiState = uiState.copy(
                     destinations = destinations,
+                    hasLoadedDestinations = true,
                     isLoading = false,
                 )
             } catch (error: CancellationException) {
@@ -302,6 +305,7 @@ class DestinationViewModel internal constructor(
                 .collect { destinations ->
                     uiState = uiState.copy(
                         destinations = destinations,
+                        hasLoadedDestinations = true,
                         isLoading = false,
                     )
                 }

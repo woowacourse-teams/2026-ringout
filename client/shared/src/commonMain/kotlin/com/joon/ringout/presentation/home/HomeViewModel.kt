@@ -6,14 +6,23 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.SavedAlarmSchedule
+import com.joon.ringout.domain.destination.SavedDestination
+import com.joon.ringout.domain.destination.resolveDestinationDisplayName
 import com.joon.ringout.presentation.common.weekdaySummary
 import com.joon.ringout.presentation.home.model.HomeAlarm
 import com.joon.ringout.presentation.home.model.HomeUiState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.retryWhen
 
-class HomeViewModel : ViewModel() {
+class HomeViewModel(
+    private val savedDestinations: Flow<List<SavedDestination>?> = flowOf(null),
+) : ViewModel() {
     internal sealed interface Command {
         data class SetAlarmEnabled(
             val alarmId: String,
@@ -29,7 +38,14 @@ class HomeViewModel : ViewModel() {
         private set
 
     internal suspend fun observeAlarms(savedAlarms: Flow<List<SavedAlarmSchedule>>) {
-        savedAlarms
+        combine(
+            savedAlarms,
+            savedDestinations.retryWhen { error, attempt ->
+                if (error is CancellationException) throw error
+                delay(minOf(5_000L, 250L * (attempt + 1L)))
+                true
+            }.onStart { emit(null) },
+        ) { alarms, destinations -> alarms to destinations }
             .catch { error ->
                 if (error is CancellationException) throw error
                 uiState = uiState.copy(
@@ -37,10 +53,10 @@ class HomeViewModel : ViewModel() {
                     errorMessage = error.message ?: HomeAlarmLoadErrorMessage,
                 )
             }
-            .collect { alarms ->
+            .collect { (alarms, destinations) ->
                 uiState = uiState.copy(
                     isLoading = false,
-                    alarms = alarms.map(SavedAlarmSchedule::toHomeAlarm),
+                    alarms = alarms.map { it.toHomeAlarm(destinations) },
                     errorMessage = null,
                     pendingDeleteAlarmId = uiState.pendingDeleteAlarmId?.takeIf { id ->
                         alarms.any { it.request.id == id }
@@ -86,11 +102,18 @@ class HomeViewModel : ViewModel() {
     }
 }
 
-private fun SavedAlarmSchedule.toHomeAlarm(): HomeAlarm = HomeAlarm(
+private fun SavedAlarmSchedule.toHomeAlarm(savedDestinations: List<SavedDestination>?): HomeAlarm = HomeAlarm(
     id = request.id,
     time = request.time,
     days = if (request.repeatEnabled) weekdaySummary(request.selectedDays) else "한 번",
     destination = request.destinationName,
+    destinationDisplayName = resolveDestinationDisplayName(
+        name = request.destinationName,
+        address = request.destinationAddress,
+        latitude = request.destinationLatitude,
+        longitude = request.destinationLongitude,
+        savedDestinations = savedDestinations,
+    ),
     timeLimitMinutes = request.limitMinutes,
     isEnabled = enabled,
     targetAddress = request.destinationAddress,

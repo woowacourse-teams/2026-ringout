@@ -117,7 +117,7 @@ internal fun AlarmRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AlarmDestinationInfo(
-                destination = alarm.destination,
+                destination = alarm.destinationDisplayName,
                 intervalMinutes = alarm.timeLimitMinutes,
                 modifier = Modifier.weight(1f),
             )

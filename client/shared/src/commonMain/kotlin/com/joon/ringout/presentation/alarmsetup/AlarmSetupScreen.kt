@@ -81,7 +81,7 @@ fun AlarmSetupScreen(
                 onDayClick = onDayClick,
             )
             DestinationCard(
-                destination = uiState.destination?.name.orEmpty(),
+                destination = uiState.destinationDisplayName,
                 onClick = onDestinationClick,
             )
             LimitTimeCard(

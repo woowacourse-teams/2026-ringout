@@ -101,6 +101,9 @@ private fun AlarmEditorDestinationEntry(
     ) { onDestinationClick ->
         AlarmSetupRoute(
             viewModel = navigation.alarmSetupViewModel,
+            savedDestinations = navigation.destinationViewModel.uiState.let { state ->
+                state.destinations.takeIf { state.hasLoadedDestinations }
+            },
             isActive = isActive,
             onBackClick = { navigation.onBack(route, displayedRoute) },
             onDestinationClick = onDestinationClick,

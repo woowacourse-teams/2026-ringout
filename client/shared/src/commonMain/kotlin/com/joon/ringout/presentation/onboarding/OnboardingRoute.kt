@@ -176,7 +176,11 @@ internal fun OnboardingRoute(
         ) { onDestinationClick ->
             OnboardingScreen(
                 uiState = state,
-                alarm = editor.uiState,
+                alarm = editor.uiState.copy(
+                    savedDestinations = destinations.uiState.let { state ->
+                        state.destinations.takeIf { state.hasLoadedDestinations }
+                    },
+                ),
                 sounds = sounds,
                 onAmPmChange = { if (editable) editor.updateAmPm(it) },
                 onHourChange = { if (editable) editor.updateHour(it) },
