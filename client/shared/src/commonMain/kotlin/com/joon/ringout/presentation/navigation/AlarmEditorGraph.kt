@@ -1,7 +1,11 @@
 package com.joon.ringout.presentation.navigation
 
+import androidx.compose.runtime.Composable
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
+import com.joon.ringout.analytics.DestinationSelectionSource
+import com.joon.ringout.analytics.toAnalyticsLoginStateOrNull
+import com.joon.ringout.presentation.destination.component.DestinationEntry
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.alarmsound.AlarmSoundRoute
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupRoute
@@ -17,25 +21,13 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
 ) {
     entry<AppRoute.AddAlarm>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         if (navigation.hasValidDraft()) {
-            AlarmSetupRoute(
-                viewModel = navigation.alarmSetupViewModel,
-                isActive = navigation.isActive(route, displayedRoute),
-                onBackClick = { navigation.onBack(route, displayedRoute) },
-                onDestinationClick = { navigation.onDestinationClick(route, displayedRoute) },
-                onAlarmSoundClick = { navigation.onAlarmSoundClick(route, displayedRoute) },
-            )
+            AlarmEditorDestinationEntry(navigation, route, displayedRoute, authSessionState, productAnalyticsRecorder)
         }
     }
 
     entry<AppRoute.EditAlarm>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         if (navigation.hasValidDraft()) {
-            AlarmSetupRoute(
-                viewModel = navigation.alarmSetupViewModel,
-                isActive = navigation.isActive(route, displayedRoute),
-                onBackClick = { navigation.onBack(route, displayedRoute) },
-                onDestinationClick = { navigation.onDestinationClick(route, displayedRoute) },
-                onAlarmSoundClick = { navigation.onAlarmSoundClick(route, displayedRoute) },
-            )
+            AlarmEditorDestinationEntry(navigation, route, displayedRoute, authSessionState, productAnalyticsRecorder)
         }
     }
 
@@ -68,5 +60,38 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
                 },
             )
         }
+    }
+}
+
+@Composable
+private fun AlarmEditorDestinationEntry(
+    navigation: AlarmEditorNavigation,
+    route: AppRoute,
+    displayedRoute: AppRoute,
+    authSessionState: AuthSessionState,
+    analytics: ProductAnalyticsRecorder,
+) {
+    val isActive = navigation.isActive(route, displayedRoute)
+    DestinationEntry(
+        uiState = navigation.destinationViewModel.uiState,
+        isActive = isActive && !navigation.alarmSetupViewModel.uiState.isSaveInProgress,
+        onFindInMap = { navigation.onDestinationClick(route, displayedRoute) },
+        onSelect = { destination ->
+            if (isActive) {
+                authSessionState.toAnalyticsLoginStateOrNull()?.let { loginState ->
+                    analytics.recordDestinationSelected(DestinationSelectionSource.SavedDestinationDialog, loginState)
+                }
+                navigation.onStoredDestinationSelected(route, displayedRoute, destination)
+            }
+        },
+        onRetry = navigation.destinationViewModel::onScreenEntered,
+    ) { onDestinationClick ->
+        AlarmSetupRoute(
+            viewModel = navigation.alarmSetupViewModel,
+            isActive = isActive,
+            onBackClick = { navigation.onBack(route, displayedRoute) },
+            onDestinationClick = onDestinationClick,
+            onAlarmSoundClick = { navigation.onAlarmSoundClick(route, displayedRoute) },
+        )
     }
 }

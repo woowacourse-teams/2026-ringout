@@ -107,6 +107,16 @@ internal class AlarmEditorNavigation(
         navigationState.navigate(AppRoute.Destination(destinationRequestId))
     }
 
+    fun onStoredDestinationSelected(
+        from: AppRoute,
+        displayedRoute: AppRoute,
+        destination: SavedDestination,
+    ) {
+        if (from != navigationState.editorRoute || !isActive(from, displayedRoute)) return
+        if (alarmSetupViewModel.uiState.isSaveInProgress) return
+        alarmSetupViewModel.updateDestination(destination.toDestinationSelection())
+    }
+
     fun onAlarmSoundClick(from: AppRoute, displayedRoute: AppRoute) {
         if (from != navigationState.editorRoute || !isActive(from, displayedRoute)) return
         navigationState.navigate(AppRoute.AlarmSound)

@@ -74,8 +74,8 @@ import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbar
 import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbarTouchWidth
-import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
-import com.joon.ringout.presentation.destination.components.DestinationNicknameDialog
+import com.joon.ringout.presentation.destination.component.DestinationManagementDialog
+import com.joon.ringout.presentation.destination.component.DestinationNicknameDialog
 import org.jetbrains.compose.resources.painterResource
 
 data class DestinationSelection(

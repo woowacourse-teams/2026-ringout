@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.destination.components
+package com.joon.ringout.presentation.destination.component
 
 import org.jetbrains.compose.resources.DrawableResource
 import ringout.shared.generated.resources.Res

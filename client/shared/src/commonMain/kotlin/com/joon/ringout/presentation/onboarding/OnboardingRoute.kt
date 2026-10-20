@@ -13,6 +13,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.alarm.rememberAlarmController
 import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
+import com.joon.ringout.analytics.AnalyticsLoginState
+import com.joon.ringout.analytics.DestinationSelectionSource
+import com.joon.ringout.presentation.destination.component.DestinationEntry
 import com.joon.ringout.analytics.AnalyticsAlarmSoundSurface
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.domain.auth.AuthSessionState
@@ -135,52 +138,68 @@ internal fun OnboardingRoute(
             modifier = modifier,
         )
     } else {
-        OnboardingScreen(
-            uiState = state,
-            alarm = editor.uiState,
-            sounds = sounds,
-            onAmPmChange = { if (editable) editor.updateAmPm(it) },
-            onHourChange = { if (editable) editor.updateHour(it) },
-            onMinuteChange = { if (editable) editor.updateMinute(it) },
-            onDayClick = { if (editable) editor.toggleDay(it) },
-            onDestinationClick = { if (editable) flow.openDestination() },
-            onLimitMinutesChange = { if (editable) editor.updateLimitMinutes(it) },
-            onSoundClick = {
+        DestinationEntry(
+            uiState = destinations.uiState,
+            isActive = editable,
+            onFindInMap = flow::openDestination,
+            onSelect = { destination ->
                 if (editable) {
-                    editor.updateAlarmSound(it)
-                    soundController.preview(it)
+                    editor.updateDestination(destination.toDestinationSelection())
+                    appContainer.productAnalyticsRecorder.recordDestinationSelected(
+                        DestinationSelectionSource.SavedDestinationDialog,
+                        AnalyticsLoginState.LoggedOut,
+                    )
                 }
             },
-            onBack = { if (editable) flow.back() },
-            onNext = {
-                if (completionEnabled) {
-                    soundController.stopPreview()
-                    when (flow.requestNext(editor.uiState, completionRetryToken)) {
-                        OnboardingAdvance.SaveAlarm -> {
-                            if (state.step == OnboardingStep.Sound) {
-                                editor.updateAlarmSoundAnalyticsContext(
-                                    onboardingSoundAnalyticsContext(
-                                        sounds = sounds,
-                                        initialSelection = soundStepInitialSelection
-                                            ?: editor.uiState.alarmSound,
-                                        selectedSound = editor.uiState.alarmSound,
-                                    ),
-                                )
-                            }
-                            if (editor.requestSave()) flow.onSubmitAccepted()
-                        }
-                        OnboardingAdvance.Complete -> {
-                            flow.onSubmitAccepted()
-                            onComplete(state.steps.size)
-                        }
-                        OnboardingAdvance.None -> Unit
+            onRetry = destinations::onScreenEntered,
+        ) { onDestinationClick ->
+            OnboardingScreen(
+                uiState = state,
+                alarm = editor.uiState,
+                sounds = sounds,
+                onAmPmChange = { if (editable) editor.updateAmPm(it) },
+                onHourChange = { if (editable) editor.updateHour(it) },
+                onMinuteChange = { if (editable) editor.updateMinute(it) },
+                onDayClick = { if (editable) editor.toggleDay(it) },
+                onDestinationClick = onDestinationClick,
+                onLimitMinutesChange = { if (editable) editor.updateLimitMinutes(it) },
+                onSoundClick = {
+                    if (editable) {
+                        editor.updateAlarmSound(it)
+                        soundController.preview(it)
                     }
-                }
-            },
-            modifier = modifier,
-            completionEnabled = completionEnabled,
-            completionFailed = state.isAlarmSaved && completionRetryToken > 0,
-        )
+                },
+                onBack = { if (editable) flow.back() },
+                onNext = {
+                    if (completionEnabled) {
+                        soundController.stopPreview()
+                        when (flow.requestNext(editor.uiState, completionRetryToken)) {
+                            OnboardingAdvance.SaveAlarm -> {
+                                if (state.step == OnboardingStep.Sound) {
+                                    editor.updateAlarmSoundAnalyticsContext(
+                                        onboardingSoundAnalyticsContext(
+                                            sounds = sounds,
+                                            initialSelection = soundStepInitialSelection
+                                                ?: editor.uiState.alarmSound,
+                                            selectedSound = editor.uiState.alarmSound,
+                                        ),
+                                    )
+                                }
+                                if (editor.requestSave()) flow.onSubmitAccepted()
+                            }
+                            OnboardingAdvance.Complete -> {
+                                flow.onSubmitAccepted()
+                                onComplete(state.steps.size)
+                            }
+                            OnboardingAdvance.None -> Unit
+                        }
+                    }
+                },
+                modifier = modifier,
+                completionEnabled = completionEnabled,
+                completionFailed = state.isAlarmSaved && completionRetryToken > 0,
+            )
+        }
     }
     AlarmSetupCoordinator(
         alarmController = controller,

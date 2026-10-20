@@ -73,6 +73,35 @@ class AlarmEditorNavigationTest {
     }
 
     @Test
+    fun `저장된 목적지 다이얼로그 선택은 지도 진입이나 재저장 없이 초안만 변경한다`() = runTest {
+        for (editing in listOf(false, true)) {
+            val fixture = AlarmEditorFixture(backgroundScope)
+            if (editing) fixture.navigation.startEditing(SavedAlarm) else fixture.navigation.startCreating("07:00")
+            val parent = assertNotNull(fixture.state.editorRoute)
+            val stack = fixture.state.backStack.toList()
+            val draft = fixture.alarmSetup.uiState
+
+            fixture.navigation.onStoredDestinationSelected(parent, parent, SelectedDestination)
+
+            assertEquals(stack, fixture.state.backStack.toList())
+            assertEquals(draft.copy(destination = SelectedDestination.toDestinationSelection()), fixture.alarmSetup.uiState)
+            assertTrue(fixture.repository.saveRequests.isEmpty())
+        }
+    }
+
+    @Test
+    fun `다른 화면이 표시되면 저장된 목적지 선택 콜백을 무시한다`() = runTest {
+        val fixture = AlarmEditorFixture(backgroundScope)
+        fixture.navigation.startEditing(SavedAlarm)
+        val parent = assertNotNull(fixture.state.editorRoute)
+        val draft = fixture.alarmSetup.uiState
+
+        fixture.navigation.onStoredDestinationSelected(parent, RingingRoute, SelectedDestination)
+
+        assertEquals(draft, fixture.alarmSetup.uiState)
+    }
+
+    @Test
     fun `목적지에 재진입하면 이전 화면의 선택 콜백을 새 요청에 적용하지 않는다`() = runTest {
         val fixture = AlarmEditorFixture(backgroundScope)
         fixture.navigation.startEditing(SavedAlarm)

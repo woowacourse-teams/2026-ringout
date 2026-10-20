@@ -1,4 +1,4 @@
-package com.joon.ringout.presentation.destination.components
+package com.joon.ringout.presentation.destination.component
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
