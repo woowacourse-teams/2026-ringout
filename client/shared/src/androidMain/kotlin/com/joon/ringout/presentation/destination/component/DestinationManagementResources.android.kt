@@ -1,6 +1,7 @@
-package com.joon.ringout.presentation.destination.components
+package com.joon.ringout.presentation.destination.component
 
 import org.jetbrains.compose.resources.DrawableResource
+import ringout.shared.generated.resources.destination_management_delete_android
 import ringout.shared.generated.resources.Res
 import ringout.shared.generated.resources.destination_management_close_android
 import ringout.shared.generated.resources.destination_management_edit_android
@@ -10,3 +11,6 @@ internal actual val DestinationManagementEditIconResource: DrawableResource =
 
 internal actual val DestinationManagementCloseIconResource: DrawableResource =
     Res.drawable.destination_management_close_android
+
+internal actual val DestinationManagementDeleteIconResource: DrawableResource =
+    Res.drawable.destination_management_delete_android

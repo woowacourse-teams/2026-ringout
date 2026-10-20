@@ -45,7 +45,7 @@ internal fun OnboardingAlarmStep(
                 )
             }
             OnboardingStep.Weekdays -> WeekdaySelector(alarm.selectedDays, onDayClick)
-            OnboardingStep.Destination -> DestinationCard(alarm.destination?.name.orEmpty(), onDestinationClick)
+            OnboardingStep.Destination -> DestinationCard(alarm.destinationDisplayName, onDestinationClick)
             OnboardingStep.Interval -> LimitTimeCard(alarm.limitMinutes, onLimitMinutesChange)
             OnboardingStep.Sound -> sounds.forEach { sound ->
                 AlarmSoundListItem(

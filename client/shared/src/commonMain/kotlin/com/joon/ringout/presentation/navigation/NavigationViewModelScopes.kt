@@ -92,7 +92,7 @@ private fun navigationViewModelFactory(
     destinationCurrentLocationCache: DestinationCurrentLocationCache,
 ): ViewModelProvider.Factory =
     viewModelFactory {
-        initializer { HomeViewModel() }
+        initializer { HomeViewModel(container.destinationRepository.observeAll()) }
         initializer {
             RoomListViewModel(
                 analytics = container.productAnalyticsRecorder,

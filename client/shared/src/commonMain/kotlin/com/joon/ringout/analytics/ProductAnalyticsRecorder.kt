@@ -12,6 +12,7 @@ enum class DestinationSelectionSource(
 ) {
     MapShortcut("map_shortcut"),
     SearchShortcut("search_shortcut"),
+    SavedDestinationDialog("saved_destination_dialog"),
 }
 
 enum class StampMonthChangeDirection(

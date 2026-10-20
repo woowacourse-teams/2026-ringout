@@ -67,6 +67,10 @@ internal sealed interface AppRoute : NavKey {
     data class Destination(val requestId: Long) : AppRoute
 
     @Serializable
+    @SerialName("destination_management")
+    data class DestinationManagement(val destinationId: Long) : AppRoute
+
+    @Serializable
     @SerialName("alarm_sound")
     data object AlarmSound : AppRoute
 

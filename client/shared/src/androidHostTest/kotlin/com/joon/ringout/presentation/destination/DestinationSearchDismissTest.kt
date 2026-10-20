@@ -111,7 +111,6 @@ class DestinationSearchDismissTest {
                         },
                         isSearching = false,
                         searchError = null,
-                        savedDestinations = emptyList(),
                         isLocatingCurrentLocation = false,
                         isSaveInProgress = false,
                         isDestinationActionEnabled = true,
@@ -122,8 +121,6 @@ class DestinationSearchDismissTest {
                         onSearchSubmit = {},
                         onSearchResultClick = { state.selected = it },
                         onCurrentLocationClick = {},
-                        onDestinationManagementClick = {},
-                        onSavedDestinationClick = { _, _ -> },
                         onConfirmClick = {},
                         mapContent = { Box(it) },
                     )

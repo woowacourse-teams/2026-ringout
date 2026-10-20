@@ -14,6 +14,7 @@ import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.alarmsetup.AlarmSoundSelection
 import com.joon.ringout.presentation.destination.DestinationSavedEvent
+import com.joon.ringout.presentation.destination.DestinationSelection
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.destination.belongsToDestinationRequest
 import com.joon.ringout.presentation.destination.toDestinationSelection
@@ -25,12 +26,14 @@ internal fun rememberAlarmEditorNavigation(
     destinationViewModel: DestinationViewModel,
 ): AlarmEditorNavigation {
     val destinationRequestId = rememberSaveable { mutableStateOf(0L) }
-    return remember(navigationState, alarmSetupViewModel, destinationViewModel, destinationRequestId) {
+    val dialogRequestId = rememberSaveable { mutableStateOf(0L) }
+    return remember(navigationState, alarmSetupViewModel, destinationViewModel, destinationRequestId, dialogRequestId) {
         AlarmEditorNavigation(
             navigationState,
             alarmSetupViewModel,
             destinationViewModel,
             destinationRequestId,
+            dialogRequestId,
         )
     }
 }
@@ -56,7 +59,11 @@ internal class AlarmEditorNavigation(
     val alarmSetupViewModel: AlarmSetupViewModel,
     val destinationViewModel: DestinationViewModel,
     destinationRequestId: MutableState<Long> = mutableStateOf(0L),
+    dialogRequestId: MutableState<Long> = mutableStateOf(0L),
 ) {
+    var destinationDialogRequestId by dialogRequestId
+        private set
+
     private var destinationRequestId by destinationRequestId
 
     init {
@@ -90,12 +97,28 @@ internal class AlarmEditorNavigation(
 
     fun isBackBlocked(displayedRoute: AppRoute): Boolean = when (displayedRoute) {
         AppRoute.AddAlarm, is AppRoute.EditAlarm -> alarmSetupViewModel.uiState.isSaveInProgress
+        is AppRoute.DestinationManagement -> destinationViewModel.uiState.isSaving
         else -> false
     }
 
     fun onBack(route: AppRoute, displayedRoute: AppRoute) {
         if (!isActive(route, displayedRoute) || isBackBlocked(displayedRoute)) return
+        if (route is AppRoute.DestinationManagement) {
+            val destinationState = destinationViewModel.uiState
+            if (destinationState.destinations.isNotEmpty()) {
+                destinationDialogRequestId += 1
+            }
+            destinationViewModel.closeManagement()
+        }
         navigationState.popBackStack(route)
+    }
+
+    fun onManageDestination(from: AppRoute, displayedRoute: AppRoute, destination: SavedDestination) {
+        if (from != navigationState.editorRoute || !isActive(from, displayedRoute)) return
+        if (alarmSetupViewModel.uiState.isSaveInProgress) return
+        if (destinationViewModel.beginManagement(destination.id)) {
+            navigationState.navigate(AppRoute.DestinationManagement(destination.id))
+        }
     }
 
     fun onDestinationClick(from: AppRoute, displayedRoute: AppRoute) {
@@ -105,6 +128,16 @@ internal class AlarmEditorNavigation(
             destinationViewModel.uiState.savedEvent?.requestId ?: 0L,
         ) + 1L
         navigationState.navigate(AppRoute.Destination(destinationRequestId))
+    }
+
+    fun onStoredDestinationSelected(
+        from: AppRoute,
+        displayedRoute: AppRoute,
+        destination: SavedDestination,
+    ) {
+        if (from != navigationState.editorRoute || !isActive(from, displayedRoute)) return
+        if (alarmSetupViewModel.uiState.isSaveInProgress) return
+        alarmSetupViewModel.updateDestination(destination.toDestinationSelection())
     }
 
     fun onAlarmSoundClick(from: AppRoute, displayedRoute: AppRoute) {
@@ -117,8 +150,16 @@ internal class AlarmEditorNavigation(
         displayedRoute: AppRoute,
         destination: SavedDestination,
     ) {
+        onDestinationSelected(route, displayedRoute, destination.toDestinationSelection())
+    }
+
+    fun onDestinationSelected(
+        route: AppRoute.Destination,
+        displayedRoute: AppRoute,
+        destination: DestinationSelection,
+    ) {
         if (!isActive(route, displayedRoute)) return
-        alarmSetupViewModel.updateDestination(destination.toDestinationSelection())
+        alarmSetupViewModel.updateDestination(destination)
         navigationState.popBackStack(route)
     }
 
@@ -166,6 +207,7 @@ private fun AppRoute.isAlarmEditorRoute(): Boolean = when (this) {
     AppRoute.AlarmSound,
     is AppRoute.EditAlarm,
     is AppRoute.Destination,
+    is AppRoute.DestinationManagement,
     -> true
     else -> false
 }
