@@ -43,7 +43,14 @@ internal fun RoomListRoute(
                 isLoginDialogVisible = true
             }
         },
-        onRoomClick = onRoomClick,
+        onRoomClick = { roomId ->
+            val room = viewModel.uiState.allRooms.firstOrNull { it.id == roomId }
+            if (room?.isJoined == true) {
+                onJoinedRoomClick(roomId)
+            } else {
+                onRoomClick(roomId)
+            }
+        },
         onJoinedRoomClick = onJoinedRoomClick,
         onRetryRooms = viewModel::onRetryRooms,
         modifier = modifier,
