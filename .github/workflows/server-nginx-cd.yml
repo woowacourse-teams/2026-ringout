@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "server/deploy/**"
+      - "server/deploy/setup-nginx.sh"
       - ".github/workflows/server-nginx-cd.yml"
   workflow_dispatch:
 
