@@ -49,6 +49,8 @@ fun AgreementCheckbox(
             }
             .toggleable(
                 value = checked,
+                interactionSource = null,
+                indication = null,
                 enabled = enabled,
                 role = Role.Checkbox,
                 onValueChange = onCheckedChange,
