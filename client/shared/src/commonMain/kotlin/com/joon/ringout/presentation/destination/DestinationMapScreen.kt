@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +50,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -165,19 +167,21 @@ fun DestinationMapScreen(
         },
     )
 
-    PlatformDestinationSearchEffect(
-        query = submittedQuery,
-        requestId = searchRequestId,
-        onLoadingChange = { isSearching = it },
-        onResults = {
-            searchResults = it
-            searchError = if (it.isEmpty()) "검색 결과가 없습니다." else null
-        },
-        onError = {
-            searchResults = emptyList()
-            searchError = it
-        },
-    )
+    if (isSearchOpen && submittedQuery != null) {
+        PlatformDestinationSearchEffect(
+            query = submittedQuery,
+            requestId = searchRequestId,
+            onLoadingChange = { isSearching = it },
+            onResults = {
+                searchResults = it
+                searchError = if (it.isEmpty()) "검색 결과가 없습니다." else null
+            },
+            onError = {
+                searchResults = emptyList()
+                searchError = it
+            },
+        )
+    }
 
     LaunchedEffect(savedDestinations) {
         val selectedId = selectedSavedDestination?.id ?: return@LaunchedEffect
@@ -220,7 +224,14 @@ fun DestinationMapScreen(
                 searchQuery = it
                 searchError = null
             },
-            onSearchClick = { isSearchOpen = true },
+            onSearchClick = {
+                searchQuery = ""
+                submittedQuery = null
+                searchResults = emptyList()
+                isSearching = false
+                searchError = null
+                isSearchOpen = true
+            },
             onSearchClose = { isSearchOpen = false },
             onSearchSubmit = {
                 val query = searchQuery.trim()
@@ -402,7 +413,7 @@ fun DestinationMapScreen(
 }
 
 @Composable
-private fun DestinationMapLayout(
+internal fun DestinationMapLayout(
     selection: DestinationSelection,
     isCameraMoving: Boolean,
     isResolvingAddress: Boolean,
@@ -468,6 +479,20 @@ private fun DestinationMapLayout(
                     )
                 }
             }
+        }
+
+        if (isSearchOpen) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable(
+                        interactionSource = null,
+                        indication = null,
+                        onClickLabel = "검색 닫기",
+                        onClick = onSearchClose,
+                    )
+                    .semantics { contentDescription = "검색창 바깥 영역" },
+            )
         }
 
         Column(
@@ -614,7 +639,7 @@ private fun FloatingMapHeader(
             .clip(shape)
             .then(
                 if (isSearchOpen) {
-                    Modifier
+                    Modifier.pointerInput(Unit) { detectTapGestures(onTap = {}) }
                 } else {
                     Modifier
                         .clickable(
@@ -726,6 +751,7 @@ private fun DestinationSearchResultsPanel(
             .fillMaxWidth()
             .shadow(14.dp, RoundedCornerShape(15.dp))
             .background(Color.White, RoundedCornerShape(15.dp))
+            .pointerInput(Unit) { detectTapGestures(onTap = {}) }
             .padding(10.dp),
     ) {
         when {
