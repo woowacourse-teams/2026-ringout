@@ -112,6 +112,11 @@ class AlarmSetupViewModel(
         uiState = uiState.copy(destination = destination)
     }
 
+    fun clearDestination() {
+        if (isCleared) return
+        uiState = uiState.copy(destination = null)
+    }
+
     fun updateAlarmSound(alarmSound: AlarmSoundSelection) {
         if (isCleared) return
         uiState = uiState.copy(

@@ -30,7 +30,8 @@ internal fun DestinationEntry(
     LaunchedEffect(isActive, openRequestId) {
         if (isActive && openRequestId > consumedOpenRequest) {
             consumedOpenRequest = openRequestId
-            isRequested = true
+            // 관리에서 돌아온 빈 목록은 지도를 자동으로 열지 않는다.
+            isRequested = uiState.destinations.isNotEmpty()
         }
     }
     val canOpenMap = !uiState.isLoading && uiState.errorMessage == null && uiState.destinations.isEmpty()

@@ -32,6 +32,76 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class AlarmEditorNavigationTest {
     @Test
+    fun `마지막 목적지를 삭제하면 알람 목적지를 비우고 목록 재요청 없이 알람 설정으로 복귀한다`() = runTest {
+        for (editing in listOf(false, true)) {
+            val fixture = AlarmEditorFixture(backgroundScope)
+            fixture.repository.destinations.value = listOf(SelectedDestination)
+            runCurrent()
+            if (editing) fixture.navigation.startEditing(SavedAlarm) else fixture.navigation.startCreating("07:00")
+            fixture.alarmSetup.updateDestination(SelectedDestination.toDestinationSelection())
+            val draft = fixture.alarmSetup.uiState
+            val parent = assertNotNull(fixture.state.editorRoute)
+            fixture.navigation.onManageDestination(parent, parent, SelectedDestination)
+            val route = AppRoute.DestinationManagement(SelectedDestination.id)
+
+            fixture.destination.deleteManagedDestination()
+            runCurrent()
+            assertEquals(SelectedDestination.id, fixture.destination.uiState.managementDeletedDestinationId)
+            fixture.navigation.onBack(route, route)
+
+            assertEquals(listOf(AppRoute.Home, parent), fixture.state.backStack.toList())
+            assertEquals(draft.copy(destination = null), fixture.alarmSetup.uiState)
+            assertFalse(fixture.alarmSetup.uiState.canSave)
+            assertEquals(0L, fixture.navigation.destinationDialogRequestId)
+            assertTrue(fixture.destination.uiState.destinations.isEmpty())
+            assertNull(fixture.destination.uiState.managementDeletedDestinationId)
+        }
+    }
+
+    @Test
+    fun `목적지가 남아도 삭제 후 알람 목적지를 초기화하고 다음 관리 취소에는 삭제 결과를 재사용하지 않는다`() = runTest {
+        val fixture = AlarmEditorFixture(backgroundScope)
+        fixture.repository.destinations.value = listOf(SelectedDestination, OriginalDestination)
+        runCurrent()
+        fixture.navigation.startEditing(SavedAlarm)
+        val parent = assertNotNull(fixture.state.editorRoute)
+        fixture.navigation.onManageDestination(parent, parent, SelectedDestination)
+        val route = AppRoute.DestinationManagement(SelectedDestination.id)
+        fixture.destination.deleteManagedDestination()
+        runCurrent()
+        fixture.navigation.onBack(route, route)
+
+        assertNull(fixture.alarmSetup.uiState.destination)
+        assertEquals(1L, fixture.navigation.destinationDialogRequestId)
+        assertEquals(listOf(OriginalDestination), fixture.destination.uiState.destinations)
+        fixture.navigation.onStoredDestinationSelected(parent, parent, OriginalDestination)
+        fixture.navigation.onManageDestination(parent, parent, OriginalDestination)
+        val nextRoute = AppRoute.DestinationManagement(OriginalDestination.id)
+        fixture.navigation.onBack(nextRoute, nextRoute)
+        assertEquals(OriginalDestination.toDestinationSelection(), fixture.alarmSetup.uiState.destination)
+    }
+
+    @Test
+    fun `삭제에 실패한 뒤 관리 화면을 닫아도 알람 목적지는 유지한다`() = runTest {
+        val fixture = AlarmEditorFixture(backgroundScope)
+        fixture.repository.destinations.value = listOf(SelectedDestination)
+        fixture.repository.deleteSucceeds = false
+        runCurrent()
+        fixture.navigation.startEditing(SavedAlarm)
+        val draft = fixture.alarmSetup.uiState
+        val parent = assertNotNull(fixture.state.editorRoute)
+        fixture.navigation.onManageDestination(parent, parent, SelectedDestination)
+        val route = AppRoute.DestinationManagement(SelectedDestination.id)
+        fixture.destination.deleteManagedDestination()
+        runCurrent()
+        assertNotNull(fixture.destination.uiState.errorMessage)
+        assertNull(fixture.destination.uiState.managementDeletedDestinationId)
+        assertEquals(route, fixture.state.requestedRoute)
+        fixture.navigation.onBack(route, route)
+        assertEquals(draft, fixture.alarmSetup.uiState)
+    }
+
+    @Test
     fun `관리 화면에서 돌아오면 목록을 다시 요청하고 알람 초안을 유지한다`() = runTest {
         val fixture = AlarmEditorFixture(backgroundScope)
         fixture.repository.destinations.value = listOf(SelectedDestination)
@@ -404,6 +474,7 @@ private class AlarmEditorFixture(
 private class EditorDestinationRepository : DestinationRepository {
     val saveRequests = mutableListOf<SavedDestination>()
     var saveGate: CompletableDeferred<Unit>? = null
+    var deleteSucceeds = true
 
     val destinations = kotlinx.coroutines.flow.MutableStateFlow(emptyList<SavedDestination>())
     override fun observeAll(): Flow<List<SavedDestination>> = destinations
@@ -420,7 +491,11 @@ private class EditorDestinationRepository : DestinationRepository {
 
     override suspend fun updateName(id: Long, name: String): Boolean = false
 
-    override suspend fun delete(id: Long): Boolean = false
+    override suspend fun delete(id: Long): Boolean {
+        if (!deleteSucceeds || destinations.value.none { it.id == id }) return false
+        destinations.value = destinations.value.filterNot { it.id == id }
+        return true
+    }
 }
 
 private fun restoredState(vararg routes: AppRoute): AppNavigationState {

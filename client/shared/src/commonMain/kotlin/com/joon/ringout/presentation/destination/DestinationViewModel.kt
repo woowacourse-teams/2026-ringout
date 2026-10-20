@@ -26,6 +26,7 @@ data class DestinationUiState(
     val errorMessage: String? = null,
     val savedEvent: DestinationSavedEvent? = null,
     val managedDestination: SavedDestination? = null,
+    val managementDeletedDestinationId: Long? = null,
 )
 
 data class DestinationSavedEvent(
@@ -225,12 +226,22 @@ class DestinationViewModel internal constructor(
     fun beginManagement(destinationId: Long): Boolean {
         if (uiState.isSaving) return false
         val destination = uiState.destinations.firstOrNull { it.id == destinationId } ?: return false
-        uiState = uiState.copy(managedDestination = destination, errorMessage = null)
+        uiState = uiState.copy(
+            managedDestination = destination,
+            managementDeletedDestinationId = null,
+            errorMessage = null,
+        )
         return true
     }
 
     fun closeManagement() {
-        if (!uiState.isSaving) uiState = uiState.copy(managedDestination = null, errorMessage = null)
+        if (!uiState.isSaving) {
+            uiState = uiState.copy(
+                managedDestination = null,
+                managementDeletedDestinationId = null,
+                errorMessage = null,
+            )
+        }
     }
 
     fun saveManagedDestination(destination: SavedDestination) {
@@ -249,7 +260,10 @@ class DestinationViewModel internal constructor(
         if (uiState.isSaving) return
         mutateManagedDestination {
             check(repository.delete(destination.id)) { "삭제할 목적지를 찾지 못했어요." }
-            uiState = uiState.copy(destinations = uiState.destinations.filterNot { it.id == destination.id })
+            uiState = uiState.copy(
+                destinations = uiState.destinations.filterNot { it.id == destination.id },
+                managementDeletedDestinationId = destination.id,
+            )
         }
     }
 
@@ -258,7 +272,7 @@ class DestinationViewModel internal constructor(
         scope.launch {
             try {
                 mutationMutex.withLock { action() }
-                // 목적지 선택 이벤트를 발생시키지 않는다. 알람 초안은 사용자가 선택할 때만 바뀐다.
+                // 목적지 선택 이벤트 대신 관리 화면 복귀 시 저장·삭제 결과를 처리한다.
                 uiState = uiState.copy(isSaving = false, managedDestination = null)
             } catch (error: CancellationException) {
                 throw error

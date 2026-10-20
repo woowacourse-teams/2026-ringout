@@ -31,6 +31,24 @@ class DestinationEntryTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
+    fun `마지막 목적지 삭제 후 복귀 요청이 남아 있어도 지도를 열지 않고 다음 직접 선택 때만 연다`() = withEntry(listOf(Destination)) { state ->
+        compose.onNodeWithText("목적지 설정").performClick()
+        compose.onNodeWithContentDescription("헬스장 관리").performClick()
+        compose.runOnIdle { state.active.value = false }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            state.ui.value = DestinationUiState(isLoading = false)
+            state.openRequest.value = 1L
+            state.active.value = true
+        }
+        compose.waitForIdle()
+        compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(0, state.mapEntries) }
+        compose.onNodeWithText("목적지 설정").performClick()
+        compose.runOnIdle { assertEquals(1, state.mapEntries) }
+    }
+
+    @Test
     fun `관리는 목적지를 선택하지 않고 관리 화면을 요청하고 복귀 시 목록을 다시 표시한다`() = withEntry(listOf(Destination)) { state ->
         compose.onNodeWithText("목적지 설정").performClick()
         compose.onNodeWithContentDescription("헬스장 관리").performClick()

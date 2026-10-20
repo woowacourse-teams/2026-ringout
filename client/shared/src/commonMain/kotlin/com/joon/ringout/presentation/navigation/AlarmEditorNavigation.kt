@@ -103,8 +103,14 @@ internal class AlarmEditorNavigation(
     fun onBack(route: AppRoute, displayedRoute: AppRoute) {
         if (!isActive(route, displayedRoute) || isBackBlocked(displayedRoute)) return
         if (route is AppRoute.DestinationManagement) {
+            val destinationState = destinationViewModel.uiState
+            if (destinationState.managementDeletedDestinationId != null) {
+                alarmSetupViewModel.clearDestination()
+            }
+            if (destinationState.destinations.isNotEmpty()) {
+                destinationDialogRequestId += 1
+            }
             destinationViewModel.closeManagement()
-            destinationDialogRequestId += 1
         }
         navigationState.popBackStack(route)
     }
