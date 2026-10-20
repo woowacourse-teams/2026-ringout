@@ -4,6 +4,8 @@ import com.ringout.api.common.BaseEntity;
 import com.ringout.api.user.domain.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -29,19 +31,29 @@ public class Device extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "user_token", nullable = false, length = 255)
-    private String userToken;
+    @Column(name = "fcm_token", nullable = false, length = 255)
+    private String fcmToken;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String os;
+    private Platform platform;
 
-    private Device(User user, String userToken, String os) {
+    private Device(User user, String fcmToken, Platform platform) {
         this.user = user;
-        this.userToken = userToken;
-        this.os = os;
+        this.fcmToken = fcmToken;
+        this.platform = platform;
     }
 
-    public static Device of(User user, String userToken, String os) {
-        return new Device(user, userToken, os);
+    public static Device of(User user, String fcmToken, Platform platform) {
+        return new Device(user, fcmToken, platform);
+    }
+
+    public void changeOwner(User user, Platform platform) {
+        this.user = user;
+        this.platform = platform;
+    }
+
+    public boolean isOwnedBy(Long userId) {
+        return this.user.getId().equals(userId);
     }
 }
