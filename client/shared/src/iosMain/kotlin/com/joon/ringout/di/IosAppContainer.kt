@@ -18,11 +18,19 @@ import com.joon.ringout.data.room.DefaultRoomRepository
 import com.joon.ringout.data.missionhistory.DefaultMissionHistoryRepository
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
 import com.joon.ringout.data.network.getRingoutHttpClient
+import com.joon.ringout.data.push.KtorPushTokenRegistrar
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.IosSystemThemeModeReader
 import com.joon.ringout.data.preferences.getAppPreferencesDataStore
 import com.joon.ringout.domain.auth.getAuthSession
+import com.joon.ringout.domain.push.PushPlatform
+import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
+import com.joon.ringout.domain.push.PushTokenSource
+import com.joon.ringout.platform.IosFcmTokenListener
 import com.joon.ringout.platform.IosNativeServices
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class IosAppContainer(
     nativeServices: IosNativeServices,
@@ -32,6 +40,10 @@ class IosAppContainer(
     private val database = getRingoutDatabase()
 
     override val authSession = getAuthSession()
+    override val pushTokenSource: PushTokenSource = IosFcmTokenSource(nativeServices)
+    override val pushTokenRegistrationReadiness =
+        PushTokenRegistrationReadiness(PushPlatform.Ios)
+    override val pushTokenRegistrar = KtorPushTokenRegistrar(httpClient, tokenStorage, authSession)
     override val termsRepository = com.joon.ringout.data.terms.DefaultTermsRepository(httpClient, tokenStorage, authSession)
     override val networkMonitor = com.joon.ringout.data.connectivity.IosNetworkMonitor()
 
@@ -92,4 +104,22 @@ class IosAppContainer(
         createProductAnalyticsRecorder(
             nativeServices.analyticsTracker(),
         )
+}
+
+private class IosFcmTokenSource(
+    nativeServices: IosNativeServices,
+) : PushTokenSource {
+    private val mutableLatestFcmToken = MutableStateFlow(nativeServices.latestFcmToken())
+
+    override val latestFcmToken: StateFlow<String?> = mutableLatestFcmToken.asStateFlow()
+
+    init {
+        nativeServices.observeFcmToken(
+            object : IosFcmTokenListener {
+                override fun onTokenChanged(token: String?) {
+                    mutableLatestFcmToken.value = token
+                }
+            },
+        )
+    }
 }

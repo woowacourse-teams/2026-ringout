@@ -25,6 +25,7 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.app.AuthSessionCoordinator
+import com.joon.ringout.alarm.PushNotificationPermissionEffect
 import com.joon.ringout.presentation.app.AppLocationCacheViewModel
 import com.joon.ringout.presentation.app.ReauthenticationCoordinator
 import com.joon.ringout.presentation.app.AppRuntimeCoordinator
@@ -200,6 +201,10 @@ private fun RingoutAppContent(
     val displayedRoute = ringingAlarm
         ?.let { alarm -> AppRoute.AlarmRinging(alarm.id) }
         ?: navigationState.requestedRoute
+    PushNotificationPermissionEffect(
+        isEligible =
+            authSessionState == AuthSessionState.Authenticated && displayedRoute == AppRoute.Home,
+    )
     val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
     val viewModelScopes = rememberNavigationViewModelScopes(
         appContainer,
@@ -281,6 +286,9 @@ private fun RingoutAppContent(
         authRepository = appContainer.authRepository,
         authSession = appContainer.authSession,
         authSessionState = authSessionState,
+        pushTokenSource = appContainer.pushTokenSource,
+        pushTokenRegistrationReadiness = appContainer.pushTokenRegistrationReadiness,
+        pushTokenRegistrar = appContainer.pushTokenRegistrar,
         myPageViewModel = myPageViewModel,
         destinationViewModel = alarmEditorNavigation?.destinationViewModel,
         roomListViewModel = socialRoomListViewModel,

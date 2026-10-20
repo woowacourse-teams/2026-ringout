@@ -47,3 +47,7 @@ expect fun rememberAlarmController(
     onSaveError: (AlarmScheduleRequest, String) -> Unit,
     onError: (String) -> Unit,
 ): AlarmController
+
+/** Requests notification permission once when an authenticated user first enters Home. */
+@Composable
+expect fun PushNotificationPermissionEffect(isEligible: Boolean)

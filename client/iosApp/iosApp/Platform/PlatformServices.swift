@@ -94,4 +94,16 @@ final class PlatformServices: @preconcurrency IosNativeServices {
     func analyticsTracker() -> IosAnalyticsTracker {
         firebaseAnalyticsAdapter
     }
+
+    func latestFcmToken() -> String? {
+        FirebaseMessagingAdapter.shared.latestToken
+    }
+
+    func observeFcmToken(listener: IosFcmTokenListener) {
+        FirebaseMessagingAdapter.shared.observeToken(listener: listener)
+    }
+
+    func requestNotificationPermissionIfNeeded() {
+        FirebaseMessagingAdapter.shared.requestNotificationPermissionIfNeeded()
+    }
 }
