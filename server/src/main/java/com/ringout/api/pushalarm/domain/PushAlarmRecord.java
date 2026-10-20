@@ -33,10 +33,6 @@ public class PushAlarmRecord extends BaseEntity {
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "push_alarm_content_id", nullable = false)
-    private PushAlarmContent pushAlarmContent;
-
     @Column(name = "push_alarm_status", nullable = false, length = 20)
     private String pushAlarmStatus;
 
@@ -46,13 +42,11 @@ public class PushAlarmRecord extends BaseEntity {
     private PushAlarmRecord(
         User user,
         Device device,
-        PushAlarmContent pushAlarmContent,
         String pushAlarmStatus,
         boolean read
     ) {
         this.user = user;
         this.device = device;
-        this.pushAlarmContent = pushAlarmContent;
         this.pushAlarmStatus = pushAlarmStatus;
         this.read = read;
     }
@@ -60,10 +54,9 @@ public class PushAlarmRecord extends BaseEntity {
     public static PushAlarmRecord of(
         User user,
         Device device,
-        PushAlarmContent pushAlarmContent,
         String pushAlarmStatus,
         boolean read
     ) {
-        return new PushAlarmRecord(user, device, pushAlarmContent, pushAlarmStatus, read);
+        return new PushAlarmRecord(user, device, pushAlarmStatus, read);
     }
 }
