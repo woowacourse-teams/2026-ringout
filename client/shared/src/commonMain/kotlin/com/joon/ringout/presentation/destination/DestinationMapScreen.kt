@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -69,6 +70,7 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.domain.destination.SavedDestination
+import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbar
 import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
 import com.joon.ringout.presentation.destination.components.DestinationNicknameDialog
 import com.joon.ringout.presentation.destination.components.DestinationShortcutRow
@@ -729,21 +731,35 @@ private fun DestinationSearchResultsPanel(
         when {
             isSearching -> SearchStatusText("검색 중...")
             error != null -> SearchStatusText(error)
-            else -> LazyColumn(
+            else -> Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(280.dp),
             ) {
-                item {
-                    Text(
-                        text = "Powered by Google",
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        color = SecondaryText,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+                val listState = rememberLazyListState()
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(end = 12.dp),
+                ) {
+                    item {
+                        Text(
+                            text = "Powered by Google",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            color = SecondaryText,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    items(results) { result ->
+                        SearchResultRow(result = result, onClick = { onResultClick(result) })
+                    }
                 }
-                items(results) { result ->
-                    SearchResultRow(result = result, onClick = { onResultClick(result) })
+                listState.scrollIndicatorState?.let { scrollIndicatorState ->
+                    DestinationSearchScrollbar(
+                        state = scrollIndicatorState,
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    )
                 }
             }
         }
