@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -596,6 +597,13 @@ private fun FloatingMapHeader(
             .height(62.dp)
             .background(Color.White, shape)
             .border(1.dp, HeaderBorder, shape)
+            .clip(shape)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "목적지 검색 열기",
+                onClick = onSearchClick,
+            )
+            .semantics { contentDescription = "검색" }
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -620,13 +628,7 @@ private fun FloatingMapHeader(
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .background(MaterialTheme.colorScheme.primary, shape)
-                .clickable(
-                    role = Role.Button,
-                    onClickLabel = "목적지 검색 열기",
-                    onClick = onSearchClick,
-                )
-                .semantics { contentDescription = "검색" },
+                .background(MaterialTheme.colorScheme.primary, shape),
             contentAlignment = Alignment.Center,
         ) {
             Image(
