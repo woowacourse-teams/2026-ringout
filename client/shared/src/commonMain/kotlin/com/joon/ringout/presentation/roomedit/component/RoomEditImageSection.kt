@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.roomedit.component
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,7 +21,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.common.component.ImageLoadingOverlay
@@ -28,7 +29,6 @@ import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.Res
 import ringout.shared.generated.resources.room_edit_image_edit_dark
-import ringout.shared.generated.resources.room_edit_image_edit_light
 
 @Composable
 internal fun RoomEditImageSection(
@@ -40,16 +40,18 @@ internal fun RoomEditImageSection(
     isLoading: Boolean = false,
 ) {
     val shape = RoundedCornerShape(20.dp)
-    val editIconResource = when (LocalRingoutThemeMode.current) {
-        ThemeMode.Dark -> Res.drawable.room_edit_image_edit_dark
-        ThemeMode.Light -> Res.drawable.room_edit_image_edit_light
-    }
-
     Box(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(RoomEditImageAspectRatio)
-            .clip(shape),
+            .clip(shape)
+            .semantics { contentDescription = "모임 대표 이미지 변경" }
+            .clickable(
+                enabled = enabled && !isLoading,
+                role = Role.Button,
+                onClickLabel = "모임 대표 이미지 변경",
+                onClick = onChangeClick,
+            ),
     ) {
         if (selectedImage != null) {
             Image(
@@ -66,35 +68,25 @@ internal fun RoomEditImageSection(
             )
         }
 
-        if (isLoading) {
-            ImageLoadingOverlay(modifier = Modifier.matchParentSize())
-        }
-
         Box(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .size(ImageChangeTouchSize)
-                .clip(RoundedCornerShape(topEnd = 20.dp, bottomStart = 8.dp))
-                .semantics { contentDescription = "모임 대표 이미지 변경" }
-                .clickable(
-                    enabled = enabled && !isLoading,
-                    role = Role.Button,
-                    onClickLabel = "모임 대표 이미지 변경",
-                    onClick = onChangeClick,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
+                .matchParentSize()
+                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.2f)),
+        )
+
+        if (isLoading) {
+            ImageLoadingOverlay(modifier = Modifier.matchParentSize())
+        } else {
             Image(
-                painter = painterResource(editIconResource),
+                painter = painterResource(Res.drawable.room_edit_image_edit_dark),
                 contentDescription = null,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.align(Alignment.Center).size(32.dp),
             )
         }
     }
 }
 
 private const val RoomEditImageAspectRatio = 342f / 252f
-private val ImageChangeTouchSize = 48.dp
 
 @Preview(name = "모임 대표 이미지 수정 · 라이트", widthDp = 354, heightDp = 260)
 @Composable

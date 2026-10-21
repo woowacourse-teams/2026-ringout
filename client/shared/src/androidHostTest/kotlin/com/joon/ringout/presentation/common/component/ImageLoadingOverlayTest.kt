@@ -5,17 +5,21 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.presentation.profilechange.component.profileimage.ProfileImageEditor
 import com.joon.ringout.presentation.roomedit.component.RoomEditImageSection
@@ -80,6 +84,9 @@ class ImageLoadingOverlayTest {
             spinners.assertCountEquals(2)
             val buttons = compose.onAllNodes(hasClickAction())
             buttons.assertCountEquals(2)
+            assertEquals(bounds[1], buttons[1].fetchSemanticsNode().boundsInRoot)
+            compose.onNodeWithTag("room").performTouchInput { click(center) }
+            assertEquals(0, selections)
             tags.forEachIndexed { index, tag ->
                 spinners[index].assertIsDisplayed()
                 val spinnerBounds = spinners[index].fetchSemanticsNode().boundsInRoot
@@ -92,6 +99,14 @@ class ImageLoadingOverlayTest {
             compose.onAllNodesWithContentDescription("사진 처리 중").assertCountEquals(0)
             repeat(2) { buttons[it].assertIsEnabled().performClick() }
             assertEquals(2, selections)
+            compose.onNodeWithTag("room").performTouchInput {
+                val inset = 24.dp.toPx()
+                click(Offset(inset, inset))
+                click(Offset(width - inset, inset))
+                click(Offset(inset, height - inset))
+                click(Offset(width - inset, height - inset))
+            }
+            assertEquals(6, selections)
         } finally {
             activity.pause().stop().destroy()
         }
