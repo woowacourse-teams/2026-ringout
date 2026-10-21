@@ -45,7 +45,7 @@ fun AlarmSetupScreen(
     val alarmTime = uiState.time.toAlarmTimePickerValue()
     val colors = alarmSetupColors()
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background)
@@ -54,13 +54,14 @@ fun AlarmSetupScreen(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(
                     start = 20.dp,
                     top = 20.dp,
                     end = 20.dp,
-                    bottom = 117.dp,
+                    bottom = 8.dp,
                 ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -96,10 +97,9 @@ fun AlarmSetupScreen(
 
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(colors.background)
-                .padding(bottom = 47.dp, top = 18.dp),
+                .padding(start = 20.dp, end = 20.dp, bottom = 47.dp, top = 18.dp),
             contentAlignment = Alignment.Center,
         ) {
             SaveAlarmButton(
@@ -112,6 +112,7 @@ fun AlarmSetupScreen(
 }
 
 @Preview(widthDp = 402, heightDp = 941)
+@Preview(name = "큰 글자 · 작은 화면", widthDp = 320, heightDp = 568, fontScale = 2f)
 @Composable
 private fun AlarmSetupScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
