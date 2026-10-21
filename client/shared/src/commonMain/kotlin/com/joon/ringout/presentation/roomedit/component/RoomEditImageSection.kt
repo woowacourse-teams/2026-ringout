@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +44,11 @@ internal fun RoomEditImageSection(
     isLoading: Boolean = false,
 ) {
     val shape = RoundedCornerShape(20.dp)
+    var savedImageAspectRatio by remember(room.representativeImage) {
+        mutableFloatStateOf(DefaultRoomEditImageAspectRatio)
+    }
+    val imageAspectRatio = selectedImage?.let { it.width.toFloat() / it.height }
+        ?: savedImageAspectRatio
     val editIconResource = when (LocalRingoutThemeMode.current) {
         ThemeMode.Dark -> Res.drawable.room_edit_image_edit_dark
         ThemeMode.Light -> Res.drawable.room_edit_image_edit_light
@@ -48,14 +57,14 @@ internal fun RoomEditImageSection(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(RoomEditImageAspectRatio)
+            .aspectRatio(imageAspectRatio)
             .clip(shape),
     ) {
         if (selectedImage != null) {
             Image(
                 bitmap = selectedImage,
                 contentDescription = "선택한 모임 대표 이미지 미리보기",
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.FillWidth,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -63,7 +72,8 @@ internal fun RoomEditImageSection(
                 room = room,
                 modifier = Modifier.fillMaxSize(),
                 shape = shape,
-                contentScale = ContentScale.Fit,
+                contentScale = ContentScale.FillWidth,
+                onAspectRatioChange = { savedImageAspectRatio = it },
             )
         }
 
@@ -94,7 +104,8 @@ internal fun RoomEditImageSection(
     }
 }
 
-private const val RoomEditImageAspectRatio = 342f / 252f
+// 이미지가 없거나 저장된 사진의 크기를 아직 모를 때만 사용하는 기본 높이.
+private const val DefaultRoomEditImageAspectRatio = 342f / 252f
 private val ImageChangeTouchSize = 48.dp
 
 @Preview(name = "모임 대표 이미지 수정 · 라이트", widthDp = 354, heightDp = 260)

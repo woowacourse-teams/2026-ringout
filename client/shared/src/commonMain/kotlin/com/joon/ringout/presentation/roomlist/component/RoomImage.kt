@@ -32,6 +32,7 @@ internal fun RoomImage(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(20.dp),
     contentScale: ContentScale = ContentScale.Crop,
+    onAspectRatioChange: (Float) -> Unit = {},
 ) {
     val defaultImageResource = when (LocalRingoutThemeMode.current) {
         ThemeMode.Dark -> Res.drawable.social_room_default_dark
@@ -54,6 +55,12 @@ internal fun RoomImage(
             contentScale = contentScale,
             placeholder = defaultPainter,
             error = defaultPainter,
+            onSuccess = { state ->
+                val image = state.result.image
+                if (image.width > 0 && image.height > 0) {
+                    onAspectRatioChange(image.width.toFloat() / image.height)
+                }
+            },
             modifier = modifier.clip(shape),
         )
     }
