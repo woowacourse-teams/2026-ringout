@@ -31,10 +31,14 @@ internal actual fun rememberProfileImagePicker(
     val context = LocalContext.current
     val currentOnResult = rememberUpdatedState(onResult)
     val lifetime = remember { ProfileImagePickerLifetime() }
+    val launchGuard = remember { ProfileImagePickerLaunchGuard() }
     val coroutineScope = rememberCoroutineScope()
-    DisposableEffect(lifetime) {
+    DisposableEffect(lifetime, launchGuard) {
         lifetime.active = true
-        onDispose { lifetime.active = false }
+        onDispose {
+            lifetime.active = false
+            launchGuard.dispose()
+        }
     }
 
     val pickerLauncher = rememberLauncherForActivityResult(
@@ -42,7 +46,7 @@ internal actual fun rememberProfileImagePicker(
     ) { uri ->
         if (!lifetime.active) return@rememberLauncherForActivityResult
         if (uri == null) {
-            currentOnResult.value(ProfileImagePickResult.Cancelled)
+            finishProfileImagePick(launchGuard, lifetime, currentOnResult.value, ProfileImagePickResult.Cancelled)
         } else {
             coroutineScope.launch {
                 val result = runCatching {
@@ -57,22 +61,34 @@ internal actual fun rememberProfileImagePicker(
                     onSuccess = { it },
                     onFailure = { ProfileImagePickResult.Failure },
                 )
-                if (lifetime.active) currentOnResult.value(result)
+                finishProfileImagePick(launchGuard, lifetime, currentOnResult.value, result)
             }
         }
     }
 
-    return remember(pickerLauncher, lifetime) {
-        {
+    return remember(pickerLauncher, lifetime, launchGuard) {
+        launch@{
+            if (!lifetime.active || !launchGuard.tryStart()) return@launch
             runCatching {
                 pickerLauncher.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                 )
             }.onFailure {
-                if (lifetime.active) currentOnResult.value(ProfileImagePickResult.Failure)
+                finishProfileImagePick(launchGuard, lifetime, currentOnResult.value, ProfileImagePickResult.Failure)
             }
         }
     }
+}
+
+private fun finishProfileImagePick(
+    launchGuard: ProfileImagePickerLaunchGuard,
+    lifetime: ProfileImagePickerLifetime,
+    onResult: (ProfileImagePickResult) -> Unit,
+    result: ProfileImagePickResult,
+) {
+    if (!lifetime.active) return
+    launchGuard.complete()
+    if (lifetime.active) onResult(result)
 }
 
 private class ProfileImagePickerLifetime(var active: Boolean = true)
