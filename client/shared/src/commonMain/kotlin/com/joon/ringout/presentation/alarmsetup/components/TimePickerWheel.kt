@@ -13,6 +13,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -33,10 +35,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Velocity
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
+import com.joon.ringout.RingoutTheme
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -56,6 +62,7 @@ internal fun <T> TimePickerWheel(
     fontWeight: FontWeight,
     isLooping: Boolean,
     hapticFeedbackType: HapticFeedbackType,
+    itemHeight: Dp,
     modifier: Modifier = Modifier,
 ) {
     require(values.isNotEmpty())
@@ -121,12 +128,12 @@ internal fun <T> TimePickerWheel(
                     Modifier.nestedScroll(BlockParentVerticalScrollConnection)
                 },
             )
-            .height(TimePickerWheelHeight)
+            .height(itemHeight * 3)
             .semantics {
                 contentDescription = accessibilityLabel
                 stateDescription = valueLabel(selectedValue)
             },
-        contentPadding = PaddingValues(vertical = TimePickerWheelContentPadding),
+        contentPadding = PaddingValues(vertical = itemHeight),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         items(count = if (isLooping) Int.MAX_VALUE else values.size) { index ->
@@ -142,7 +149,7 @@ internal fun <T> TimePickerWheel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(TimePickerWheelItemHeight)
+                    .height(itemHeight)
                     .clickable {
                         coroutineScope.launch {
                             listState.animateScrollToItem(index)
@@ -156,7 +163,7 @@ internal fun <T> TimePickerWheel(
                     maxLines = 1,
                     style = MaterialTheme.typography.displayLarge.copy(
                         fontSize = fontSize,
-                        lineHeight = 70.sp,
+                        lineHeight = fontSize,
                         fontWeight = fontWeight,
                     ),
                 )
@@ -212,6 +219,20 @@ private object BlockParentVerticalScrollConnection : NestedScrollConnection {
     ): Velocity = Velocity(x = 0f, y = available.y)
 }
 
-private val TimePickerWheelHeight = 210.dp
-private val TimePickerWheelItemHeight = 70.dp
-private val TimePickerWheelContentPadding = (TimePickerWheelHeight - TimePickerWheelItemHeight) / 2
+
+@Preview
+@Preview(name = "큰 글자", fontScale = 2f)
+@Composable
+private fun TimePickerWheelPreview() {
+    RingoutTheme {
+        var selected by remember { mutableStateOf(6) }
+        TimePickerWheel(
+            values = (1..12).toList(), selectedValue = selected, onValueChange = { selected = it },
+            valueLabel = { it.toString().padStart(2, '0') }, accessibilityLabel = "시",
+            selectedColor = alarmSetupColors().accent, unselectedColor = alarmSetupColors().secondaryText,
+            selectedFontSize = 50.sp, unselectedFontSize = 42.sp, fontWeight = FontWeight.Bold,
+            isLooping = true, hapticFeedbackType = HapticFeedbackType.SegmentFrequentTick,
+            itemHeight = with(LocalDensity.current) { 50.sp.toDp() }.coerceAtLeast(70.dp),
+        )
+    }
+}
