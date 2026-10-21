@@ -19,9 +19,16 @@ internal data class ProfileChangeUiState(
     val profileImageUrl: String? = null,
     val hasImageChanges: Boolean = false,
     val isSaving: Boolean = false,
+    val isPreparingImage: Boolean = false,
     val errorMessage: String? = null,
     val completedNickname: String? = null,
-)
+) {
+    val isImageLoading: Boolean
+        get() = isSaving && hasImageChanges
+
+    val canConfirm: Boolean
+        get() = validation.isValid && !isSaving && !isPreparingImage
+}
 
 internal class ProfileChangeViewModel(
     initialNickname: String,
@@ -63,6 +70,17 @@ internal class ProfileChangeViewModel(
         uiState = uiState.copy(nickname = nickname, validation = validateNickname(nickname), errorMessage = null)
     }
 
+    // 선택창을 열기 전에 설정해 파일 준비 중 저장과 중복 선택도 차단한다.
+    fun startImageSelection(): Boolean {
+        if (uiState.isSaving || uiState.isPreparingImage) return false
+        uiState = uiState.copy(isPreparingImage = true, errorMessage = null)
+        return true
+    }
+
+    fun finishImageSelection() {
+        uiState = uiState.copy(isPreparingImage = false)
+    }
+
     fun onProfileImageSelected(image: ProfileImageUpload): Boolean {
         if (uiState.isSaving) return false
         pendingImage = image
@@ -71,7 +89,7 @@ internal class ProfileChangeViewModel(
     }
 
     fun confirm() {
-        if (uiState.isSaving || !uiState.validation.isValid || uiState.completedNickname != null) return
+        if (!uiState.canConfirm || uiState.completedNickname != null) return
         val requestedNickname = uiState.nickname
         val requestedImage = pendingImage
         uiState = uiState.copy(isSaving = true, errorMessage = null)

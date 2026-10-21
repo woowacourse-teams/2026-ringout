@@ -89,6 +89,8 @@ internal actual fun rememberProfileImagePicker(
                 viewController.beingDismissed
             ) {
                 launchGuard.complete()
+                // 선택창이 열리지 않아도 화면의 사진 선택 대기 상태를 해제한다.
+                currentOnResult.value(ProfileImagePickResult.Cancelled)
                 return@launch
             }
 

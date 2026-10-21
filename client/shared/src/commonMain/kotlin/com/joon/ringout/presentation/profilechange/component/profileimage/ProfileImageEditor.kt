@@ -27,6 +27,7 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.profilechange.component.ProfileImageEditDarkIconResource
 import com.joon.ringout.presentation.profilechange.component.ProfileImageEditLightIconResource
 import com.joon.ringout.presentation.profilechange.component.ProfileImagePlaceholderResource
+import com.joon.ringout.presentation.common.component.ImageLoadingOverlay
 import com.joon.ringout.presentation.profilechange.component.profileChangeColors
 import org.jetbrains.compose.resources.painterResource
 
@@ -38,6 +39,7 @@ internal fun ProfileImageEditor(
     modifier: Modifier = Modifier,
     profileImageUrl: String? = null,
     enabled: Boolean = true,
+    isLoading: Boolean = false,
 ) {
     val colors = profileChangeColors()
     val editIcon = if (LocalRingoutThemeMode.current == ThemeMode.Dark) {
@@ -85,13 +87,16 @@ internal fun ProfileImageEditor(
                         contentScale = ContentScale.Crop,
                     )
                 }
+                if (isLoading) {
+                    ImageLoadingOverlay(modifier = Modifier.matchParentSize())
+                }
             }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .size(ProfileImageEditTouchSize)
                     .clickable(
-                        enabled = enabled,
+                        enabled = enabled && !isLoading,
                         role = Role.Button,
                         onClickLabel = "프로필 이미지 변경",
                         onClick = onProfileImageChangeClick,
@@ -134,8 +139,14 @@ private fun ProfileImageEditorLightPreview() {
     ProfileImageEditorPreview(ThemeMode.Light)
 }
 
+@Preview(name = "Profile image editor - Loading", widthDp = 200, heightDp = 200)
 @Composable
-private fun ProfileImageEditorPreview(themeMode: ThemeMode) {
+private fun ProfileImageEditorLoadingPreview() {
+    ProfileImageEditorPreview(ThemeMode.Dark, isLoading = true)
+}
+
+@Composable
+private fun ProfileImageEditorPreview(themeMode: ThemeMode, isLoading: Boolean = false) {
     RingoutTheme(themeMode) {
         Box(
             modifier = Modifier
@@ -147,6 +158,7 @@ private fun ProfileImageEditorPreview(themeMode: ThemeMode) {
                 profileImage = null,
                 errorMessage = null,
                 onProfileImageChangeClick = {},
+                isLoading = isLoading,
             )
         }
     }

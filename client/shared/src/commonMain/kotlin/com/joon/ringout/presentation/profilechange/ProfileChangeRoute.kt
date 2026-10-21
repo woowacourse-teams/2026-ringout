@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.profilechange
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +42,9 @@ internal fun ProfileChangeRoute(
     val viewModel: ProfileChangeViewModel = viewModel {
         ProfileChangeViewModel(account.nickname, memberRepository)
     }
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.finishImageSelection() }
+    }
     val uiState = viewModel.uiState
     val onBack = { if (!uiState.isSaving) onBackClick() }
     NavigationBackHandler(
@@ -52,6 +56,7 @@ internal fun ProfileChangeRoute(
     var profileImageError by remember { mutableStateOf<String?>(null) }
     var showProfileImageSizeLimitDialog by remember { mutableStateOf(false) }
     val launchProfileImagePicker = rememberProfileImagePicker { result ->
+        viewModel.finishImageSelection()
         when (result) {
             is ProfileImagePickResult.Selected -> {
                 if (viewModel.onProfileImageSelected(result.upload)) {
@@ -82,7 +87,10 @@ internal fun ProfileChangeRoute(
         showProfileImageSizeLimitDialog = showProfileImageSizeLimitDialog,
         onProfileImageSizeLimitConfirm = { showProfileImageSizeLimitDialog = false },
         onProfileImageChangeClick = {
-            if (!uiState.isSaving) launchProfileImagePicker()
+            if (viewModel.startImageSelection()) {
+                profileImageError = null
+                launchProfileImagePicker()
+            }
         },
         onConfirmClick = viewModel::confirm,
         modifier = modifier,
