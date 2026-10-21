@@ -55,7 +55,7 @@ internal fun RoomEditImageSection(
             Image(
                 bitmap = selectedImage,
                 contentDescription = "선택한 모임 대표 이미지 미리보기",
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -63,6 +63,7 @@ internal fun RoomEditImageSection(
                 room = room,
                 modifier = Modifier.fillMaxSize(),
                 shape = shape,
+                contentScale = ContentScale.Fit,
             )
         }
 

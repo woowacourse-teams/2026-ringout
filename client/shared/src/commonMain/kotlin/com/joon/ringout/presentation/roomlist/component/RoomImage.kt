@@ -31,6 +31,7 @@ internal fun RoomImage(
     room: RoomUiModel,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(20.dp),
+    contentScale: ContentScale = ContentScale.Crop,
 ) {
     val defaultImageResource = when (LocalRingoutThemeMode.current) {
         ThemeMode.Dark -> Res.drawable.social_room_default_dark
@@ -43,14 +44,14 @@ internal fun RoomImage(
         Image(
             painter = defaultPainter,
             contentDescription = null,
-            contentScale = ContentScale.Crop,
+            contentScale = contentScale,
             modifier = modifier.clip(shape),
         )
     } else {
         AsyncImage(
             model = representativeImage,
             contentDescription = null,
-            contentScale = ContentScale.Crop,
+            contentScale = contentScale,
             placeholder = defaultPainter,
             error = defaultPainter,
             modifier = modifier.clip(shape),
