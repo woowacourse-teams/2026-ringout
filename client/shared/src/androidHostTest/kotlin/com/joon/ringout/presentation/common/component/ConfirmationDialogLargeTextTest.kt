@@ -1,28 +1,20 @@
 package com.joon.ringout.presentation.common.component
 
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.text.TextLayoutResult
-import com.joon.ringout.RingoutTheme
+import com.joon.ringout.presentation.assertTextFits
+import com.joon.ringout.presentation.launchWithFontScale
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
-import org.robolectric.RuntimeEnvironment
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -36,7 +28,7 @@ class ConfirmationDialogLargeTextTest {
         var confirmed = 0
         val title = "모임에서 탈퇴하시겠어요?"
         val description = "모임에서 활동한 모든 데이터가 삭제되며 다시 복구할 수 없습니다.\n".repeat(4)
-        withContent(2f) {
+        launchWithFontScale(2f) {
             ConfirmationDialog(
                 title = title, description = description,
                 confirmLabel = "모임에서 탈퇴하기", confirmColor = MaterialTheme.colorScheme.primary,
@@ -54,7 +46,7 @@ class ConfirmationDialogLargeTextTest {
 
     @Test
     fun `큰 글자의 긴 동작 이름은 버튼을 세로로 배치하여 보여준다`() {
-        withContent(2f) {
+        launchWithFontScale(2f) {
             ConfirmationDialog(
                 title = "모임 삭제", description = "삭제할까요?",
                 confirmLabel = "회원 관리로 이동", confirmColor = MaterialTheme.colorScheme.primary,
@@ -71,7 +63,7 @@ class ConfirmationDialogLargeTextTest {
 
     @Test
     fun `기본 글자에서는 짧은 확인과 취소 버튼의 가로 배치를 유지한다`() {
-        withContent(1f) {
+        launchWithFontScale(1f) {
             ConfirmationDialog(
                 title = "알람 삭제", description = "삭제할까요?",
                 confirmLabel = "삭제", confirmColor = MaterialTheme.colorScheme.primary,
@@ -86,27 +78,6 @@ class ConfirmationDialogLargeTextTest {
     }
 
     private fun assertCompleteText(text: String) {
-        val results = mutableListOf<TextLayoutResult>()
-        compose.onNodeWithText(text, useUnmergedTree = true).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
-        assertTrue(results.isNotEmpty())
-        val result = results.single()
-        // GetTextLayoutResult의 문단 너비는 Text 자체보다 넓은 부모 제약일 수 있다.
-        assertFalse(result.multiParagraph.didExceedMaxLines, text)
-        assertTrue(result.multiParagraph.height <= result.size.height + 1, text)
-        for (line in 0 until result.lineCount) {
-            assertFalse(result.isLineEllipsized(line), text)
-            assertTrue(result.getLineRight(line) - result.getLineLeft(line) <= result.size.width + 1, text)
-        }
-    }
-
-    private fun withContent(scale: Float, content: @Composable () -> Unit): AutoCloseable {
-        RuntimeEnvironment.setFontScale(scale)
-        val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
-        controller.get().setContent { RingoutTheme { content() } }
-        compose.waitForIdle()
-        return AutoCloseable {
-            controller.pause().stop().destroy()
-            RuntimeEnvironment.setFontScale(1f)
-        }
+        compose.onNodeWithText(text, useUnmergedTree = true).assertTextFits()
     }
 }
