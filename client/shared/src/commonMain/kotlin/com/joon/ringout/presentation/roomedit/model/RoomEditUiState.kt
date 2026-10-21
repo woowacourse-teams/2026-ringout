@@ -18,6 +18,7 @@ internal data class RoomEditUiState(
     val loadErrorMessage: String? = null,
     val canRetryLoad: Boolean = false,
     val isSaving: Boolean = false,
+    val isPreparingImage: Boolean = false,
     val saveErrorMessage: String? = null,
     val isSaveBlocked: Boolean = false,
     val successfulUpdate: RoomEditSuccessfulUpdate? = null,
@@ -57,8 +58,11 @@ internal data class RoomEditUiState(
     val hasChanges: Boolean
         get() = nameChanged || introductionChanged || imageSelectionToken != null || scheduleChanged
 
+    val isImageLoading: Boolean
+        get() = isSaving && imageSelectionToken != null
+
     val canSave: Boolean
-        get() = isOriginalLoaded && !isSaving && !isSaveBlocked && hasChanges && selectedDays.isNotEmpty() &&
+        get() = isOriginalLoaded && !isSaving && !isPreparingImage && !isSaveBlocked && hasChanges && selectedDays.isNotEmpty() &&
             (!nameChanged || effectiveNameValidation.isValid) &&
             (!introductionChanged || effectiveIntroductionValidation.isValid)
 

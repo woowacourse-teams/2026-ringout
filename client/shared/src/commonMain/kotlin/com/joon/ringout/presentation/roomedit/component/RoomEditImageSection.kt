@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.common.component.ImageLoadingOverlay
 import com.joon.ringout.presentation.roomlist.component.RoomImage
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
 import org.jetbrains.compose.resources.painterResource
@@ -34,8 +35,9 @@ internal fun RoomEditImageSection(
     room: RoomUiModel,
     selectedImage: ImageBitmap?,
     onChangeClick: () -> Unit,
-    enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isLoading: Boolean = false,
 ) {
     val shape = RoundedCornerShape(20.dp)
     val editIconResource = when (LocalRingoutThemeMode.current) {
@@ -64,6 +66,10 @@ internal fun RoomEditImageSection(
             )
         }
 
+        if (isLoading) {
+            ImageLoadingOverlay(modifier = Modifier.matchParentSize())
+        }
+
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -71,7 +77,7 @@ internal fun RoomEditImageSection(
                 .clip(RoundedCornerShape(topEnd = 20.dp, bottomStart = 8.dp))
                 .semantics { contentDescription = "모임 대표 이미지 변경" }
                 .clickable(
-                    enabled = enabled,
+                    enabled = enabled && !isLoading,
                     role = Role.Button,
                     onClickLabel = "모임 대표 이미지 변경",
                     onClick = onChangeClick,
@@ -110,6 +116,19 @@ private fun RoomEditImageSectionDarkPreview() {
             room = RoomEditImagePreviewRoom,
             selectedImage = null,
             onChangeClick = {},
+        )
+    }
+}
+
+@Preview(name = "모임 대표 이미지 수정 · 로딩", widthDp = 354, heightDp = 260)
+@Composable
+private fun RoomEditImageSectionLoadingPreview() {
+    RingoutTheme(ThemeMode.Light) {
+        RoomEditImageSection(
+            room = RoomEditImagePreviewRoom,
+            selectedImage = null,
+            onChangeClick = {},
+            isLoading = true,
         )
     }
 }
