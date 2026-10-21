@@ -1,9 +1,9 @@
 package com.joon.ringout.presentation.alarmsetup.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,13 +26,14 @@ internal fun WeekdaySelectionHeader(
     val colors = alarmSetupColors()
     val summary = weekdaySummary(selectedDays)
 
-    Row(
+    FlowRow(
         modifier = modifier
             .fillMaxWidth()
-            .height(38.dp)
+            .heightIn(min = 38.dp)
             .padding(10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
     ) {
         AlarmSetupSectionLabel(
             text = "요일",
@@ -42,10 +43,9 @@ internal fun WeekdaySelectionHeader(
             Text(
                 text = summary,
                 color = colors.accent,
-                maxLines = 1,
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontSize = 16.sp,
-                    lineHeight = 14.sp,
+                    lineHeight = 20.sp,
                     fontWeight = FontWeight.Bold,
                 ),
             )
@@ -53,7 +53,8 @@ internal fun WeekdaySelectionHeader(
     }
 }
 
-@Preview(widthDp = 362, heightDp = 38)
+@Preview(widthDp = 362)
+@Preview(name = "큰 글자", widthDp = 280, fontScale = 2f)
 @Composable
 private fun WeekdaySelectionHeaderPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {

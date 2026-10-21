@@ -47,10 +47,11 @@ class HomeLargeTextTest {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp)) {
                 AlarmRow(alarm, onClick = { edited = true }, onEnabledChange = { toggled = true }, onDelete = { deleted = true })
             }
-        }.use {
+        }.use { content ->
             listOf(alarm.days, "오후", "11:59", "${alarm.destination}으로 이동", "30분 간격으로 알람이 울려요").forEach {
                 compose.onNodeWithText(it, useUnmergedTree = true).assertTextFits()
             }
+            compose.runOnIdle { content.captureLayout("home-alarm-2.0") }
             val toggle = compose.onNodeWithContentDescription("11:59 알람")
             toggle.performScrollTo().assertIsDisplayed().performClick()
             compose.onNodeWithContentDescription("알람 삭제").performScrollTo().assertIsDisplayed().performClick()

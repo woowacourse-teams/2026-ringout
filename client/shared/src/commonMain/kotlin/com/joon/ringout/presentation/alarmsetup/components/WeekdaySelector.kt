@@ -5,13 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +17,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -40,7 +39,7 @@ fun WeekdaySelector(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(119.dp)
+            .heightIn(min = 119.dp)
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -48,31 +47,40 @@ fun WeekdaySelector(
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(51.dp)
                 .padding(horizontal = 10.dp),
         ) {
-            val idealChipWidth = 37.dp
-            val daySpacing = (
-                (maxWidth - idealChipWidth * WeekdayOrder.size) /
-                    (WeekdayOrder.size - 1)
-            ).coerceIn(4.dp, 10.dp)
-            val chipWidth = minOf(
-                idealChipWidth,
-                (maxWidth - daySpacing * (WeekdayOrder.size - 1)) /
-                    WeekdayOrder.size,
+            val textStyle = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 18.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.Bold,
             )
+            val measurer = rememberTextMeasurer()
+            val density = LocalDensity.current
+            val minimumChipWidth = with(density) {
+                WeekdayOrder.maxOf { measurer.measure(it, textStyle, softWrap = false).size.width }.toDp() + 10.dp
+            }
+            val idealChipWidth = maxOf(37.dp, minimumChipWidth)
+            val daySpacing = (
+                (maxWidth - idealChipWidth * WeekdayOrder.size) / (WeekdayOrder.size - 1)
+            ).coerceIn(4.dp, 10.dp)
+            // 각 칩의 픽셀 반올림이 누적되어 마지막 요일만 밀려나지 않도록 내림한다.
+            val singleRowChipWidth = with(density) {
+                ((constraints.maxWidth - daySpacing.roundToPx() * (WeekdayOrder.size - 1)) / WeekdayOrder.size).toDp()
+            }
+            val chipWidth = maxOf(minimumChipWidth, minOf(idealChipWidth, singleRowChipWidth))
 
-            Row(
-                modifier = Modifier.fillMaxSize(),
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(daySpacing),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 WeekdayOrder.forEach { day ->
                     val selected = day in selectedDays
                     Box(
                         modifier = Modifier
                             .width(chipWidth)
-                            .fillMaxHeight()
+                            .heightIn(min = 51.dp)
                             .toggleable(
                                 value = selected,
                                 role = Role.Checkbox,
@@ -82,7 +90,8 @@ fun WeekdaySelector(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(width = chipWidth, height = 32.dp)
+                                .fillMaxWidth()
+                                .heightIn(min = 32.dp)
                                 .background(
                                     color = if (selected) {
                                         colors.accent
@@ -90,7 +99,8 @@ fun WeekdaySelector(
                                         colors.unselectedDayBackground
                                     },
                                     shape = RoundedCornerShape(5.dp),
-                                ),
+                                )
+                                .padding(vertical = 5.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
@@ -100,11 +110,7 @@ fun WeekdaySelector(
                                 } else {
                                     colors.unselectedDayText
                                 },
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontSize = 18.sp,
-                                    lineHeight = 22.sp,
-                                    fontWeight = FontWeight.Bold,
-                                ),
+                                style = textStyle,
                             )
                         }
                     }
@@ -115,6 +121,7 @@ fun WeekdaySelector(
 }
 
 @Preview(widthDp = 402)
+@Preview(name = "큰 글자 · 작은 화면", widthDp = 320, fontScale = 2f)
 @Composable
 private fun WeekdaySelectorPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
