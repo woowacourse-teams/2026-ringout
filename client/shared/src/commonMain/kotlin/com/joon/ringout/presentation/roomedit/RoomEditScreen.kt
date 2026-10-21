@@ -85,7 +85,8 @@ internal fun RoomEditScreen(
                         room = original,
                         selectedImage = selectedImage,
                         onChangeClick = onImageChangeClick,
-                        enabled = !uiState.isSaving,
+                        enabled = !uiState.isSaving && !uiState.isPreparingImage,
+                        isLoading = uiState.isImageLoading,
                     )
                     imageError?.let { message ->
                         Text(

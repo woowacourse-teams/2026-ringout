@@ -122,6 +122,16 @@ internal class RoomEditViewModel(
         uiState = uiState.copy(time24Hour = transform(uiState.time24Hour.toAlarmTimePickerValue()).to24HourString())
     }
 
+    fun startImageSelection(): Boolean {
+        if (!uiState.isOriginalLoaded || uiState.isSaving || uiState.isPreparingImage) return false
+        uiState = uiState.copy(isPreparingImage = true)
+        return true
+    }
+
+    fun finishImageSelection() {
+        uiState = uiState.copy(isPreparingImage = false)
+    }
+
     fun onImageSelected(selectionToken: Long, upload: RoomImageUpload) {
         if (uiState.isOriginalLoaded && !uiState.isSaving) {
             selectedUpload = SelectedRoomImageUpload(selectionToken, upload)
