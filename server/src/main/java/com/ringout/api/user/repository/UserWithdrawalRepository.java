@@ -61,25 +61,12 @@ public class UserWithdrawalRepository {
     }
 
     private void deletePushAlarmData(Long userId) {
-        List<Long> pushAlarmContentIds = jdbcTemplate.queryForList("""
-            select distinct push_alarm_content_id
-            from push_alarm_record
-            where user_id = ?
-               or device_id in (select id from device where user_id = ?)
-            """, Long.class, userId, userId);
         jdbcTemplate.update("""
-            delete from push_alarm_record
+            delete from notification
             where user_id = ?
                or device_id in (select id from device where user_id = ?)
             """, userId, userId);
         jdbcTemplate.update("delete from device where user_id = ?", userId);
-        pushAlarmContentIds.forEach(contentId -> jdbcTemplate.update("""
-            delete from push_alarm_content
-            where id = ?
-              and not exists (
-                  select 1 from push_alarm_record where push_alarm_content_id = ?
-              )
-            """, contentId, contentId));
     }
 
     private void deleteRoomData(Long userId) {
