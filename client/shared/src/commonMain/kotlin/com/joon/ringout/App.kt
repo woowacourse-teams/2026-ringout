@@ -104,14 +104,7 @@ fun App(
         when (appBootstrapUiState.destination) {
             AppEntryDestination.Onboarding ->
                 OnboardingRoute(
-                    appContainer = appContainer,
-                    destinationCurrentLocationCache = appLocationCacheViewModel.destinationCurrentLocationCache,
-                    missionLocationState = missionLocationState,
-                    useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
-                    onRequestWhenInUseLocation = onRequestWhenInUseLocation,
-                    onRequestAlwaysLocation = onRequestAlwaysLocation,
-                    onConfirmAlwaysLocationResult = onConfirmAlwaysLocationResult,
-                    onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
+                    analytics = appContainer.productAnalyticsRecorder,
                     onComplete = appBootstrapViewModel::completeOnboarding,
                     completionEnabled = !appBootstrapUiState.isSaving,
                     completionRetryToken = appBootstrapUiState.onboardingRetryToken,

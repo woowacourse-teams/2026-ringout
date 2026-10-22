@@ -16,6 +16,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.ringoutColors
 
 @Composable
 fun OnboardingPageIndicator(
@@ -37,14 +38,14 @@ fun OnboardingPageIndicator(
             Box(
                 modifier = Modifier
                     .size(
-                        width = if (pageIndex == selectedPage) 26.dp else 8.dp,
+                        width = if (pageIndex == selectedPage) 10.dp else 8.dp,
                         height = if (pageIndex == selectedPage) 10.dp else 8.dp,
                     )
                     .background(
                         color = if (pageIndex == selectedPage) {
                             MaterialTheme.colorScheme.primary
                         } else {
-                            MaterialTheme.colorScheme.outline
+                            MaterialTheme.ringoutColors.onboardingIndicatorInactive
                         },
                         shape = CircleShape,
                     ),
@@ -57,7 +58,7 @@ fun OnboardingPageIndicator(
 @Composable
 private fun DarkOnboardingPageIndicatorPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
-        OnboardingPageIndicator(pageCount = 5, selectedPage = 0)
+        OnboardingPageIndicator(pageCount = 4, selectedPage = 0)
     }
 }
 
@@ -65,6 +66,6 @@ private fun DarkOnboardingPageIndicatorPreview() {
 @Composable
 private fun LightOnboardingPageIndicatorPreview() {
     RingoutTheme(themeMode = ThemeMode.Light) {
-        OnboardingPageIndicator(pageCount = 5, selectedPage = 3)
+        OnboardingPageIndicator(pageCount = 4, selectedPage = 3)
     }
 }

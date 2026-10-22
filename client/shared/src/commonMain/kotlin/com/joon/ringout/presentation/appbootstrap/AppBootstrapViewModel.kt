@@ -89,7 +89,7 @@ class AppBootstrapViewModel(
         }
     }
 
-    fun completeOnboarding(stepCount: Int = 5) = save(
+    fun completeOnboarding(stepCount: Int = 4) = save(
         block = {
             repository.markOnboardingCompleted()
             // This survives removal of the onboarding route after the preference flow emits.

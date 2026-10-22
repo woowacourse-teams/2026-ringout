@@ -40,7 +40,7 @@ class AppBootstrapViewModelTest {
                 coroutineScope = scope,
                 onboardingAnalytics = analytics.recorder,
             )
-            vm.completeOnboarding(stepCount = 4)
+            vm.completeOnboarding()
             repository.emit(snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)))
             assertEquals(AppEntryDestination.Home, vm.uiState.destination)
             assertTrue(analytics.events.isEmpty())
@@ -69,12 +69,12 @@ class AppBootstrapViewModelTest {
                 coroutineScope = scope,
                 onboardingAnalytics = analytics.recorder,
             )
-            vm.completeOnboarding(stepCount = 5)
+            vm.completeOnboarding()
             assertTrue(analytics.events.isEmpty())
             assertEquals(1, vm.uiState.onboardingRetryToken)
             repository.failOnboardingWrite = false
-            vm.completeOnboarding(stepCount = 5)
-            vm.completeOnboarding(stepCount = 5)
+            vm.completeOnboarding()
+            vm.completeOnboarding()
             assertEquals(listOf(AnalyticsEventName.TutorialComplete), analytics.events.map { it.name })
         } finally {
             scope.cancel()
