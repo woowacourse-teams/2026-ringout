@@ -10,10 +10,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.presentation.alarmguide.component.AlarmCreationGuideOverlay
 import com.joon.ringout.presentation.alarmguide.component.LocalAlarmCreationGuideTargets
 import com.joon.ringout.presentation.alarmguide.component.rememberAlarmCreationGuideTargets
-import com.joon.ringout.presentation.destination.PlatformBackHandler
 
 @Composable
 internal fun AlarmCreationGuideRoute(
@@ -67,7 +69,24 @@ internal fun AlarmCreationGuideRoute(
             )
         }
     }
-    PlatformBackHandler(enabled = visible) {
-        if (!isAlarmSaving && !state.isFinishing) finish()
-    }
+    AlarmCreationGuideBackHandler(
+        visible = visible,
+        isBusy = isAlarmSaving || state.isFinishing,
+        onFinish = finish,
+    )
+}
+
+@Composable
+internal fun AlarmCreationGuideBackHandler(
+    visible: Boolean,
+    isBusy: Boolean,
+    onFinish: () -> Unit,
+) {
+    NavigationBackHandler(
+        state = rememberNavigationEventState(NavigationEventInfo.None),
+        isBackEnabled = visible,
+        onBackCompleted = {
+            if (!isBusy) onFinish()
+        },
+    )
 }
