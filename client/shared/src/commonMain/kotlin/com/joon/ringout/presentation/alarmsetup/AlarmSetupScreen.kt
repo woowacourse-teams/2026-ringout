@@ -18,6 +18,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideStep
+import com.joon.ringout.presentation.alarmguide.component.alarmCreationGuideTarget
 import com.joon.ringout.presentation.alarmsetup.components.AlarmSoundCard
 import com.joon.ringout.presentation.alarmsetup.components.DestinationCard
 import com.joon.ringout.presentation.alarmsetup.components.LimitTimeCard
@@ -76,22 +78,33 @@ fun AlarmSetupScreen(
                 onAmPmChange = onAmPmChange,
                 onHourChange = onHourChange,
                 onMinuteChange = onMinuteChange,
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Time),
             )
             WeekdaySelector(
                 selectedDays = uiState.selectedDays,
                 onDayClick = onDayClick,
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Weekdays),
             )
             DestinationCard(
                 destination = uiState.destinationDisplayName,
                 onClick = onDestinationClick,
+                modifier = Modifier.alarmCreationGuideTarget(
+                    step = AlarmCreationGuideStep.Destination,
+                    onClick = onDestinationClick,
+                ),
             )
             LimitTimeCard(
                 minutes = uiState.limitMinutes,
                 onMinutesChange = onLimitMinutesChange,
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Interval),
             )
             AlarmSoundCard(
                 soundName = uiState.alarmSound.name,
                 onClick = onAlarmSoundClick,
+                modifier = Modifier.alarmCreationGuideTarget(
+                    step = AlarmCreationGuideStep.Sound,
+                    onClick = onAlarmSoundClick,
+                ),
             )
         }
 
@@ -106,6 +119,14 @@ fun AlarmSetupScreen(
                 enabled = uiState.canSave && !uiState.isSaveInProgress,
                 isInProgress = uiState.isSaveInProgress,
                 onClick = onSaveClick,
+                modifier = Modifier.alarmCreationGuideTarget(
+                    step = AlarmCreationGuideStep.CreateAlarm,
+                    onClick = {
+                        if (uiState.canSave && !uiState.isSaveInProgress) {
+                            onSaveClick()
+                        }
+                    },
+                ),
             )
         }
     }
