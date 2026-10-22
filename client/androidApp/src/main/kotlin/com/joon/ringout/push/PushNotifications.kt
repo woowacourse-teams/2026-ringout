@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import com.joon.ringout.domain.push.RoomActivityPushTarget
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.joon.ringout.MainActivity
@@ -19,6 +20,8 @@ import java.util.UUID
 
 internal object PushNotifications {
     private const val CHANNEL_ID = "ringout_push"
+    const val EXTRA_REQUEST_ID = "com.joon.ringout.push.request_id"
+    private const val ACTION_OPEN_FROM_PUSH = "com.joon.ringout.action.OPEN_FROM_PUSH"
 
     fun createChannel(context: Context) {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -30,7 +33,11 @@ internal object PushNotifications {
         )
     }
 
-    fun show(context: Context, payload: RemoteMessage.Notification) {
+    fun show(
+        context: Context,
+        payload: RemoteMessage.Notification,
+        data: Map<String, String>,
+    ) {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
@@ -44,12 +51,24 @@ internal object PushNotifications {
             return
         }
         createChannel(context)
+        val clickRequestId = UUID.randomUUID().toString()
+        val notificationIntent = Intent(context, MainActivity::class.java).apply {
+            action = "$ACTION_OPEN_FROM_PUSH.$clickRequestId"
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_REQUEST_ID, clickRequestId)
+            data[RoomActivityPushTarget.RoomIdKey]?.let { value ->
+                putExtra(RoomActivityPushTarget.RoomIdKey, value)
+            }
+            data[RoomActivityPushTarget.ActivityDateKey]?.let { value ->
+                putExtra(RoomActivityPushTarget.ActivityDateKey, value)
+            }
+        }
         val openApp = PendingIntent.getActivity(
             context,
-            0,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
+            clickRequestId.hashCode(),
+            notificationIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = Notification.Builder(context, CHANNEL_ID)
@@ -76,8 +95,7 @@ class RingoutFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        // FCM routes background notification payloads directly to the system tray.
-        // Only foreground notification payloads reach this callback; data is out of scope.
-        message.notification?.let { PushNotifications.show(this, it) }
+        // Background notification+data messages are displayed by FCM; this handles foreground clicks.
+        message.notification?.let { PushNotifications.show(this, it, message.data) }
     }
 }
