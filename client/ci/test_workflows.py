@@ -61,6 +61,9 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn(":androidApp:lintRelease", self.text("android-ci"))
         self.assertIn(":shared:iosSimulatorArm64Test", self.text("ios-ci"))
         self.assertIn("ci/swift/AlarmRecoveryJournalTests.swift", self.text("ios-ci"))
+        self.assertIn("iosApp/iosApp/Platform/AlarmRecoveryCommand.swift", self.text("ios-ci"))
+        self.assertIn("ci/swift/AlarmRecoveryCommandTests.swift", self.text("ios-ci"))
+        self.assertIn('"$RUNNER_TEMP/ringout-alarm-recovery-command-tests"', self.text("ios-ci"))
 
     def test_빌드_워크플로는_승격_PR에서만_생성되고_일반_CI에_빌드_job이_없다(self):
         commands = {
