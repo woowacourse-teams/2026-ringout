@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">링아웃</string>
+    <string name="push_notification_channel_name">링아웃</string>
 </resources>

@@ -6,6 +6,7 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.AlarmController
 import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.push.RoomActivityPushRequest
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupCoordinator
 import com.joon.ringout.presentation.home.HomeAlarmBinding
 import com.joon.ringout.presentation.home.HomeViewModel
@@ -21,6 +22,8 @@ internal fun AppRuntimeCoordinator(
     authSessionState: AuthSessionState,
     navigationState: AppNavigationState,
     displayedRoute: AppRoute,
+    pendingRoomActivityPush: RoomActivityPushRequest?,
+    onRoomActivityPushHandled: (requestId: String) -> Unit,
     themeMode: ThemeMode,
     activeMissionOccurrenceId: String?,
     homeViewModel: HomeViewModel,
@@ -71,6 +74,10 @@ internal fun AppRuntimeCoordinator(
     ActiveMissionNavigationEffect(
         activeMissionOccurrenceId = activeMissionOccurrenceId,
         navigationState = navigationState,
+        authSessionState = authSessionState,
+        pendingRoomActivityPush = pendingRoomActivityPush,
+        isRingingAlarm = displayedRoute is AppRoute.AlarmRinging,
+        onRoomActivityPushHandled = onRoomActivityPushHandled,
     )
     AppMessageDialogHost(
         displayedRoute = displayedRoute,

@@ -26,6 +26,18 @@ interface IosAnalyticsTracker {
     fun log(event: IosAnalyticsEventDto)
 }
 
+interface IosFcmTokenListener {
+    fun onTokenChanged(token: String?)
+}
+
+interface IosRoomActivityPushListener {
+    fun onRoomActivityPushRequest(
+        requestId: String,
+        roomId: String?,
+        activityDate: String?,
+    )
+}
+
 interface IosAppleSignInCallback {
     fun onSuccess(idToken: String)
     fun onCancelled()
@@ -93,6 +105,18 @@ interface IosNativeServices {
     fun googleSignInService(): IosGoogleSignInService
 
     fun analyticsTracker(): IosAnalyticsTracker
+
+    fun latestFcmToken(): String?
+
+    fun observeFcmToken(listener: IosFcmTokenListener)
+
+    fun observeRoomActivityPush(listener: IosRoomActivityPushListener): Long
+
+    fun removeRoomActivityPushObserver(observerId: Long)
+
+    fun acknowledgeRoomActivityPush(requestId: String)
+
+    fun requestNotificationPermissionIfNeeded()
 }
 
 val LocalIosNativeServices = staticCompositionLocalOf<IosNativeServices> {

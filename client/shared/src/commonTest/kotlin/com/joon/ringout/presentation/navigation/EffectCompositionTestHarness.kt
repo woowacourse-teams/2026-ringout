@@ -41,7 +41,6 @@ internal suspend fun TestScope.withEffectComposition(
     }
 
     try {
-        // 입력만 바꾸어 같은 Composition에서 Effect의 재실행을 검증한다.
         composition.setContent(content)
         drain()
         block(::drain)

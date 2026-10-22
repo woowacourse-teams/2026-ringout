@@ -6,6 +6,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -165,6 +166,7 @@ class AlarmCreationGuideNavigationTest {
                 Route.Destination -> AlarmCreationGuideSurface.Destination
                 Route.Sound -> AlarmCreationGuideSurface.Sound
             }
+            val guideState by fixture.viewModel.uiState.collectAsState()
             AlarmCreationGuideRoute(
                 viewModel = fixture.viewModel,
                 isPending = fixture.isPending,
@@ -172,7 +174,7 @@ class AlarmCreationGuideNavigationTest {
                 canPresent = true,
                 hasDestination = fixture.hasDestination,
                 isAlarmSaving = fixture.isAlarmSaving,
-                isFinishing = fixture.viewModel.uiState.value.isFinishing,
+                isFinishing = guideState.isFinishing,
                 finishFailed = false,
                 onFinish = fixture::finish,
             ) {

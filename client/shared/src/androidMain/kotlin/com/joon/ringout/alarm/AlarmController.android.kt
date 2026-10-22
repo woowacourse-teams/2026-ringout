@@ -223,7 +223,11 @@ actual fun rememberAlarmController(
     fun continuePermissionChain() {
         when {
             needsNotificationPermission(context) -> {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                if (NotificationPermissionPrompt.tryAcquire(context)) {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    failPendingAction(NOTIFICATION_PERMISSION_ERROR)
+                }
             }
             !context.hasMissionFineLocationPermission() -> {
                 locationPermissionLauncher.launch(locationPermissions)

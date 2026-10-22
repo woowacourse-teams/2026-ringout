@@ -25,6 +25,10 @@ import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.AndroidSystemThemeModeReader
 import com.joon.ringout.data.preferences.getAppPreferencesDataStore
 import com.joon.ringout.domain.auth.getAuthSession
+import com.joon.ringout.data.push.AndroidFcmTokenSource
+import com.joon.ringout.data.push.KtorPushTokenRegistrar
+import com.joon.ringout.domain.push.PushPlatform
+import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
 
 class AndroidAppContainer(
     context: Context,
@@ -39,6 +43,10 @@ class AndroidAppContainer(
     }
 
     override val authSession = getAuthSession()
+    override val pushTokenSource = AndroidFcmTokenSource
+    override val pushTokenRegistrationReadiness =
+        PushTokenRegistrationReadiness(PushPlatform.Android)
+    override val pushTokenRegistrar = KtorPushTokenRegistrar(httpClient, tokenStorage, authSession)
     override val termsRepository = com.joon.ringout.data.terms.DefaultTermsRepository(httpClient, tokenStorage, authSession)
     override val networkMonitor = com.joon.ringout.data.connectivity.AndroidNetworkMonitor(context)
 
