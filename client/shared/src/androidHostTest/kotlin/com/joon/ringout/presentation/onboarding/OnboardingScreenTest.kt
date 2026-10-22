@@ -3,7 +3,9 @@ package com.joon.ringout.presentation.onboarding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -12,11 +14,13 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
 import com.joon.ringout.presentation.FontScaleTestContent
 import com.joon.ringout.presentation.assertTextFits
 import com.joon.ringout.presentation.launchWithFontScale
@@ -102,6 +106,92 @@ class OnboardingScreenTest {
             compose.runOnIdle { assertEquals(OnboardingStep.Introduction, fixture.state.step) }
             compose.onNodeWithText("다음으로").performClick()
             assertPage(OnboardingStep.Destination)
+        }
+    }
+
+    @Test
+    fun `페이지 전환 중 다음 버튼을 누를 때마다 목표 페이지를 앞당기고 마지막 도착 후에만 완료할 수 있다`() {
+        val fixture = Fixture()
+        launch(fixture).use {
+            assertPage(OnboardingStep.Introduction)
+            compose.mainClock.autoAdvance = false
+            try {
+                // 매번 애니메이션이 끝나기 전에 다시 눌러 새 목표로 이동시킨다.
+                listOf(
+                    OnboardingStep.Destination,
+                    OnboardingStep.Interval,
+                    OnboardingStep.Departure,
+                ).forEach { expectedStep ->
+                    compose.onNodeWithText("다음으로").assertIsEnabled().performClick()
+                    compose.mainClock.advanceTimeByFrame()
+                    compose.mainClock.advanceTimeBy(96)
+
+                    compose.runOnIdle {
+                        assertEquals(expectedStep, fixture.state.step)
+                        assertEquals(0, fixture.completions)
+                    }
+                    compose.onNodeWithText("다음으로").assertIsDisplayed().assertIsEnabled()
+                    compose.onNodeWithText("시작하기").assertDoesNotExist()
+                }
+
+                // 마지막 페이지를 향해 이동 중인 추가 탭은 완료 요청이 되지 않는다.
+                repeat(2) {
+                    compose.onNodeWithText("다음으로").performClick()
+                    compose.mainClock.advanceTimeByFrame()
+                }
+                compose.runOnIdle {
+                    assertEquals(OnboardingStep.Departure, fixture.state.step)
+                    assertEquals(0, fixture.completions)
+                }
+                compose.onNodeWithText("시작하기").assertDoesNotExist()
+
+                compose.mainClock.advanceTimeBy(2_000)
+            } finally {
+                compose.mainClock.autoAdvance = true
+            }
+
+            assertPage(OnboardingStep.Departure)
+            compose.onNodeWithText("다음으로").assertDoesNotExist()
+            compose.onNodeWithText("시작하기").assertIsEnabled().performClick()
+            compose.runOnIdle { assertEquals(1, fixture.completions) }
+        }
+    }
+
+    @Test
+    fun `다시 그리기 전 연속 다음 클릭은 마지막 페이지까지 진행하되 온보딩을 완료하지 않는다`() {
+        val completedStepCounts = mutableListOf<Int>()
+        launchWithFontScale(1f) {
+            RingoutTheme(themeMode = ThemeMode.Dark) {
+                OnboardingRoute(
+                    analytics = NoOpOnboardingAnalyticsRecorder,
+                    onComplete = { completedStepCounts += it },
+                )
+            }
+        }.use {
+            assertPage(OnboardingStep.Introduction)
+            compose.mainClock.autoAdvance = false
+            try {
+                // 같은 콜백에 도착한 연속 입력도 최신 ViewModel 상태를 기준으로 처리한다.
+                compose.onNodeWithText("다음으로")
+                    .performSemanticsAction(SemanticsActions.OnClick) { click ->
+                        repeat(4) { assertTrue(click()) }
+                    }
+                compose.mainClock.advanceTimeByFrame()
+                compose.mainClock.advanceTimeBy(96)
+
+                compose.onNodeWithContentDescription("현재 페이지 4, 전체 4").assertIsDisplayed()
+                compose.onNodeWithText("다음으로").assertIsDisplayed().assertIsEnabled()
+                compose.onNodeWithText("시작하기").assertDoesNotExist()
+                compose.runOnIdle { assertTrue(completedStepCounts.isEmpty()) }
+
+                compose.mainClock.advanceTimeBy(2_000)
+            } finally {
+                compose.mainClock.autoAdvance = true
+            }
+
+            assertPage(OnboardingStep.Departure)
+            compose.onNodeWithText("시작하기").assertIsEnabled().performClick()
+            compose.runOnIdle { assertEquals(listOf(4), completedStepCounts) }
         }
     }
 

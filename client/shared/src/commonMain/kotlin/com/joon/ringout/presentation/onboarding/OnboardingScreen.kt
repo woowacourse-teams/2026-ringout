@@ -53,6 +53,9 @@ internal fun OnboardingScreen(
     var isSynchronizingPage by remember { mutableStateOf(false) }
     val busy = !completionEnabled || (uiState.isCompletionRequested && !completionFailed)
 
+    fun isRequestedPageSettled(): Boolean =
+        !pagerState.isScrollInProgress && pagerState.settledPage == uiState.currentStepIndex
+
     LaunchedEffect(uiState.currentStepIndex) {
         if (pagerState.settledPage != uiState.currentStepIndex || pagerState.isScrollInProgress) {
             isSynchronizingPage = true
@@ -113,12 +116,14 @@ internal fun OnboardingScreen(
                     label = when {
                         busy -> "시작하는 중…"
                         completionFailed -> "다시 시도"
-                        uiState.isLastStep -> "시작하기"
+                        uiState.isLastStep && isRequestedPageSettled() -> "시작하기"
                         else -> "다음으로"
                     },
-                    onClick = onNext,
-                    enabled = !busy && !pagerState.isScrollInProgress &&
-                        pagerState.settledPage == uiState.currentStepIndex,
+                    onClick = {
+                        // Read the live pager state so a tap during the final transition cannot submit.
+                        if (!uiState.isLastStep || isRequestedPageSettled()) onNext()
+                    },
+                    enabled = !busy,
                     modifier = Modifier.widthIn(max = 343.dp),
                 )
             }

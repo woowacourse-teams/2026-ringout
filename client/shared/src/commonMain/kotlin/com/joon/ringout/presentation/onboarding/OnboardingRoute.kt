@@ -2,7 +2,6 @@ package com.joon.ringout.presentation.onboarding
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -18,7 +17,7 @@ internal fun OnboardingRoute(
     completionRetryToken: Int = 0,
 ) {
     val flow = viewModel { OnboardingViewModel(analytics = analytics) }
-    val state by flow.uiState.collectAsStateWithLifecycle()
+    val state = flow.uiState.collectAsStateWithLifecycle().value
 
     LaunchedEffect(state.step) {
         flow.onStepVisible()
@@ -30,8 +29,9 @@ internal fun OnboardingRoute(
         uiState = state,
         onPageChanged = { if (completionEnabled) flow.onPageChanged(it) },
         onNext = {
+            // Accept rapid next taps against the latest target, but never let an old page submit.
             if (completionEnabled &&
-                state.step == flow.uiState.value.step &&
+                (!flow.uiState.value.isLastStep || state.isLastStep) &&
                 flow.requestNext(completionRetryToken) == OnboardingAdvance.Complete
             ) {
                 flow.onSubmitAccepted()
