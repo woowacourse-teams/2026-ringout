@@ -54,6 +54,18 @@ public class SwaggerConfig {
             });
 
             openApi.setPaths(versionedPaths);
+            versionedPaths.forEach((path, item) -> {
+                if (path.startsWith("/api/v1/admin/")) {
+                    item.readOperations().forEach(operation -> {
+                        if (path.endsWith("/auth/me") || path.endsWith("/auth/logout")) {
+                            operation.setSecurity(java.util.List.of(
+                                new SecurityRequirement().addList("Admin Session")));
+                        } else {
+                            operation.setSecurity(java.util.List.of());
+                        }
+                    });
+                }
+            });
         };
     }
 }
