@@ -3,6 +3,7 @@ package com.joon.ringout.platform
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.joon.ringout.alarm.IosAlarmMissionCommands
 import com.joon.ringout.alarm.IosAlarmMissionEventInbox
+import com.joon.ringout.alarm.IosMissionArrivalNotifier
 import com.joon.ringout.alarm.IosAlarmScheduler
 import com.joon.ringout.alarm.IosMissionLocationService
 
@@ -102,6 +103,8 @@ interface IosNativeServices {
     fun alarmMissionCommands(): IosAlarmMissionCommands
 
     fun alarmMissionEventInbox(): IosAlarmMissionEventInbox
+
+    fun missionArrivalNotifier(): IosMissionArrivalNotifier
 
     fun missionLocationService(): IosMissionLocationService
 

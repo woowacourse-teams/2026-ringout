@@ -8,6 +8,7 @@ final class PlatformServices: @preconcurrency IosNativeServices {
     private let alarmKitAdapter: AlarmKitAdapter
     private let missionLocationAdapter: MissionLocationAdapter
     private let firebaseAnalyticsAdapter: FirebaseAnalyticsAdapter
+    private let arrivalNotificationAdapter = MissionArrivalNotificationAdapter()
     private let appleSignInAdapter = AppleSignInAdapter()
     private let kakaoSignInAdapter = KakaoSignInAdapter()
     private let googleSignInAdapter = GoogleSignInAdapter()
@@ -73,6 +74,10 @@ final class PlatformServices: @preconcurrency IosNativeServices {
 
     func alarmMissionEventInbox() -> IosAlarmMissionEventInbox {
         RingoutAlarmMissionEventInbox.shared
+    }
+
+    func missionArrivalNotifier() -> IosMissionArrivalNotifier {
+        arrivalNotificationAdapter
     }
 
     func alarmMissionCommands() -> IosAlarmMissionCommands {

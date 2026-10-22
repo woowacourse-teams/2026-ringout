@@ -55,7 +55,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        Messaging.messaging().appDidReceiveMessage(notification.request.content.userInfo)
+        if notification.request.trigger is UNPushNotificationTrigger {
+            Messaging.messaging().appDidReceiveMessage(notification.request.content.userInfo)
+        }
         completionHandler([.list, .banner, .sound])
     }
 
@@ -65,7 +67,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        Messaging.messaging().appDidReceiveMessage(userInfo)
+        if response.notification.request.trigger is UNPushNotificationTrigger {
+            Messaging.messaging().appDidReceiveMessage(userInfo)
+        }
         let actionIdentifier = response.actionIdentifier
         let request = response.notification.request
         let notificationIdentifier = request.identifier
