@@ -63,7 +63,8 @@ struct AlarmRecoveryJournalTests {
         try `관측된_원본_울림은_기존_실행_ID를_체인_ID로_채택한다`()
         try `미지원_schema는_변경하지_않고_실패한다`()
         try `앱_전환_관측은_마감과_예약을_바꾸지_않고_개수를_제한한다`()
-        print("33 alarm recovery journal tests passed")
+        try `예약_ID_없는_legacy는_UNKNOWN을_유지하고_claim되지_않는다`()
+        print("34 alarm recovery journal tests passed")
     }
 
     static func arrivalNotificationClaims() throws {
@@ -1053,10 +1054,27 @@ struct AlarmRecoveryJournalTests {
             assert(Set(attempts.map(\.occurrenceId)).count == 6)
         }
     }
+    static func `예약_ID_없는_legacy는_UNKNOWN을_유지하고_claim되지_않는다`() throws {
+        try withJournal { directory, journal in
+            let imported = try journal.importLegacy(occurrenceId: "legacy-unknown", snapshot: testSnapshot(),
+                stopAt: Date(timeIntervalSince1970: 1_000), reservationUUID: nil)
+            assert(imported.currentReservation.status == .unknown)
+            let restarted = AlarmRecoveryJournal(directoryURL: directory)
+            let claim = try restarted.claimNextReservation(occurrenceId: imported.occurrenceId,
+                executionEpoch: "new-process", now: Date(timeIntervalSince1970: 1_001))
+            assert(claim == nil)
+            let preserved = try restarted.attemptsForRecovery().first!
+            assert(preserved.currentReservation.status == .unknown)
+            assert(preserved.nextReservationUUID == imported.nextReservationUUID)
+            assert(preserved.expiresAtEpochMillis == imported.expiresAtEpochMillis)
+        }
+    }
 }
 
 private extension AlarmRecoveryState {
     func findAttemptForTest(_ occurrenceId: String) -> AlarmRecoveryAttempt? {
         chains.values.flatMap(\.attempts).first { $0.occurrenceId == occurrenceId }
     }
+
+
 }

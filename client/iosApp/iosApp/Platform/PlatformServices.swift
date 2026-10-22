@@ -80,6 +80,10 @@ final class PlatformServices: @preconcurrency IosNativeServices {
         arrivalNotificationAdapter
     }
 
+    func alarmMissionCommands() -> IosAlarmMissionCommands {
+        RingoutAlarmMissionCommands.shared
+    }
+
     func missionLocationService() -> IosMissionLocationService {
         missionLocationAdapter
     }

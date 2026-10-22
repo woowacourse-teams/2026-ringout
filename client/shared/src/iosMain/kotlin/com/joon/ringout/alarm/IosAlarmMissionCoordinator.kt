@@ -351,9 +351,45 @@ class IosAlarmMissionCoordinator(
         }
     }
 
+    /** Revalidates delayed app results without invoking legacy import or reservation recovery. */
+    suspend fun applyDirectDismissResult(
+        result: IosAlarmDismissResult,
+        commands: IosAlarmMissionCommands,
+    ): Boolean = mutex.withLock {
+        if (result.code != IosAlarmOperationCode.SUCCESS ||
+            result.recovery.code != IosAlarmOperationCode.SUCCESS ||
+            result.disposition !in setOf(IosAlarmDismissDisposition.HANDLED, IosAlarmDismissDisposition.PRESERVED)
+        ) return@withLock false
+        val occurrenceId = result.occurrenceId ?: return@withLock false
+        // An await may overlap an Intent, terminal commit, or a newer retry. Never apply its old snapshot.
+        val latest = try {
+            commands.readRecoverySnapshotAwait()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            return@withLock false
+        }
+        val handled = latest.attempts.any { it.occurrenceId == occurrenceId } ||
+            latest.terminals.any { it.occurrenceId == occurrenceId } ||
+            result.recovery.attempts.firstOrNull { it.occurrenceId == occurrenceId }?.chainId?.let { chain ->
+                latest.terminals.any { it.chainId == chain }
+            } == true
+        if (!handled) return@withLock false
+        applyNativeRecoveryLocked(latest, journalOnly = true)
+        true
+    }
+
     private suspend fun recoverNativeAttemptsLocked(): ActiveAlarmMission? {
-        val recovery = inbox.recoveryAttemptsAwait()
-        val terminalChains = recovery.terminals.map { it.chainId }.toSet()
+        val recovered = applyNativeRecoveryLocked(inbox.recoveryAttemptsAwait())
+        return refreshNativeReservationsLocked(recovered)
+    }
+
+    private suspend fun applyNativeRecoveryLocked(
+        recovery: IosAlarmRecoveryAttemptsResult,
+        journalOnly: Boolean = false,
+    ): ActiveAlarmMission? {
+        val terminalChains = recovery.terminals.map { it.chainId }.toSet() +
+            listOfNotNull(missionStore.loadPendingTerminal()?.chainId)
         if (activeMission.value?.chainId in terminalChains) {
             missionStore.clearActiveMission()
             missionStore.clearDeadlineAlarm()
@@ -379,6 +415,9 @@ class IosAlarmMissionCoordinator(
             .forEach { chain ->
                 val latest = chain.maxBy { it.sequence }
                 val current = activeMission.value
+                if (current != null && current.chainId == latest.chainId && current.retryAttempt > latest.sequence) {
+                    return@forEach
+                }
                 if (current != null && current.chainId != latest.chainId) {
                     inbox.commitTerminalAwait(
                         latest.chainId, IosAlarmRecoveryAttemptOutcome.SKIPPED_UNSUPPORTED_OVERLAP,
@@ -396,7 +435,10 @@ class IosAlarmMissionCoordinator(
                                 evidence.latitude, evidence.longitude, evidence.accuracyMeters,
                                 evidence.capturedAtEpochMillis,
                             )) {
-                            completeTerminalLocked(current, IosPendingMissionOutcome.SUCCESS)
+                            completeTerminalLocked(
+                                current, IosPendingMissionOutcome.SUCCESS,
+                                recoverySnapshot = recovery.takeIf { journalOnly },
+                            )
                             return@forEach
                         }
                         missionStore.clearLastLocation()
@@ -430,6 +472,11 @@ class IosAlarmMissionCoordinator(
                 }
             }
         }
+        return recovered
+    }
+
+    private suspend fun refreshNativeReservationsLocked(initial: ActiveAlarmMission?): ActiveAlarmMission? {
+        var recovered = initial
         // Apply overlap/terminal suppression before attempting pending native calls.
         val refreshed = runCatching { inbox.recoverReservationsAwait() }.getOrNull()
         val current = activeMission.value
@@ -859,6 +906,7 @@ class IosAlarmMissionCoordinator(
     private suspend fun completeTerminalLocked(
         mission: ActiveAlarmMission,
         outcome: IosPendingMissionOutcome,
+        recoverySnapshot: IosAlarmRecoveryAttemptsResult? = null,
         onCommitted: () -> Unit = {},
     ) {
         val completedAtEpochMillis = Clock.System.now().toEpochMilliseconds()
@@ -901,10 +949,10 @@ class IosAlarmMissionCoordinator(
         missionStore.clearActiveMission()
         missionStore.clearLastLocation()
         missionStore.clearDeadlineLocation()
-        recoverPendingTerminalLocked()
+        recoverPendingTerminalLocked(recoverySnapshot)
     }
 
-    private suspend fun recoverPendingTerminalLocked() {
+    private suspend fun recoverPendingTerminalLocked(recoverySnapshot: IosAlarmRecoveryAttemptsResult? = null) {
         val pending = missionStore.loadPendingTerminal() ?: return
         // Retry the durable tombstone before discarding any local projection.
         inbox.commitTerminalAwait(pending.chainId, when (pending.outcome) {
@@ -916,9 +964,17 @@ class IosAlarmMissionCoordinator(
         if (missionStore.loadActiveMission()?.occurrenceId == pending.occurrenceId) missionStore.clearActiveMission()
         missionStore.clearLastLocation()
         missionStore.clearDeadlineLocation()
-        val nativeAttempt = inbox.recoveryAttemptsAwait().attempts.firstOrNull { it.occurrenceId == pending.occurrenceId }
-        if (nativeAttempt != null) runCatching { inbox.recoverReservationsAwait() }
-        val cancellation = runCatching { cancelDeadlineAlarmLocked() }
+        val nativeAttempt = (recoverySnapshot ?: inbox.recoveryAttemptsAwait()).attempts
+            .firstOrNull { it.occurrenceId == pending.occurrenceId }
+        if (nativeAttempt != null && recoverySnapshot == null) runCatching { inbox.recoverReservationsAwait() }
+        val cancellation = runCatching {
+            // Direct projection may have accepted the child before final location evidence arrived.
+            // Cancel all journal reservations for that terminal chain without running the scheduler.
+            recoverySnapshot?.attempts?.filter { it.chainId == pending.chainId }?.forEach {
+                scheduler.cancelAwait(it.nextReservationUuid)
+            }
+            cancelDeadlineAlarmLocked()
+        }
         if (nativeAttempt == null) cancellation.getOrThrow()
         val recordReady = nativeAttempt == null || runCatching {
             outcomeRecorder.recordRecoveryAttempt(nativeAttempt)
@@ -1439,26 +1495,6 @@ internal suspend fun IosAlarmMissionEventInbox.recordProjectionEventsAwait():
     IosAlarmOperationResult(result.code, result.message)
         .requireAlarmKitSuccess("알람 기록 투영 이벤트를 읽지 못했습니다.")
     return result.events
-}
-
-internal suspend fun IosAlarmMissionEventInbox.recordOpenEventAwait(
-    alarmId: String,
-    occurrenceId: String?,
-    retryAttempt: Int,
-    scheduleVersion: Long = 1,
-    chainId: String? = null,
-) {
-    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
-        recordOpenEvent(
-            alarmId = alarmId,
-            occurrenceId = occurrenceId,
-            retryAttempt = retryAttempt,
-            scheduleVersion = scheduleVersion,
-            chainId = chainId,
-            callback = callback,
-        )
-    }
-    result.requireAlarmKitSuccess("알람 미션 이벤트를 저장하지 못했습니다.")
 }
 
 internal suspend fun IosAlarmMissionEventInbox.recordStopEventAwait(
