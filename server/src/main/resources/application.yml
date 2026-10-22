@@ -28,6 +28,13 @@ spring:
 
 server:
   forward-headers-strategy: native
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        secure: ${ADMIN_SESSION_COOKIE_SECURE:true}
+        same-site: lax
 
 management:
   endpoints:
@@ -52,6 +59,13 @@ springdoc:
   packages-to-scan: com.ringout.api
 
 app:
+  admin:
+    google:
+      enabled: ${ADMIN_GOOGLE_ENABLED:false}
+      client-id: ${ADMIN_GOOGLE_CLIENT_ID:}
+      client-secret: ${ADMIN_GOOGLE_CLIENT_SECRET:}
+      # Google 콘솔의 승인된 리디렉션 URI와 동일하게 설정합니다.
+      redirect-uri: ${ADMIN_GOOGLE_REDIRECT_URI:}
   file:
     image:
       profile-directory: ${AWS_S3_PROFILE_IMAGE_DIRECTORY:profiles}
