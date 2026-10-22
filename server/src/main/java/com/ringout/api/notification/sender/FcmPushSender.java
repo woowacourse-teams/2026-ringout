@@ -20,7 +20,6 @@ import org.springframework.stereotype.Component;
 public class FcmPushSender implements PushSender {
 
     private static final int MAX_BATCH_SIZE = 500;
-    private static final String DEEPLINK_KEY = "deeplink";
 
     private final FirebaseMessaging firebaseMessaging;
 
@@ -63,8 +62,8 @@ public class FcmPushSender implements PushSender {
                 .setTitle(message.title())
                 .setBody(message.body())
                 .build());
-        if (message.deeplink() != null) {
-            builder.putData(DEEPLINK_KEY, message.deeplink());
+        if (message.data() != null) {
+            builder.putAllData(message.data());
         }
         return builder.build();
     }

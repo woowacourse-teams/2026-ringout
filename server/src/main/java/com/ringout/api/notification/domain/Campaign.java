@@ -7,9 +7,12 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.Map;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Getter
 @Entity
@@ -25,20 +28,21 @@ public class Campaign {
 
     private String body;
 
-    private String deeplink;
+    @JdbcTypeCode(SqlTypes.JSON)
+    private Map<String, String> data;
 
     @Enumerated(EnumType.STRING)
     private CampaignTargetType campaignTargetType;
 
-    private Campaign(String title, String body, String deeplink, CampaignTargetType campaignTargetType) {
+    private Campaign(String title, String body, Map<String, String> data, CampaignTargetType campaignTargetType) {
         this.title = title;
         this.body = body;
-        this.deeplink = deeplink;
+        this.data = data;
         this.campaignTargetType = campaignTargetType;
     }
 
-    public static Campaign of(String title, String body, String deeplink,
+    public static Campaign of(String title, String body, Map<String, String> data,
         CampaignTargetType campaignTargetType) {
-        return new Campaign(title, body, deeplink, campaignTargetType);
+        return new Campaign(title, body, data, campaignTargetType);
     }
 }

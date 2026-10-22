@@ -31,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class RoomActivityNotificationService {
 
     private static final String BODY = "활동 시간이에요! 지금 참여해보세요.";
+    private static final String ROOM_ID_KEY = "roomId";
+    private static final String ACTIVITY_DATE_KEY = "activityDate";
 
     private final RoomRepository roomRepository;
     private final DeviceTokenRepository deviceTokenRepository;
@@ -55,7 +57,7 @@ public class RoomActivityNotificationService {
                 continue;
             }
             Campaign campaign = campaignRepository.save(
-                Campaign.of(room.getName(), BODY, null, CampaignTargetType.ROOM_MEMBER));
+                Campaign.of(room.getName(), BODY, activityData(room, now), CampaignTargetType.ROOM_MEMBER));
             devices.forEach(device -> notifications.add(
                 Notification.of(device.getUser(), device, campaign, TargetType.ROOM)));
         }
@@ -65,6 +67,12 @@ public class RoomActivityNotificationService {
         return notifications.stream()
             .map(Notification::getId)
             .toList();
+    }
+
+    private Map<String, String> activityData(Room room, LocalDateTime now) {
+        return Map.of(
+            ROOM_ID_KEY, room.getId().toString(),
+            ACTIVITY_DATE_KEY, now.toLocalDate().toString());
     }
 
     private Map<Long, List<Device>> findDevicesByRoomId(List<Room> rooms) {

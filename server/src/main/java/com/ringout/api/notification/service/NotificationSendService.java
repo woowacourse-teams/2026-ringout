@@ -49,7 +49,7 @@ public class NotificationSendService {
     private PushMessage toPushMessage(Notification notification) {
         Campaign campaign = notification.getCampaign();
         return new PushMessage(notification.getDevice().getFcmToken(),
-            campaign.getTitle(), campaign.getBody(), campaign.getDeeplink());
+            campaign.getTitle(), campaign.getBody(), campaign.getData());
     }
 
     private void updateStatus(List<Long> ids, NotificationStatus status) {
