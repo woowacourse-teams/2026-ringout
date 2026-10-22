@@ -621,6 +621,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         outcome: IosAlarmRecoveryAttemptOutcome,
         completedAtEpochMillis: Int64,
         occurrenceId: String?,
+        createArrivalIntent: Bool,
         callback: @escaping (IosAlarmOperationResult) -> Void
     ) {
         completeOperation(callback) {
@@ -628,6 +629,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                 chainId: chainId,
                 outcome: outcome.toRecoveryAttemptOutcome(),
                 occurrenceId: occurrenceId,
+                createArrivalIntent: createArrivalIntent,
                 now: Date(timeIntervalSince1970: Double(completedAtEpochMillis) / 1_000)
             )
         }
@@ -910,6 +912,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                     chainId: chainId,
                     outcome: terminal[1] == "SUCCESS" ? .terminalSucceeded : .terminalForcedStop,
                     occurrenceId: terminal[0],
+                    createArrivalIntent: false,
                     now: Date(timeIntervalSince1970: Double(at) / 1_000)
                 )
             }

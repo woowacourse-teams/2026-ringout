@@ -760,6 +760,7 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
         scheduler = scheduler,
         outcomeRecorder = RoomIosMissionOutcomeRecorder(occurrenceRecorder = occurrenceRecorder),
         analytics = analytics,
+        arrivalNotifier = nativeServices.missionArrivalNotifier(),
     )
     val nativeCleanup = IosAlarmNativeCleanupCoordinator(
         inbox = eventInbox,

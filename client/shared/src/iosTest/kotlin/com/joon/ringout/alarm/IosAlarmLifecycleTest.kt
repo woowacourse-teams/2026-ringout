@@ -23,6 +23,204 @@ import kotlin.test.assertTrue
 
 class IosAlarmLifecycleTest {
     @Test
+    fun `도착 성공은 기록 저장과 알림 완료 뒤에 종료 ACK를 저장한다`() = runBlocking {
+        val fixture = arrivalFixture()
+        fixture.coordinator.onLocationUpdated("arrival", arrivalLocation())
+        assertEquals(listOf("success", "notify", "terminalAck:arrival"), fixture.inbox.events)
+        assertNull(fixture.store.loadPendingTerminal())
+        assertNull(fixture.coordinator.activeMissionFlow.value)
+        fixture.coordinator.onLocationUpdated("arrival", arrivalLocation())
+        assertEquals(1, fixture.notifier.requests.size)
+    }
+
+    @Test
+    fun `도착 알림 콜백이 끝나기 전에는 종료 ACK를 저장하지 않는다`() = runBlocking {
+        val fixture = arrivalFixture()
+        fixture.notifier.holdCallback = true
+        val completion = async(start = CoroutineStart.UNDISPATCHED) {
+            fixture.coordinator.onLocationUpdated("arrival", arrivalLocation())
+        }
+        assertEquals(listOf("success", "notify"), fixture.inbox.events)
+        assertFalse(completion.isCompleted)
+        assertNotNull(fixture.store.loadPendingTerminal())
+        fixture.notifier.callback!!(IosMissionArrivalResult.HANDLED)
+        completion.await()
+        assertTrue(fixture.inbox.events.contains("terminalAck:arrival"))
+    }
+
+    @Test
+    fun `도착 기록 저장 실패는 알림을 미루고 복구 성공 후 요청한다`() = runBlocking {
+        val fixture = arrivalFixture()
+        fixture.failRecord = true
+        assertFailsWith<IllegalStateException> { fixture.coordinator.onLocationUpdated("arrival", arrivalLocation()) }
+        assertTrue(fixture.notifier.requests.isEmpty())
+        assertNotNull(fixture.store.loadPendingTerminal())
+        fixture.failRecord = false
+        fixture.coordinator.recoverPendingTerminal()
+        assertEquals(1, fixture.notifier.requests.size)
+        assertNull(fixture.store.loadPendingTerminal())
+    }
+
+    @Test
+    fun `도착 알림 선점 저장 실패는 성공 정리를 유지하고 종료 ACK를 미룬다`() = runBlocking {
+        val fixture = arrivalFixture()
+        fixture.notifier.result = IosMissionArrivalResult.CLAIM_STORAGE_FAILED
+        assertFailsWith<IllegalStateException> { fixture.coordinator.onLocationUpdated("arrival", arrivalLocation()) }
+        assertNull(fixture.coordinator.activeMissionFlow.value)
+        assertNotNull(fixture.store.loadPendingTerminal())
+        assertFalse(fixture.inbox.events.contains("terminalAck:arrival"))
+        fixture.notifier.result = IosMissionArrivalResult.HANDLED
+        fixture.coordinator.recoverPendingTerminal()
+        assertTrue(fixture.inbox.events.contains("terminalAck:arrival"))
+        assertNull(fixture.store.loadPendingTerminal())
+    }
+
+    @Test
+    fun `권한 생략과 OS 요청 오류는 성공 기록과 종료 정리를 막지 않는다`() = runBlocking {
+        for (result in listOf(IosMissionArrivalResult.PERMISSION_SKIPPED, IosMissionArrivalResult.REQUEST_FAILED,
+            IosMissionArrivalResult.ALREADY_HANDLED)) {
+            val fixture = arrivalFixture()
+            fixture.notifier.result = result
+            fixture.coordinator.onLocationUpdated("arrival", arrivalLocation())
+            assertNull(fixture.store.loadPendingTerminal())
+            assertTrue(fixture.inbox.events.contains("terminalAck:arrival"))
+        }
+    }
+
+    @Test
+    fun `구형 미션의 새 성공은 시도 여부를 저장한 뒤 목적지 snapshot으로 요청한다`() = runBlocking {
+        val fixture = arrivalFixture()
+        fixture.notifier.result = IosMissionArrivalResult.MISSING_CHAIN
+        fixture.notifier.beforeNotify = { request ->
+            if (request.fallbackDestinationName != null) {
+                assertTrue(fixture.store.loadPendingTerminal()!!.arrivalFallbackAttempted)
+                assertEquals("회사", request.fallbackDestinationName)
+            }
+        }
+        fixture.coordinator.onLocationUpdated("arrival", arrivalLocation())
+        assertEquals(listOf(null, "회사"), fixture.notifier.requests.map { it.fallbackDestinationName })
+        assertNull(fixture.store.loadPendingTerminal())
+    }
+
+    @Test
+    fun `구형 도착 알림 시도 저장 실패는 pending을 보존하고 다음 복구에서 요청한다`() = runBlocking {
+        val fixture = arrivalFixture()
+        fixture.notifier.result = IosMissionArrivalResult.MISSING_CHAIN
+        fixture.store.failArrivalClaim = true
+        assertFailsWith<IllegalStateException> { fixture.coordinator.onLocationUpdated("arrival", arrivalLocation()) }
+        assertFalse(fixture.store.loadPendingTerminal()!!.arrivalFallbackAttempted)
+        assertTrue(fixture.notifier.requests.all { it.fallbackDestinationName == null })
+        assertFalse(fixture.inbox.events.contains("terminalAck:arrival"))
+        fixture.store.failArrivalClaim = false
+        fixture.coordinator.recoverPendingTerminal()
+        assertEquals(1, fixture.notifier.requests.count { it.fallbackDestinationName != null })
+    }
+
+    @Test
+    fun `과거 완료 pending과 이미 시도한 구형 pending에는 fallback 알림을 보내지 않는다`() = runBlocking {
+        for (pending in listOf(
+            IosPendingMissionTerminal("arrival", outcome = IosPendingMissionOutcome.SUCCESS,
+                completedAtEpochMillis = 1_000, completedAt = "2026-10-23"),
+            IosPendingMissionTerminal("arrival", outcome = IosPendingMissionOutcome.SUCCESS,
+                completedAtEpochMillis = 1_000, completedAt = "2026-10-23",
+                arrivalDestinationName = "회사", arrivalFallbackAttempted = true),
+        )) {
+            val fixture = arrivalFixture()
+            fixture.store.savePendingTerminal(pending)
+            fixture.notifier.result = IosMissionArrivalResult.MISSING_CHAIN
+            fixture.coordinator.recoverPendingTerminal()
+            assertTrue(fixture.notifier.requests.all { it.fallbackDestinationName == null })
+            assertNull(fixture.store.loadPendingTerminal())
+        }
+    }
+
+    @Test
+    fun `네이티브 종료만 저장된 성공은 두 복구 경로에서 기록 뒤 알림과 ACK를 처리한다`() = runBlocking {
+        for (recordsOnly in listOf(true, false)) {
+            val fixture = arrivalFixture()
+            fixture.store.clearActiveMission()
+            val attempt = nativeAttempt("arrival", "arrival", 0).let {
+                it.copy(outcome = IosAlarmRecoveryAttemptOutcome.TERMINAL_SUCCEEDED,
+                    snapshot = it.snapshot.copy(owner = IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.CAPTURED_GUEST)))
+            }
+            fixture.inbox.recoveryAttempts = listOf(attempt)
+            fixture.inbox.recoveryTerminals = listOf(IosAlarmRecoveryTerminalDto("arrival", "arrival",
+                IosAlarmRecoveryAttemptOutcome.TERMINAL_SUCCEEDED, 1_000, false))
+            fixture.notifier.result = IosMissionArrivalResult.CLAIM_STORAGE_FAILED
+            if (recordsOnly) fixture.coordinator.processPendingRecordProjections()
+            else fixture.coordinator.processPendingEvents()
+            assertFalse(fixture.inbox.events.contains("terminalAck:arrival"))
+            fixture.inbox.events.clear()
+            fixture.notifier.result = IosMissionArrivalResult.HANDLED
+            if (recordsOnly) fixture.coordinator.processPendingRecordProjections()
+            else fixture.coordinator.processPendingEvents()
+            val relevant = fixture.inbox.events.filter { it in listOf("success", "notify", "terminalAck:arrival") }
+            assertEquals(listOf("success", "notify", "terminalAck:arrival"), relevant)
+        }
+    }
+
+    @Test
+    fun `강제 종료와 재울림은 도착 알림을 요청하지 않는다`() = runBlocking {
+        val forced = arrivalFixture()
+        forced.coordinator.requestForceEnd("arrival")
+        assertTrue(forced.notifier.requests.isEmpty())
+        val expired = arrivalFixture()
+        expired.coordinator.handleDeadline("arrival")
+        assertTrue(expired.notifier.requests.isEmpty())
+    }
+
+    @Test
+    fun `마감 내 도착 위치 증거로 성공해도 기록 뒤 도착 알림을 요청한다`() = runBlocking {
+        val fixture = arrivalFixture(expired = true)
+        val capturedAt = fixture.store.loadActiveMission()!!.expiresAtEpochMillis - 1
+        fixture.store.saveDeadlineLocation(arrivalLocation().copy(capturedAtEpochMillis = capturedAt))
+        fixture.coordinator.handleDeadline("arrival")
+        assertEquals(listOf("success", "notify", "terminalAck:arrival"), fixture.inbox.events)
+        assertNull(fixture.coordinator.activeMissionFlow.value)
+    }
+
+    private class ArrivalNotifier(private val events: MutableList<String>) : IosMissionArrivalNotifier {
+        val requests = mutableListOf<IosMissionArrivalRequest>()
+        var result = IosMissionArrivalResult.HANDLED
+        var holdCallback = false
+        var callback: ((IosMissionArrivalResult) -> Unit)? = null
+        var beforeNotify: (IosMissionArrivalRequest) -> Unit = {}
+        override fun notify(request: IosMissionArrivalRequest, callback: (IosMissionArrivalResult) -> Unit) {
+            beforeNotify(request)
+            requests += request
+            events += "notify"
+            this.callback = callback
+            if (!holdCallback) callback(result)
+        }
+    }
+
+    private class ArrivalFixture {
+        val inbox = LifecycleInbox(emptyList())
+        val store = LifecycleMissionStore()
+        val notifier = ArrivalNotifier(inbox.events)
+        var failRecord = false
+        val recorder = object : IosMissionOutcomeRecorder {
+            override suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) {
+                if (failRecord) error("record failed")
+                inbox.events += "success"
+            }
+            override suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) = Unit
+        }
+        lateinit var coordinator: IosAlarmMissionCoordinator
+    }
+
+    private fun arrivalFixture(expired: Boolean = false): ArrivalFixture = ArrivalFixture().apply {
+        val now = Clock.System.now().toEpochMilliseconds()
+        store.saveActiveMission(ActiveAlarmMission(CanonicalUuid, "회사", 12, if (expired) now - 1_000 else now + 720_000,
+            occurrenceId = "arrival", chainId = "arrival", startedAtEpochMillis = if (expired) now - 720_000 else now,
+            destinationLatitude = 37.5, destinationLongitude = 127.0))
+        coordinator = IosAlarmMissionCoordinator(LifecycleAlarmDataSource(listOf(savedAlarm(CanonicalUuid))), inbox,
+            LifecycleScheduler(), recorder, store, arrivalNotifier = notifier)
+    }
+
+    private fun arrivalLocation() = ActiveAlarmMissionLocation(37.5, 127.0, 5f, Clock.System.now().toEpochMilliseconds())
+
+    @Test
     fun `강제 종료 확정 전에 저장이 실패하면 완료 이벤트 없이 재시도할 수 있다`() = runBlocking {
         val fixture = forceEndFixture()
         fixture.inbox.terminalCommitCode = IosAlarmOperationCode.SDK_ERROR
@@ -1979,9 +2177,13 @@ private class LifecycleInbox(
 ) :
     IosAlarmMissionEventInbox {
     var terminalCommitCode = IosAlarmOperationCode.SUCCESS
+    override fun ackTerminalRecord(chainId: String, callback: (IosAlarmOperationResult) -> Unit) {
+        events += "terminalAck:$chainId"
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
     override fun commitTerminal(
         chainId: String, outcome: IosAlarmRecoveryAttemptOutcome, completedAtEpochMillis: Long,
-        occurrenceId: String?, callback: (IosAlarmOperationResult) -> Unit,
+        occurrenceId: String?, createArrivalIntent: Boolean, callback: (IosAlarmOperationResult) -> Unit,
     ) { callback(IosAlarmOperationResult(terminalCommitCode)) }
     val eligibility = mutableListOf<IosAlarmRecoveryEligibility>()
     override fun setSourceEligibility(alarmId: String, scheduleVersion: Long,
@@ -1995,8 +2197,9 @@ private class LifecycleInbox(
         callback(IosAlarmProtectedReservationsResult(protectedIds, protectedCode))
     }
     var recoveryAttempts: List<IosAlarmRecoveryAttemptDto> = emptyList()
+    var recoveryTerminals: List<IosAlarmRecoveryTerminalDto> = emptyList()
     override fun recoveryState(callback: (IosAlarmRecoveryAttemptsResult) -> Unit) {
-        callback(IosAlarmRecoveryAttemptsResult(attempts = recoveryAttempts))
+        callback(IosAlarmRecoveryAttemptsResult(attempts = recoveryAttempts, terminals = recoveryTerminals))
     }
     var cleanupCandidates = IosAlarmNativeCleanupCandidatesResult()
     var cleanupCommitResult = IosAlarmNativeCleanupCommitResult(committed = true)
@@ -2146,7 +2349,9 @@ private class LifecycleMissionStore : IosActiveAlarmMissionStore {
     }
     override fun clearDeadlineAlarm() { deadlineAlarm = null }
     override fun loadPendingTerminal() = pendingTerminal
+    var failArrivalClaim = false
     override fun savePendingTerminal(pending: IosPendingMissionTerminal) {
+        if (failArrivalClaim && pending.arrivalFallbackAttempted) error("claim save failed")
         pendingTerminal = pending
     }
     override fun clearPendingTerminal() { pendingTerminal = null }
