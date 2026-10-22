@@ -28,6 +28,78 @@ import kotlin.test.assertTrue
 
 class AppBootstrapViewModelTest {
     @Test
+    fun `서비스 소개를 완료하면 홈 진입과 알람 생성 가이드 상태가 함께 준비된다`() = withViewModel { viewModel, _, _ ->
+        viewModel.completeOnboarding()
+
+        assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+        assertTrue(viewModel.uiState.isAlarmCreationGuidePending)
+        assertFalse(viewModel.uiState.isSavingAlarmCreationGuide)
+    }
+
+    @Test
+    fun `기존 사용자에게는 알람 생성 가이드를 표시하지 않는다`() = withViewModel(
+        repository = FakeAppPreferencesRepository(
+            initialSnapshot = snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)),
+        ),
+    ) { viewModel, repository, _ ->
+        assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+        assertFalse(viewModel.uiState.isAlarmCreationGuidePending)
+
+        viewModel.completeAlarmCreationGuide()
+        assertEquals(0, repository.guideSaveCount)
+    }
+
+    @Test
+    fun `가이드 종료를 저장하는 동안 중복 요청을 막고 성공하면 가이드를 종료한다`() {
+        val gate = CompletableDeferred<Unit>()
+        withViewModel(
+            repository = FakeAppPreferencesRepository(
+                initialSnapshot = snapshot(isAlarmCreationGuidePending = true),
+                guideWriteGate = gate,
+            ),
+        ) { viewModel, repository, _ ->
+            viewModel.completeAlarmCreationGuide()
+            viewModel.completeAlarmCreationGuide()
+
+            assertEquals(1, repository.guideSaveCount)
+            assertTrue(viewModel.uiState.isAlarmCreationGuidePending)
+            assertTrue(viewModel.uiState.isSavingAlarmCreationGuide)
+            assertFalse(viewModel.uiState.isSaving)
+
+            gate.complete(Unit)
+            assertFalse(viewModel.uiState.isAlarmCreationGuidePending)
+            assertFalse(viewModel.uiState.isSavingAlarmCreationGuide)
+            assertFalse(viewModel.uiState.hasAlarmCreationGuideSaveFailed)
+
+            viewModel.completeAlarmCreationGuide()
+            assertEquals(1, repository.guideSaveCount)
+        }
+    }
+
+    @Test
+    fun `가이드 종료 저장에 실패하면 가이드를 유지하고 재시도할 수 있다`() = withViewModel(
+        repository = FakeAppPreferencesRepository(
+            initialSnapshot = snapshot(isAlarmCreationGuidePending = true),
+            failGuideWrite = true,
+        ),
+    ) { viewModel, repository, _ ->
+        viewModel.completeAlarmCreationGuide()
+
+        assertTrue(viewModel.uiState.isAlarmCreationGuidePending)
+        assertTrue(viewModel.uiState.hasAlarmCreationGuideSaveFailed)
+        assertFalse(viewModel.uiState.isSavingAlarmCreationGuide)
+        assertEquals(0, viewModel.uiState.onboardingRetryToken)
+
+        repository.failGuideWrite = false
+        viewModel.completeAlarmCreationGuide()
+
+        assertEquals(2, repository.guideSaveCount)
+        assertFalse(viewModel.uiState.isAlarmCreationGuidePending)
+        assertFalse(viewModel.uiState.hasAlarmCreationGuideSaveFailed)
+        assertFalse(viewModel.uiState.isSavingAlarmCreationGuide)
+    }
+
+    @Test
     fun `화면이 전환되어도 완료 이벤트는 설정 저장이 성공할 때까지 기다린다`() {
         val scope = testScope()
         val gate = CompletableDeferred<Unit>()
@@ -213,18 +285,24 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun onboardingCompletionWaitsForRepositorySnapshotBeforeRouting() =
+    fun `온보딩 저장 요청 뒤 새 스냅샷을 받아야 홈과 가이드 상태로 전환한다`() =
         withViewModel { viewModel, repository, _ ->
+            repository.emitOnboardingChanges = false
             viewModel.completeOnboarding()
 
             assertEquals(1, repository.onboardingSaveCount)
             assertEquals(AppEntryDestination.Onboarding, viewModel.uiState.destination)
+            assertFalse(viewModel.uiState.isAlarmCreationGuidePending)
 
             repository.emit(
-                snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)),
+                snapshot(
+                    firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
+                    isAlarmCreationGuidePending = true,
+                ),
             )
 
             assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+            assertTrue(viewModel.uiState.isAlarmCreationGuidePending)
         }
 
     @Test
@@ -275,14 +353,19 @@ private class FakeAppPreferencesRepository(
     var themeWriteFailuresRemaining: Int = 0,
     private val onboardingWriteGate: CompletableDeferred<Unit>? = null,
     var themeInitializationFailuresRemaining: Int = 0,
+    var failGuideWrite: Boolean = false,
+    private val guideWriteGate: CompletableDeferred<Unit>? = null,
 ) : AppPreferencesRepository {
     private val mutableBootstrapState = MutableStateFlow(initialSnapshot)
     override val bootstrapState: Flow<AppBootstrapSnapshot> = mutableBootstrapState
 
     var emitThemeChanges = true
+    var emitOnboardingChanges = true
     val themeWrites = mutableListOf<ThemeMode>()
     val themeInitializationWrites = mutableListOf<ThemeMode>()
     var onboardingSaveCount = 0
+        private set
+    var guideSaveCount = 0
         private set
 
     override suspend fun initializeThemeModeIfMissing(themeMode: ThemeMode) {
@@ -313,6 +396,22 @@ private class FakeAppPreferencesRepository(
         onboardingSaveCount += 1
         onboardingWriteGate?.await()
         if (failOnboardingWrite) throw IOException("write failed")
+        val currentSnapshot = mutableBootstrapState.value
+        if (emitOnboardingChanges && !currentSnapshot.firstLaunchStatus.isOnboardingCompleted) {
+            emit(
+                currentSnapshot.copy(
+                    firstLaunchStatus = currentSnapshot.firstLaunchStatus.copy(isOnboardingCompleted = true),
+                    isAlarmCreationGuidePending = true,
+                ),
+            )
+        }
+    }
+
+    override suspend fun completeAlarmCreationGuide() {
+        guideSaveCount += 1
+        guideWriteGate?.await()
+        if (failGuideWrite) throw IOException("guide write failed")
+        emit(mutableBootstrapState.value.copy(isAlarmCreationGuidePending = false))
     }
 
     override suspend fun saveTermConsents(records: List<TermConsentRecord>) = Unit
@@ -327,13 +426,15 @@ private object EmptyAppPreferencesRepository : AppPreferencesRepository {
     override suspend fun initializeThemeModeIfMissing(themeMode: ThemeMode) = Unit
     override suspend fun setThemeMode(themeMode: ThemeMode) = Unit
     override suspend fun markOnboardingCompleted() = Unit
+    override suspend fun completeAlarmCreationGuide() = Unit
     override suspend fun saveTermConsents(records: List<TermConsentRecord>) = Unit
 }
 
 private fun snapshot(
     themeMode: ThemeMode? = ThemeMode.Dark,
     firstLaunchStatus: FirstLaunchStatus = FirstLaunchStatus(),
-) = AppBootstrapSnapshot(themeMode, firstLaunchStatus)
+    isAlarmCreationGuidePending: Boolean = false,
+) = AppBootstrapSnapshot(themeMode, firstLaunchStatus, isAlarmCreationGuidePending)
 
 private class FakeSystemThemeModeReader(
     private val themeMode: ThemeMode,
