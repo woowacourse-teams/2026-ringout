@@ -37,11 +37,13 @@ import com.joon.ringout.presentation.onboarding.component.OnboardingPageIndicato
 import com.joon.ringout.presentation.onboarding.component.OnboardingPrimaryButton
 import com.joon.ringout.ringoutColors
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filterNotNull
 
 @Composable
 internal fun OnboardingScreen(
     uiState: OnboardingUiState,
     onPageChanged: (Int) -> Unit,
+    onPageSettled: (Int) -> Unit,
     onNext: () -> Unit,
     modifier: Modifier = Modifier,
     completionEnabled: Boolean = true,
@@ -49,6 +51,7 @@ internal fun OnboardingScreen(
 ) {
     val pagerState = rememberPagerState(initialPage = uiState.currentStepIndex) { uiState.steps.size }
     val currentOnPageChanged by rememberUpdatedState(onPageChanged)
+    val currentOnPageSettled by rememberUpdatedState(onPageSettled)
     val currentPageIndex by rememberUpdatedState(uiState.currentStepIndex)
     var isSynchronizingPage by remember { mutableStateOf(false) }
     val busy = !completionEnabled || (uiState.isCompletionRequested && !completionFailed)
@@ -70,6 +73,13 @@ internal fun OnboardingScreen(
             .collect { page ->
                 if (!isSynchronizingPage && page != currentPageIndex) currentOnPageChanged(page)
             }
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow {
+            pagerState.settledPage.takeIf {
+                !pagerState.isScrollInProgress && !isSynchronizingPage && it == currentPageIndex
+            }
+        }.filterNotNull().collect { currentOnPageSettled(it) }
     }
 
     Box(
@@ -183,6 +193,7 @@ private fun OnboardingPreview(
         OnboardingScreen(
             uiState = OnboardingUiState(step = step),
             onPageChanged = {},
+            onPageSettled = {},
             onNext = {},
             completionEnabled = completionEnabled,
             completionFailed = completionFailed,

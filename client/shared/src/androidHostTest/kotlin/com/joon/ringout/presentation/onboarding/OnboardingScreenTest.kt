@@ -3,6 +3,7 @@ package com.joon.ringout.presentation.onboarding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -20,7 +21,9 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.analytics.AnalyticsOnboardingStep
 import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
+import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
 import com.joon.ringout.presentation.FontScaleTestContent
 import com.joon.ringout.presentation.assertTextFits
 import com.joon.ringout.presentation.launchWithFontScale
@@ -160,10 +163,11 @@ class OnboardingScreenTest {
     @Test
     fun `다시 그리기 전 연속 다음 클릭은 마지막 페이지까지 진행하되 온보딩을 완료하지 않는다`() {
         val completedStepCounts = mutableListOf<Int>()
+        val analytics = RecordingOnboardingAnalytics()
         launchWithFontScale(1f) {
             RingoutTheme(themeMode = ThemeMode.Dark) {
                 OnboardingRoute(
-                    analytics = NoOpOnboardingAnalyticsRecorder,
+                    analytics = analytics,
                     onComplete = { completedStepCounts += it },
                 )
             }
@@ -182,7 +186,10 @@ class OnboardingScreenTest {
                 compose.onNodeWithContentDescription("현재 페이지 4, 전체 4").assertIsDisplayed()
                 compose.onNodeWithText("다음으로").assertIsDisplayed().assertIsEnabled()
                 compose.onNodeWithText("시작하기").assertDoesNotExist()
-                compose.runOnIdle { assertTrue(completedStepCounts.isEmpty()) }
+                compose.runOnIdle {
+                    assertTrue(completedStepCounts.isEmpty())
+                    assertEquals(listOf(AnalyticsOnboardingStep.Introduction), analytics.viewedSteps)
+                }
 
                 compose.mainClock.advanceTimeBy(2_000)
             } finally {
@@ -190,8 +197,98 @@ class OnboardingScreenTest {
             }
 
             assertPage(OnboardingStep.Departure)
+            compose.runOnIdle {
+                assertEquals(
+                    listOf(AnalyticsOnboardingStep.Introduction, AnalyticsOnboardingStep.Departure),
+                    analytics.viewedSteps,
+                )
+            }
             compose.onNodeWithText("시작하기").assertIsEnabled().performClick()
             compose.runOnIdle { assertEquals(listOf(4), completedStepCounts) }
+        }
+    }
+
+    @Test
+    fun `전환 도중 다음을 연속으로 누르면 지나친 페이지 대신 마지막 도착 페이지만 조회로 기록한다`() {
+        val analytics = RecordingOnboardingAnalytics()
+        launchWithFontScale(1f) {
+            RingoutTheme(themeMode = ThemeMode.Dark) {
+                OnboardingRoute(analytics = analytics, onComplete = {})
+            }
+        }.use {
+            assertPage(OnboardingStep.Introduction)
+            compose.mainClock.autoAdvance = false
+            try {
+                repeat(3) {
+                    compose.onNodeWithText("다음으로").performClick()
+                    compose.mainClock.advanceTimeByFrame()
+                    compose.mainClock.advanceTimeBy(96)
+                    compose.runOnIdle {
+                        assertEquals(listOf(AnalyticsOnboardingStep.Introduction), analytics.viewedSteps)
+                    }
+                }
+                compose.mainClock.advanceTimeBy(2_000)
+            } finally {
+                compose.mainClock.autoAdvance = true
+            }
+
+            assertPage(OnboardingStep.Departure)
+            compose.runOnIdle {
+                assertEquals(
+                    listOf(AnalyticsOnboardingStep.Introduction, AnalyticsOnboardingStep.Departure),
+                    analytics.viewedSteps,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `스와이프 도중에는 조회를 기록하지 않고 도착과 이전 페이지 재방문만 기록한다`() {
+        val analytics = RecordingOnboardingAnalytics()
+        var theme by mutableStateOf(ThemeMode.Dark)
+        launchWithFontScale(1f) {
+            RingoutTheme(themeMode = theme) {
+                OnboardingRoute(analytics = analytics, onComplete = {})
+            }
+        }.use {
+            assertPage(OnboardingStep.Introduction)
+            compose.mainClock.autoAdvance = false
+            try {
+                compose.onNodeWithTag("onboarding-pager").performTouchInput {
+                    down(Offset(width * 0.9f, centerY))
+                    moveTo(Offset(width * 0.6f, centerY))
+                    moveTo(Offset(width * 0.2f, centerY))
+                }
+                compose.mainClock.advanceTimeByFrame()
+                compose.runOnIdle {
+                    assertEquals(listOf(AnalyticsOnboardingStep.Introduction), analytics.viewedSteps)
+                }
+                compose.onNodeWithTag("onboarding-pager").performTouchInput { up() }
+                compose.mainClock.advanceTimeBy(2_000)
+            } finally {
+                compose.mainClock.autoAdvance = true
+            }
+
+            assertPage(OnboardingStep.Destination)
+            compose.runOnIdle {
+                assertEquals(
+                    listOf(AnalyticsOnboardingStep.Introduction, AnalyticsOnboardingStep.Destination),
+                    analytics.viewedSteps,
+                )
+                theme = ThemeMode.Light
+            }
+            compose.onNodeWithTag("onboarding-pager").performTouchInput { swipeRight() }
+            assertPage(OnboardingStep.Introduction)
+            compose.runOnIdle {
+                assertEquals(
+                    listOf(
+                        AnalyticsOnboardingStep.Introduction,
+                        AnalyticsOnboardingStep.Destination,
+                        AnalyticsOnboardingStep.Introduction,
+                    ),
+                    analytics.viewedSteps,
+                )
+            }
         }
     }
 
@@ -284,6 +381,7 @@ class OnboardingScreenTest {
             OnboardingScreen(
                 uiState = fixture.state,
                 onPageChanged = { fixture.state = fixture.state.copy(step = OnboardingStep.entries[it]) },
+                onPageSettled = {},
                 onNext = fixture::onNext,
                 completionEnabled = fixture.completionEnabled,
                 completionFailed = fixture.completionFailed,
@@ -308,6 +406,15 @@ class OnboardingScreenTest {
             } else {
                 state = state.copy(step = OnboardingStep.entries[state.step.ordinal + 1])
             }
+        }
+    }
+
+    private class RecordingOnboardingAnalytics : OnboardingAnalyticsRecorder by NoOpOnboardingAnalyticsRecorder {
+        val viewedSteps = mutableListOf<AnalyticsOnboardingStep>()
+
+        override fun recordOnboardingStepViewed(step: AnalyticsOnboardingStep, stepCount: Int) {
+            assertEquals(4, stepCount)
+            viewedSteps += step
         }
     }
 }

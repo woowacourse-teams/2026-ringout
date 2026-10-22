@@ -11,7 +11,7 @@
 | 이벤트 | 발생 시점 | 파라미터 |
 | --- | --- | --- |
 | `tutorial_begin` | 첫 소개 페이지가 최초 표시될 때. 앱 재실행 후 중복 기록하지 않는다. | `flow_name`, `flow_version`, `step_count` |
-| `onboarding_step_viewed` | 실제 페이지 표시. 스와이프·다음 버튼·이전 페이지 이동으로 다시 표시되는 경우도 포함한다. | 공통 파라미터 + `step_name`, `step_index` |
+| `onboarding_step_viewed` | 페이지 전환이 끝나 해당 페이지에 도착한 때. 스와이프·다음 버튼·이전 페이지 이동으로 다시 도착하는 경우도 포함한다. | 공통 파라미터 + `step_name`, `step_index` |
 | `onboarding_submit` | 마지막 페이지의 `시작하기` 요청이 수락된 직후, 완료 상태를 저장하기 전에 기록한다. 저장 실패 후 수락된 재시도도 포함한다. | 공통 파라미터 + 마지막 페이지의 `step_name`, `step_index` |
 | `tutorial_complete` | 온보딩 완료 상태의 로컬 저장까지 성공한 때. 알람 저장·예약이나 권한 허용에 의존하지 않는다. | `flow_name`, `flow_version`, `step_count` |
 
@@ -22,7 +22,7 @@
 - `step_index`: 해당 페이지의 1부터 시작하는 순서. 두 플랫폼 모두 submit은 `departure`/`4`다.
 - OS 구분은 Analytics의 기본 플랫폼 정보를 사용한다.
 
-옆 페이지의 사전 구성이나 스와이프 도중의 임시 노출은 조회로 세지 않고, 사용자에게 실제 표시된 페이지로 판정한다. Compose 재구성, 같은 페이지로의 단순 포그라운드 복귀, 처리 중 중복 탭은 새 이벤트로 기록하지 않는다. 실제 실패 후 수락된 완료 상태 저장 재시도는 submit을 다시 기록한다.
+옆 페이지의 사전 구성이나 스와이프 도중의 임시 노출은 조회로 세지 않는다. 연속으로 다음 버튼을 눌러 도착하기 전에 지나친 페이지도 조회에서 제외한다. 페이지 이동이 멈추고 마지막 이동 요청과 실제 도착 페이지가 일치할 때 조회로 판정한다. Compose 재구성, 같은 페이지로의 단순 포그라운드 복귀, 처리 중 중복 탭은 새 이벤트로 기록하지 않는다. 실제 실패 후 수락된 완료 상태 저장 재시도는 submit을 다시 기록한다.
 
 기존 `destination_alarm_created` 이벤트는 홈에서 사용자가 별도로 알람을 만들 때 유지한다. 온보딩 완료만으로 이 이벤트를 기록하지 않는다. 중간 단계 통과는 다음 페이지 조회로 판정하므로 별도의 단계 완료 이벤트는 추가하지 않는다. 권한별 실패·버튼별 클릭·앱 종료 이벤트는 이번 범위에서 제외한다.
 
@@ -37,7 +37,7 @@ v1은 `flow_name = first_alarm`, `flow_version = 1`인 첫 알람 생성 흐름�
 
 ## 연결 위치와 중복 방지
 
-- `OnboardingRoute`에서 실제 표시된 페이지를 `OnboardingViewModel.onStepVisible()`에 전달한다. ViewModel의 마지막 표시 페이지로 재구성·Activity 재생성 중복을 막는다. 앱 프로세스 재시작 후에는 새 조회를 기록한다.
+- `OnboardingScreen`에서 페이지 이동 완료를 관찰하고 `OnboardingRoute`를 통해 실제 도착한 페이지 인덱스를 `OnboardingViewModel.onStepVisible(index)`에 전달한다. ViewModel의 마지막 표시 페이지로 재구성·Activity 재생성 중복을 막는다. 앱 프로세스 재시작 후에는 새 조회를 기록한다.
 - 마지막 페이지의 완료 요청이 수락됐을 때 submit을 기록한다. 온보딩에서 `AlarmSetupCoordinator`나 알람 저장·권한 확인을 호출하지 않는다.
 - `AppBootstrapViewModel`은 `markOnboardingCompleted()` 성공 뒤 완료 이벤트를 기록한다. 온보딩 화면이 홈으로 전환되어 제거돼도 완료 기록을 화면 수명주기에 의존하지 않는다.
 - `DefaultProductAnalyticsRecorder`에서 공통 이벤트와 파라미터를 만든다. Android Firebase 어댑터와 iOS Swift Firebase 어댑터에 기존 경로로 전달한다.
@@ -70,6 +70,7 @@ v1은 `flow_name = first_alarm`, `flow_version = 1`인 첫 알람 생성 흐름�
 - 정상 Android·iOS 흐름: begin → introduction → destination → interval → departure → submit → complete.
 - 재구성·단순 앱 복귀에서는 같은 페이지 조회가 늘어나지 않는다.
 - 스와이프·다음 버튼·이전 페이지 이동으로 실제 표시된 페이지 조회가 기록된다. 옆 페이지 사전 구성은 조회가 아니다.
+- 다음 버튼을 연속으로 눌러 중간 페이지에 도착하지 않고 마지막 페이지까지 이동하면 introduction과 departure만 조회로 기록된다. 이동 중에는 departure 조회도 기록되지 않는다.
 - 앱 재실행에서 begin은 늘어나지 않고 introduction 조회만 추가된다.
 - 마지막 페이지에서 시작하기를 누르기 전에는 submit이 발생하지 않는다.
 - 완료 상태 저장 중 중복 탭에서는 submit이 늘어나지 않는다. 실패 후 재시도에는 submit이 추가된다.

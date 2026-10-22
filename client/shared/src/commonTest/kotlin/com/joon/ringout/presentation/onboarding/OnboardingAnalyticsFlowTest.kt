@@ -15,15 +15,15 @@ class OnboardingAnalyticsFlowTest {
     fun `다음 버튼과 뒤로 가기와 스와이프를 포함한 실제 페이지 진입만 기록한다`() {
         val fixture = OnboardingAnalyticsFixture()
         val viewModel = OnboardingViewModel(analytics = fixture.recorder)
-        repeat(3) { viewModel.onStepVisible() }
+        repeat(3) { viewModel.onStepVisible(0) }
         viewModel.requestNext()
-        viewModel.onStepVisible()
+        viewModel.onStepVisible(1)
         viewModel.back()
-        viewModel.onStepVisible()
+        viewModel.onStepVisible(0)
         viewModel.onPageChanged(2)
-        repeat(2) { viewModel.onStepVisible() }
+        repeat(2) { viewModel.onStepVisible(2) }
         viewModel.requestNext()
-        viewModel.onStepVisible()
+        viewModel.onStepVisible(3)
 
         assertEquals(1, fixture.events.count { it.name == AnalyticsEventName.TutorialBegin })
         assertEquals(
@@ -35,9 +35,37 @@ class OnboardingAnalyticsFlowTest {
     }
 
     @Test
+    fun `이동 목표가 변경되어도 실제 도착한 페이지를 전달하기 전에는 조회를 기록하지 않는다`() {
+        val fixture = OnboardingAnalyticsFixture()
+        val viewModel = OnboardingViewModel(analytics = fixture.recorder)
+        viewModel.onStepVisible(0)
+        repeat(3) { viewModel.requestNext() }
+        // 이동 목표가 마지막 페이지여도 직전 페이지의 중복 보고는 새 조회가 아니다.
+        viewModel.onStepVisible(0)
+        assertEquals(1, fixture.events.count { it.name == AnalyticsEventName.OnboardingStepViewed })
+
+        viewModel.onStepVisible(3)
+        assertEquals(
+            listOf("introduction", "departure"),
+            fixture.events.filter { it.name == AnalyticsEventName.OnboardingStepViewed }.map {
+                (it.parameters.getValue(AnalyticsParameterName.StepName) as AnalyticsParameterValue.Text).value
+            },
+        )
+    }
+
+    @Test
+    fun `범위를 벗어난 페이지 표시는 시작과 조회 이벤트를 기록하지 않는다`() {
+        val fixture = OnboardingAnalyticsFixture()
+        val viewModel = OnboardingViewModel(analytics = fixture.recorder)
+        viewModel.onStepVisible(-1)
+        viewModel.onStepVisible(4)
+        assertEquals(emptyList(), fixture.events)
+    }
+
+    @Test
     fun `앱을 재시작하면 페이지 진입을 새로 기록하고 온보딩 시작은 중복 기록하지 않는다`() {
         val fixture = OnboardingAnalyticsFixture()
-        repeat(2) { OnboardingViewModel(analytics = fixture.recorder).onStepVisible() }
+        repeat(2) { OnboardingViewModel(analytics = fixture.recorder).onStepVisible(0) }
         assertEquals(1, fixture.events.count { it.name == AnalyticsEventName.TutorialBegin })
         assertEquals(2, fixture.events.count { it.name == AnalyticsEventName.OnboardingStepViewed })
     }
@@ -71,23 +99,23 @@ class OnboardingAnalyticsFlowTest {
         val fixture = OnboardingAnalyticsFixture()
         val viewModel = OnboardingViewModel(analytics = fixture.recorder)
         viewModel.onPageChanged(3)
-        viewModel.onStepVisible()
+        viewModel.onStepVisible(3)
         val eventCount = fixture.events.size
         viewModel.requestNext()
         viewModel.onPageChanged(2)
         viewModel.back()
-        viewModel.onStepVisible()
+        viewModel.onStepVisible(3)
         assertEquals(eventCount, fixture.events.size)
     }
 
     @Test
     fun `분석 이벤트 기록에 실패해도 페이지 이동과 완료 요청은 계속된다`() {
         val viewModel = OnboardingViewModel(analytics = FailingOnboardingAnalyticsRecorder)
-        viewModel.onStepVisible()
+        viewModel.onStepVisible(0)
         viewModel.requestNext()
         assertEquals(OnboardingStep.Destination, viewModel.uiState.value.step)
         viewModel.onPageChanged(3)
-        viewModel.onStepVisible()
+        viewModel.onStepVisible(3)
         assertEquals(OnboardingAdvance.Complete, viewModel.requestNext())
         viewModel.onSubmitAccepted()
         assertEquals(OnboardingAdvance.None, viewModel.requestNext())

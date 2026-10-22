@@ -32,13 +32,14 @@ internal class OnboardingViewModel(
     private var lastViewedStep: OnboardingStep? = null
 
     /** Recomposition and app resume do not count as a new page entry. */
-    fun onStepVisible() {
+    fun onStepVisible(index: Int) {
         val state = uiState.value
-        if (lastViewedStep == state.step) return
-        lastViewedStep = state.step
+        val step = state.steps.getOrNull(index) ?: return
+        if (lastViewedStep == step) return
+        lastViewedStep = step
         runCatching {
             analytics.recordOnboardingStarted(state.steps.size)
-            analytics.recordOnboardingStepViewed(state.step.analyticsStep(), state.steps.size)
+            analytics.recordOnboardingStepViewed(step.analyticsStep(), state.steps.size)
         }
     }
 
