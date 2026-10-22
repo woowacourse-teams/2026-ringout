@@ -24,6 +24,7 @@ import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,7 +65,7 @@ class NotificationSendServiceTest {
     private PushSender pushSender;
 
     @Test
-    void 캠페인_문구와_디바이스_토큰으로_푸시를_보낸다() {
+    void 캠페인_문구와_데이터를_디바이스_토큰으로_푸시를_보낸다() {
         // given
         Campaign campaign = saveCampaign("아침 러닝 모임");
         Device device = saveDevice(saveUser());
@@ -76,7 +77,8 @@ class NotificationSendServiceTest {
 
         // then
         then(pushSender).should().send(List.of(
-            new PushMessage(device.getFcmToken(), "아침 러닝 모임", campaign.getBody(), null)
+            new PushMessage(device.getFcmToken(), "아침 러닝 모임", campaign.getBody(),
+                Map.of("roomId", "1", "activityDate", "2026-10-19"))
         ));
     }
 
@@ -119,7 +121,8 @@ class NotificationSendServiceTest {
 
     private Campaign saveCampaign(String title) {
         return campaignRepository.save(
-            Campaign.of(title, "활동 시간이에요! 지금 참여해보세요.", null, CampaignTargetType.ROOM_MEMBER));
+            Campaign.of(title, "활동 시간이에요! 지금 참여해보세요.",
+                Map.of("roomId", "1", "activityDate", "2026-10-19"), CampaignTargetType.ROOM_MEMBER));
     }
 
     private Notification saveNotification(Device device, Campaign campaign) {

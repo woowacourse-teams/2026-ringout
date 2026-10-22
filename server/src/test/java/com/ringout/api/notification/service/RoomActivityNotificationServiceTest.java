@@ -24,6 +24,7 @@ import com.ringout.api.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -117,6 +118,23 @@ class RoomActivityNotificationServiceTest {
         assertThat(notificationRepository.findAll())
             .extracting(notification -> notification.getCampaign().getId())
             .containsExactlyInAnyOrderElementsOf(campaigns.stream().map(Campaign::getId).toList());
+    }
+
+    @Test
+    void 캠페인에_방_id와_활동_날짜를_데이터로_담는다() {
+        // given
+        User host = saveUser();
+        Room room = saveRoom(host, List.of(ActivityDay.MONDAY), LocalTime.of(9, 0));
+        saveDevice(host);
+
+        // when
+        roomActivityNotificationService.create(MONDAY_09_00);
+
+        // then
+        assertThat(campaignRepository.findAll())
+            .singleElement()
+            .extracting(Campaign::getData)
+            .isEqualTo(Map.of("roomId", room.getId().toString(), "activityDate", "2026-10-19"));
     }
 
     @Test
