@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.navigation
 
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
+import com.joon.ringout.domain.push.RoomActivityPushTarget
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -200,6 +201,58 @@ class AppNavigationStateTest {
         state.navigate(AppRoute.RoomActivity("41", "2026-10-07"))
 
         assertEquals(AppRoute.RoomMemberManagement("41"), state.requestedRoute)
+    }
+
+    @Test
+    fun `푸시 클릭은 정확한 활동 백스택을 만들고 뒤로 가면 모임 목록과 홈으로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.MyPage)
+        state.navigate(AppRoute.Social)
+        val target = requireNotNull(
+            RoomActivityPushTarget.parse(
+                mapOf("roomId" to "41", "activityDate" to "2026-10-07"),
+            ),
+        )
+
+        assertTrue(state.openRoomActivityFromPush(target))
+        val roomHome = AppRoute.RoomHome("41")
+        val activity = AppRoute.RoomActivity("41", "2026-10-07")
+        assertEquals(
+            listOf(AppRoute.Home, AppRoute.Social, roomHome, activity),
+            state.backStack.toList(),
+        )
+
+        state.popBackStack(activity)
+        assertEquals(roomHome, state.requestedRoute)
+        state.popBackStack(roomHome)
+        assertEquals(AppRoute.Social, state.requestedRoute)
+        state.popBackStack(AppRoute.Social)
+        assertEquals(listOf(AppRoute.Home), state.backStack.toList())
+    }
+
+    @Test
+    fun `푸시 클릭은 기존 모임 스택을 대상 모임으로 바꾸고 같은 스택은 중복하지 않는다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Social)
+        state.navigate(AppRoute.RoomHome("12"))
+        state.navigate(AppRoute.RoomActivity("12", "2026-10-06"))
+        val target = requireNotNull(
+            RoomActivityPushTarget.parse(
+                mapOf("roomId" to "41", "activityDate" to "2026-10-07"),
+            ),
+        )
+
+        assertTrue(state.openRoomActivityFromPush(target))
+        val expected = listOf(
+            AppRoute.Home,
+            AppRoute.Social,
+            AppRoute.RoomHome("41"),
+            AppRoute.RoomActivity("41", "2026-10-07"),
+        )
+        assertEquals(expected, state.backStack.toList())
+
+        assertTrue(state.openRoomActivityFromPush(target))
+        assertEquals(expected, state.backStack.toList())
     }
 
     @Test

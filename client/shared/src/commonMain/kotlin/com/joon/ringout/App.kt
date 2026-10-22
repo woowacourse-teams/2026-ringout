@@ -23,6 +23,7 @@ import com.joon.ringout.alarm.MissionLocationState
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
+import com.joon.ringout.domain.push.RoomActivityPushRequest
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.app.AuthSessionCoordinator
 import com.joon.ringout.alarm.PushNotificationPermissionEffect
@@ -83,6 +84,8 @@ fun App(
         (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
     onActiveAlarmMissionForceEndHoldCompleted:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
+    pendingRoomActivityPush: RoomActivityPushRequest? = null,
+    onRoomActivityPushHandled: (requestId: String) -> Unit = {},
 ) {
     val appBootstrapViewModel = viewModel {
         AppBootstrapViewModel(
@@ -143,6 +146,8 @@ fun App(
                         onActiveAlarmMissionForceEndHoldCancelled,
                     onActiveAlarmMissionForceEndHoldCompleted =
                         onActiveAlarmMissionForceEndHoldCompleted,
+                    pendingRoomActivityPush = pendingRoomActivityPush,
+                    onRoomActivityPushHandled = onRoomActivityPushHandled,
                     onThemeModeChange = appBootstrapViewModel::setThemeMode,
                 )
 
@@ -182,6 +187,8 @@ private fun RingoutAppContent(
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     onActiveAlarmMissionForceEndHoldCompleted:
         (occurrenceId: String, holdDurationMillis: Long) -> Unit,
+    pendingRoomActivityPush: RoomActivityPushRequest?,
+    onRoomActivityPushHandled: (requestId: String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     val forceEndViewModel = viewModel { ForceEndMissionViewModel(createSavedStateHandle()) }
@@ -329,6 +336,8 @@ private fun RingoutAppContent(
         authSessionState = authSessionState,
         navigationState = navigationState,
         displayedRoute = displayedRoute,
+        pendingRoomActivityPush = pendingRoomActivityPush,
+        onRoomActivityPushHandled = onRoomActivityPushHandled,
         themeMode = themeMode,
         activeMissionOccurrenceId = activeAlarmMission?.occurrenceId,
         homeViewModel = homeViewModel,

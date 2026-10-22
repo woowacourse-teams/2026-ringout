@@ -6,6 +6,7 @@ import androidx.compose.runtime.saveable.rememberSerializable
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.push.RoomActivityPushTarget
 
 @Composable
 internal fun rememberAppNavigationState(): AppNavigationState {
@@ -118,6 +119,23 @@ internal class AppNavigationState(
         val destination = AppRoute.RoomHome(roomId)
         if (routes.lastOrNull() == destination) return true
         replaceBackStack(listOf(AppRoute.Home, AppRoute.Social, destination))
+        return true
+    }
+
+    /** Builds the complete room activity stack for an explicit notification click. */
+    fun openRoomActivityFromPush(target: RoomActivityPushTarget): Boolean {
+        val activityRoute = AppRoute.RoomActivity(target.roomId, target.activityDate)
+        if (!activityRoute.isValid()) return false
+
+        val destinationStack = listOf(
+            AppRoute.Home,
+            AppRoute.Social,
+            AppRoute.RoomHome(target.roomId),
+            activityRoute,
+        )
+        if (routes.toList() != destinationStack) {
+            replaceBackStack(destinationStack)
+        }
         return true
     }
 
