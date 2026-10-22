@@ -103,6 +103,18 @@ final class PlatformServices: @preconcurrency IosNativeServices {
         FirebaseMessagingAdapter.shared.observeToken(listener: listener)
     }
 
+    func observeRoomActivityPush(listener: IosRoomActivityPushListener) -> Int64 {
+        FirebaseMessagingAdapter.shared.observeRoomActivityPush(listener: listener)
+    }
+
+    func removeRoomActivityPushObserver(observerId: Int64) {
+        FirebaseMessagingAdapter.shared.removeRoomActivityPushObserver(observerId: observerId)
+    }
+
+    func acknowledgeRoomActivityPush(requestId: String) {
+        FirebaseMessagingAdapter.shared.acknowledgeRoomActivityPush(requestId: requestId)
+    }
+
     func requestNotificationPermissionIfNeeded() {
         FirebaseMessagingAdapter.shared.requestNotificationPermissionIfNeeded()
     }

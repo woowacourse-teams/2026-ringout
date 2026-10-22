@@ -4,6 +4,18 @@ import OSLog
 import UIKit
 import UserNotifications
 
+private struct NotificationResponseCompletion: @unchecked Sendable {
+    private let action: () -> Void
+
+    init(_ action: @escaping () -> Void) {
+        self.action = action
+    }
+
+    func call() {
+        action()
+    }
+}
+
 @MainActor
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
@@ -52,7 +64,24 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        Messaging.messaging().appDidReceiveMessage(response.notification.request.content.userInfo)
-        completionHandler()
+        let userInfo = response.notification.request.content.userInfo
+        Messaging.messaging().appDidReceiveMessage(userInfo)
+        let actionIdentifier = response.actionIdentifier
+        let request = response.notification.request
+        let notificationIdentifier = request.identifier
+        let isRemoteNotification = request.trigger is UNPushNotificationTrigger
+        let roomId = userInfo["roomId"] as? String
+        let activityDate = userInfo["activityDate"] as? String
+        let completion = NotificationResponseCompletion(completionHandler)
+        Task { @MainActor in
+            defer { completion.call() }
+            guard actionIdentifier == UNNotificationDefaultActionIdentifier,
+                  isRemoteNotification else { return }
+            FirebaseMessagingAdapter.shared.receiveRoomActivityPush(
+                notificationIdentifier: notificationIdentifier,
+                roomId: roomId,
+                activityDate: activityDate
+            )
+        }
     }
 }

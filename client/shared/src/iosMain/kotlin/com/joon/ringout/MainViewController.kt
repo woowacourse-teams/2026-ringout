@@ -7,7 +7,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.window.ComposeUIViewController
@@ -17,7 +19,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.joon.ringout.alarm.createIosAlarmRuntime
 import com.joon.ringout.di.IosAppContainer
 import com.joon.ringout.di.AppContainer
+import com.joon.ringout.domain.push.RoomActivityPushRequest
+import com.joon.ringout.domain.push.RoomActivityPushTarget
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
+import com.joon.ringout.platform.IosRoomActivityPushListener
 import com.joon.ringout.platform.IosNativeServices
 import com.joon.ringout.platform.LocalIosNativeServices
 import platform.Foundation.NSBundle
@@ -37,6 +42,37 @@ fun MainViewControllerWithContent(
     val appContainer = IosAppContainer(nativeServices)
 
     return ComposeUIViewController {
+        var pendingRoomActivityPush by remember(nativeServices) {
+            mutableStateOf<RoomActivityPushRequest?>(null)
+        }
+        val roomActivityPushListener = remember(nativeServices) {
+            object : IosRoomActivityPushListener {
+                override fun onRoomActivityPushRequest(
+                    requestId: String,
+                    roomId: String?,
+                    activityDate: String?,
+                ) {
+                    val target = if (roomId != null && activityDate != null) {
+                        RoomActivityPushTarget.parse(
+                            mapOf(
+                                RoomActivityPushTarget.RoomIdKey to roomId,
+                                RoomActivityPushTarget.ActivityDateKey to activityDate,
+                            ),
+                        )
+                    } else {
+                        null
+                    }
+                    pendingRoomActivityPush = target?.let { RoomActivityPushRequest(requestId, it) }
+                    if (target == null) {
+                        nativeServices.acknowledgeRoomActivityPush(requestId)
+                    }
+                }
+            }
+        }
+        DisposableEffect(nativeServices, roomActivityPushListener) {
+            val observerId = nativeServices.observeRoomActivityPush(roomActivityPushListener)
+            onDispose { nativeServices.removeRoomActivityPushObserver(observerId) }
+        }
         val alarmRuntime = remember(nativeServices) {
             createIosAlarmRuntime(nativeServices)
         }
@@ -76,6 +112,13 @@ fun MainViewControllerWithContent(
                     myPageExtraContent = extraContent,
                     useSystemLocationPermissionUiOnly = true,
                     ringingAlarm = ringingAlarmUiState,
+                    pendingRoomActivityPush = pendingRoomActivityPush,
+                    onRoomActivityPushHandled = { requestId ->
+                        nativeServices.acknowledgeRoomActivityPush(requestId)
+                        if (pendingRoomActivityPush?.requestId == requestId) {
+                            pendingRoomActivityPush = null
+                        }
+                    },
                     activeAlarmMission = activeAlarmMission,
                     activeAlarmMissionLocation = activeAlarmMissionLocation,
                     missionLocationState = missionLocationState,
