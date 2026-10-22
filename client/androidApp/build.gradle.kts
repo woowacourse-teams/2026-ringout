@@ -108,6 +108,7 @@ dependencies {
     implementation(projects.shared)
 
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
@@ -118,6 +119,9 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
+    implementation(libs.firebase.messaging)
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
 
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)

@@ -94,4 +94,28 @@ final class PlatformServices: @preconcurrency IosNativeServices {
     func analyticsTracker() -> IosAnalyticsTracker {
         firebaseAnalyticsAdapter
     }
+
+    func latestFcmToken() -> String? {
+        FirebaseMessagingAdapter.shared.latestToken
+    }
+
+    func observeFcmToken(listener: IosFcmTokenListener) {
+        FirebaseMessagingAdapter.shared.observeToken(listener: listener)
+    }
+
+    func observeRoomActivityPush(listener: IosRoomActivityPushListener) -> Int64 {
+        FirebaseMessagingAdapter.shared.observeRoomActivityPush(listener: listener)
+    }
+
+    func removeRoomActivityPushObserver(observerId: Int64) {
+        FirebaseMessagingAdapter.shared.removeRoomActivityPushObserver(observerId: observerId)
+    }
+
+    func acknowledgeRoomActivityPush(requestId: String) {
+        FirebaseMessagingAdapter.shared.acknowledgeRoomActivityPush(requestId: requestId)
+    }
+
+    func requestNotificationPermissionIfNeeded() {
+        FirebaseMessagingAdapter.shared.requestNotificationPermissionIfNeeded()
+    }
 }

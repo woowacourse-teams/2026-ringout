@@ -6,9 +6,15 @@ import com.joon.ringout.presentation.developertools.DeveloperToolsRoute
 import platform.UIKit.UIViewController
 
 fun DebugMainViewController(nativeServices: IosNativeServices): UIViewController =
-    MainViewControllerWithContent(nativeServices) { content ->
+    MainViewControllerWithContent(nativeServices) { appContainer, content ->
         DeveloperToolsHost(
-            toolsContent = { onBack -> DeveloperToolsRoute(buildInfo = currentIosAppBuildInfo(), onBack = onBack) },
+            toolsContent = { onBack ->
+                DeveloperToolsRoute(
+                    buildInfo = currentIosAppBuildInfo(),
+                    pushTokenRegistrationReadiness = appContainer.pushTokenRegistrationReadiness,
+                    onBack = onBack,
+                )
+            },
             content = { extraContent -> content(extraContent) },
         )
     }
