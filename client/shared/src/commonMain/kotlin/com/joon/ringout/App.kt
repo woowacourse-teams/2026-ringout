@@ -32,6 +32,7 @@ import com.joon.ringout.presentation.app.AuthSessionCoordinator
 import com.joon.ringout.presentation.app.AppLocationCacheViewModel
 import com.joon.ringout.presentation.app.ReauthenticationCoordinator
 import com.joon.ringout.presentation.app.AppRuntimeCoordinator
+import com.joon.ringout.presentation.app.HomeNotificationPermissionEffect
 import com.joon.ringout.presentation.app.rememberAppAlarmController
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
 import com.joon.ringout.presentation.destination.DestinationViewModel
@@ -212,6 +213,12 @@ private fun RingoutAppContent(
     val displayedRoute = ringingAlarm
         ?.let { alarm -> AppRoute.AlarmRinging(alarm.id) }
         ?: navigationState.requestedRoute
+    HomeNotificationPermissionEffect(
+        authSessionState = authSessionState,
+        displayedRoute = displayedRoute,
+        isAlarmCreationGuidePending = isAlarmCreationGuidePending,
+        isServiceBlocked = termsViewModel.uiState.blocksService || forceEndState.phase != ForceEndPhase.Idle,
+    )
     val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
     val viewModelScopes = rememberNavigationViewModelScopes(
         appContainer,
