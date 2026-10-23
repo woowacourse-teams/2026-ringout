@@ -1,12 +1,12 @@
 package com.joon.ringout.presentation.onboarding
 
-import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -673,9 +673,9 @@ class OnboardingScreenTest {
             }
         }
         var theme by mutableStateOf(ThemeMode.Dark)
-        lateinit var activity: ComponentActivity
+        lateinit var backPressedDispatcher: OnBackPressedDispatcher
         launchWithFontScale(1f) {
-            activity = LocalContext.current as ComponentActivity
+            backPressedDispatcher = checkNotNull(LocalOnBackPressedDispatcherOwner.current).onBackPressedDispatcher
             CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
                 RingoutTheme(themeMode = theme) {
                     OnboardingRoute(
@@ -694,7 +694,7 @@ class OnboardingScreenTest {
             compose.runOnIdle { lifecycleOwner.lifecycle.currentState = Lifecycle.State.RESUMED }
             compose.runOnIdle {
                 assertEquals(listOf(OnboardingPermission.Location), controller.requests)
-                activity.onBackPressedDispatcher.onBackPressed()
+                backPressedDispatcher.onBackPressed()
             }
             assertPage(OnboardingStep.Departure)
             compose.onNodeWithText("다음으로").performClick()
