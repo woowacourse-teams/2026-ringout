@@ -69,6 +69,7 @@ public class AdminSecurityConfig {
                                 AdminLoginSuccessHandler.writeError(res, 403, "ADMIN_ACCESS_DENIED")))
                 .logout(logout -> logout.logoutUrl("/api/v1/admin/auth/logout")
                         .invalidateHttpSession(true).clearAuthentication(true)
+                        .deleteCookies("JSESSIONID")
                         .logoutSuccessHandler((req, res, auth) -> res.setStatus(204)));
         // CSRF protection stays enabled for the admin chain only.
         ClientRegistrationRepository clients = registrations.getIfAvailable();
@@ -80,7 +81,7 @@ public class AdminSecurityConfig {
                     .successHandler(successHandler)
                     .failureHandler((req, res, ex) -> {
                         AdminLoginSuccessHandler.clearSession(req);
-                        AdminLoginSuccessHandler.writeError(res, 401, "ADMIN_GOOGLE_LOGIN_FAILED");
+                        AdminLoginSuccessHandler.redirectToLogin(req, res, "ADMIN_GOOGLE_LOGIN_FAILED");
                     }));
         }
         return http.build();
