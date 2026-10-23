@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -57,11 +59,35 @@ class AlarmCreationGuideTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
-    fun `딤드와 설명과 강조 영역 어디를 눌러도 설정을 변경하지 않고 다음 안내로 이동한다`() {
+    fun `홈 안내는 딤드와 설명을 눌러도 유지되고 강조된 알람 추가 버튼을 눌러야 넘어간다`() {
+        val fixture = Fixture()
+        launch(fixture).use {
+            compose.onNodeWithTag("guide-overlay").assertHasNoClickAction()
+            compose.onNodeWithTag("guide-target").assertHasClickAction()
+            pressDimmedArea()
+            assertStep(AlarmCreationGuideStep.AddAlarm)
+            compose.onNodeWithTag("guide-description").performTouchInput { click() }
+            assertStep(AlarmCreationGuideStep.AddAlarm)
+            compose.runOnIdle {
+                assertEquals(AlarmCreationGuideSurface.Home, fixture.surface)
+                assertEquals(0, fixture.addClicks)
+            }
+            pressTarget()
+            assertStep(AlarmCreationGuideStep.Time)
+            compose.runOnIdle {
+                assertEquals(AlarmCreationGuideSurface.Editor, fixture.surface)
+                assertEquals(1, fixture.addClicks)
+            }
+        }
+    }
+
+    @Test
+    fun `생성 화면에서는 딤드와 설명과 강조 영역 어디를 눌러도 설정을 변경하지 않고 다음 안내로 이동한다`() {
         val fixture = Fixture()
         launch(fixture).use {
             val original = fixture.setup
-            AlarmCreationGuideStep.entries.forEachIndexed { index, step ->
+            pressTarget()
+            AlarmCreationGuideStep.entries.drop(1).forEachIndexed { index, step ->
                 assertStep(step)
                 // Real controls are hidden from accessibility while the guide owns input.
                 compose.onNodeWithText("월").assertDoesNotExist()
@@ -131,7 +157,6 @@ class AlarmCreationGuideTest {
         }
         launch(fixture).use {
             assertStep(AlarmCreationGuideStep.CreateAlarm)
-            compose.onNodeWithTag("guide-next-hint").assertIsDisplayed()
             pressTarget()
             compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
             compose.runOnIdle {
@@ -248,17 +273,17 @@ class AlarmCreationGuideTest {
     @Test
     @Config(qualifiers = "w320dp-h568dp")
     fun `작은 화면에서 설명을 드래그하면 안내를 넘기지 않고 스크롤한다`() {
-        val fixture = Fixture(AlarmCreationGuideStep.Time)
+        val fixture = Fixture(AlarmCreationGuideStep.Destination)
         launch(fixture, fontScale = 2f).use {
             val scrollArea = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy))
             scrollArea.performTouchInput { swipeUp() }
             compose.runOnIdle {
-                assertEquals(AlarmCreationGuideStep.Time, fixture.viewModel.uiState.value.step)
+                assertEquals(AlarmCreationGuideStep.Destination, fixture.viewModel.uiState.value.step)
                 assertEquals(0, fixture.inputChanges)
             }
             assertTrue(scrollArea.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0f)
-            compose.onNodeWithTag("guide-next-hint").assertIsDisplayed().performTouchInput { click() }
-            assertStep(AlarmCreationGuideStep.Weekdays)
+            compose.onNodeWithTag("guide-description").performTouchInput { click() }
+            assertStep(AlarmCreationGuideStep.Interval)
         }
     }
 
@@ -297,7 +322,6 @@ class AlarmCreationGuideTest {
                     }
                     compose.onNodeWithTag("guide-skip").assertIsDisplayed()
                     val description = compose.onNodeWithTag("guide-description")
-                    if (compact) description.performScrollTo()
                     description.assertIsDisplayed().assertTextFits()
                     val overlay = compose.onNodeWithTag("guide-overlay").fetchSemanticsNode().boundsInRoot
                     val target = compose.onNodeWithTag("guide-target").fetchSemanticsNode().boundsInRoot
@@ -319,6 +343,7 @@ class AlarmCreationGuideTest {
         compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
         compose.onNodeWithTag("guide-target").assertIsDisplayed()
         compose.onNodeWithText(step.guideDescription).assertIsDisplayed()
+        compose.onNodeWithTag("guide-next-hint").assertDoesNotExist()
     }
 
     private fun pressDimmedArea() {

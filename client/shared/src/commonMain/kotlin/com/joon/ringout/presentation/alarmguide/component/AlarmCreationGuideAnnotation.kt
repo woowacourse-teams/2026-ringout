@@ -1,8 +1,5 @@
 package com.joon.ringout.presentation.alarmguide.component
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -57,35 +54,19 @@ internal fun AlarmCreationGuideAnnotation(
     Layout(
         modifier = modifier,
         content = {
-            Column(
-                modifier = Modifier.verticalScroll(descriptionScrollState),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = step.guideDescription,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("guide-description")
-                        .semantics { liveRegion = LiveRegionMode.Polite },
-                    color = MaterialTheme.colorScheme.primary,
-                    fontFamily = MaterialTheme.alarmGuideFontFamily,
-                    fontSize = 20.sp,
-                    lineHeight = 22.sp,
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Heading),
-                )
-                Text(
-                    text = if (step == AlarmCreationGuideStep.CreateAlarm) {
-                        "화면을 터치하면 가이드가 끝나요."
-                    } else {
-                        "화면을 터치하면 다음 안내로 넘어가요."
-                    },
-                    modifier = Modifier.fillMaxWidth().testTag("guide-next-hint"),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                )
-            }
+            Text(
+                text = step.guideDescription,
+                modifier = Modifier
+                    .verticalScroll(descriptionScrollState)
+                    .testTag("guide-description")
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+                color = MaterialTheme.colorScheme.primary,
+                fontFamily = MaterialTheme.alarmGuideFontFamily,
+                fontSize = 20.sp,
+                lineHeight = 22.sp,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Heading),
+            )
             AlarmCreationGuideArrow(step)
         },
     ) { measurables, constraints ->

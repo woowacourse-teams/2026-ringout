@@ -87,7 +87,10 @@ internal fun AlarmCreationGuideOverlay(
     var origin by remember { mutableStateOf(Offset.Zero) }
     val hasCompletionState = isFinishing || finishFailed
     val canAdvance = nextEnabled && !hasCompletionState
+    val requiresTargetTap = step == AlarmCreationGuideStep.AddAlarm
     val currentCanAdvance by rememberUpdatedState(canAdvance)
+    val currentRequiresTargetTap by rememberUpdatedState(requiresTargetTap)
+    val currentTargetBounds by rememberUpdatedState(targetBounds?.translate(-origin))
     val currentOnNext by rememberUpdatedState(onNext)
     val nextActionLabel = if (step == AlarmCreationGuideStep.CreateAlarm) "가이드 마치기" else "다음 안내"
 
@@ -99,20 +102,32 @@ internal fun AlarmCreationGuideOverlay(
             .pointerInput(Unit) {
                 detectGuideTaps(
                     isEnabled = { currentCanAdvance },
+                    acceptsPosition = { position ->
+                        if (currentRequiresTargetTap) {
+                            currentTargetBounds?.let { bounds ->
+                                bounds.contains(position) &&
+                                    (position - bounds.center).getDistance() <= minOf(bounds.width, bounds.height) / 2f
+                            } == true
+                        } else {
+                            true
+                        }
+                    },
                     onTap = { currentOnNext() },
                 )
             }
             .semantics {
                 isTraversalGroup = true
                 paneTitle = "알람 생성 가이드"
-                role = Role.Button
-                if (!canAdvance) disabled()
-                onClick(label = nextActionLabel) {
-                    if (currentCanAdvance) {
-                        currentOnNext()
-                        true
-                    } else {
-                        false
+                if (!requiresTargetTap) {
+                    role = Role.Button
+                    if (!canAdvance) disabled()
+                    onClick(label = nextActionLabel) {
+                        if (currentCanAdvance) {
+                            currentOnNext()
+                            true
+                        } else {
+                            false
+                        }
                     }
                 }
             },
@@ -157,7 +172,21 @@ internal fun AlarmCreationGuideOverlay(
                     .offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
                     .size(with(density) { bounds.width.toDp() }, with(density) { bounds.height.toDp() })
                     .testTag("guide-target")
-                    .semantics { contentDescription = step.targetDescription },
+                    .semantics {
+                        contentDescription = step.targetDescription
+                        if (requiresTargetTap) {
+                            role = Role.Button
+                            if (!canAdvance) disabled()
+                            onClick(label = nextActionLabel) {
+                                if (currentCanAdvance) {
+                                    currentOnNext()
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                        }
+                    },
             )
         }
 
@@ -191,6 +220,7 @@ internal fun AlarmCreationGuideOverlay(
 
 private suspend fun PointerInputScope.detectGuideTaps(
     isEnabled: () -> Boolean,
+    acceptsPosition: (Offset) -> Boolean,
     onTap: () -> Unit,
 ) {
     awaitEachGesture {
@@ -198,7 +228,7 @@ private suspend fun PointerInputScope.detectGuideTaps(
         // so the underlying settings never join the pointer hit path.
         val down = awaitFirstDown(requireUnconsumed = true)
         down.consume()
-        var isTap = isEnabled()
+        var isTap = isEnabled() && acceptsPosition(down.position)
         while (true) {
             val event = awaitPointerEvent()
             val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
@@ -206,7 +236,9 @@ private suspend fun PointerInputScope.detectGuideTaps(
             val movedPastSlop = (change.position - down.position).getDistance() > viewConfiguration.touchSlop
             val outsideOverlay = change.position.x < 0 || change.position.x > size.width ||
                 change.position.y < 0 || change.position.y > size.height
-            if (hasAnotherPointer || movedPastSlop || outsideOverlay || change.isConsumed) isTap = false
+            if (hasAnotherPointer || movedPastSlop || outsideOverlay || change.isConsumed || !acceptsPosition(change.position)) {
+                isTap = false
+            }
 
             if (change.changedToUpIgnoreConsumed()) {
                 // Consume release before dismissing, including the final guide tap.
