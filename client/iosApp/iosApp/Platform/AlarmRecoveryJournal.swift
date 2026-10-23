@@ -129,12 +129,24 @@ struct AlarmRecoveryAttempt: Codable, Equatable {
     var outcome: AlarmRecoveryAttemptOutcome
 }
 
+enum AlarmRecoveryArrivalState: String, Codable {
+    case pending
+    case attempted
+}
+
+enum AlarmRecoveryArrivalClaim: Equatable {
+    case claimed(destinationName: String)
+    case alreadyHandled
+    case missingChain
+}
+
 struct AlarmRecoveryChain: Codable, Equatable {
     let chainId: String
     var terminalOutcome: AlarmRecoveryAttemptOutcome?
     var terminalAtEpochMillis: Int64?
     var terminalRecordAck: Bool
     var terminalOccurrenceId: String? = nil
+    var arrivalNotificationState: AlarmRecoveryArrivalState? = nil
     var attempts: [AlarmRecoveryAttempt]
 }
 
@@ -769,6 +781,7 @@ final class AlarmRecoveryJournal {
         chainId: String,
         outcome: AlarmRecoveryAttemptOutcome,
         occurrenceId: String? = nil,
+        createArrivalIntent: Bool = true,
         now: Date = Date()
     ) throws {
         try mutate { state in
@@ -777,6 +790,9 @@ final class AlarmRecoveryJournal {
             chain.terminalOccurrenceId = occurrenceId ?? chain.attempts.max(by: { $0.sequence < $1.sequence })?.occurrenceId
             chain.terminalOutcome = outcome
             chain.terminalAtEpochMillis = Self.epochMillis(now)
+            if outcome == .terminalSucceeded && createArrivalIntent {
+                chain.arrivalNotificationState = .pending
+            }
             for index in chain.attempts.indices {
                 chain.attempts[index].outcome = outcome
                 if chain.attempts[index].currentReservation.status != .cancellationConfirmed {
@@ -785,6 +801,23 @@ final class AlarmRecoveryJournal {
                 }
             }
             state.chains[chainId] = chain
+        }
+    }
+
+    func claimArrivalNotification(chainId: String, occurrenceId: String) throws -> AlarmRecoveryArrivalClaim {
+        try mutate { state in
+            guard var chain = state.chains[chainId] else {
+                return state.terminalTombstones[chainId] == nil ? .missingChain : .alreadyHandled
+            }
+            guard chain.terminalOutcome == .terminalSucceeded,
+                  chain.terminalOccurrenceId == occurrenceId,
+                  chain.arrivalNotificationState == .pending,
+                  let attempt = chain.attempts.first(where: { $0.occurrenceId == occurrenceId }) else {
+                return .alreadyHandled
+            }
+            chain.arrivalNotificationState = .attempted
+            state.chains[chainId] = chain
+            return .claimed(destinationName: attempt.snapshot.destination.name)
         }
     }
 

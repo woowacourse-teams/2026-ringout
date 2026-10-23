@@ -4,6 +4,12 @@ import Foundation
 @main
 struct AlarmRecoveryJournalTests {
     static func main() throws {
+        if CommandLine.arguments.count == 5, CommandLine.arguments[1] == "arrival-claim" {
+            let journal = AlarmRecoveryJournal(directoryURL: URL(fileURLWithPath: CommandLine.arguments[2]))
+            let result = try journal.claimArrivalNotification(chainId: CommandLine.arguments[3], occurrenceId: CommandLine.arguments[4])
+            if case .claimed = result { print("claimed") } else { print("alreadyHandled") }
+            return
+        }
         if CommandLine.arguments.count == 4, CommandLine.arguments[1] == "reader" {
             let journal = AlarmRecoveryJournal(directoryURL: URL(fileURLWithPath: CommandLine.arguments[2]))
             let reads = Int(CommandLine.arguments[3])!
@@ -24,6 +30,9 @@ struct AlarmRecoveryJournalTests {
             return
         }
 
+        try arrivalNotificationClaims()
+        try concurrentArrivalClaims()
+        try failedArrivalClaimPreservesPending()
         try `compact된_정확한_retry와_root는_종료_경로로_라우팅한다`()
         try `compact뒤의_legacy_import은_chain을_되살리지_않는다`()
         try `fingerprint가_바뀐_chain은_원자적으로_compact되지_않는다`()
@@ -54,7 +63,102 @@ struct AlarmRecoveryJournalTests {
         try `관측된_원본_울림은_기존_실행_ID를_체인_ID로_채택한다`()
         try `미지원_schema는_변경하지_않고_실패한다`()
         try `앱_전환_관측은_마감과_예약을_바꾸지_않고_개수를_제한한다`()
-        print("30 alarm recovery journal tests passed")
+        try `예약_ID_없는_legacy는_UNKNOWN을_유지하고_claim되지_않는다`()
+        print("34 alarm recovery journal tests passed")
+    }
+
+    static func arrivalNotificationClaims() throws {
+        try withJournal(ids: ["root", "reservation", "retry-token"]) { directory, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let attempt = try journal.acceptStop(
+                snapshot: snapshot, occurrenceToken: "arrival",
+                stopAt: Date(timeIntervalSince1970: 1_000)
+            ).attempt
+            try expectArrival(journal.claimArrivalNotification(chainId: "missing", occurrenceId: "missing") == .missingChain)
+            try journal.markTerminal(chainId: attempt.chainId, outcome: .terminalSucceeded,
+                                     occurrenceId: attempt.occurrenceId)
+            let restored = AlarmRecoveryJournal(directoryURL: directory)
+            try expectArrival(restored.claimArrivalNotification(chainId: attempt.chainId, occurrenceId: "wrong") == .alreadyHandled)
+            try expectArrival(restored.claimArrivalNotification(chainId: attempt.chainId, occurrenceId: attempt.occurrenceId)
+                == .claimed(destinationName: snapshot.destination.name))
+            // A repeated commit cannot recreate the intent, including after a restart.
+            try restored.markTerminal(chainId: attempt.chainId, outcome: .terminalSucceeded,
+                                      occurrenceId: attempt.occurrenceId)
+            try expectArrival(journal.claimArrivalNotification(chainId: attempt.chainId, occurrenceId: attempt.occurrenceId) == .alreadyHandled)
+            var state = try journal.recoveryState()
+            assert(state.chains[attempt.chainId]?.arrivalNotificationState == .attempted)
+            // Simulate the optional field missing in a journal written before this feature.
+            state.chains[attempt.chainId]?.arrivalNotificationState = nil
+            let decoded = try JSONDecoder().decode(AlarmRecoveryState.self, from: JSONEncoder().encode(state))
+            assert(decoded.chains[attempt.chainId]?.arrivalNotificationState == nil)
+            try JSONEncoder().encode(state).write(to: directory.appendingPathComponent("alarm-recovery-journal.json"), options: .atomic)
+            try expectArrival(journal.claimArrivalNotification(chainId: attempt.chainId, occurrenceId: attempt.occurrenceId) == .alreadyHandled)
+        }
+        for outcome in [AlarmRecoveryAttemptOutcome.terminalForcedStop, .skippedUnsupportedOverlap, .terminalSucceeded] {
+            try withJournal(ids: ["root", "reservation", "retry-token"]) { _, journal in
+                let snapshot = testSnapshot()
+                try enable(snapshot, in: journal)
+                let attempt = try journal.acceptStop(snapshot: snapshot, occurrenceToken: "legacy",
+                    stopAt: Date(timeIntervalSince1970: 1_000)).attempt
+                try journal.markTerminal(chainId: attempt.chainId, outcome: outcome,
+                    occurrenceId: attempt.occurrenceId, createArrivalIntent: false)
+                try expectArrival(journal.claimArrivalNotification(chainId: attempt.chainId, occurrenceId: attempt.occurrenceId) == .alreadyHandled)
+            }
+        }
+    }
+
+    static func concurrentArrivalClaims() throws {
+        try withJournal(ids: ["root", "reservation", "retry-token"]) { directory, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let attempt = try journal.acceptStop(snapshot: snapshot, occurrenceToken: "arrival",
+                stopAt: Date(timeIntervalSince1970: 1_000)).attempt
+            try journal.markTerminal(chainId: attempt.chainId, outcome: .terminalSucceeded, occurrenceId: attempt.occurrenceId)
+            let children = try (0..<2).map { _ -> (Process, Pipe) in
+                let process = Process()
+                let output = Pipe()
+                process.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+                process.arguments = ["arrival-claim", directory.path, attempt.chainId, attempt.occurrenceId]
+                process.standardOutput = output
+                try process.run()
+                return (process, output)
+            }
+            let results = children.map { process, output -> String in
+                process.waitUntilExit()
+                assert(process.terminationStatus == 0)
+                return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)!
+            }
+            assert(results.filter { $0 == "claimed\n" }.count == 1)
+            assert(results.filter { $0 == "alreadyHandled\n" }.count == 1)
+        }
+    }
+
+    static func failedArrivalClaimPreservesPending() throws {
+        try withJournal(ids: ["root", "reservation", "retry-token"]) { directory, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let attempt = try journal.acceptStop(snapshot: snapshot, occurrenceToken: "arrival",
+                stopAt: Date(timeIntervalSince1970: 1_000)).attempt
+            try journal.markTerminal(chainId: attempt.chainId, outcome: .terminalSucceeded, occurrenceId: attempt.occurrenceId)
+            try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+            defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+            do {
+                _ = try journal.claimArrivalNotification(chainId: attempt.chainId, occurrenceId: attempt.occurrenceId)
+                assertionFailure("An unwritable directory must fail the durable claim")
+            } catch {
+                let state = try journal.recoveryState()
+                assert(state.chains[attempt.chainId]?.arrivalNotificationState == .pending)
+            }
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            try expectArrival(journal.claimArrivalNotification(chainId: attempt.chainId, occurrenceId: attempt.occurrenceId)
+                == .claimed(destinationName: snapshot.destination.name))
+        }
+    }
+
+    static func expectArrival(_ condition: @autoclosure () throws -> Bool) throws {
+        let passed = try condition()
+        assert(passed)
     }
 
     static func `compact된_정확한_retry와_root는_종료_경로로_라우팅한다`() throws {
@@ -97,6 +201,7 @@ struct AlarmRecoveryJournalTests {
                 expectedFingerprint: fingerprint
             )
             assert(repeatedCompact == tombstone)
+            try expectArrival(journal.claimArrivalNotification(chainId: attempt.chainId, occurrenceId: attempt.occurrenceId) == .alreadyHandled)
             let restored = AlarmRecoveryJournal(directoryURL: directory)
             let sourceKey = AlarmRecoverySourceKey(sourceAlarmId: "alarm", scheduleVersion: 1)
             assert(tombstone.knownTokens.contains("root-observation"))
@@ -949,10 +1054,27 @@ struct AlarmRecoveryJournalTests {
             assert(Set(attempts.map(\.occurrenceId)).count == 6)
         }
     }
+    static func `예약_ID_없는_legacy는_UNKNOWN을_유지하고_claim되지_않는다`() throws {
+        try withJournal { directory, journal in
+            let imported = try journal.importLegacy(occurrenceId: "legacy-unknown", snapshot: testSnapshot(),
+                stopAt: Date(timeIntervalSince1970: 1_000), reservationUUID: nil)
+            assert(imported.currentReservation.status == .unknown)
+            let restarted = AlarmRecoveryJournal(directoryURL: directory)
+            let claim = try restarted.claimNextReservation(occurrenceId: imported.occurrenceId,
+                executionEpoch: "new-process", now: Date(timeIntervalSince1970: 1_001))
+            assert(claim == nil)
+            let preserved = try restarted.attemptsForRecovery().first!
+            assert(preserved.currentReservation.status == .unknown)
+            assert(preserved.nextReservationUUID == imported.nextReservationUUID)
+            assert(preserved.expiresAtEpochMillis == imported.expiresAtEpochMillis)
+        }
+    }
 }
 
 private extension AlarmRecoveryState {
     func findAttemptForTest(_ occurrenceId: String) -> AlarmRecoveryAttempt? {
         chains.values.flatMap(\.attempts).first { $0.occurrenceId == occurrenceId }
     }
+
+
 }

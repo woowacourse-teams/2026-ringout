@@ -125,6 +125,7 @@ interface IosAlarmMissionEventInbox {
         outcome: IosAlarmRecoveryAttemptOutcome,
         completedAtEpochMillis: Long,
         occurrenceId: String?,
+        createArrivalIntent: Boolean,
         callback: (IosAlarmOperationResult) -> Unit,
     ) {
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
@@ -184,6 +185,7 @@ class IosAlarmMissionCoordinator(
     private val outcomeRecorder: IosMissionOutcomeRecorder,
     private val missionStore: IosActiveAlarmMissionStore = UserDefaultsIosActiveAlarmMissionStore(),
     private val analytics: IosAlarmAnalyticsRecorder? = null,
+    private val arrivalNotifier: IosMissionArrivalNotifier = NoOpIosMissionArrivalNotifier,
 ) {
     private val mutex = Mutex()
     private val activeMission = MutableStateFlow<ActiveAlarmMission?>(null)
@@ -323,10 +325,11 @@ class IosAlarmMissionCoordinator(
                 inbox.ackTerminalRecordAwait(terminal.chainId)
             } else if (terminal.occurrenceId in recordReady) {
                 when (terminal.outcome) {
-                    IosAlarmRecoveryAttemptOutcome.TERMINAL_SUCCEEDED -> outcomeRecorder.recordSuccess(
+                    IosAlarmRecoveryAttemptOutcome.TERMINAL_SUCCEEDED -> if (!recordSuccessAndNotify(
+                        terminal.chainId,
                         terminal.occurrenceId, iosMissionDate(terminal.completedAtEpochMillis),
                         terminal.completedAtEpochMillis,
-                    )
+                    )) return@forEach
                     IosAlarmRecoveryAttemptOutcome.TERMINAL_FORCED_STOP -> outcomeRecorder.recordFailure(
                         terminal.occurrenceId, iosMissionDate(terminal.completedAtEpochMillis),
                         terminal.completedAtEpochMillis,
@@ -348,9 +351,45 @@ class IosAlarmMissionCoordinator(
         }
     }
 
+    /** Revalidates delayed app results without invoking legacy import or reservation recovery. */
+    suspend fun applyDirectDismissResult(
+        result: IosAlarmDismissResult,
+        commands: IosAlarmMissionCommands,
+    ): Boolean = mutex.withLock {
+        if (result.code != IosAlarmOperationCode.SUCCESS ||
+            result.recovery.code != IosAlarmOperationCode.SUCCESS ||
+            result.disposition !in setOf(IosAlarmDismissDisposition.HANDLED, IosAlarmDismissDisposition.PRESERVED)
+        ) return@withLock false
+        val occurrenceId = result.occurrenceId ?: return@withLock false
+        // An await may overlap an Intent, terminal commit, or a newer retry. Never apply its old snapshot.
+        val latest = try {
+            commands.readRecoverySnapshotAwait()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            return@withLock false
+        }
+        val handled = latest.attempts.any { it.occurrenceId == occurrenceId } ||
+            latest.terminals.any { it.occurrenceId == occurrenceId } ||
+            result.recovery.attempts.firstOrNull { it.occurrenceId == occurrenceId }?.chainId?.let { chain ->
+                latest.terminals.any { it.chainId == chain }
+            } == true
+        if (!handled) return@withLock false
+        applyNativeRecoveryLocked(latest, journalOnly = true)
+        true
+    }
+
     private suspend fun recoverNativeAttemptsLocked(): ActiveAlarmMission? {
-        val recovery = inbox.recoveryAttemptsAwait()
-        val terminalChains = recovery.terminals.map { it.chainId }.toSet()
+        val recovered = applyNativeRecoveryLocked(inbox.recoveryAttemptsAwait())
+        return refreshNativeReservationsLocked(recovered)
+    }
+
+    private suspend fun applyNativeRecoveryLocked(
+        recovery: IosAlarmRecoveryAttemptsResult,
+        journalOnly: Boolean = false,
+    ): ActiveAlarmMission? {
+        val terminalChains = recovery.terminals.map { it.chainId }.toSet() +
+            listOfNotNull(missionStore.loadPendingTerminal()?.chainId)
         if (activeMission.value?.chainId in terminalChains) {
             missionStore.clearActiveMission()
             missionStore.clearDeadlineAlarm()
@@ -376,6 +415,9 @@ class IosAlarmMissionCoordinator(
             .forEach { chain ->
                 val latest = chain.maxBy { it.sequence }
                 val current = activeMission.value
+                if (current != null && current.chainId == latest.chainId && current.retryAttempt > latest.sequence) {
+                    return@forEach
+                }
                 if (current != null && current.chainId != latest.chainId) {
                     inbox.commitTerminalAwait(
                         latest.chainId, IosAlarmRecoveryAttemptOutcome.SKIPPED_UNSUPPORTED_OVERLAP,
@@ -393,7 +435,10 @@ class IosAlarmMissionCoordinator(
                                 evidence.latitude, evidence.longitude, evidence.accuracyMeters,
                                 evidence.capturedAtEpochMillis,
                             )) {
-                            completeTerminalLocked(current, IosPendingMissionOutcome.SUCCESS)
+                            completeTerminalLocked(
+                                current, IosPendingMissionOutcome.SUCCESS,
+                                recoverySnapshot = recovery.takeIf { journalOnly },
+                            )
                             return@forEach
                         }
                         missionStore.clearLastLocation()
@@ -412,10 +457,11 @@ class IosAlarmMissionCoordinator(
             } else if (terminal.occurrenceId in recordReady) {
                 runCatching {
                     when (terminal.outcome) {
-                        IosAlarmRecoveryAttemptOutcome.TERMINAL_SUCCEEDED -> outcomeRecorder.recordSuccess(
+                        IosAlarmRecoveryAttemptOutcome.TERMINAL_SUCCEEDED -> if (!recordSuccessAndNotify(
+                            terminal.chainId,
                             terminal.occurrenceId, iosMissionDate(terminal.completedAtEpochMillis),
                             terminal.completedAtEpochMillis,
-                        )
+                        )) return@forEach
                         IosAlarmRecoveryAttemptOutcome.TERMINAL_FORCED_STOP -> outcomeRecorder.recordFailure(
                             terminal.occurrenceId, iosMissionDate(terminal.completedAtEpochMillis),
                             terminal.completedAtEpochMillis,
@@ -426,6 +472,11 @@ class IosAlarmMissionCoordinator(
                 }
             }
         }
+        return recovered
+    }
+
+    private suspend fun refreshNativeReservationsLocked(initial: ActiveAlarmMission?): ActiveAlarmMission? {
+        var recovered = initial
         // Apply overlap/terminal suppression before attempting pending native calls.
         val refreshed = runCatching { inbox.recoverReservationsAwait() }.getOrNull()
         val current = activeMission.value
@@ -855,6 +906,7 @@ class IosAlarmMissionCoordinator(
     private suspend fun completeTerminalLocked(
         mission: ActiveAlarmMission,
         outcome: IosPendingMissionOutcome,
+        recoverySnapshot: IosAlarmRecoveryAttemptsResult? = null,
         onCommitted: () -> Unit = {},
     ) {
         val completedAtEpochMillis = Clock.System.now().toEpochMilliseconds()
@@ -876,6 +928,7 @@ class IosAlarmMissionCoordinator(
                 outcome = outcome,
                 completedAtEpochMillis = completedAtEpochMillis,
                 completedAt = iosMissionDate(completedAtEpochMillis),
+                arrivalDestinationName = mission.destinationName,
             ),
         )
         when (outcome) {
@@ -896,31 +949,42 @@ class IosAlarmMissionCoordinator(
         missionStore.clearActiveMission()
         missionStore.clearLastLocation()
         missionStore.clearDeadlineLocation()
-        recoverPendingTerminalLocked()
+        recoverPendingTerminalLocked(recoverySnapshot)
     }
 
-    private suspend fun recoverPendingTerminalLocked() {
+    private suspend fun recoverPendingTerminalLocked(recoverySnapshot: IosAlarmRecoveryAttemptsResult? = null) {
         val pending = missionStore.loadPendingTerminal() ?: return
         // Retry the durable tombstone before discarding any local projection.
         inbox.commitTerminalAwait(pending.chainId, when (pending.outcome) {
             IosPendingMissionOutcome.SUCCESS -> IosAlarmRecoveryAttemptOutcome.TERMINAL_SUCCEEDED
             IosPendingMissionOutcome.FAILURE -> IosAlarmRecoveryAttemptOutcome.TERMINAL_FORCED_STOP
-        }, pending.completedAtEpochMillis, pending.occurrenceId)
+        }, pending.completedAtEpochMillis, pending.occurrenceId,
+            createArrivalIntent = pending.arrivalDestinationName != null)
         if (activeMission.value?.occurrenceId == pending.occurrenceId) activeMission.value = null
         if (missionStore.loadActiveMission()?.occurrenceId == pending.occurrenceId) missionStore.clearActiveMission()
         missionStore.clearLastLocation()
         missionStore.clearDeadlineLocation()
-        val nativeAttempt = inbox.recoveryAttemptsAwait().attempts.firstOrNull { it.occurrenceId == pending.occurrenceId }
-        if (nativeAttempt != null) runCatching { inbox.recoverReservationsAwait() }
-        val cancellation = runCatching { cancelDeadlineAlarmLocked() }
+        val nativeAttempt = (recoverySnapshot ?: inbox.recoveryAttemptsAwait()).attempts
+            .firstOrNull { it.occurrenceId == pending.occurrenceId }
+        if (nativeAttempt != null && recoverySnapshot == null) runCatching { inbox.recoverReservationsAwait() }
+        val cancellation = runCatching {
+            // Direct projection may have accepted the child before final location evidence arrived.
+            // Cancel all journal reservations for that terminal chain without running the scheduler.
+            recoverySnapshot?.attempts?.filter { it.chainId == pending.chainId }?.forEach {
+                scheduler.cancelAwait(it.nextReservationUuid)
+            }
+            cancelDeadlineAlarmLocked()
+        }
         if (nativeAttempt == null) cancellation.getOrThrow()
         val recordReady = nativeAttempt == null || runCatching {
             outcomeRecorder.recordRecoveryAttempt(nativeAttempt)
         }.getOrDefault(false)
         val record = runCatching {
             when (pending.outcome) {
-                IosPendingMissionOutcome.SUCCESS -> outcomeRecorder.recordSuccess(
-                    pending.occurrenceId, pending.completedAt, pending.completedAtEpochMillis)
+                IosPendingMissionOutcome.SUCCESS -> check(recordSuccessAndNotify(
+                    pending.chainId, pending.occurrenceId, pending.completedAt,
+                    pending.completedAtEpochMillis, pending,
+                )) { "도착 알림 시도 상태를 저장하지 못했습니다." }
                 IosPendingMissionOutcome.FAILURE -> outcomeRecorder.recordFailure(
                     pending.occurrenceId, pending.completedAt, pending.completedAtEpochMillis)
             }
@@ -933,6 +997,24 @@ class IosAlarmMissionCoordinator(
         record.getOrThrow()
     }
 
+    private suspend fun recordSuccessAndNotify(
+        chainId: String,
+        occurrenceId: String,
+        completedAt: String,
+        completedAtEpochMillis: Long,
+        pending: IosPendingMissionTerminal? = null,
+    ): Boolean {
+        outcomeRecorder.recordSuccess(occurrenceId, completedAt, completedAtEpochMillis)
+        val result = arrivalNotifier.notifyAwait(IosMissionArrivalRequest(chainId, occurrenceId))
+        if (result == IosMissionArrivalResult.CLAIM_STORAGE_FAILED) return false
+        if (result != IosMissionArrivalResult.MISSING_CHAIN) return true
+        // Only new legacy successes carry a destination. Old pending records cannot opt in.
+        if (pending?.arrivalDestinationName == null || pending.arrivalFallbackAttempted) return true
+        missionStore.savePendingTerminal(pending.copy(arrivalFallbackAttempted = true))
+        return arrivalNotifier.notifyAwait(
+            IosMissionArrivalRequest(chainId, occurrenceId, pending.arrivalDestinationName),
+        ) != IosMissionArrivalResult.CLAIM_STORAGE_FAILED
+    }
 }
 
 data class IosMissionDeadlineAlarm(
@@ -970,6 +1052,8 @@ data class IosPendingMissionTerminal(
     val outcome: IosPendingMissionOutcome,
     val completedAtEpochMillis: Long,
     val completedAt: String,
+    val arrivalDestinationName: String? = null,
+    val arrivalFallbackAttempted: Boolean = false,
 )
 
 interface IosMissionOutcomeRecorder {
@@ -1211,10 +1295,13 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
             completedAtEpochMillis = completedAtEpochMillis,
             completedAt = record.getOrNull(3)?.takeIf(String::isNotBlank)
                 ?: iosMissionDate(completedAtEpochMillis),
+            arrivalDestinationName = record.getOrNull(5)?.takeIf(String::isNotBlank),
+            arrivalFallbackAttempted = record.getOrNull(6)?.toBooleanStrictOrNull() ?: false,
         )
     }
 
     override fun savePendingTerminal(pending: IosPendingMissionTerminal) {
+        val previous = defaults.stringArrayForKey(KeyPendingTerminal)
         defaults.setObject(
             listOf(
                 pending.occurrenceId,
@@ -1222,9 +1309,17 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
                 pending.completedAtEpochMillis.toString(),
                 pending.completedAt.orEmpty(),
                 pending.chainId,
+                pending.arrivalDestinationName.orEmpty(),
+                pending.arrivalFallbackAttempted.toString(),
             ),
             forKey = KeyPendingTerminal,
         )
+        // The legacy fallback must reach persistent storage before any OS notification request.
+        if (pending.arrivalFallbackAttempted && !defaults.synchronize()) {
+            if (previous == null) defaults.removeObjectForKey(KeyPendingTerminal)
+            else defaults.setObject(previous, forKey = KeyPendingTerminal)
+            error("도착 알림 시도 상태를 저장하지 못했습니다.")
+        }
     }
 
     override fun clearPendingTerminal() {
@@ -1255,7 +1350,7 @@ internal class UserDefaultsIosActiveAlarmMissionStore(
         const val DeadlineAlarmRecordSizeV4 = 16
         const val DeadlineAlarmRecordSize = 17
         const val LegacyPendingTerminalRecordSize = 2
-        const val PendingTerminalRecordSize = 5
+        const val PendingTerminalRecordSize = 7
     }
 }
 
@@ -1402,26 +1497,6 @@ internal suspend fun IosAlarmMissionEventInbox.recordProjectionEventsAwait():
     return result.events
 }
 
-internal suspend fun IosAlarmMissionEventInbox.recordOpenEventAwait(
-    alarmId: String,
-    occurrenceId: String?,
-    retryAttempt: Int,
-    scheduleVersion: Long = 1,
-    chainId: String? = null,
-) {
-    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
-        recordOpenEvent(
-            alarmId = alarmId,
-            occurrenceId = occurrenceId,
-            retryAttempt = retryAttempt,
-            scheduleVersion = scheduleVersion,
-            chainId = chainId,
-            callback = callback,
-        )
-    }
-    result.requireAlarmKitSuccess("알람 미션 이벤트를 저장하지 못했습니다.")
-}
-
 internal suspend fun IosAlarmMissionEventInbox.recordStopEventAwait(
     alarmId: String,
     occurrenceId: String?,
@@ -1505,9 +1580,10 @@ internal suspend fun IosAlarmMissionEventInbox.commitTerminalAwait(
     outcome: IosAlarmRecoveryAttemptOutcome,
     completedAtEpochMillis: Long = Clock.System.now().toEpochMilliseconds(),
     occurrenceId: String? = null,
+    createArrivalIntent: Boolean = true,
 ) {
     val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
-        commitTerminal(chainId, outcome, completedAtEpochMillis, occurrenceId, callback)
+        commitTerminal(chainId, outcome, completedAtEpochMillis, occurrenceId, createArrivalIntent, callback)
     }
     result.requireAlarmKitSuccess("알람 복구 종료 상태를 저장하지 못했습니다.")
 }

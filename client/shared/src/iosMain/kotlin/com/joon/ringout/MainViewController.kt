@@ -21,6 +21,8 @@ import com.joon.ringout.di.IosAppContainer
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.domain.push.RoomActivityPushRequest
 import com.joon.ringout.domain.push.RoomActivityPushTarget
+import com.joon.ringout.presentation.common.component.AppMessageHost
+import com.joon.ringout.presentation.common.component.AppMessageHostState
 import com.joon.ringout.presentation.ringing.AlarmRingingUiState
 import com.joon.ringout.platform.IosRoomActivityPushListener
 import com.joon.ringout.platform.IosNativeServices
@@ -77,6 +79,7 @@ fun MainViewControllerWithContent(
             createIosAlarmRuntime(nativeServices)
         }
         val ringingAlarm by alarmRuntime.ringingAlarmFlow.collectAsState()
+        val dismissError by alarmRuntime.dismissErrorFlow.collectAsState()
         val activeAlarmMission by alarmRuntime.activeMissionFlow.collectAsState()
         val activeAlarmMissionLocation by alarmRuntime.currentLocationFlow.collectAsState()
         val missionLocationState by alarmRuntime.locationStateFlow.collectAsState()
@@ -105,6 +108,10 @@ fun MainViewControllerWithContent(
             )
         }
         CompositionLocalProvider(LocalIosNativeServices provides nativeServices) {
+            AppMessageHost(
+                state = dismissError?.let { AppMessageHostState("알람을 종료하지 못했어요", it) },
+                onDismiss = alarmRuntime::clearDismissError,
+            )
             appHost(appContainer) { extraContent ->
                 App(
                     appContainer = appContainer,
