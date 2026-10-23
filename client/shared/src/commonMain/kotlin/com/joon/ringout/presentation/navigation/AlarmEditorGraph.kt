@@ -21,7 +21,9 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
 ) {
     entry<AppRoute.AddAlarm>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         if (navigation.hasValidDraft()) {
-            AlarmEditorDestinationEntry(navigation, route, displayedRoute, authSessionState, productAnalyticsRecorder)
+            AlarmEditorDestinationEntry(
+                navigation, route, displayedRoute, authSessionState, productAnalyticsRecorder,
+            )
         }
     }
 
@@ -68,7 +70,9 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
                 isActive = navigation.isActive(route, displayedRoute),
                 onBackClick = { navigation.onBack(route, displayedRoute) },
                 onSaveClick = { sound, analyticsContext ->
-                    navigation.onAlarmSoundSelected(displayedRoute, sound, analyticsContext)
+                    if (navigation.isActive(AppRoute.AlarmSound, displayedRoute)) {
+                        navigation.onAlarmSoundSelected(displayedRoute, sound, analyticsContext)
+                    }
                 },
             )
         }

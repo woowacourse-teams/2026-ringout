@@ -39,6 +39,8 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.MissionRecoveryReservationState
 import com.joon.ringout.alarm.ActiveAlarmMission
+import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideStep
+import com.joon.ringout.presentation.alarmguide.component.alarmCreationGuideTarget
 import com.joon.ringout.presentation.common.component.MainScreenHeader
 import com.joon.ringout.ringoutColors
 import kotlinx.coroutines.delay
@@ -266,6 +268,7 @@ internal fun HomeAddAlarmButton(
 ) {
     Box(
         modifier = modifier
+            .alarmCreationGuideTarget(AlarmCreationGuideStep.AddAlarm)
             .size(58.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary)

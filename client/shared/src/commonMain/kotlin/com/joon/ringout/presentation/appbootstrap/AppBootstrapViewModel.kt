@@ -27,6 +27,9 @@ data class AppBootstrapUiState(
     val destination: AppEntryDestination? = null,
     val isSaving: Boolean = false,
     val onboardingRetryToken: Int = 0,
+    val isAlarmCreationGuidePending: Boolean = false,
+    val isSavingAlarmCreationGuide: Boolean = false,
+    val hasAlarmCreationGuideSaveFailed: Boolean = false,
 )
 
 class AppBootstrapViewModel(
@@ -62,6 +65,7 @@ class AppBootstrapViewModel(
                         isReady = true,
                         themeMode = themeMode,
                         destination = determineAppEntryDestination(snapshot.firstLaunchStatus),
+                        isAlarmCreationGuidePending = snapshot.isAlarmCreationGuidePending,
                     )
                     if (snapshot.themeMode == null) {
                         initializeThemeModeIfMissing(themeMode)
@@ -89,7 +93,7 @@ class AppBootstrapViewModel(
         }
     }
 
-    fun completeOnboarding(stepCount: Int = 5) = save(
+    fun completeOnboarding(stepCount: Int = 4) = save(
         block = {
             repository.markOnboardingCompleted()
             // This survives removal of the onboarding route after the preference flow emits.
@@ -101,6 +105,26 @@ class AppBootstrapViewModel(
             )
         },
     )
+
+    fun completeAlarmCreationGuide() {
+        if (!uiState.isAlarmCreationGuidePending || uiState.isSavingAlarmCreationGuide) return
+        uiState = uiState.copy(
+            isSavingAlarmCreationGuide = true,
+            hasAlarmCreationGuideSaveFailed = false,
+        )
+        scope.launch {
+            try {
+                repository.completeAlarmCreationGuide()
+                uiState = uiState.copy(isAlarmCreationGuidePending = false)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: IOException) {
+                uiState = uiState.copy(hasAlarmCreationGuideSaveFailed = true)
+            } finally {
+                uiState = uiState.copy(isSavingAlarmCreationGuide = false)
+            }
+        }
+    }
 
     private fun resolveMissingThemeMode(): ThemeMode =
         resolvedMissingThemeMode ?: systemThemeModeReader.read().also {

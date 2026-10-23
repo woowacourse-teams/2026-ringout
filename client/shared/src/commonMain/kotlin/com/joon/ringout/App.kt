@@ -24,6 +24,9 @@ import com.joon.ringout.di.AppContainer
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.domain.push.RoomActivityPushRequest
+import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideRoute
+import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideSurface
+import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideViewModel
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.app.AuthSessionCoordinator
 import com.joon.ringout.alarm.PushNotificationPermissionEffect
@@ -108,14 +111,7 @@ fun App(
         when (appBootstrapUiState.destination) {
             AppEntryDestination.Onboarding ->
                 OnboardingRoute(
-                    appContainer = appContainer,
-                    destinationCurrentLocationCache = appLocationCacheViewModel.destinationCurrentLocationCache,
-                    missionLocationState = missionLocationState,
-                    useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
-                    onRequestWhenInUseLocation = onRequestWhenInUseLocation,
-                    onRequestAlwaysLocation = onRequestAlwaysLocation,
-                    onConfirmAlwaysLocationResult = onConfirmAlwaysLocationResult,
-                    onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
+                    analytics = appContainer.productAnalyticsRecorder,
                     onComplete = appBootstrapViewModel::completeOnboarding,
                     completionEnabled = !appBootstrapUiState.isSaving,
                     completionRetryToken = appBootstrapUiState.onboardingRetryToken,
@@ -126,6 +122,10 @@ fun App(
                     appContainer = appContainer,
                     destinationCurrentLocationCache = appLocationCacheViewModel.destinationCurrentLocationCache,
                     themeMode = appBootstrapUiState.themeMode,
+                    isAlarmCreationGuidePending = appBootstrapUiState.isAlarmCreationGuidePending,
+                    isSavingAlarmCreationGuide = appBootstrapUiState.isSavingAlarmCreationGuide,
+                    hasAlarmCreationGuideSaveFailed = appBootstrapUiState.hasAlarmCreationGuideSaveFailed,
+                    onAlarmCreationGuideFinished = appBootstrapViewModel::completeAlarmCreationGuide,
                     appVersion = appVersion,
                     myPageExtraContent = myPageExtraContent,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
@@ -168,6 +168,10 @@ private fun RingoutAppContent(
     appContainer: AppContainer,
     destinationCurrentLocationCache: DestinationCurrentLocationCache,
     themeMode: ThemeMode,
+    isAlarmCreationGuidePending: Boolean,
+    isSavingAlarmCreationGuide: Boolean,
+    hasAlarmCreationGuideSaveFailed: Boolean,
+    onAlarmCreationGuideFinished: () -> Unit,
     appVersion: String,
     myPageExtraContent: (@Composable (ThemeMode) -> Unit)?,
     useSystemLocationPermissionUiOnly: Boolean,
@@ -191,6 +195,7 @@ private fun RingoutAppContent(
     onRoomActivityPushHandled: (requestId: String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
+    val alarmCreationGuideViewModel = viewModel { AlarmCreationGuideViewModel() }
     val forceEndViewModel = viewModel { ForceEndMissionViewModel(createSavedStateHandle()) }
     val forceEndState by forceEndViewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(forceEndViewModel) {
@@ -361,119 +366,141 @@ private fun RingoutAppContent(
     } else {
         null
     }
-    RingoutNavHost(
-        navigationState = navigationState,
-        displayedRoute = displayedRoute,
-        viewModelStoreProvider = viewModelScopes.storeProvider,
-        modifier = Modifier.fillMaxSize(),
-        isBackBlocked =
-                displayedRoute is AppRoute.AlarmRinging ||
-                roomHomeMenuAction?.blocksNavigationBack == true ||
-                roomEditViewModel?.uiState?.isSaving == true ||
-                alarmEditorNavigation?.isBackBlocked(displayedRoute) == true ||
-                authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true,
-        onBack = { route ->
-            when (route) {
-                AppRoute.Login,
-                AppRoute.TermsAgreement,
-                -> authNavigation?.onBack(route, displayedRoute, authSessionState)
-                AppRoute.AddAlarm,
-                is AppRoute.EditAlarm,
-                is AppRoute.Destination,
-                is AppRoute.DestinationManagement,
-                AppRoute.AlarmSound,
-                -> alarmEditorNavigation?.onBack(route, displayedRoute)
-                AppRoute.RoomCreate -> viewModelScopes
-                    .get(route, RoomCreateViewModel::class)
-                    .onBack { navigationState.popBackStack(route) }
-                is AppRoute.RoomEdit -> {
-                    if (!viewModelScopes.get(route, RoomEditViewModel::class).uiState.isSaving) {
+    val onAddAlarm: () -> Unit = {
+        viewModelScopes.createAlarmEditorNavigation(navigationState, AppRoute.AddAlarm)
+            .startCreating(
+                initialTime = currentLocalClockSnapshot().to24HourTimeString(),
+            )
+    }
+    val guideSurface = when (displayedRoute) {
+        AppRoute.Home -> AlarmCreationGuideSurface.Home
+        AppRoute.AddAlarm -> AlarmCreationGuideSurface.Editor
+        else -> AlarmCreationGuideSurface.Other
+    }
+    AlarmCreationGuideRoute(
+        viewModel = alarmCreationGuideViewModel,
+        isPending = isAlarmCreationGuidePending,
+        surface = guideSurface,
+        canPresent = !termsViewModel.uiState.blocksService &&
+            forceEndState.phase == ForceEndPhase.Idle &&
+            authSessionState != AuthSessionState.Restoring &&
+            authSessionState != AuthSessionState.ReauthenticationRequired &&
+            (displayedRoute != AppRoute.Home || !homeViewModel.uiState.isLoading),
+        isAlarmSaving = alarmEditorNavigation?.alarmSetupViewModel?.uiState?.isSaveInProgress == true,
+        isFinishing = isSavingAlarmCreationGuide,
+        finishFailed = hasAlarmCreationGuideSaveFailed,
+        onOpenEditor = onAddAlarm,
+        onFinish = onAlarmCreationGuideFinished,
+    ) {
+        RingoutNavHost(
+            navigationState = navigationState,
+            displayedRoute = displayedRoute,
+            viewModelStoreProvider = viewModelScopes.storeProvider,
+            modifier = Modifier.fillMaxSize(),
+            isBackBlocked =
+                    displayedRoute is AppRoute.AlarmRinging ||
+                    roomHomeMenuAction?.blocksNavigationBack == true ||
+                    roomEditViewModel?.uiState?.isSaving == true ||
+                    alarmEditorNavigation?.isBackBlocked(displayedRoute) == true ||
+                    authNavigation?.isBackBlocked(displayedRoute, authSessionState) == true,
+            onBack = { route ->
+                when (route) {
+                    AppRoute.Login,
+                    AppRoute.TermsAgreement,
+                    -> authNavigation?.onBack(route, displayedRoute, authSessionState)
+                    AppRoute.AddAlarm,
+                    is AppRoute.EditAlarm,
+                    is AppRoute.Destination,
+                    is AppRoute.DestinationManagement,
+                    AppRoute.AlarmSound,
+                    -> alarmEditorNavigation?.onBack(route, displayedRoute)
+                    AppRoute.RoomCreate -> viewModelScopes
+                        .get(route, RoomCreateViewModel::class)
+                        .onBack { navigationState.popBackStack(route) }
+                    is AppRoute.RoomEdit -> {
+                        if (!viewModelScopes.get(route, RoomEditViewModel::class).uiState.isSaving) {
+                            navigationState.popBackStack(route)
+                        }
+                    }
+                    is AppRoute.RoomMemberManagement -> {
+                        viewModelScopes
+                            .get(AppRoute.RoomHome(route.roomId), RoomHomeViewModel::class)
+                            .refreshRoomDetails()
                         navigationState.popBackStack(route)
                     }
+                    is AppRoute.ActiveAlarmTracking -> navigationState.navigate(AppRoute.Home)
+                    is AppRoute.AlarmRinging -> Unit
+                    else -> navigationState.popBackStack(route)
                 }
-                is AppRoute.RoomMemberManagement -> {
-                    viewModelScopes
-                        .get(AppRoute.RoomHome(route.roomId), RoomHomeViewModel::class)
-                        .refreshRoomDetails()
-                    navigationState.popBackStack(route)
+            },
+            graph = {
+                homeGraph(
+                    authSessionState = authSessionState,
+                    sessionIdentity = authSessionIdentity,
+                    memberRepository = appContainer.memberRepository,
+                    viewModelScopes = viewModelScopes,
+                    navigationState = navigationState,
+                    homeViewModel = homeViewModel,
+                    myPageViewModel = myPageViewModel,
+                    themeMode = themeMode,
+                    appVersion = appVersion,
+                    myPageExtraContent = myPageExtraContent,
+                    alarmController = alarmController,
+                    activeAlarmMission = activeAlarmMission,
+                    onThemeModeChange = onThemeModeChange,
+                    onAddAlarm = onAddAlarm,
+                    onEditAlarm = { request ->
+                        viewModelScopes.createAlarmEditorNavigation(
+                            navigationState,
+                            AppRoute.EditAlarm(request.id),
+                        ).startEditing(request)
+                    },
+                    onActiveAlarmMissionClick = {
+                        activeAlarmMission?.occurrenceId?.let { occurrenceId ->
+                            navigationState.navigate(AppRoute.ActiveAlarmTracking(occurrenceId))
+                        }
+                    },
+                    onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+                    onJoinRoom = { source -> socialRoomListViewModel?.joinRoom(source) },
+                    onRoomCreateDraft = { source, input ->
+                        socialRoomListViewModel?.createRoom(source, input)
+                    },
+                )
+                alarmRuntimeGraph(
+                    navigationState = navigationState,
+                    ringingAlarm = ringingAlarm,
+                    activeAlarmMission = activeAlarmMission,
+                    activeAlarmMissionLocation = activeAlarmMissionLocation,
+                    missionLocationState = missionLocationState,
+                    onRingingAlarmDismiss = onRingingAlarmDismiss,
+                    onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+                    onActiveAlarmMissionForceEnd = { forceEndViewModel.request(it, onActiveAlarmMissionForceEnd) },
+                    isForceEndEnabled = forceEndState.phase == ForceEndPhase.Idle,
+                    onActiveAlarmMissionForceEndHoldStarted =
+                        onActiveAlarmMissionForceEndHoldStarted,
+                    onActiveAlarmMissionForceEndHoldCancelled =
+                        onActiveAlarmMissionForceEndHoldCancelled,
+                    onActiveAlarmMissionForceEndHoldCompleted =
+                        onActiveAlarmMissionForceEndHoldCompleted,
+                )
+                if (authNavigation != null) {
+                    authGraph(
+                        authNavigation = authNavigation,
+                        displayedRoute = displayedRoute,
+                        authSessionState = authSessionState,
+                    )
                 }
-                is AppRoute.ActiveAlarmTracking -> navigationState.navigate(AppRoute.Home)
-                is AppRoute.AlarmRinging -> Unit
-                else -> navigationState.popBackStack(route)
-            }
-        },
-        graph = {
-            homeGraph(
-                authSessionState = authSessionState,
-                sessionIdentity = authSessionIdentity,
-                memberRepository = appContainer.memberRepository,
-                viewModelScopes = viewModelScopes,
-                navigationState = navigationState,
-                homeViewModel = homeViewModel,
-                myPageViewModel = myPageViewModel,
-                themeMode = themeMode,
-                appVersion = appVersion,
-                myPageExtraContent = myPageExtraContent,
-                alarmController = alarmController,
-                activeAlarmMission = activeAlarmMission,
-                onThemeModeChange = onThemeModeChange,
-                onAddAlarm = {
-                    viewModelScopes.createAlarmEditorNavigation(navigationState, AppRoute.AddAlarm)
-                        .startCreating(
-                            initialTime = currentLocalClockSnapshot().to24HourTimeString(),
-                        )
-                },
-                onEditAlarm = { request ->
-                    viewModelScopes.createAlarmEditorNavigation(
-                        navigationState,
-                        AppRoute.EditAlarm(request.id),
-                    ).startEditing(request)
-                },
-                onActiveAlarmMissionClick = {
-                    activeAlarmMission?.occurrenceId?.let { occurrenceId ->
-                        navigationState.navigate(AppRoute.ActiveAlarmTracking(occurrenceId))
-                    }
-                },
-                onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
-                onJoinRoom = { source -> socialRoomListViewModel?.joinRoom(source) },
-                onRoomCreateDraft = { source, input ->
-                    socialRoomListViewModel?.createRoom(source, input)
-                },
-            )
-            alarmRuntimeGraph(
-                navigationState = navigationState,
-                ringingAlarm = ringingAlarm,
-                activeAlarmMission = activeAlarmMission,
-                activeAlarmMissionLocation = activeAlarmMissionLocation,
-                missionLocationState = missionLocationState,
-                onRingingAlarmDismiss = onRingingAlarmDismiss,
-                onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
-                onActiveAlarmMissionForceEnd = { forceEndViewModel.request(it, onActiveAlarmMissionForceEnd) },
-                isForceEndEnabled = forceEndState.phase == ForceEndPhase.Idle,
-                onActiveAlarmMissionForceEndHoldStarted =
-                    onActiveAlarmMissionForceEndHoldStarted,
-                onActiveAlarmMissionForceEndHoldCancelled =
-                    onActiveAlarmMissionForceEndHoldCancelled,
-                onActiveAlarmMissionForceEndHoldCompleted =
-                    onActiveAlarmMissionForceEndHoldCompleted,
-            )
-            if (authNavigation != null) {
-                authGraph(
-                    authNavigation = authNavigation,
-                    displayedRoute = displayedRoute,
-                    authSessionState = authSessionState,
-                )
-            }
-            if (alarmEditorNavigation != null) {
-                alarmEditorGraph(
-                    navigation = alarmEditorNavigation,
-                    displayedRoute = displayedRoute,
-                    authSessionState = authSessionState,
-                    productAnalyticsRecorder = productAnalyticsRecorder,
-                )
-            }
-        },
-    )
+                if (alarmEditorNavigation != null) {
+                    alarmEditorGraph(
+                        navigation = alarmEditorNavigation,
+                        displayedRoute = displayedRoute,
+                        authSessionState = authSessionState,
+                        productAnalyticsRecorder = productAnalyticsRecorder,
+                    )
+                }
+            },
+        )
+    }
     // 알람 울림과 진행 중 미션의 필수 조작은 기존 우선순위를 유지한다.
     if (forceEndState.phase == ForceEndPhase.Idle &&
         displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking

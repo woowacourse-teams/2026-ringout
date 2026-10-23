@@ -26,6 +26,7 @@ class DataStoreAppPreferencesRepository(
         AppBootstrapSnapshot(
             themeMode = ThemeMode.fromPersistedValue(preferences[ThemeModeKey]),
             firstLaunchStatus = preferences.toFirstLaunchStatus(),
+            isAlarmCreationGuidePending = preferences[AlarmCreationGuidePendingKey] ?: false,
         )
     }
 
@@ -45,7 +46,16 @@ class DataStoreAppPreferencesRepository(
 
     override suspend fun markOnboardingCompleted() {
         dataStore.edit { preferences ->
+            if (preferences[OnboardingCompletedKey] != true) {
+                preferences[AlarmCreationGuidePendingKey] = true
+            }
             preferences[OnboardingCompletedKey] = true
+        }
+    }
+
+    override suspend fun completeAlarmCreationGuide() {
+        dataStore.edit { preferences ->
+            preferences[AlarmCreationGuidePendingKey] = false
         }
     }
 
@@ -99,6 +109,7 @@ private fun Preferences.toTermConsentRecord(id: TermId): TermConsentRecord? {
 
 internal val ThemeModeKey = stringPreferencesKey("theme.mode")
 private val OnboardingCompletedKey = booleanPreferencesKey("onboarding.completed")
+private val AlarmCreationGuidePendingKey = booleanPreferencesKey("onboarding.alarm_creation_guide_pending")
 
 private fun nameKey(id: TermId) = stringPreferencesKey("terms.${id.value}.name")
 private fun versionKey(id: TermId) = stringPreferencesKey("terms.${id.value}.version")

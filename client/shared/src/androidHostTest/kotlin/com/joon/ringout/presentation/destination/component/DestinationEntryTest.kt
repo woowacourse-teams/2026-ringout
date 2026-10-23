@@ -89,13 +89,35 @@ class DestinationEntryTest {
     }
 
     @Test
-    fun `지도에서 찾기를 누르면 다이얼로그를 닫고 지도로 이동한다`() = withEntry(listOf(Destination)) { state ->
+    fun `지도에서 찾기로 화면이 비활성화되면 목록을 닫고 지도를 한 번 연다`() = withEntry(
+        listOf(Destination),
+        deactivateOnMap = true,
+    ) { state ->
         compose.onNodeWithText("목적지 설정").performClick()
         compose.onNodeWithText("지도에서 찾기").performClick()
+        compose.waitForIdle()
         compose.runOnIdle {
             assertEquals(1, state.mapEntries)
             assertNull(state.selected)
         }
+        compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
+    }
+
+    @Test
+    fun `열린 목적지 목록이 화면 비활성화로 닫히면 복귀 후에도 닫힌 상태를 유지한다`() = withEntry(listOf(Destination)) { state ->
+        compose.onNodeWithText("목적지 설정").performClick()
+        compose.onNodeWithText("저장된 목적지").assertIsDisplayed()
+
+        compose.runOnIdle { state.active.value = false }
+        compose.waitForIdle()
+
+        compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(0, state.mapEntries)
+            assertNull(state.selected)
+            state.active.value = true
+        }
+        compose.waitForIdle()
         compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
     }
 
@@ -179,7 +201,12 @@ class DestinationEntryTest {
         compose.runOnIdle { assertEquals(0, state.mapEntries) }
     }
 
-    private fun withEntry(items: List<SavedDestination>, loading: Boolean = false, verify: (Fixture) -> Unit) {
+    private fun withEntry(
+        items: List<SavedDestination>,
+        loading: Boolean = false,
+        deactivateOnMap: Boolean = false,
+        verify: (Fixture) -> Unit,
+    ) {
         val state = Fixture(DestinationUiState(destinations = items, isLoading = loading))
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
@@ -188,7 +215,10 @@ class DestinationEntryTest {
                     DestinationEntry(
                         uiState = state.ui.value,
                         isActive = state.active.value,
-                        onFindInMap = { state.mapEntries++ },
+                        onFindInMap = {
+                            state.mapEntries++
+                            if (deactivateOnMap) state.active.value = false
+                        },
                         onSelect = { state.selected = it },
                         onManage = { state.managed = it },
                         openRequestId = state.openRequest.value,

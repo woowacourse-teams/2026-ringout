@@ -37,7 +37,7 @@ internal fun DestinationEntry(
     val canOpenMap = !uiState.isLoading && uiState.errorMessage == null && uiState.destinations.isEmpty()
 
     LaunchedEffect(isActive, isRequested, canOpenMap) {
-        if (!isActive) {
+        if (!isActive && isRequested) {
             isRequested = false
         } else if (isRequested && canOpenMap) {
             isRequested = false
@@ -52,7 +52,9 @@ internal fun DestinationEntry(
     if (isRequested && isActive && !canOpenMap) {
         DestinationSelectionDialog(
             destinations = uiState.destinations,
-            onDismissRequest = { isRequested = false },
+            onDismissRequest = {
+                isRequested = false
+            },
             onSelect = {
                 isRequested = false
                 onSelect(it)

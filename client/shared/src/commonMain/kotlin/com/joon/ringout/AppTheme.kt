@@ -13,6 +13,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import org.jetbrains.compose.resources.Font
 import ringout.shared.generated.resources.Res
+import ringout.shared.generated.resources.kyobo_handwriting_2025_lyb
 import ringout.shared.generated.resources.pretendard_black
 import ringout.shared.generated.resources.pretendard_bold
 import ringout.shared.generated.resources.pretendard_extra_bold
@@ -32,6 +33,10 @@ data class RingoutExtendedColors(
     val navigationInactiveContent: Color,
     val primaryActionContent: Color,
     val onboardingDescriptionContent: Color,
+    val onboardingIllustrationBackground: Color,
+    val onboardingIndicatorInactive: Color,
+    val alarmGuideScrim: Color,
+    val alarmGuideHomeScrim: Color,
     val elevatedSurface: Color,
     val profileIconLoggedInBackground: Color,
     val profileIconLoggedOutBackground: Color,
@@ -66,6 +71,10 @@ private val RingoutLightExtendedColors = RingoutExtendedColors(
     dialog = RingoutConfirmationDialogColors,
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.Black,
+    onboardingIllustrationBackground = Color(0xFFE3E3E3),
+    onboardingIndicatorInactive = Color(0xFFA7A9B0),
+    alarmGuideScrim = Color.Black.copy(alpha = 0.87f),
+    alarmGuideHomeScrim = Color.Black.copy(alpha = 0.87f),
     elevatedSurface = Color(0xFFF5F5F6),
     profileIconLoggedInBackground = Color(0xFFF95E25),
     profileIconLoggedOutBackground = Color(0xFF888787),
@@ -78,6 +87,10 @@ private val RingoutDarkExtendedColors = RingoutExtendedColors(
     dialog = RingoutConfirmationDialogColors,
     primaryActionContent = Color.White,
     onboardingDescriptionContent = Color.White,
+    onboardingIllustrationBackground = Color.White,
+    onboardingIndicatorInactive = Color(0xFFA7A9B0),
+    alarmGuideScrim = Color.Black.copy(alpha = 0.87f),
+    alarmGuideHomeScrim = Color.Black.copy(alpha = 0.87f),
     elevatedSurface = Color(0xFF22242A),
     profileIconLoggedInBackground = Color(0xFFF95E25),
     profileIconLoggedOutBackground = Color(0xFF888787),
@@ -91,6 +104,10 @@ private val LocalRingoutExtendedColors = staticCompositionLocalOf {
 internal val MaterialTheme.ringoutColors: RingoutExtendedColors
     @Composable
     get() = LocalRingoutExtendedColors.current
+
+internal val MaterialTheme.alarmGuideFontFamily: FontFamily
+    @Composable
+    get() = FontFamily(Font(Res.font.kyobo_handwriting_2025_lyb))
 
 private val RingoutLightColorScheme = lightColorScheme(
     primary = RingoutOrange,
