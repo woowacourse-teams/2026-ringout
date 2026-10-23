@@ -28,6 +28,15 @@ public class AdminUserService {
     private final TermsService terms;
     private final ImageFileService images;
 
+    public UserStats getStats() {
+        var now = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
+        var start = now.toLocalDate().atStartOfDay();
+        var end = start.plusDays(1);
+        return new UserStats(now.toLocalDate(), now.getZone().getId(), now.toLocalDateTime(),
+                users.countCurrentUsers(), users.countJoinedBetween(start, end),
+                users.countActiveBetween(start, end));
+    }
+
     public UserPage getUsers(String search, int page, int size) {
         String keyword = search == null ? "" : search.trim();
         String pattern = "%" + keyword.replace("!", "!!").replace("%", "!%")

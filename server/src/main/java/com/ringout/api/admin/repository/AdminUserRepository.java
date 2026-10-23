@@ -25,6 +25,37 @@ public interface AdminUserRepository extends Repository<User, Long> {
         """)
     List<RoomCount> countRooms(@Param("ids") List<Long> ids);
 
+    @Query("select count(u) from User u where u.deletedAt is null")
+    long countCurrentUsers();
+
+    @Query("""
+        select count(u) from User u where u.deletedAt is null
+          and u.created_at >= :start and u.created_at < :end
+        """)
+    long countJoinedBetween(@Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end);
+
+    @Query("""
+        select count(u) from User u where u.deletedAt is null and (
+          (u.lastLoginAt >= :start and u.lastLoginAt < :end)
+          or exists (
+            select o.id from AlarmOccurrence o where o.user = u and o.deletedAt is null and (
+              (o.startedAt >= :start and o.startedAt < :end)
+              or (o.movementStartedAt >= :start and o.movementStartedAt < :end)
+              or (o.endedAt >= :start and o.endedAt < :end)
+              or exists (
+                select r.id from AlarmRinging r where r.alarmOccurrence = o and r.deletedAt is null and (
+                  (r.ringingAt >= :start and r.ringingAt < :end)
+                  or (r.dismissedAt >= :start and r.dismissedAt < :end)
+                )
+              )
+            )
+          )
+        )
+        """)
+    long countActiveBetween(@Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end);
+
     interface RoomCount {
         Long getUserId();
         long getRoomCount();

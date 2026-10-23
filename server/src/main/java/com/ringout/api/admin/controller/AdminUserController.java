@@ -38,6 +38,12 @@ public class AdminUserController {
         return CustomResponse.onSuccess(UserSuccessStatus.USER_FOUND, service.getUsers(search, page, size));
     }
 
+    @GetMapping("/stats")
+    @Operation(summary = "관리자 회원 통계 조회", description = "한국 시간 오늘 기준. 탈퇴 회원 제외. 전체 회원 수·오늘 가입 회원 수·오늘 활동 회원 수. 활동은 로그인 또는 알람 시작·이동·종료·울림·해제 이벤트 기준이며 회원별 중복 제외. 검색 조건과 무관한 전체 집계.")
+    public CustomResponse<UserStats> getStats() {
+        return CustomResponse.onSuccess(UserSuccessStatus.USER_FOUND, service.getStats());
+    }
+
     @GetMapping("/{userId}")
     @Operation(summary = "관리자 회원 상세 조회", description = "이메일 마스킹 및 현재 시행 약관 동의 상태 제공. 없는 회원은 404.")
     public CustomResponse<UserDetail> getUser(@PathVariable @Positive Long userId) {

@@ -11,6 +11,9 @@ import java.util.List;
 public final class AdminUserResponses {
     private AdminUserResponses() {}
 
+    public record UserStats(java.time.LocalDate date, String timeZone, LocalDateTime updatedAt,
+            long totalUsers, long joinedToday, long activeToday) {}
+
     public record UserSummary(Long id, String nickname, String imageUrl,
             SocialProvider provider, LocalDateTime joinedAt, long roomCount) {}
 
