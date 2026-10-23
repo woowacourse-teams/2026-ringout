@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
@@ -82,12 +83,12 @@ class AlarmCreationGuideTest {
     }
 
     @Test
-    fun `생성 화면에서는 딤드와 설명과 강조 영역 어디를 눌러도 설정을 변경하지 않고 다음 안내로 이동한다`() {
+    fun `설정 안내는 어디를 눌러도 넘어가며 마지막 시작하기 버튼으로 설정 변경 없이 종료한다`() {
         val fixture = Fixture()
         launch(fixture).use {
             val original = fixture.setup
             pressTarget()
-            AlarmCreationGuideStep.entries.drop(1).forEachIndexed { index, step ->
+            AlarmCreationGuideStep.entries.drop(1).dropLast(1).forEachIndexed { index, step ->
                 assertStep(step)
                 // Real controls are hidden from accessibility while the guide owns input.
                 compose.onNodeWithText("월").assertDoesNotExist()
@@ -97,6 +98,8 @@ class AlarmCreationGuideTest {
                     else -> pressTarget()
                 }
             }
+            assertStep(AlarmCreationGuideStep.CreateAlarm)
+            compose.onNodeWithText("시작하기").performTouchInput { click() }
             compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
             compose.runOnIdle {
                 assertEquals(1, fixture.addClicks)
@@ -151,13 +154,42 @@ class AlarmCreationGuideTest {
     }
 
     @Test
+    fun `마지막 안내는 시작하기를 눌러야 종료하고 목적지가 없어도 알람을 저장하지 않는다`() {
+        val fixture = Fixture(AlarmCreationGuideStep.CreateAlarm)
+        launch(fixture).use {
+            val original = fixture.setup
+            assertStep(AlarmCreationGuideStep.CreateAlarm)
+            compose.onNodeWithTag("guide-overlay").assertHasNoClickAction()
+            compose.onNodeWithText("시작하기").assertIsEnabled().assertHasClickAction()
+            compose.onNodeWithText("목적지를 설정해주세요").assertDoesNotExist()
+            pressDimmedArea()
+            compose.onNodeWithTag("guide-description").performTouchInput { click() }
+            assertStep(AlarmCreationGuideStep.CreateAlarm)
+            compose.runOnIdle {
+                assertEquals(0, fixture.finishCalls)
+                assertEquals(0, fixture.saveClicks)
+                assertEquals(original, fixture.setup)
+            }
+            compose.onNodeWithText("시작하기").performTouchInput { click() }
+            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
+            compose.onNodeWithText("시작하기").assertDoesNotExist()
+            compose.onNodeWithText("목적지를 설정해주세요").assertIsDisplayed().assertIsNotEnabled()
+            compose.runOnIdle {
+                assertEquals(1, fixture.finishCalls)
+                assertEquals(0, fixture.saveClicks)
+                assertEquals(original, fixture.setup)
+            }
+        }
+    }
+
+    @Test
     fun `마지막 강조 영역 터치는 가이드만 닫고 이후 새 터치로만 알람을 저장한다`() {
         val fixture = Fixture(AlarmCreationGuideStep.CreateAlarm).apply {
             setup = setup.copy(destination = PreviewDestination)
         }
         launch(fixture).use {
             assertStep(AlarmCreationGuideStep.CreateAlarm)
-            pressTarget()
+            compose.onNodeWithTag("guide-target").performTouchInput { click(Offset(width * .15f, height / 2f)) }
             compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
             compose.runOnIdle {
                 assertEquals(1, fixture.finishCalls)
@@ -323,6 +355,13 @@ class AlarmCreationGuideTest {
                     compose.onNodeWithTag("guide-skip").assertIsDisplayed()
                     val description = compose.onNodeWithTag("guide-description")
                     description.assertIsDisplayed().assertTextFits()
+                    if (compact && step == AlarmCreationGuideStep.CreateAlarm) {
+                        // The empty corner of a tall pill is outside the visible start button.
+                        compose.onNodeWithTag("guide-target").performTouchInput {
+                            click(Offset(height * .1f, height * .1f))
+                        }
+                        assertStep(AlarmCreationGuideStep.CreateAlarm)
+                    }
                     val overlay = compose.onNodeWithTag("guide-overlay").fetchSemanticsNode().boundsInRoot
                     val target = compose.onNodeWithTag("guide-target").fetchSemanticsNode().boundsInRoot
                     assertTrue(target.left >= overlay.left && target.right <= overlay.right + 1f)
@@ -344,6 +383,9 @@ class AlarmCreationGuideTest {
         compose.onNodeWithTag("guide-target").assertIsDisplayed()
         compose.onNodeWithText(step.guideDescription).assertIsDisplayed()
         compose.onNodeWithTag("guide-next-hint").assertDoesNotExist()
+        if (step == AlarmCreationGuideStep.CreateAlarm) {
+            compose.onNodeWithText("시작하기").assertIsDisplayed().assertTextFits()
+        }
     }
 
     private fun pressDimmedArea() {

@@ -87,7 +87,7 @@ internal fun AlarmCreationGuideOverlay(
     var origin by remember { mutableStateOf(Offset.Zero) }
     val hasCompletionState = isFinishing || finishFailed
     val canAdvance = nextEnabled && !hasCompletionState
-    val requiresTargetTap = step == AlarmCreationGuideStep.AddAlarm
+    val requiresTargetTap = step == AlarmCreationGuideStep.AddAlarm || step == AlarmCreationGuideStep.CreateAlarm
     val currentCanAdvance by rememberUpdatedState(canAdvance)
     val currentRequiresTargetTap by rememberUpdatedState(requiresTargetTap)
     val currentTargetBounds by rememberUpdatedState(targetBounds?.translate(-origin))
@@ -105,8 +105,8 @@ internal fun AlarmCreationGuideOverlay(
                     acceptsPosition = { position ->
                         if (currentRequiresTargetTap) {
                             currentTargetBounds?.let { bounds ->
-                                bounds.contains(position) &&
-                                    (position - bounds.center).getDistance() <= minOf(bounds.width, bounds.height) / 2f
+                                val radius = minOf(bounds.width, bounds.height) / 2f
+                                bounds.containsGuideTarget(position, radius)
                             } == true
                         } else {
                             true
@@ -136,7 +136,7 @@ internal fun AlarmCreationGuideOverlay(
             ?.translate(-origin)
             ?.intersect(Rect(Offset.Zero, constraints.let { androidx.compose.ui.geometry.Size(it.maxWidth.toFloat(), it.maxHeight.toFloat()) }))
             ?.takeIf { !it.isEmpty && !hasCompletionState }
-        val radius = if (step == AlarmCreationGuideStep.AddAlarm && bounds != null) {
+        val radius = if (requiresTargetTap && bounds != null) {
             minOf(bounds.width, bounds.height) / 2f
         } else {
             with(density) { 20.dp.toPx() }
@@ -172,7 +172,7 @@ internal fun AlarmCreationGuideOverlay(
                     .offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
                     .size(with(density) { bounds.width.toDp() }, with(density) { bounds.height.toDp() })
                     .testTag("guide-target")
-                    .semantics {
+                    .semantics(mergeDescendants = requiresTargetTap) {
                         contentDescription = step.targetDescription
                         if (requiresTargetTap) {
                             role = Role.Button
@@ -187,7 +187,11 @@ internal fun AlarmCreationGuideOverlay(
                             }
                         }
                     },
-            )
+            ) {
+                if (step == AlarmCreationGuideStep.CreateAlarm) {
+                    AlarmCreationGuideStartButton()
+                }
+            }
         }
 
         TextButton(
@@ -216,6 +220,16 @@ internal fun AlarmCreationGuideOverlay(
             )
         }
     }
+}
+
+private fun Rect.containsGuideTarget(position: Offset, cornerRadius: Float): Boolean {
+    if (!contains(position)) return false
+    val radius = cornerRadius.coerceAtMost(minOf(width, height) / 2f)
+    val nearestCenter = Offset(
+        x = position.x.coerceIn(left + radius, right - radius),
+        y = position.y.coerceIn(top + radius, bottom - radius),
+    )
+    return (position - nearestCenter).getDistance() <= radius
 }
 
 private suspend fun PointerInputScope.detectGuideTaps(
@@ -263,7 +277,7 @@ private val AlarmCreationGuideStep.targetDescription: String
         AlarmCreationGuideStep.Destination -> "목적지"
         AlarmCreationGuideStep.Interval -> "반복 간격"
         AlarmCreationGuideStep.Sound -> "알람음"
-        AlarmCreationGuideStep.CreateAlarm -> "알람 생성"
+        AlarmCreationGuideStep.CreateAlarm -> "시작하기"
     }
 
 @Composable
