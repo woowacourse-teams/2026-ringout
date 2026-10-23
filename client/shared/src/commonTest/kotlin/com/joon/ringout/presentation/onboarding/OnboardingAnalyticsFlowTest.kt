@@ -109,6 +109,33 @@ class OnboardingAnalyticsFlowTest {
     }
 
     @Test
+    fun `두 권한을 거부해도 마지막 다음 버튼으로 수락한 완료는 제출로 기록한다`() {
+        val fixture = OnboardingAnalyticsFixture()
+        val viewModel = OnboardingViewModel(analytics = fixture.recorder)
+        val denied = OnboardingPermissionState(
+            OnboardingPermissionStatus.Requestable,
+            OnboardingPermissionStatus.Requestable,
+        )
+        viewModel.onPermissionsRefreshed(denied)
+        viewModel.onPageChanged(OnboardingStep.LocationPermission.ordinal)
+        viewModel.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        viewModel.requestPermissionOnEntry()
+        viewModel.onPermissionResult(OnboardingPermission.Location, viewModel.uiState.value.permissionRequestId, denied)
+        viewModel.requestNext()
+        viewModel.onStepVisible(OnboardingStep.NotificationPermission.ordinal)
+        viewModel.requestPermissionOnEntry()
+        viewModel.onPermissionResult(OnboardingPermission.Notifications, viewModel.uiState.value.permissionRequestId, denied)
+        viewModel.onSubmitAccepted()
+        assertEquals(0, fixture.events.count { it.name == AnalyticsEventName.OnboardingSubmit })
+
+        assertEquals(OnboardingAdvance.Complete, viewModel.requestNext())
+        viewModel.onSubmitAccepted()
+        viewModel.onSubmitAccepted()
+        assertEquals(1, fixture.events.count { it.name == AnalyticsEventName.OnboardingSubmit })
+        assertFalse(fixture.events.any { it.name == AnalyticsEventName.TutorialComplete })
+    }
+
+    @Test
     fun `분석 이벤트 기록에 실패해도 페이지 이동과 완료 요청은 계속된다`() {
         val viewModel = OnboardingViewModel(analytics = FailingOnboardingAnalyticsRecorder)
         viewModel.onStepVisible(0)
@@ -126,8 +153,7 @@ private fun OnboardingViewModel.completePermissions(): OnboardingAdvance {
     val permissions = OnboardingPermissionState(OnboardingPermissionStatus.Granted, OnboardingPermissionStatus.Granted)
     onPermissionsRefreshed(permissions)
     onPageChanged(OnboardingStep.NotificationPermission.ordinal)
-    requestNext()
-    return onPermissionResult(OnboardingPermission.Notifications, uiState.value.permissionRequestId, permissions)
+    return requestNext()
 }
 
 private object FailingOnboardingAnalyticsRecorder : OnboardingAnalyticsRecorder {

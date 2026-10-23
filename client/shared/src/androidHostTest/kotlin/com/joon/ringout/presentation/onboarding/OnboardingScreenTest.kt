@@ -398,7 +398,7 @@ class OnboardingScreenTest {
     }
 
     @Test
-    fun `위치 권한을 거부하면 안내를 유지하고 설정에서 허용한 뒤 알림으로 진행한다`() {
+    fun `위치 권한을 거부해도 다음 버튼으로 알림 안내에 진행하고 권한을 다시 요청하지 않는다`() {
         val controller = FakePermissionController(
             permissions = OnboardingPermissionState(
                 location = OnboardingPermissionStatus.Requestable,
@@ -411,17 +411,80 @@ class OnboardingScreenTest {
             advanceToLocationPermission()
 
             assertPage(OnboardingStep.LocationPermission)
-            compose.onNodeWithText("설정에서 위치 권한을 허용하고\n정확한 위치를 켜주세요.").assertIsDisplayed()
-            compose.onNodeWithText("설정 열기").assertIsEnabled()
+            compose.onNodeWithText("다음으로").assertIsEnabled()
+            compose.onNodeWithText("설정 열기").assertDoesNotExist()
             compose.runOnIdle {
                 assertEquals(0, completions)
-                controller.requestResult = OnboardingPermissionStatus.Granted
             }
-            compose.onNodeWithText("설정 열기").performClick()
+            compose.onNodeWithText("다음으로").performClick()
             assertPage(OnboardingStep.NotificationPermission)
             compose.runOnIdle {
-                assertEquals(listOf(OnboardingPermission.Location, OnboardingPermission.Location), controller.requests)
+                assertEquals(listOf(OnboardingPermission.Location), controller.requests)
                 assertEquals(0, completions)
+            }
+            compose.onNodeWithText("다음으로").performClick()
+            compose.runOnIdle {
+                assertEquals(listOf(OnboardingPermission.Location), controller.requests)
+                assertEquals(1, completions)
+            }
+        }
+    }
+
+    @Test
+    fun `위치와 알림을 모두 거부해도 다음 버튼으로 한 번만 완료하며 최초 요청을 반복하지 않는다`() {
+        val controller = FakePermissionController(
+            permissions = OnboardingPermissionState(
+                location = OnboardingPermissionStatus.Requestable,
+                notifications = OnboardingPermissionStatus.Requestable,
+            ),
+            deferRequests = true,
+        )
+        var completions = 0
+        launchRoute(controller) { completions++ }.use {
+            advanceToLocationPermission()
+            compose.runOnIdle { controller.finishRequest(OnboardingPermissionStatus.Requestable) }
+            assertPage(OnboardingStep.LocationPermission)
+            compose.onNodeWithText("다음으로").assertIsEnabled().performClick()
+
+            assertPage(OnboardingStep.NotificationPermission)
+            compose.onNodeWithText("권한 확인 중…").assertIsNotEnabled()
+            compose.runOnIdle {
+                assertEquals(listOf(OnboardingPermission.Location, OnboardingPermission.Notifications), controller.requests)
+                assertEquals(0, completions)
+                controller.finishRequest(OnboardingPermissionStatus.SettingsRequired)
+            }
+            compose.onNodeWithText("다음으로").assertIsEnabled()
+                .performSemanticsAction(SemanticsActions.OnClick) { click ->
+                    repeat(3) { assertTrue(click()) }
+                }
+            compose.runOnIdle {
+                assertEquals(1, completions)
+                assertEquals(listOf(OnboardingPermission.Location, OnboardingPermission.Notifications), controller.requests)
+                assertEquals(2, controller.systemPrompts)
+            }
+        }
+    }
+
+    @Test
+    fun `위치를 거부하고 알림을 허용해도 온보딩을 완료한다`() {
+        val controller = FakePermissionController(
+            permissions = OnboardingPermissionState(
+                location = OnboardingPermissionStatus.Requestable,
+                notifications = OnboardingPermissionStatus.Requestable,
+            ),
+            deferRequests = true,
+        )
+        var completions = 0
+        launchRoute(controller) { completions++ }.use {
+            advanceToLocationPermission()
+            compose.runOnIdle { controller.finishRequest(OnboardingPermissionStatus.SettingsRequired) }
+            compose.onNodeWithText("다음으로").performClick()
+
+            assertPage(OnboardingStep.NotificationPermission)
+            compose.runOnIdle { controller.finishRequest(OnboardingPermissionStatus.Granted) }
+            compose.runOnIdle {
+                assertEquals(1, completions)
+                assertEquals(listOf(OnboardingPermission.Location, OnboardingPermission.Notifications), controller.requests)
             }
         }
     }
@@ -436,6 +499,7 @@ class OnboardingScreenTest {
             assertPage(OnboardingStep.NotificationPermission)
             compose.onNodeWithText("다음으로").performClick()
             compose.runOnIdle {
+                assertTrue(controller.requests.isEmpty())
                 assertEquals(0, controller.systemPrompts)
                 assertEquals(1, completions)
             }
@@ -443,7 +507,7 @@ class OnboardingScreenTest {
     }
 
     @Test
-    fun `시스템 권한 응답을 기다리는 동안 중복 요청을 막고 허용 후에만 이동한다`() {
+    fun `시스템 권한 응답을 기다리는 동안 중복 요청과 다음 단계 이동을 막는다`() {
         val controller = FakePermissionController(
             permissions = OnboardingPermissionState(
                 location = OnboardingPermissionStatus.Requestable,
@@ -480,6 +544,10 @@ class OnboardingScreenTest {
                 compose.onNodeWithText("다음으로").performClick()
                 compose.mainClock.advanceTimeByFrame()
                 compose.mainClock.advanceTimeBy(96)
+                repeat(2) {
+                    compose.onNodeWithText("다음으로").performClick()
+                    compose.mainClock.advanceTimeByFrame()
+                }
                 compose.runOnIdle { assertTrue(controller.requests.isEmpty()) }
                 compose.mainClock.advanceTimeBy(2_000)
             } finally {
@@ -605,7 +673,7 @@ class OnboardingScreenTest {
                     assertTrue(controller.requests.isEmpty(), status.name)
                     controller.finishRefresh()
                 }
-                compose.onNodeWithText("설정 열기").assertIsEnabled()
+                compose.onNodeWithText("다음으로").assertIsEnabled()
                 compose.runOnIdle { assertTrue(controller.requests.isEmpty(), status.name) }
             }
         }
@@ -653,13 +721,13 @@ class OnboardingScreenTest {
                 assertTrue(controller.requests.isEmpty())
                 controller.finishRefresh()
             }
-            compose.onNodeWithText("설정 열기").assertIsEnabled()
+            compose.onNodeWithText("다음으로").assertIsEnabled()
             compose.runOnIdle { assertTrue(controller.requests.isEmpty()) }
         }
     }
 
     @Test
-    fun `거부 후 다시 그리기 앱 복귀 페이지 재방문으로 자동 재요청하지 않고 버튼으로 재시도한다`() {
+    fun `거부 후 다시 그리기 앱 복귀 페이지 재방문으로 재요청하지 않고 다음 버튼으로 알림에 진행한다`() {
         val controller = FakePermissionController(
             permissions = OnboardingPermissionState(
                 location = OnboardingPermissionStatus.Requestable,
@@ -704,15 +772,16 @@ class OnboardingScreenTest {
             }
 
             compose.onNodeWithText("다음으로").performClick()
+            assertPage(OnboardingStep.NotificationPermission)
             compose.runOnIdle {
-                assertEquals(listOf(OnboardingPermission.Location, OnboardingPermission.Location), controller.requests)
+                assertEquals(listOf(OnboardingPermission.Location, OnboardingPermission.Notifications), controller.requests)
             }
             compose.onNodeWithText("권한 확인 중…").assertIsNotEnabled()
         }
     }
 
     @Test
-    fun `설정 이동이나 재시도가 필요한 상태에서는 자동 요청하지 않고 버튼을 기다린다`() {
+    fun `권한을 요청할 수 없는 상태에서도 다음 버튼으로 설정 이동 없이 완료한다`() {
         listOf(
             OnboardingPermissionStatus.SettingsRequired,
             OnboardingPermissionStatus.Restricted,
@@ -722,18 +791,61 @@ class OnboardingScreenTest {
             val controller = FakePermissionController(
                 permissions = OnboardingPermissionState(
                     location = status,
-                    notifications = OnboardingPermissionStatus.Granted,
+                    notifications = status,
                 ),
                 deferRequests = true,
             )
-            launchRoute(controller).use {
+            var completions = 0
+            launchRoute(controller) { completions++ }.use {
                 advanceToLocationPermission()
                 compose.runOnIdle { assertTrue(controller.requests.isEmpty(), status.name) }
-                val label = if (status == OnboardingPermissionStatus.Unavailable) "다시 시도" else "설정 열기"
-                compose.onNodeWithText(label).assertIsEnabled().performClick()
+                compose.onNodeWithText("다음으로").assertIsEnabled().performClick()
+                assertPage(OnboardingStep.NotificationPermission)
+                compose.onNodeWithText("다음으로").assertIsEnabled().performClick()
                 compose.runOnIdle {
-                    assertEquals(listOf(OnboardingPermission.Location), controller.requests, status.name)
+                    assertTrue(controller.requests.isEmpty(), status.name)
+                    assertEquals(1, completions, status.name)
                 }
+            }
+        }
+    }
+
+    @Test
+    fun `알림 안내에서 위치와 알림 권한이 회수되어도 다음 버튼으로 완료한다`() {
+        val controller = FakePermissionController()
+        val lifecycleOwner = object : LifecycleOwner {
+            override val lifecycle = LifecycleRegistry.createUnsafe(this).apply {
+                currentState = Lifecycle.State.RESUMED
+            }
+        }
+        var completions = 0
+        launchWithFontScale(1f) {
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner) {
+                RingoutTheme(themeMode = ThemeMode.Dark) {
+                    OnboardingRoute(
+                        analytics = NoOpOnboardingAnalyticsRecorder,
+                        onComplete = { completions++ },
+                        permissionController = controller,
+                    )
+                }
+            }
+        }.use {
+            advanceToLocationPermission()
+            compose.onNodeWithText("다음으로").performClick()
+            assertPage(OnboardingStep.NotificationPermission)
+            compose.runOnIdle {
+                lifecycleOwner.lifecycle.currentState = Lifecycle.State.STARTED
+                controller.permissions = OnboardingPermissionState(
+                    location = OnboardingPermissionStatus.SettingsRequired,
+                    notifications = OnboardingPermissionStatus.SettingsRequired,
+                )
+            }
+            compose.runOnIdle { lifecycleOwner.lifecycle.currentState = Lifecycle.State.RESUMED }
+            assertPage(OnboardingStep.NotificationPermission)
+            compose.onNodeWithText("다음으로").assertIsEnabled().performClick()
+            compose.runOnIdle {
+                assertTrue(controller.requests.isEmpty())
+                assertEquals(1, completions)
             }
         }
     }

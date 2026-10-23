@@ -153,14 +153,10 @@ internal fun OnboardingScreen(
                         busy -> "시작하는 중…"
                         completionFailed -> "다시 시도"
                         isRequestingPermission || permissionStatus == OnboardingPermissionStatus.Unknown -> "권한 확인 중…"
-                        permissionStatus == OnboardingPermissionStatus.SettingsRequired ||
-                            permissionStatus == OnboardingPermissionStatus.ServicesDisabled ||
-                            permissionStatus == OnboardingPermissionStatus.Restricted -> "설정 열기"
-                        permissionStatus == OnboardingPermissionStatus.Unavailable -> "다시 시도"
                         else -> "다음으로"
                     },
                     onClick = {
-                        // Permission prompts belong to the page that is fully visible, not a transition target.
+                        // Advance only the permission page that is fully visible, not a transition target.
                         if (permission == null || isRequestedPageSettled()) onNext()
                     },
                     enabled = !busy && !isRequestingPermission && permissionStatus != OnboardingPermissionStatus.Unknown,

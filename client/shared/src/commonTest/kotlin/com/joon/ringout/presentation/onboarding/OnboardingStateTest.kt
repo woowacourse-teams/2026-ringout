@@ -31,7 +31,7 @@ class OnboardingStateTest {
     }
 
     @Test
-    fun `자동 요청을 거부하면 복귀와 재방문에도 다시 요청하지 않고 버튼으로 재시도한다`() {
+    fun `자동 요청을 거부하면 복귀와 재방문에도 다시 요청하지 않고 다음 버튼으로 진행한다`() {
         val flow = locationFlow()
         flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
         flow.requestPermissionOnEntry()
@@ -46,8 +46,9 @@ class OnboardingStateTest {
         flow.requestNext()
         flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
         assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
-        assertEquals(OnboardingAdvance.RequestLocationPermission, flow.requestNext())
-        assertEquals(2, flow.uiState.value.permissionRequestId)
+        assertEquals(OnboardingAdvance.None, flow.requestNext())
+        assertEquals(OnboardingStep.NotificationPermission, flow.uiState.value.step)
+        assertEquals(1, flow.uiState.value.permissionRequestId)
     }
 
     @Test
@@ -69,13 +70,18 @@ class OnboardingStateTest {
     }
 
     @Test
-    fun `버튼으로 먼저 요청한 권한은 응답 후 자동 요청으로 다시 열리지 않는다`() {
-        val flow = locationFlow()
-        flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
-        flow.requestNext()
-        flow.respond(OnboardingPermission.Location, requestable)
-        assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
-        assertEquals(1, flow.uiState.value.permissionRequestId)
+    fun `자동 요청이 시작되기 전 다음 버튼을 눌러도 최초 요청을 건너뛰지 않는다`() {
+        listOf(locationFlow(), notificationFlow()).forEach { flow ->
+            val initialStep = flow.uiState.value.step
+            repeat(3) { assertEquals(OnboardingAdvance.None, flow.requestNext()) }
+            flow.onStepVisible(initialStep.ordinal)
+            assertEquals(OnboardingAdvance.None, flow.requestNext())
+            assertEquals(initialStep, flow.uiState.value.step)
+            assertNull(flow.uiState.value.requestingPermission)
+            flow.requestPermissionOnEntry()
+            assertEquals(initialStep.permission, flow.uiState.value.requestingPermission)
+            assertEquals(1, flow.uiState.value.permissionRequestId)
+        }
     }
 
     @Test
@@ -93,7 +99,7 @@ class OnboardingStateTest {
     }
 
     @Test
-    fun `서비스 소개 네 페이지 뒤 위치와 알림 권한을 순서대로 허용해야 완료한다`() {
+    fun `서비스 소개 네 페이지 뒤 위치와 알림 권한을 순서대로 허용하면 자동으로 완료한다`() {
         val flow = OnboardingViewModel()
         flow.onPermissionsRefreshed(requestable)
         OnboardingStep.entries.take(4).forEachIndexed { index, step ->
@@ -103,37 +109,68 @@ class OnboardingStateTest {
             assertEquals(OnboardingAdvance.None, flow.requestNext())
         }
         assertEquals(OnboardingStep.LocationPermission, flow.uiState.value.step)
-        assertEquals(OnboardingAdvance.RequestLocationPermission, flow.requestNext())
+        flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        assertEquals(OnboardingAdvance.RequestLocationPermission, flow.requestPermissionOnEntry())
         assertEquals(OnboardingAdvance.None, flow.respond(OnboardingPermission.Location, locationGranted))
         assertEquals(OnboardingStep.NotificationPermission, flow.uiState.value.step)
         assertFalse(flow.uiState.value.isCompletionRequested)
-        assertEquals(OnboardingAdvance.RequestNotificationPermission, flow.requestNext())
+        flow.onStepVisible(OnboardingStep.NotificationPermission.ordinal)
+        assertEquals(OnboardingAdvance.RequestNotificationPermission, flow.requestPermissionOnEntry())
         assertEquals(OnboardingAdvance.Complete, flow.respond(OnboardingPermission.Notifications, granted))
         assertTrue(flow.uiState.value.isCompletionRequested)
     }
 
     @Test
-    fun `위치가 미허용이면 페이지 변경만으로 알림 단계에 진입할 수 없다`() {
-        val flow = OnboardingViewModel()
-        flow.onPageChanged(OnboardingStep.NotificationPermission.ordinal)
-        assertEquals(OnboardingStep.Introduction, flow.uiState.value.step)
-        flow.onPageChanged(OnboardingStep.LocationPermission.ordinal)
-        flow.onPageChanged(OnboardingStep.NotificationPermission.ordinal)
-        assertEquals(OnboardingStep.LocationPermission, flow.uiState.value.step)
+    fun `두 권한을 모두 거부해도 각각 다음 버튼을 누르면 완료한다`() {
+        val flow = locationFlow()
+        flow.startAutomaticRequest()
+        flow.respond(OnboardingPermission.Location, requestable)
+        assertEquals(OnboardingAdvance.None, flow.requestNext())
+        assertEquals(OnboardingStep.NotificationPermission, flow.uiState.value.step)
+        flow.startAutomaticRequest()
+        flow.respond(OnboardingPermission.Notifications, requestable)
+        assertFalse(flow.uiState.value.isCompletionRequested)
+        assertEquals(OnboardingAdvance.Complete, flow.requestNext())
+        assertTrue(flow.uiState.value.isCompletionRequested)
+        assertEquals(requestable, flow.uiState.value.permissions)
+        assertEquals(2, flow.uiState.value.permissionRequestId)
+    }
+
+    @Test
+    fun `이미 허용되거나 설정이 필요한 권한은 다음 버튼으로 요청 없이 진행한다`() {
+        listOf(
+            OnboardingPermissionStatus.Granted,
+            OnboardingPermissionStatus.SettingsRequired,
+            OnboardingPermissionStatus.Restricted,
+            OnboardingPermissionStatus.ServicesDisabled,
+            OnboardingPermissionStatus.Unavailable,
+        ).forEach { status ->
+            val flow = locationFlow()
+            flow.onPermissionsRefreshed(OnboardingPermissionState(status, status))
+            assertEquals(OnboardingAdvance.None, flow.requestNext())
+            assertEquals(OnboardingStep.NotificationPermission, flow.uiState.value.step)
+            assertEquals(OnboardingAdvance.Complete, flow.requestNext())
+            assertNull(flow.uiState.value.requestingPermission)
+            assertEquals(0, flow.uiState.value.permissionRequestId)
+        }
     }
 
     @Test
     fun `권한 상태 조회 전에는 권한 요청과 완료를 시작하지 않는다`() {
         val flow = OnboardingViewModel()
-        flow.onPageChanged(OnboardingStep.LocationPermission.ordinal)
-        assertEquals(OnboardingAdvance.None, flow.requestNext())
-        assertNull(flow.uiState.value.requestingPermission)
+        listOf(OnboardingStep.LocationPermission, OnboardingStep.NotificationPermission).forEach { step ->
+            flow.onPageChanged(step.ordinal)
+            assertEquals(OnboardingAdvance.None, flow.requestNext())
+            assertEquals(step, flow.uiState.value.step)
+            assertNull(flow.uiState.value.requestingPermission)
+            assertFalse(flow.uiState.value.isCompletionRequested)
+        }
     }
 
     @Test
     fun `권한 응답을 기다리는 동안 연속 클릭과 뒤로 가기는 단계를 바꾸지 않는다`() {
         val flow = locationFlow()
-        assertEquals(OnboardingAdvance.RequestLocationPermission, flow.requestNext())
+        assertEquals(OnboardingAdvance.RequestLocationPermission, flow.startAutomaticRequest())
         repeat(3) { assertEquals(OnboardingAdvance.None, flow.requestNext()) }
         flow.back()
         flow.onPageChanged(0)
@@ -151,50 +188,62 @@ class OnboardingStateTest {
             OnboardingPermissionStatus.Unavailable,
         ).forEach { status ->
             val flow = locationFlow()
-            flow.requestNext()
+            flow.startAutomaticRequest()
             assertEquals(OnboardingAdvance.None, flow.respond(OnboardingPermission.Location, requestable.copy(location = status)))
             assertEquals(OnboardingStep.LocationPermission, flow.uiState.value.step)
             assertEquals(status, flow.uiState.value.permissionStatus)
             assertNull(flow.uiState.value.requestingPermission)
             assertFalse(flow.uiState.value.isCompletionRequested)
+            assertEquals(OnboardingAdvance.None, flow.requestNext())
+            assertEquals(OnboardingStep.NotificationPermission, flow.uiState.value.step)
+            assertNull(flow.uiState.value.requestingPermission)
         }
     }
 
     @Test
-    fun `알림 거부 후 설정에서 허용하면 마지막 단계에서 완료한다`() {
+    fun `알림 거부 후 다음 버튼을 누르면 권한 재요청 없이 완료한다`() {
         val flow = notificationFlow()
-        flow.requestNext()
+        flow.startAutomaticRequest()
         assertEquals(OnboardingAdvance.None, flow.respond(OnboardingPermission.Notifications, locationGranted.copy(
             notifications = OnboardingPermissionStatus.SettingsRequired,
         )))
         assertEquals(OnboardingStep.NotificationPermission, flow.uiState.value.step)
         assertFalse(flow.uiState.value.isCompletionRequested)
-        assertEquals(OnboardingAdvance.RequestNotificationPermission, flow.requestNext())
-        assertEquals(OnboardingAdvance.Complete, flow.respond(OnboardingPermission.Notifications, granted))
+        assertEquals(OnboardingAdvance.Complete, flow.requestNext())
+        assertEquals(1, flow.uiState.value.permissionRequestId)
+        assertNull(flow.uiState.value.requestingPermission)
     }
 
     @Test
-    fun `알림 설정 중 위치 권한이 회수되면 완료 대신 위치 단계로 돌아간다`() {
-        val flow = notificationFlow()
+    fun `위치 권한을 거부한 뒤 알림 권한을 허용해도 자동으로 완료한다`() {
+        val flow = locationFlow()
+        flow.startAutomaticRequest()
+        val locationDenied = requestable.copy(location = OnboardingPermissionStatus.SettingsRequired)
+        flow.respond(OnboardingPermission.Location, locationDenied)
         flow.requestNext()
-        assertEquals(OnboardingAdvance.None, flow.respond(OnboardingPermission.Notifications, granted.copy(
-            location = OnboardingPermissionStatus.SettingsRequired,
+        flow.startAutomaticRequest()
+        assertEquals(OnboardingAdvance.Complete, flow.respond(OnboardingPermission.Notifications, locationDenied.copy(
+            notifications = OnboardingPermissionStatus.Granted,
         )))
-        assertEquals(OnboardingStep.LocationPermission, flow.uiState.value.step)
-        assertFalse(flow.uiState.value.isCompletionRequested)
+        assertEquals(OnboardingStep.NotificationPermission, flow.uiState.value.step)
+        assertTrue(flow.uiState.value.isCompletionRequested)
     }
 
     @Test
     fun `이전 요청의 늦은 응답이나 중복 응답은 다음 요청을 완료하지 않는다`() {
         val flow = locationFlow()
-        flow.requestNext()
+        flow.startAutomaticRequest()
         val previousId = flow.uiState.value.permissionRequestId
         flow.respond(OnboardingPermission.Location, requestable)
         flow.requestNext()
+        flow.startAutomaticRequest()
         assertEquals(OnboardingAdvance.None, flow.onPermissionResult(OnboardingPermission.Location, previousId, granted))
-        assertEquals(OnboardingStep.LocationPermission, flow.uiState.value.step)
-        flow.respond(OnboardingPermission.Location, locationGranted)
-        assertEquals(OnboardingAdvance.None, flow.respond(OnboardingPermission.Location, granted))
+        assertEquals(OnboardingAdvance.None, flow.onPermissionResult(OnboardingPermission.Notifications, previousId, granted))
+        assertEquals(OnboardingStep.NotificationPermission, flow.uiState.value.step)
+        assertEquals(OnboardingPermission.Notifications, flow.uiState.value.requestingPermission)
+        assertFalse(flow.uiState.value.isCompletionRequested)
+        flow.respond(OnboardingPermission.Notifications, requestable)
+        assertEquals(OnboardingAdvance.None, flow.respond(OnboardingPermission.Notifications, granted))
         assertFalse(flow.uiState.value.isCompletionRequested)
     }
 
@@ -202,7 +251,7 @@ class OnboardingStateTest {
     fun `권한 요청 전 시작한 조회 결과가 늦게 와도 승인 결과를 덮어쓰지 않는다`() {
         val flow = locationFlow()
         val oldRequestId = flow.uiState.value.permissionRequestId
-        flow.requestNext()
+        flow.startAutomaticRequest()
         flow.onPermissionsRefreshed(granted, oldRequestId)
         assertEquals(OnboardingPermissionStatus.Requestable, flow.uiState.value.permissions.location)
         flow.respond(OnboardingPermission.Location, locationGranted)
@@ -237,7 +286,7 @@ class OnboardingStateTest {
     @Test
     fun `완료 저장 중에는 같은 토큰의 재요청과 페이지 이동을 무시한다`() {
         val flow = notificationFlow()
-        flow.requestNext()
+        flow.startAutomaticRequest()
         assertEquals(OnboardingAdvance.Complete, flow.respond(OnboardingPermission.Notifications, granted))
         repeat(3) { assertEquals(OnboardingAdvance.None, flow.requestNext()) }
         flow.back()
@@ -249,7 +298,7 @@ class OnboardingStateTest {
     @Test
     fun `완료 저장 실패 후에는 새 토큰만 재시도할 수 있다`() {
         val flow = notificationFlow()
-        flow.requestNext()
+        flow.startAutomaticRequest()
         flow.respond(OnboardingPermission.Notifications, granted)
         assertEquals(OnboardingAdvance.Complete, flow.requestNext(1))
         assertEquals(OnboardingAdvance.None, flow.requestNext(1))
@@ -258,9 +307,27 @@ class OnboardingStateTest {
     }
 
     @Test
+    fun `권한 없이 완료해도 저장 실패는 새 토큰으로만 재시도한다`() {
+        val flow = notificationFlow()
+        flow.onPermissionsRefreshed(OnboardingPermissionState(
+            OnboardingPermissionStatus.SettingsRequired,
+            OnboardingPermissionStatus.SettingsRequired,
+        ))
+        assertEquals(OnboardingAdvance.Complete, flow.requestNext())
+        assertTrue(flow.onSubmitAccepted())
+        assertFalse(flow.onSubmitAccepted())
+        assertEquals(OnboardingAdvance.None, flow.requestNext())
+        assertEquals(OnboardingAdvance.Complete, flow.requestNext(1))
+        assertTrue(flow.onSubmitAccepted())
+        assertEquals(OnboardingAdvance.None, flow.requestNext(1))
+        assertEquals(OnboardingAdvance.None, flow.requestNext(0))
+        assertEquals(0, flow.uiState.value.permissionRequestId)
+    }
+
+    @Test
     fun `음수 재시도 토큰으로는 권한이 허용되어도 완료하지 않는다`() {
         val flow = notificationFlow()
-        flow.requestNext()
+        flow.startAutomaticRequest()
         assertEquals(OnboardingAdvance.None, flow.onPermissionResult(
             OnboardingPermission.Notifications, flow.uiState.value.permissionRequestId, granted, -1,
         ))
@@ -275,6 +342,11 @@ class OnboardingStateTest {
     private fun notificationFlow() = OnboardingViewModel().apply {
         onPermissionsRefreshed(locationGranted)
         onPageChanged(OnboardingStep.NotificationPermission.ordinal)
+    }
+
+    private fun OnboardingViewModel.startAutomaticRequest(): OnboardingAdvance {
+        onStepVisible(uiState.value.currentStepIndex)
+        return requestPermissionOnEntry()
     }
 
     private fun OnboardingViewModel.respond(permission: OnboardingPermission, permissions: OnboardingPermissionState) =

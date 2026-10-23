@@ -83,13 +83,13 @@ internal fun OnboardingPermissionPage(
 
 private fun OnboardingPermissionStatus.explanation(step: OnboardingStep): String? = when (this) {
     OnboardingPermissionStatus.SettingsRequired -> if (step == OnboardingStep.LocationPermission) {
-        "설정에서 위치 권한을 허용하고\n정확한 위치를 켜주세요."
+        "위치 권한과 정확한 위치는 나중에 설정할 수 있어요.\n지금은 다음 단계로 넘어갈 수 있어요."
     } else {
-        "권한이 꺼져 있어요. 설정에서 권한을 허용해주세요."
+        "알림 권한은 나중에 설정할 수 있어요.\n지금은 다음 단계로 넘어갈 수 있어요."
     }
-    OnboardingPermissionStatus.Restricted -> "기기 설정에서 권한 사용이 제한되어 있어요. 제한 설정을 확인해주세요."
-    OnboardingPermissionStatus.ServicesDisabled -> "기기의 위치 서비스가 꺼져 있어요. 설정에서 위치 서비스를 켜주세요."
-    OnboardingPermissionStatus.Unavailable -> "권한을 확인하지 못했어요. 다시 시도해주세요."
+    OnboardingPermissionStatus.Restricted -> "기기에서 권한 사용이 제한되어 있어요.\n지금은 다음 단계로 넘어갈 수 있어요."
+    OnboardingPermissionStatus.ServicesDisabled -> "기기의 위치 서비스가 꺼져 있어요.\n지금은 다음 단계로 넘어갈 수 있어요."
+    OnboardingPermissionStatus.Unavailable -> "권한을 확인하지 못했어요.\n지금은 다음 단계로 넘어갈 수 있어요."
     else -> null
 }
 

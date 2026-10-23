@@ -60,7 +60,7 @@ internal fun OnboardingRoute(
         controller.request(permission) { status ->
             if (!handled) {
                 handled = true
-                // Recheck both permissions: the user can change either one while in Settings.
+                // Recheck both permissions after the native prompt returns.
                 controller.refresh { refreshed ->
                     val permissions = if (status == OnboardingPermissionStatus.Unavailable) {
                         refreshed.withStatus(permission, status)
@@ -93,7 +93,7 @@ internal fun OnboardingRoute(
         onPageChanged = { if (completionEnabled) flow.onPageChanged(it) },
         onPageSettled = flow::onStepVisible,
         onNext = {
-            // Rapid introduction taps may advance, but an old page must not request a permission.
+            // Rapid introduction taps may advance, but an old page must not advance a permission step.
             val latest = flow.uiState.value
             if (completionEnabled && (latest.step.permission == null || latest.step == state.step)) {
                 handleAdvance(flow.requestNext(completionRetryToken))
