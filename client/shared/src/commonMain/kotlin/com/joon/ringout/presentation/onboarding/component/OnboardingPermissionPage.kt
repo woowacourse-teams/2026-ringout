@@ -14,9 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -25,7 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.onboarding.OnboardingPermissionStatus
 import com.joon.ringout.presentation.onboarding.OnboardingStep
 import com.joon.ringout.presentation.onboarding.pageContent
 import com.joon.ringout.ringoutColors
@@ -33,7 +30,6 @@ import com.joon.ringout.ringoutColors
 @Composable
 internal fun OnboardingPermissionPage(
     step: OnboardingStep,
-    status: OnboardingPermissionStatus,
     modifier: Modifier = Modifier,
 ) {
     val content = step.pageContent()
@@ -69,28 +65,7 @@ internal fun OnboardingPermissionPage(
                 textAlign = TextAlign.Center,
             ),
         )
-        status.explanation(step)?.let { explanation ->
-            Text(
-                text = explanation,
-                modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
-                color = MaterialTheme.colorScheme.onBackground,
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-            )
-        }
     }
-}
-
-private fun OnboardingPermissionStatus.explanation(step: OnboardingStep): String? = when (this) {
-    OnboardingPermissionStatus.SettingsRequired -> if (step == OnboardingStep.LocationPermission) {
-        "위치 권한과 정확한 위치는 나중에 설정할 수 있어요.\n지금은 다음 단계로 넘어갈 수 있어요."
-    } else {
-        "알림 권한은 나중에 설정할 수 있어요.\n지금은 다음 단계로 넘어갈 수 있어요."
-    }
-    OnboardingPermissionStatus.Restricted -> "기기에서 권한 사용이 제한되어 있어요.\n지금은 다음 단계로 넘어갈 수 있어요."
-    OnboardingPermissionStatus.ServicesDisabled -> "기기의 위치 서비스가 꺼져 있어요.\n지금은 다음 단계로 넘어갈 수 있어요."
-    OnboardingPermissionStatus.Unavailable -> "권한을 확인하지 못했어요.\n지금은 다음 단계로 넘어갈 수 있어요."
-    else -> null
 }
 
 @Preview(name = "Location permission dark", widthDp = 402, heightDp = 742)
@@ -98,22 +73,15 @@ private fun OnboardingPermissionStatus.explanation(step: OnboardingStep): String
 @Composable
 private fun OnboardingPermissionPagePreview() {
     RingoutTheme(ThemeMode.Dark) {
-        OnboardingPermissionPage(OnboardingStep.LocationPermission, OnboardingPermissionStatus.Requestable)
+        OnboardingPermissionPage(OnboardingStep.LocationPermission)
     }
 }
 
 @Preview(name = "Notification permission light", widthDp = 402, heightDp = 742)
+@Preview(name = "Notification permission compact", widthDp = 320, heightDp = 420, fontScale = 2f)
 @Composable
 private fun OnboardingPermissionPageLightPreview() {
     RingoutTheme(ThemeMode.Light) {
-        OnboardingPermissionPage(OnboardingStep.NotificationPermission, OnboardingPermissionStatus.Requestable)
-    }
-}
-
-@Preview(name = "Permission denied", widthDp = 320, heightDp = 420, fontScale = 2f)
-@Composable
-private fun OnboardingPermissionPageDeniedPreview() {
-    RingoutTheme(ThemeMode.Dark) {
-        OnboardingPermissionPage(OnboardingStep.LocationPermission, OnboardingPermissionStatus.SettingsRequired)
+        OnboardingPermissionPage(OnboardingStep.NotificationPermission)
     }
 }

@@ -120,7 +120,6 @@ internal fun OnboardingScreen(
                 } else {
                     OnboardingPermissionPage(
                         step = step,
-                        status = uiState.permissions[pagePermission],
                     )
                 }
             }
