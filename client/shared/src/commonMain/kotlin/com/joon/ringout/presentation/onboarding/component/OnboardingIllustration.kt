@@ -41,6 +41,7 @@ internal fun OnboardingIllustration(
         OnboardingStep.Destination -> Res.drawable.onboarding_destination
         OnboardingStep.Interval -> Res.drawable.onboarding_interval
         OnboardingStep.Departure -> Res.drawable.onboarding_departure
+        OnboardingStep.LocationPermission, OnboardingStep.NotificationPermission -> return
     }
     // Figma uses a smaller introduction image in light mode and a cropped departure image.
     val imageWidth = when {

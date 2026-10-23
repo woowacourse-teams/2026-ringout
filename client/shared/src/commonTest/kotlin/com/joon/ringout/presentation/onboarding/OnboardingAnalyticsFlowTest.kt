@@ -58,7 +58,7 @@ class OnboardingAnalyticsFlowTest {
         val fixture = OnboardingAnalyticsFixture()
         val viewModel = OnboardingViewModel(analytics = fixture.recorder)
         viewModel.onStepVisible(-1)
-        viewModel.onStepVisible(4)
+        viewModel.onStepVisible(6)
         assertEquals(emptyList(), fixture.events)
     }
 
@@ -77,7 +77,7 @@ class OnboardingAnalyticsFlowTest {
         viewModel.onSubmitAccepted()
         assertEquals(0, fixture.events.size)
         viewModel.onPageChanged(3)
-        assertEquals(OnboardingAdvance.Complete, viewModel.requestNext())
+        assertEquals(OnboardingAdvance.Complete, viewModel.completePermissions())
         viewModel.onSubmitAccepted()
         viewModel.onSubmitAccepted()
         assertEquals(OnboardingAdvance.None, viewModel.requestNext())
@@ -101,11 +101,38 @@ class OnboardingAnalyticsFlowTest {
         viewModel.onPageChanged(3)
         viewModel.onStepVisible(3)
         val eventCount = fixture.events.size
-        viewModel.requestNext()
+        viewModel.completePermissions()
         viewModel.onPageChanged(2)
         viewModel.back()
         viewModel.onStepVisible(3)
         assertEquals(eventCount, fixture.events.size)
+    }
+
+    @Test
+    fun `두 권한을 거부해도 마지막 다음 버튼으로 수락한 완료는 제출로 기록한다`() {
+        val fixture = OnboardingAnalyticsFixture()
+        val viewModel = OnboardingViewModel(analytics = fixture.recorder)
+        val denied = OnboardingPermissionState(
+            OnboardingPermissionStatus.Requestable,
+            OnboardingPermissionStatus.Requestable,
+        )
+        viewModel.onPermissionsRefreshed(denied)
+        viewModel.onPageChanged(OnboardingStep.LocationPermission.ordinal)
+        viewModel.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        viewModel.requestPermissionOnEntry()
+        viewModel.onPermissionResult(OnboardingPermission.Location, viewModel.uiState.value.permissionRequestId, denied)
+        viewModel.requestNext()
+        viewModel.onStepVisible(OnboardingStep.NotificationPermission.ordinal)
+        viewModel.requestPermissionOnEntry()
+        viewModel.onPermissionResult(OnboardingPermission.Notifications, viewModel.uiState.value.permissionRequestId, denied)
+        viewModel.onSubmitAccepted()
+        assertEquals(0, fixture.events.count { it.name == AnalyticsEventName.OnboardingSubmit })
+
+        assertEquals(OnboardingAdvance.Complete, viewModel.requestNext())
+        viewModel.onSubmitAccepted()
+        viewModel.onSubmitAccepted()
+        assertEquals(1, fixture.events.count { it.name == AnalyticsEventName.OnboardingSubmit })
+        assertFalse(fixture.events.any { it.name == AnalyticsEventName.TutorialComplete })
     }
 
     @Test
@@ -116,10 +143,17 @@ class OnboardingAnalyticsFlowTest {
         assertEquals(OnboardingStep.Destination, viewModel.uiState.value.step)
         viewModel.onPageChanged(3)
         viewModel.onStepVisible(3)
-        assertEquals(OnboardingAdvance.Complete, viewModel.requestNext())
+        assertEquals(OnboardingAdvance.Complete, viewModel.completePermissions())
         viewModel.onSubmitAccepted()
         assertEquals(OnboardingAdvance.None, viewModel.requestNext())
     }
+}
+
+private fun OnboardingViewModel.completePermissions(): OnboardingAdvance {
+    val permissions = OnboardingPermissionState(OnboardingPermissionStatus.Granted, OnboardingPermissionStatus.Granted)
+    onPermissionsRefreshed(permissions)
+    onPageChanged(OnboardingStep.NotificationPermission.ordinal)
+    return requestNext()
 }
 
 private object FailingOnboardingAnalyticsRecorder : OnboardingAnalyticsRecorder {

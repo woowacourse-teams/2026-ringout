@@ -24,25 +24,32 @@ actual fun PushNotificationPermissionEffect(isEligible: Boolean) {
     }
 }
 
-/** Shared by Home and alarm setup; persist before launching to cover concurrent callers. */
+/** Shared by onboarding, Home and alarm setup; persist before launching. */
 internal object NotificationPermissionPrompt {
     @Synchronized
     fun tryAcquire(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false
-        val preferences = context.applicationContext.getSharedPreferences(
-            "ringout_permission_prompts",
-            Context.MODE_PRIVATE,
-        )
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
         ) {
-            preferences.edit().putBoolean(REQUESTED, true).apply()
+            markRequested(context)
             return false
         }
-        if (preferences.getBoolean(REQUESTED, false)) return false
-        preferences.edit().putBoolean(REQUESTED, true).apply()
+        if (hasRequested(context)) return false
+        markRequested(context)
         return true
     }
+
+    fun hasRequested(context: Context): Boolean = preferences(context).getBoolean(REQUESTED, false)
+
+    fun markRequested(context: Context) {
+        preferences(context).edit().putBoolean(REQUESTED, true).apply()
+    }
+
+    private fun preferences(context: Context) = context.applicationContext.getSharedPreferences(
+        "ringout_permission_prompts",
+        Context.MODE_PRIVATE,
+    )
 
     private const val REQUESTED = "notification_permission_requested"
 }

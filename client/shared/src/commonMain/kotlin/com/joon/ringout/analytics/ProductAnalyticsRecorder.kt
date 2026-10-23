@@ -90,7 +90,8 @@ internal class DefaultProductAnalyticsRecorder(
     }
 
     override fun recordOnboardingSubmitted(stepCount: Int) = safelyRecord {
-        tracker.log(onboardingAnalyticsEvent(AnalyticsEventName.OnboardingSubmit, stepCount, AnalyticsOnboardingStep.Departure))
+        val lastStep = if (stepCount == 6) AnalyticsOnboardingStep.NotificationPermission else AnalyticsOnboardingStep.Departure
+        tracker.log(onboardingAnalyticsEvent(AnalyticsEventName.OnboardingSubmit, stepCount, lastStep))
     }
 
     override fun recordOnboardingCompleted(stepCount: Int) = safelyRecord {

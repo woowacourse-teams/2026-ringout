@@ -12,6 +12,7 @@ final class PlatformServices: @preconcurrency IosNativeServices {
     private let appleSignInAdapter = AppleSignInAdapter()
     private let kakaoSignInAdapter = KakaoSignInAdapter()
     private let googleSignInAdapter = GoogleSignInAdapter()
+    private let onboardingPermissionAdapter = OnboardingPermissionAdapter()
 
     init(googleSdkConfiguration: GoogleSdkConfiguration) {
         mapsAdapter = MapsAdapter(configurationState: googleSdkConfiguration.maps)
@@ -126,5 +127,9 @@ final class PlatformServices: @preconcurrency IosNativeServices {
 
     func requestNotificationPermissionIfNeeded() {
         FirebaseMessagingAdapter.shared.requestNotificationPermissionIfNeeded()
+    }
+
+    func onboardingPermissionService() -> IosOnboardingPermissionService {
+        onboardingPermissionAdapter
     }
 }
