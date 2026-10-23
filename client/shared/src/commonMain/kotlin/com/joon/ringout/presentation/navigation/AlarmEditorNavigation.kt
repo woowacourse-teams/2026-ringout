@@ -66,6 +66,9 @@ internal class AlarmEditorNavigation(
 
     private var destinationRequestId by destinationRequestId
 
+    val editorRoute: AppRoute?
+        get() = navigationState.editorRoute
+
     init {
         this.destinationRequestId = maxOf(
             this.destinationRequestId,
@@ -84,8 +87,10 @@ internal class AlarmEditorNavigation(
         navigationState.navigate(AppRoute.EditAlarm(request.id))
     }
 
-    fun hasValidDraft(): Boolean = alarmSetupViewModel.hasDraft &&
-        when (val parent = navigationState.editorRoute) {
+    // 퇴장 중인 Add/Edit 항목은 백스택에서 제거된 뒤에도 자신의 초안을 그릴 수 있다.
+    // 이벤트 처리는 기본값인 현재 부모 경로로 계속 검증한다.
+    fun hasValidDraft(parent: AppRoute? = editorRoute): Boolean = alarmSetupViewModel.hasDraft &&
+        when (parent) {
             AppRoute.AddAlarm -> !alarmSetupViewModel.uiState.isEditing
             is AppRoute.EditAlarm -> alarmSetupViewModel.uiState.alarmId == parent.alarmId
             else -> false

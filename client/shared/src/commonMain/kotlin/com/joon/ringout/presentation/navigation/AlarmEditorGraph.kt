@@ -19,8 +19,10 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
     authSessionState: AuthSessionState,
     productAnalyticsRecorder: ProductAnalyticsRecorder,
 ) {
+    // 연속 뒤로 가기로 부모까지 제거되어도 퇴장 중인 선택 화면은 원래 초안을 표시한다.
+    val parentRoute = navigation.editorRoute
     entry<AppRoute.AddAlarm>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
-        if (navigation.hasValidDraft()) {
+        if (navigation.hasValidDraft(route)) {
             AlarmEditorDestinationEntry(
                 navigation, route, displayedRoute, authSessionState, productAnalyticsRecorder,
             )
@@ -28,13 +30,13 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
     }
 
     entry<AppRoute.EditAlarm>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
-        if (navigation.hasValidDraft()) {
+        if (navigation.hasValidDraft(route)) {
             AlarmEditorDestinationEntry(navigation, route, displayedRoute, authSessionState, productAnalyticsRecorder)
         }
     }
 
     entry<AppRoute.Destination>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
-        if (navigation.hasValidDraft()) {
+        if (navigation.hasValidDraft(parentRoute)) {
             DestinationRoute(
                 viewModel = navigation.destinationViewModel,
                 initialSelection = navigation.alarmSetupViewModel.uiState.destination,
@@ -54,7 +56,7 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
     }
 
     entry<AppRoute.DestinationManagement>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
-        if (navigation.hasValidDraft()) {
+        if (navigation.hasValidDraft(parentRoute)) {
             DestinationManagementRoute(
                 viewModel = navigation.destinationViewModel,
                 isActive = navigation.isActive(route, displayedRoute),
@@ -64,7 +66,7 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
     }
 
     entry<AppRoute.AlarmSound>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
-        if (navigation.hasValidDraft()) {
+        if (navigation.hasValidDraft(parentRoute)) {
             AlarmSoundRoute(
                 selectedSound = navigation.alarmSetupViewModel.uiState.alarmSound,
                 isActive = navigation.isActive(route, displayedRoute),

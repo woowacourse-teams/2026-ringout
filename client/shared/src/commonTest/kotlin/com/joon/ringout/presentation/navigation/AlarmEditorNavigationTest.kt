@@ -33,6 +33,46 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class AlarmEditorNavigationTest {
     @Test
+    fun `편집 화면을 닫아도 퇴장 중인 자신의 초안은 표시하고 이전 화면 이벤트는 무시한다`() = runTest {
+        for (editing in listOf(false, true)) {
+            val fixture = AlarmEditorFixture(backgroundScope)
+            if (editing) fixture.navigation.startEditing(SavedAlarm) else fixture.navigation.startCreating("07:00")
+            val parent = assertNotNull(fixture.state.editorRoute)
+            val draft = fixture.alarmSetup.uiState
+
+            fixture.navigation.onBack(parent, parent)
+
+            assertEquals(AppRoute.Home, fixture.state.requestedRoute)
+            assertFalse(fixture.navigation.hasValidDraft())
+            assertTrue(fixture.navigation.hasValidDraft(parent))
+            assertFalse(fixture.navigation.isActive(parent, parent))
+            fixture.navigation.onStoredDestinationSelected(parent, parent, SelectedDestination)
+            fixture.navigation.onDestinationClick(parent, parent)
+            fixture.navigation.onAlarmSoundClick(parent, parent)
+            fixture.navigation.onBack(parent, parent)
+
+            assertEquals(draft, fixture.alarmSetup.uiState)
+            assertEquals(listOf(AppRoute.Home), fixture.state.backStack.toList())
+        }
+    }
+
+    @Test
+    fun `퇴장 중인 알람 편집 화면에는 다른 알람이나 생성 초안을 표시하지 않는다`() = runTest {
+        val fixture = AlarmEditorFixture(backgroundScope)
+        fixture.navigation.startEditing(SavedAlarm)
+        val parent = AppRoute.EditAlarm(SavedAlarm.id)
+
+        assertTrue(fixture.navigation.hasValidDraft(parent))
+        assertFalse(fixture.navigation.hasValidDraft(AppRoute.AddAlarm))
+        assertFalse(fixture.navigation.hasValidDraft(AppRoute.EditAlarm("another-alarm")))
+        fixture.navigation.onBack(parent, parent)
+        fixture.navigation.startCreating("07:00")
+
+        assertFalse(fixture.navigation.hasValidDraft(parent))
+        assertTrue(fixture.navigation.hasValidDraft(AppRoute.AddAlarm))
+    }
+
+    @Test
     fun `저장 안함은 즐겨찾기를 추가하지 않고 생성과 수정 초안에 주소를 적용한 뒤 복귀한다`() = runTest {
         for (editing in listOf(false, true)) {
             val fixture = AlarmEditorFixture(backgroundScope)
