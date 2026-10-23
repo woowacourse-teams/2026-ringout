@@ -121,11 +121,54 @@ class AndroidOnboardingPermissionControllerTest {
     }
 
     @Test
-    fun `알림 팝업을 거부하거나 닫으면 허용 완료로 처리하지 않는다`() {
+    fun `알림 팝업을 연속으로 닫아도 직접 다시 요청할 수 있고 자동 요청 기록은 유지한다`() {
+        repeat(2) {
+            controller.request(OnboardingPermission.Notifications, results::add)
+            // Dismissal can return denied values as well as an empty result; OS state stays unchanged.
+            controller.completeRequest()
+        }
+
+        assertEquals(List(2) { OnboardingPermissionStatus.Requestable }, results)
+        assertEquals(2, runtimeRequests.size)
+        assertTrue(settingsRequests.isEmpty())
+        assertTrue(NotificationPermissionPrompt.hasRequested(context))
+        assertFalse(NotificationPermissionPrompt.tryAcquire(context))
+        assertEquals(
+            OnboardingPermissionStatus.Requestable,
+            AndroidOnboardingPermissionAccess(context).status(OnboardingPermission.Notifications),
+        )
+    }
+
+    @Test
+    fun `알림을 처음 거부하면 다시 요청하고 재거부로 요청이 막힌 뒤에는 설정으로 안내한다`() {
+        controller.request(OnboardingPermission.Notifications, results::add)
+        showRationale = true
+        controller.completeRequest()
+        assertEquals(listOf(OnboardingPermissionStatus.Requestable), results)
+
+        controller.request(OnboardingPermission.Notifications, results::add)
+        showRationale = false
+        controller.completeRequest()
+
+        assertEquals(
+            listOf(OnboardingPermissionStatus.Requestable, OnboardingPermissionStatus.SettingsRequired),
+            results,
+        )
+        controller.request(OnboardingPermission.Notifications, results::add)
+        assertEquals(2, runtimeRequests.size)
+        assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, settingsRequests.single().action)
+    }
+
+    @Test
+    fun `첫 거부 뒤 알림 팝업을 닫으면 기존 재요청 가능 상태가 유지된다`() {
+        controller.request(OnboardingPermission.Notifications, results::add)
+        showRationale = true
+        controller.completeRequest()
         controller.request(OnboardingPermission.Notifications, results::add)
         controller.completeRequest()
 
-        assertEquals(listOf(OnboardingPermissionStatus.SettingsRequired), results)
+        assertEquals(List(2) { OnboardingPermissionStatus.Requestable }, results)
+        assertTrue(settingsRequests.isEmpty())
     }
 
     @Test
@@ -139,13 +182,64 @@ class AndroidOnboardingPermissionControllerTest {
     }
 
     @Test
-    fun `알림 재요청이 막혔으면 앱 알림 설정으로 안내한다`() {
-        access.markRequested(OnboardingPermission.Notifications)
+    fun `새 결과 이력 없이 이전 공유 요청 기록만 남아 있으면 기존 설정 복구 경로를 유지한다`() {
+        NotificationPermissionPrompt.markRequested(context)
         controller.request(OnboardingPermission.Notifications, results::add)
 
         assertTrue(runtimeRequests.isEmpty())
         assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, settingsRequests.single().action)
         assertEquals(context.packageName, settingsRequests.single().getStringExtra(Settings.EXTRA_APP_PACKAGE))
+    }
+
+    @Test
+    fun `이전 공유 요청 기록이 있어도 재요청 근거가 있으면 런타임 권한을 요청한다`() {
+        NotificationPermissionPrompt.markRequested(context)
+        showRationale = true
+        controller.request(OnboardingPermission.Notifications, results::add)
+
+        assertEquals(1, runtimeRequests.size)
+        assertTrue(settingsRequests.isEmpty())
+        showRationale = false
+        controller.completeRequest()
+        assertEquals(listOf(OnboardingPermissionStatus.SettingsRequired), results)
+    }
+
+    @Test
+    fun `허용했던 알림을 설정에서 철회하면 팝업을 반복하지 않고 설정으로 안내한다`() {
+        controller.request(OnboardingPermission.Notifications, results::add)
+        shadowOf(context).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        controller.completeRequest()
+        shadowOf(context).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
+
+        assertEquals(
+            OnboardingPermissionStatus.SettingsRequired,
+            AndroidOnboardingPermissionAccess(context).status(OnboardingPermission.Notifications),
+        )
+        controller.request(OnboardingPermission.Notifications, results::add)
+        assertEquals(1, runtimeRequests.size)
+        assertEquals(Settings.ACTION_APP_NOTIFICATION_SETTINGS, settingsRequests.single().action)
+    }
+
+    @Test
+    fun `알림 요청 런처가 실패해도 영구 거부로 기록하지 않고 새 런처로 재시도한다`() {
+        val failingController = AndroidOnboardingPermissionController(
+            access = access,
+            launchRuntimePermissions = { throw IllegalStateException("Launcher unavailable") },
+            launchSettings = { settingsRequests += it },
+        )
+        failingController.request(OnboardingPermission.Notifications, results::add)
+
+        assertEquals(listOf(OnboardingPermissionStatus.Unavailable), results)
+        assertEquals(OnboardingPermissionStatus.Requestable, access.status(OnboardingPermission.Notifications))
+        assertFalse(NotificationPermissionPrompt.tryAcquire(context))
+
+        failingController.bind(access, { runtimeRequests += it }, { settingsRequests += it })
+        failingController.request(OnboardingPermission.Notifications, results::add)
+        assertEquals(1, runtimeRequests.size)
+        assertTrue(settingsRequests.isEmpty())
+        shadowOf(context).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        failingController.completeRequest()
+        assertEquals(OnboardingPermissionStatus.Granted, results.last())
     }
 
     @Test
@@ -227,6 +321,27 @@ class AndroidOnboardingPermissionControllerTest {
 
         assertEquals(listOf(OnboardingPermissionStatus.Granted), results)
         assertEquals(1, runtimeRequests.size)
+    }
+
+    @Test
+    fun `액티비티 재생성 중 알림 팝업을 취소해도 새 화면에서 재요청할 수 있다`() {
+        controller.request(OnboardingPermission.Notifications, results::add)
+        controller.unbind(access)
+        controller.completeRequest()
+        assertTrue(results.isEmpty())
+
+        controller.bind(
+            access = AndroidOnboardingPermissionAccess(context),
+            launchRuntimePermissions = { runtimeRequests += it },
+            launchSettings = { settingsRequests += it },
+        )
+        controller.completeRequest()
+        controller.completeRequest()
+        assertEquals(listOf(OnboardingPermissionStatus.Requestable), results)
+
+        controller.request(OnboardingPermission.Notifications, results::add)
+        assertEquals(2, runtimeRequests.size)
+        assertTrue(settingsRequests.isEmpty())
     }
 
     @Test

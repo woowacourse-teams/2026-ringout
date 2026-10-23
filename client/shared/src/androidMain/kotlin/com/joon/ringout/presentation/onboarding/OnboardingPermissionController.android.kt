@@ -29,7 +29,10 @@ internal actual fun rememberOnboardingPermissionController(): OnboardingPermissi
     val resultHandler = remember { PermissionResultHandler() }
     val runtimePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { resultHandler.onResult() }
+    ) {
+        // A dismissed dialog may return an empty map or denied values without a user decision.
+        resultHandler.onResult()
+    }
     val settingsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { resultHandler.onResult() }
@@ -162,7 +165,10 @@ internal class AndroidOnboardingPermissionAccess(
             OnboardingPermission.Location -> preferences.edit()
                 .putBoolean(LocationPermissionRequested, true)
                 .apply()
-            OnboardingPermission.Notifications -> NotificationPermissionPrompt.markRequested(context)
+            OnboardingPermission.Notifications -> {
+                preferences.edit().putBoolean(NotificationPermissionRequestTracked, true).apply()
+                NotificationPermissionPrompt.markRequested(context)
+            }
         }
     }
 
@@ -197,17 +203,38 @@ internal class AndroidOnboardingPermissionAccess(
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
-            return requestStatus(
-                Manifest.permission.POST_NOTIFICATIONS,
-                NotificationPermissionPrompt.hasRequested(context),
-            )
+            val permission = Manifest.permission.POST_NOTIFICATIONS
+            if (isRevokedByPolicy(permission)) return OnboardingPermissionStatus.Restricted
+            if (shouldShowRationale(permission)) {
+                markNotificationDecisionObserved()
+                return OnboardingPermissionStatus.Requestable
+            }
+            if (preferences.getBoolean(NotificationPermissionDecisionObserved, false)) {
+                return OnboardingPermissionStatus.SettingsRequired
+            }
+            // The old shared prompt flag does not distinguish dismissal from permanent denial.
+            // Preserve its settings fallback; new tracked requests remain retryable until a decision.
+            return if (preferences.getBoolean(NotificationPermissionRequestTracked, false) ||
+                !NotificationPermissionPrompt.hasRequested(context)
+            ) {
+                OnboardingPermissionStatus.Requestable
+            } else {
+                OnboardingPermissionStatus.SettingsRequired
+            }
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) markNotificationDecisionObserved()
         val notificationsEnabled = context.getSystemService(NotificationManager::class.java)
             .areNotificationsEnabled()
         return if (notificationsEnabled) {
             OnboardingPermissionStatus.Granted
         } else {
             OnboardingPermissionStatus.SettingsRequired
+        }
+    }
+
+    private fun markNotificationDecisionObserved() {
+        if (!preferences.getBoolean(NotificationPermissionDecisionObserved, false)) {
+            preferences.edit().putBoolean(NotificationPermissionDecisionObserved, true).apply()
         }
     }
 
@@ -248,3 +275,5 @@ private data class AndroidPermissionBinding(
 )
 
 private const val LocationPermissionRequested = "onboarding_location_permission_requested"
+private const val NotificationPermissionRequestTracked = "onboarding_notification_permission_request_tracked"
+private const val NotificationPermissionDecisionObserved = "onboarding_notification_permission_decision_observed"
