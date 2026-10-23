@@ -16,6 +16,8 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
+import com.joon.ringout.presentation.navigation.supportsPredictiveBackTransitions
+import com.joon.ringout.presentation.navigation.NavigationBackAction
 
 @Composable
 internal fun ProfileChangeRoute(
@@ -46,10 +48,11 @@ internal fun ProfileChangeRoute(
         onDispose { viewModel.finishImageSelection() }
     }
     val uiState = viewModel.uiState
-    val onBack = { if (!uiState.isSaving) onBackClick() }
+    val onBack = { if (!viewModel.uiState.isSaving) onBackClick() }
+    if (supportsPredictiveBackTransitions) NavigationBackAction(onBack)
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = true,
+        isBackEnabled = !supportsPredictiveBackTransitions || uiState.isSaving,
         onBackCompleted = onBack,
     )
     var profileImage by remember { mutableStateOf<ImageBitmap?>(null) }

@@ -10,6 +10,8 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.presentation.navigation.supportsPredictiveBackTransitions
+import com.joon.ringout.presentation.navigation.NavigationBackAction
 
 /** 모임 메인 화면이 연결될 때 사용할 UI 진입점. 관리 전용 API에서 회원을 조회한다. */
 @Composable
@@ -26,10 +28,11 @@ internal fun RoomMemberManagementRoute(
         viewModel.onRouteVisible(roomId, authSessionState, sessionIdentity, routeToken)
     }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val handleBack = { if (!uiState.isRemoving) onBackClick() }
+    val handleBack = { if (!viewModel.uiState.value.isRemoving) onBackClick() }
+    if (supportsPredictiveBackTransitions) NavigationBackAction(handleBack)
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = true,
+        isBackEnabled = !supportsPredictiveBackTransitions || uiState.isRemoving,
         onBackCompleted = handleBack,
     )
     RoomMemberManagementScreen(

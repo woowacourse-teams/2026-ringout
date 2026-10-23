@@ -6,6 +6,9 @@ import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import com.joon.ringout.RingoutTheme
@@ -44,6 +47,65 @@ class DestinationManagementScreenTest {
             compose.onNodeWithContentDescription("장소 또는 주소 검색").assertDoesNotExist()
             compose.runOnIdle {
                 assertEquals(0, backs)
+                activity.get().onBackPressedDispatcher.onBackPressed()
+            }
+            compose.runOnIdle { assertEquals(1, backs) }
+        } finally { activity.pause().stop().destroy() }
+    }
+
+    @Test
+    fun `저장 중에는 시스템과 상단 뒤로가기를 막고 저장이 끝나면 다시 허용한다`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        var isSaving by mutableStateOf(true)
+        var backs = 0
+        try {
+            activity.get().setContent {
+                RingoutTheme {
+                    DestinationManagementScreen(
+                        destination = SavedDestination(9, "헬스장", "서울 중구", 37.56, 126.97),
+                        onBackClick = { backs++ },
+                        onSave = {},
+                        onDelete = {},
+                        isSaving = isSaving,
+                        mapContent = { Box(it) },
+                    )
+                }
+            }
+            compose.onNodeWithContentDescription("뒤로가기").performClick()
+            compose.runOnIdle { activity.get().onBackPressedDispatcher.onBackPressed() }
+            compose.runOnIdle {
+                assertEquals(0, backs)
+                isSaving = false
+            }
+            compose.runOnIdle { activity.get().onBackPressedDispatcher.onBackPressed() }
+            compose.runOnIdle { assertEquals(1, backs) }
+        } finally { activity.pause().stop().destroy() }
+    }
+
+    @Test
+    fun `삭제 확인 중 시스템 뒤로가기는 삭제와 화면 이동 없이 확인창만 닫는다`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        var backs = 0
+        var deletes = 0
+        try {
+            activity.get().setContent {
+                RingoutTheme {
+                    DestinationManagementScreen(
+                        destination = SavedDestination(9, "헬스장", "서울 중구", 37.56, 126.97),
+                        onBackClick = { backs++ },
+                        onSave = {},
+                        onDelete = { deletes++ },
+                        mapContent = { Box(it) },
+                    )
+                }
+            }
+            compose.onNodeWithContentDescription("목적지 삭제").performClick()
+            compose.onNodeWithText("목적지 삭제").assertIsDisplayed()
+            compose.runOnIdle { activity.get().onBackPressedDispatcher.onBackPressed() }
+            compose.onNodeWithText("목적지 삭제").assertDoesNotExist()
+            compose.runOnIdle {
+                assertEquals(0, backs)
+                assertEquals(0, deletes)
                 activity.get().onBackPressedDispatcher.onBackPressed()
             }
             compose.runOnIdle { assertEquals(1, backs) }
