@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   deploy:
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -27,13 +28,14 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ vars.FRONTEND_NODE_VERSION || '22' }}
+          package-manager-cache: false
 
       - name: Build frontend
         working-directory: ${{ env.FRONTEND_DIR }}
@@ -55,13 +57,14 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
         run: |
           set -euo pipefail
-          test -n "$EC2_HOST"
-          test -n "$EC2_USER"
-          test -n "$SSH_PRIVATE_KEY"
-          [[ "$EC2_PORT" =~ ^[0-9]+$ ]]
-          [[ "$S3_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]]
-          [[ "$DISTRIBUTION_ID" =~ ^[A-Z0-9]+$ ]]
-          [[ "$AWS_REGION" =~ ^[a-z0-9-]+$ ]]
+          fail() { printf '::error::%s\n' "$1"; exit 1; }
+          test -n "$EC2_HOST" || fail 'SERVER_HOST is missing.'
+          test -n "$EC2_USER" || fail 'SERVER_USERNAME is missing.'
+          test -n "$SSH_PRIVATE_KEY" || fail 'SERVER_SSH_KEY is missing.'
+          [[ "$EC2_PORT" =~ ^[0-9]+$ ]] || fail 'SERVER_SSH_PORT is missing or invalid.'
+          [[ "$S3_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || fail 'FRONTEND_S3_BUCKET variable is missing or invalid; use a bucket name only.'
+          [[ "$DISTRIBUTION_ID" =~ ^[A-Z0-9]+$ ]] || fail 'FRONTEND_CLOUDFRONT_DISTRIBUTION_ID variable is missing or invalid; use the distribution ID, not its domain.'
+          [[ "$AWS_REGION" =~ ^[a-z0-9-]+$ ]] || fail 'AWS_REGION is invalid.'
           install -m 700 -d ~/.ssh
           # Restrict permissions before creating the private key, not afterwards.
           umask 077
