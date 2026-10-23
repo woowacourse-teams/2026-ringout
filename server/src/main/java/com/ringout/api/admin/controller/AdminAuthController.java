@@ -30,9 +30,12 @@ public class AdminAuthController {
     @GetMapping("/login")
     @Operation(summary = "관리자 구글 로그인 시작", security = {},
             description = "브라우저에서 이 URL로 이동하세요. Swagger Try it out은 외부 구글 로그인 이동을 지원하지 않습니다. "
-                    + "최초 로그인은 PENDING으로 등록되어 403을 반환합니다. DB 승인 후 다시 로그인하세요.")
+                    + "최초 로그인은 PENDING으로 등록되어 관리자 웹의 승인 대기 화면으로 이동합니다. DB 승인 후 다시 로그인하세요.")
     public ResponseEntity<Void> login() {
-        if (!enabled) return ResponseEntity.status(503).build();
+        if (!enabled) {
+            return ResponseEntity.status(302)
+                    .location(URI.create("/#auth-result?error=ADMIN_LOGIN_UNAVAILABLE")).build();
+        }
         return ResponseEntity.status(302)
                 .location(URI.create("/api/v1/admin/oauth2/authorization/google")).build();
     }
