@@ -21,6 +21,7 @@ final class FirebaseMessagingAdapter {
     private var pendingRoomActivityPush: PendingRoomActivityPush?
     private var handledNotificationIdentifiers = Set<String>()
     private var permissionRequestInFlight = false
+    private var permissionCallbacks: [(OnboardingPermissionStatus) -> Void] = []
     private(set) var latestToken: String?
 
     private init() {}
@@ -94,13 +95,35 @@ final class FirebaseMessagingAdapter {
         }
     }
 
-    func requestNotificationPermissionIfNeeded() {
+    func notificationPermissionStatus() async -> OnboardingPermissionStatus {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .notDetermined: return .requestable
+        case .authorized, .provisional, .ephemeral: return .granted
+        case .denied: return .settingsrequired
+        @unknown default: return .unavailable
+        }
+    }
+
+    func registerForRemoteNotificationsIfAuthorized() {
+        Task { @MainActor in
+            guard await notificationPermissionStatus() == .granted else { return }
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+    }
+
+    func requestNotificationPermissionIfNeeded(
+        onResult: ((OnboardingPermissionStatus) -> Void)? = nil
+    ) {
+        if let onResult {
+            permissionCallbacks.append(onResult)
+        }
         guard !permissionRequestInFlight else { return }
         permissionRequestInFlight = true
         Task {
-            defer { permissionRequestInFlight = false }
             let center = UNUserNotificationCenter.current()
             let settings = await center.notificationSettings()
+            var requestFailed = false
             switch settings.authorizationStatus {
             case .notDetermined:
                 do {
@@ -110,6 +133,7 @@ final class FirebaseMessagingAdapter {
                     }
                 } catch {
                     logger.error("Notification permission request failed.")
+                    requestFailed = true
                 }
             case .authorized, .provisional, .ephemeral:
                 UIApplication.shared.registerForRemoteNotifications()
@@ -118,6 +142,16 @@ final class FirebaseMessagingAdapter {
             @unknown default:
                 break
             }
+            let status: OnboardingPermissionStatus
+            if requestFailed {
+                status = .unavailable
+            } else {
+                status = await notificationPermissionStatus()
+            }
+            let callbacks = permissionCallbacks
+            permissionCallbacks.removeAll()
+            permissionRequestInFlight = false
+            callbacks.forEach { $0(status) }
         }
     }
 }

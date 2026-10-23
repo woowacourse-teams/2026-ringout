@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
         FirebaseMessagingAdapter.shared.updateToken(Messaging.messaging().fcmToken)
+        FirebaseMessagingAdapter.shared.registerForRemoteNotificationsIfAuthorized()
         return true
     }
 
