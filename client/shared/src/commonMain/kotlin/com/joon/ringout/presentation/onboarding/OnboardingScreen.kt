@@ -3,8 +3,10 @@ package com.joon.ringout.presentation.onboarding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -34,6 +36,7 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.onboarding.component.OnboardingPage
 import com.joon.ringout.presentation.onboarding.component.OnboardingPageIndicator
+import com.joon.ringout.presentation.onboarding.component.OnboardingPermissionPage
 import com.joon.ringout.presentation.onboarding.component.OnboardingPrimaryButton
 import com.joon.ringout.ringoutColors
 import kotlinx.coroutines.flow.drop
@@ -55,6 +58,10 @@ internal fun OnboardingScreen(
     val currentPageIndex by rememberUpdatedState(uiState.currentStepIndex)
     var isSynchronizingPage by remember { mutableStateOf(false) }
     val busy = !completionEnabled || (uiState.isCompletionRequested && !completionFailed)
+    val permission = uiState.step.permission
+    val permissionStatus = permission?.let { uiState.permissions[it] }
+    val isRequestingPermission = uiState.requestingPermission != null
+    val introductionPageCount = uiState.steps.count { it.permission == null }
 
     fun isRequestedPageSettled(): Boolean =
         !pagerState.isScrollInProgress && pagerState.settledPage == uiState.currentStepIndex
@@ -71,7 +78,12 @@ internal fun OnboardingScreen(
         snapshotFlow { pagerState.settledPage }
             .drop(1)
             .collect { page ->
-                if (!isSynchronizingPage && page != currentPageIndex) currentOnPageChanged(page)
+                if (!isSynchronizingPage && page != currentPageIndex) {
+                    // Gestures may enter the first permission page, but cannot skip it.
+                    val requestedPage = page.coerceAtMost(introductionPageCount)
+                    currentOnPageChanged(requestedPage)
+                    if (requestedPage != page) pagerState.scrollToPage(requestedPage)
+                }
             }
     }
     LaunchedEffect(pagerState) {
@@ -97,16 +109,30 @@ internal fun OnboardingScreen(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.weight(1f).fillMaxWidth().testTag("onboarding-pager"),
-                userScrollEnabled = !busy && !uiState.isCompletionRequested && !isSynchronizingPage,
+                userScrollEnabled = !busy && !uiState.isCompletionRequested && !isSynchronizingPage &&
+                    permission == null && !isRequestingPermission,
                 key = { uiState.steps[it].name },
             ) { page ->
-                OnboardingPage(step = uiState.steps[page])
+                val step = uiState.steps[page]
+                val pagePermission = step.permission
+                if (pagePermission == null) {
+                    OnboardingPage(step = step)
+                } else {
+                    OnboardingPermissionPage(
+                        step = step,
+                        status = uiState.permissions[pagePermission],
+                    )
+                }
             }
-            OnboardingPageIndicator(
-                pageCount = uiState.steps.size,
-                selectedPage = uiState.currentStepIndex,
-                modifier = Modifier.padding(vertical = 10.dp),
-            )
+            if (permission == null) {
+                OnboardingPageIndicator(
+                    pageCount = introductionPageCount,
+                    selectedPage = uiState.currentStepIndex,
+                    modifier = Modifier.padding(vertical = 10.dp),
+                )
+            } else {
+                Spacer(Modifier.height(30.dp))
+            }
             if (completionFailed) {
                 Text(
                     text = "시작하지 못했어요. 다시 시도해주세요.",
@@ -126,14 +152,18 @@ internal fun OnboardingScreen(
                     label = when {
                         busy -> "시작하는 중…"
                         completionFailed -> "다시 시도"
-                        uiState.isLastStep && isRequestedPageSettled() -> "시작하기"
+                        isRequestingPermission || permissionStatus == OnboardingPermissionStatus.Unknown -> "권한 확인 중…"
+                        permissionStatus == OnboardingPermissionStatus.SettingsRequired ||
+                            permissionStatus == OnboardingPermissionStatus.ServicesDisabled ||
+                            permissionStatus == OnboardingPermissionStatus.Restricted -> "설정 열기"
+                        permissionStatus == OnboardingPermissionStatus.Unavailable -> "다시 시도"
                         else -> "다음으로"
                     },
                     onClick = {
-                        // Read the live pager state so a tap during the final transition cannot submit.
-                        if (!uiState.isLastStep || isRequestedPageSettled()) onNext()
+                        // Permission prompts belong to the page that is fully visible, not a transition target.
+                        if (permission == null || isRequestedPageSettled()) onNext()
                     },
-                    enabled = !busy,
+                    enabled = !busy && !isRequestingPermission && permissionStatus != OnboardingPermissionStatus.Unknown,
                     modifier = Modifier.widthIn(max = 343.dp),
                 )
             }
@@ -174,13 +204,35 @@ private fun OnboardingDeparturePreview() = OnboardingPreview(OnboardingStep.Depa
 @Composable
 private fun OnboardingDepartureLightPreview() = OnboardingPreview(OnboardingStep.Departure, ThemeMode.Light)
 
+@Preview(name = "Location permission dark", widthDp = 402, heightDp = 941)
+@Preview(name = "Location permission compact", widthDp = 320, heightDp = 568, fontScale = 2f)
+@Composable
+private fun OnboardingLocationPermissionPreview() = OnboardingPreview(OnboardingStep.LocationPermission)
+
+@Preview(name = "Location permission light", widthDp = 402, heightDp = 941)
+@Composable
+private fun OnboardingLocationPermissionLightPreview() =
+    OnboardingPreview(OnboardingStep.LocationPermission, ThemeMode.Light)
+
+@Preview(name = "Notification permission dark", widthDp = 402, heightDp = 941)
+@Preview(name = "Notification permission compact", widthDp = 320, heightDp = 568, fontScale = 2f)
+@Composable
+private fun OnboardingNotificationPermissionPreview() = OnboardingPreview(OnboardingStep.NotificationPermission)
+
+@Preview(name = "Notification permission light", widthDp = 402, heightDp = 941)
+@Composable
+private fun OnboardingNotificationPermissionLightPreview() =
+    OnboardingPreview(OnboardingStep.NotificationPermission, ThemeMode.Light)
+
 @Preview(name = "Completing", widthDp = 402, heightDp = 941)
 @Composable
-private fun OnboardingCompletingPreview() = OnboardingPreview(OnboardingStep.Departure, completionEnabled = false)
+private fun OnboardingCompletingPreview() =
+    OnboardingPreview(OnboardingStep.NotificationPermission, completionEnabled = false)
 
 @Preview(name = "Completion failed", widthDp = 402, heightDp = 941)
 @Composable
-private fun OnboardingCompletionFailedPreview() = OnboardingPreview(OnboardingStep.Departure, completionFailed = true)
+private fun OnboardingCompletionFailedPreview() =
+    OnboardingPreview(OnboardingStep.NotificationPermission, completionFailed = true)
 
 @Composable
 private fun OnboardingPreview(
@@ -191,7 +243,13 @@ private fun OnboardingPreview(
 ) {
     RingoutTheme(themeMode = theme) {
         OnboardingScreen(
-            uiState = OnboardingUiState(step = step),
+            uiState = OnboardingUiState(
+                step = step,
+                permissions = OnboardingPermissionState(
+                    location = OnboardingPermissionStatus.Requestable,
+                    notifications = OnboardingPermissionStatus.Requestable,
+                ),
+            ),
             onPageChanged = {},
             onPageSettled = {},
             onNext = {},

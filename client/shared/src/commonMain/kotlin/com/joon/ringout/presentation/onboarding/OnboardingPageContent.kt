@@ -22,4 +22,12 @@ internal fun OnboardingStep.pageContent(): OnboardingPageContent = when (this) {
         title = "알람을 끄고 출발해요",
         description = "알람을 끄고 목적지로 출발하세요.\n목적지에 도착하면 알람은 더 이상 울리지 않아요.",
     )
+    OnboardingStep.LocationPermission -> OnboardingPageContent(
+        title = "위치 권한을 허용해주세요",
+        description = "목적지 알람에는 위치 권한을 사용해요.\n위치 권한을 설정해주세요!",
+    )
+    OnboardingStep.NotificationPermission -> OnboardingPageContent(
+        title = "알림 권한을 허용해주세요",
+        description = "목적지 도착 소식을 알려드릴게요.\n알림 권한을 설정해주세요!",
+    )
 }

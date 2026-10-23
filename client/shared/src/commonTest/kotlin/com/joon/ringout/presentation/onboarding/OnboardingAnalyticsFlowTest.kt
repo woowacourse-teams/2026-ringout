@@ -58,7 +58,7 @@ class OnboardingAnalyticsFlowTest {
         val fixture = OnboardingAnalyticsFixture()
         val viewModel = OnboardingViewModel(analytics = fixture.recorder)
         viewModel.onStepVisible(-1)
-        viewModel.onStepVisible(4)
+        viewModel.onStepVisible(6)
         assertEquals(emptyList(), fixture.events)
     }
 
@@ -77,7 +77,7 @@ class OnboardingAnalyticsFlowTest {
         viewModel.onSubmitAccepted()
         assertEquals(0, fixture.events.size)
         viewModel.onPageChanged(3)
-        assertEquals(OnboardingAdvance.Complete, viewModel.requestNext())
+        assertEquals(OnboardingAdvance.Complete, viewModel.completePermissions())
         viewModel.onSubmitAccepted()
         viewModel.onSubmitAccepted()
         assertEquals(OnboardingAdvance.None, viewModel.requestNext())
@@ -101,7 +101,7 @@ class OnboardingAnalyticsFlowTest {
         viewModel.onPageChanged(3)
         viewModel.onStepVisible(3)
         val eventCount = fixture.events.size
-        viewModel.requestNext()
+        viewModel.completePermissions()
         viewModel.onPageChanged(2)
         viewModel.back()
         viewModel.onStepVisible(3)
@@ -116,10 +116,18 @@ class OnboardingAnalyticsFlowTest {
         assertEquals(OnboardingStep.Destination, viewModel.uiState.value.step)
         viewModel.onPageChanged(3)
         viewModel.onStepVisible(3)
-        assertEquals(OnboardingAdvance.Complete, viewModel.requestNext())
+        assertEquals(OnboardingAdvance.Complete, viewModel.completePermissions())
         viewModel.onSubmitAccepted()
         assertEquals(OnboardingAdvance.None, viewModel.requestNext())
     }
+}
+
+private fun OnboardingViewModel.completePermissions(): OnboardingAdvance {
+    val permissions = OnboardingPermissionState(OnboardingPermissionStatus.Granted, OnboardingPermissionStatus.Granted)
+    onPermissionsRefreshed(permissions)
+    onPageChanged(OnboardingStep.NotificationPermission.ordinal)
+    requestNext()
+    return onPermissionResult(OnboardingPermission.Notifications, uiState.value.permissionRequestId, permissions)
 }
 
 private object FailingOnboardingAnalyticsRecorder : OnboardingAnalyticsRecorder {

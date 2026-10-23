@@ -6,6 +6,8 @@ enum class AnalyticsOnboardingStep(internal val wireName: String) {
     Destination("destination"),
     Interval("interval"),
     Departure("departure"),
+    LocationPermission("location_permission"),
+    NotificationPermission("notification_permission"),
 }
 
 interface OnboardingAnalyticsRecorder {
@@ -27,12 +29,13 @@ internal fun onboardingAnalyticsEvent(
     stepCount: Int,
     step: AnalyticsOnboardingStep? = null,
 ): AnalyticsEvent {
-    require(stepCount == 4)
+    require(stepCount == 4 || stepCount == 6)
+    require(step == null || step.ordinal < stepCount)
     return AnalyticsEvent(
         name = name,
         parameters = buildMap {
             put(AnalyticsParameterName.FlowName, AnalyticsParameterValue.Text("service_introduction"))
-            put(AnalyticsParameterName.FlowVersion, AnalyticsParameterValue.Number(2))
+            put(AnalyticsParameterName.FlowVersion, AnalyticsParameterValue.Number(if (stepCount == 6) 3 else 2))
             put(AnalyticsParameterName.StepCount, AnalyticsParameterValue.Number(stepCount.toLong()))
             if (step != null) {
                 put(AnalyticsParameterName.StepName, AnalyticsParameterValue.Text(step.wireName))

@@ -91,7 +91,7 @@ class OnboardingAnalyticsRecorderTest {
     @Test
     fun `유효하지 않은 흐름 정보는 이벤트를 전송하지 않고 시작 이벤트 기록 기회를 소진하지 않는다`() {
         val f = OnboardingAnalyticsFixture()
-        for (count in listOf(0, 3, 5, 6)) {
+        for (count in listOf(0, 3, 5, 7)) {
             f.recorder.recordOnboardingStarted(count)
             f.recorder.recordOnboardingStepViewed(AnalyticsOnboardingStep.Introduction, count)
             f.recorder.recordOnboardingSubmitted(count)
@@ -101,6 +101,23 @@ class OnboardingAnalyticsRecorderTest {
         f.recorder.recordOnboardingStarted(4)
         f.recorder.recordOnboardingCompleted(4)
         assertEquals(listOf("tutorial_begin", "tutorial_complete"), f.events.map { it.name.wireName })
+    }
+
+    @Test
+    fun `권한 안내가 추가된 여섯 단계는 새 버전과 마지막 알림 단계로 제출을 기록한다`() {
+        val f = OnboardingAnalyticsFixture()
+        f.recorder.recordOnboardingStarted(6)
+        AnalyticsOnboardingStep.entries.forEach { f.recorder.recordOnboardingStepViewed(it, 6) }
+        f.recorder.recordOnboardingSubmitted(6)
+        f.recorder.recordOnboardingCompleted(6)
+        assertEquals(9, f.events.size)
+        f.events.forEach {
+            assertEquals(AnalyticsParameterValue.Number(3), it.parameters[AnalyticsParameterName.FlowVersion])
+            assertEquals(AnalyticsParameterValue.Number(6), it.parameters[AnalyticsParameterName.StepCount])
+        }
+        val submit = f.events.single { it.name == AnalyticsEventName.OnboardingSubmit }
+        assertEquals(AnalyticsParameterValue.Text("notification_permission"), submit.parameters[AnalyticsParameterName.StepName])
+        assertEquals(AnalyticsParameterValue.Number(6), submit.parameters[AnalyticsParameterName.StepIndex])
     }
 
     @Test
