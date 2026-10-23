@@ -3,7 +3,11 @@ package com.joon.ringout.presentation.onboarding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -25,13 +29,23 @@ internal fun OnboardingRoute(
     val controller = permissionController ?: rememberOnboardingPermissionController()
     val currentOnComplete by rememberUpdatedState(onComplete)
     val currentRetryToken by rememberUpdatedState(completionRetryToken)
+    var permissionRefreshGeneration by remember { mutableIntStateOf(0) }
+    var isResumeRefreshComplete by remember { mutableStateOf(false) }
 
     LifecycleResumeEffect(controller, flow) {
+        isResumeRefreshComplete = false
+        val generation = ++permissionRefreshGeneration
         val requestId = flow.uiState.value.permissionRequestId
         controller.refresh { permissions ->
-            flow.onPermissionsRefreshed(permissions, requestId)
+            if (generation == permissionRefreshGeneration) {
+                flow.onPermissionsRefreshed(permissions, requestId)
+                isResumeRefreshComplete = true
+            }
         }
-        onPauseOrDispose { }
+        onPauseOrDispose {
+            permissionRefreshGeneration++
+            isResumeRefreshComplete = false
+        }
     }
 
     LaunchedEffect(flow, state.completionRequestToken) {
@@ -59,6 +73,18 @@ internal fun OnboardingRoute(
         }
     }
 
+    fun handleAdvance(advance: OnboardingAdvance) {
+        when (advance) {
+            OnboardingAdvance.RequestLocationPermission -> requestPermission(OnboardingPermission.Location)
+            OnboardingAdvance.RequestNotificationPermission -> requestPermission(OnboardingPermission.Notifications)
+            else -> Unit
+        }
+    }
+
+    LaunchedEffect(flow, state.settledStep, state.permissionStatus, completionEnabled, isResumeRefreshComplete) {
+        if (completionEnabled && isResumeRefreshComplete) handleAdvance(flow.requestPermissionOnEntry())
+    }
+
     PlatformBackHandler(enabled = state.currentStepIndex > 0) {
         if (completionEnabled && state.requestingPermission == null) flow.back()
     }
@@ -70,11 +96,7 @@ internal fun OnboardingRoute(
             // Rapid introduction taps may advance, but an old page must not request a permission.
             val latest = flow.uiState.value
             if (completionEnabled && (latest.step.permission == null || latest.step == state.step)) {
-                when (flow.requestNext(completionRetryToken)) {
-                    OnboardingAdvance.RequestLocationPermission -> requestPermission(OnboardingPermission.Location)
-                    OnboardingAdvance.RequestNotificationPermission -> requestPermission(OnboardingPermission.Notifications)
-                    else -> Unit
-                }
+                handleAdvance(flow.requestNext(completionRetryToken))
             }
         },
         modifier = modifier,

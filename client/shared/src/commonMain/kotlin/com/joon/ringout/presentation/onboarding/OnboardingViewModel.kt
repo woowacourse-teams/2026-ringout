@@ -26,6 +26,7 @@ internal data class OnboardingUiState(
     val requestingPermission: OnboardingPermission? = null,
     val permissionRequestId: Int = 0,
     val completionRequestToken: Int? = null,
+    val settledStep: OnboardingStep? = null,
 ) {
     val steps: List<OnboardingStep> get() = OnboardingStep.entries
     val currentStepIndex: Int get() = steps.indexOf(step)
@@ -44,11 +45,14 @@ internal class OnboardingViewModel(
     private var lastCompletionToken: Int? = null
     private var lastSubmittedToken: Int? = null
     private var lastViewedStep: OnboardingStep? = null
+    private val requestedPermissions = mutableSetOf<OnboardingPermission>()
 
     /** Recomposition and app resume do not count as a new page entry. */
     fun onStepVisible(index: Int) {
         val state = uiState.value
         val step = state.steps.getOrNull(index) ?: return
+        if (step != state.step) return
+        mutableUiState.value = state.copy(settledStep = step)
         if (lastViewedStep == step) return
         lastViewedStep = step
         runCatching {
@@ -75,6 +79,7 @@ internal class OnboardingViewModel(
             return OnboardingAdvance.None
         }
         if (state.permissions[permission] == OnboardingPermissionStatus.Unknown) return OnboardingAdvance.None
+        requestedPermissions += permission
         mutableUiState.value = state.copy(
             requestingPermission = permission,
             permissionRequestId = state.permissionRequestId + 1,
@@ -83,6 +88,16 @@ internal class OnboardingViewModel(
             OnboardingPermission.Location -> OnboardingAdvance.RequestLocationPermission
             OnboardingPermission.Notifications -> OnboardingAdvance.RequestNotificationPermission
         }
+    }
+
+    fun requestPermissionOnEntry(): OnboardingAdvance {
+        val state = uiState.value
+        val permission = state.step.permission ?: return OnboardingAdvance.None
+        if (state.settledStep != state.step || state.isCompletionRequested ||
+            state.requestingPermission != null || permission in requestedPermissions ||
+            state.permissions[permission] != OnboardingPermissionStatus.Requestable
+        ) return OnboardingAdvance.None
+        return requestNext()
     }
 
     fun onPermissionsRefreshed(
@@ -139,10 +154,11 @@ internal class OnboardingViewModel(
         val state = uiState.value
         if (state.isCompletionRequested || state.requestingPermission != null) return
         val step = state.steps.getOrNull(index) ?: return
+        if (step == state.step) return
         if (step == OnboardingStep.NotificationPermission &&
             state.permissions.location != OnboardingPermissionStatus.Granted
         ) return
-        mutableUiState.value = state.copy(step = step)
+        mutableUiState.value = state.copy(step = step, settledStep = null)
     }
 
     fun back() {

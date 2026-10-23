@@ -8,6 +8,91 @@ import kotlin.test.assertTrue
 
 class OnboardingStateTest {
     @Test
+    fun `권한 페이지에 완전히 도착한 뒤 최초 한 번만 자동으로 요청한다`() {
+        val flow = locationFlow()
+        assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
+        flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        assertEquals(OnboardingAdvance.RequestLocationPermission, flow.requestPermissionOnEntry())
+        repeat(3) {
+            flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+            assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
+        }
+        assertEquals(1, flow.uiState.value.permissionRequestId)
+    }
+
+    @Test
+    fun `페이지 진입 후 권한 상태가 늦게 확인되어도 자동 요청한다`() {
+        val flow = OnboardingViewModel()
+        flow.onPageChanged(OnboardingStep.LocationPermission.ordinal)
+        flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
+        flow.onPermissionsRefreshed(requestable)
+        assertEquals(OnboardingAdvance.RequestLocationPermission, flow.requestPermissionOnEntry())
+    }
+
+    @Test
+    fun `자동 요청을 거부하면 복귀와 재방문에도 다시 요청하지 않고 버튼으로 재시도한다`() {
+        val flow = locationFlow()
+        flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        flow.requestPermissionOnEntry()
+        flow.respond(OnboardingPermission.Location, requestable)
+        repeat(3) {
+            flow.onPermissionsRefreshed(requestable)
+            flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+            assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
+        }
+        flow.back()
+        flow.onStepVisible(OnboardingStep.Departure.ordinal)
+        flow.requestNext()
+        flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
+        assertEquals(OnboardingAdvance.RequestLocationPermission, flow.requestNext())
+        assertEquals(2, flow.uiState.value.permissionRequestId)
+    }
+
+    @Test
+    fun `허용된 권한과 설정이 필요한 권한은 진입만으로 요청하거나 설정을 열지 않는다`() {
+        listOf(
+            OnboardingPermissionStatus.Granted,
+            OnboardingPermissionStatus.SettingsRequired,
+            OnboardingPermissionStatus.Restricted,
+            OnboardingPermissionStatus.ServicesDisabled,
+            OnboardingPermissionStatus.Unavailable,
+        ).forEach { status ->
+            val flow = locationFlow()
+            flow.onPermissionsRefreshed(requestable.copy(location = status))
+            flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+            assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
+            assertNull(flow.uiState.value.requestingPermission)
+            assertEquals(OnboardingStep.LocationPermission, flow.uiState.value.step)
+        }
+    }
+
+    @Test
+    fun `버튼으로 먼저 요청한 권한은 응답 후 자동 요청으로 다시 열리지 않는다`() {
+        val flow = locationFlow()
+        flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        flow.requestNext()
+        flow.respond(OnboardingPermission.Location, requestable)
+        assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
+        assertEquals(1, flow.uiState.value.permissionRequestId)
+    }
+
+    @Test
+    fun `위치를 허용해도 알림 화면 전환이 끝나기 전에는 알림을 요청하지 않는다`() {
+        val flow = locationFlow()
+        flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        flow.requestPermissionOnEntry()
+        flow.respond(OnboardingPermission.Location, locationGranted)
+        assertEquals(OnboardingStep.NotificationPermission, flow.uiState.value.step)
+        assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
+        flow.onStepVisible(OnboardingStep.LocationPermission.ordinal)
+        assertEquals(OnboardingAdvance.None, flow.requestPermissionOnEntry())
+        flow.onStepVisible(OnboardingStep.NotificationPermission.ordinal)
+        assertEquals(OnboardingAdvance.RequestNotificationPermission, flow.requestPermissionOnEntry())
+    }
+
+    @Test
     fun `서비스 소개 네 페이지 뒤 위치와 알림 권한을 순서대로 허용해야 완료한다`() {
         val flow = OnboardingViewModel()
         flow.onPermissionsRefreshed(requestable)
