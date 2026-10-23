@@ -20,6 +20,8 @@ import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.destination.component.DestinationDeleteDialog
 import com.joon.ringout.presentation.destination.component.DestinationEditorPanel
 import com.joon.ringout.presentation.destination.component.normalizeDestinationNickname
+import com.joon.ringout.presentation.navigation.supportsPredictiveBackTransitions
+import com.joon.ringout.presentation.navigation.NavigationBackAction
 
 @Composable
 internal fun DestinationManagementScreen(
@@ -34,14 +36,18 @@ internal fun DestinationManagementScreen(
 ) {
     var nickname by rememberSaveable(destination.id) { mutableStateOf(destination.name) }
     var showDeleteConfirmation by rememberSaveable(destination.id) { mutableStateOf(false) }
+    val onBack = {
+        if (isActive && !isSaving) {
+            if (showDeleteConfirmation) showDeleteConfirmation = false else onBackClick()
+        }
+    }
+    if (supportsPredictiveBackTransitions && isActive) NavigationBackAction(onBack)
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = isActive,
-        onBackCompleted = {
-            if (!isSaving) {
-                if (showDeleteConfirmation) showDeleteConfirmation = false else onBackClick()
-            }
-        },
+        isBackEnabled = isActive && (
+            !supportsPredictiveBackTransitions || isSaving || showDeleteConfirmation
+            ),
+        onBackCompleted = onBack,
     )
     Box(modifier.fillMaxSize().imePadding()) {
         DestinationMapScreen(
