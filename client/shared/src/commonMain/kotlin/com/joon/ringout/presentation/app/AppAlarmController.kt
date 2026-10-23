@@ -3,7 +3,6 @@ package com.joon.ringout.presentation.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import com.joon.ringout.alarm.AlarmController
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.rememberAlarmController
@@ -18,9 +17,7 @@ internal fun rememberAppAlarmController(
     editorRoute: AppRoute?,
     alarmSetupViewModel: AlarmSetupViewModel?,
     homeViewModel: HomeViewModel,
-    onAlarmCreated: () -> Unit = {},
 ): AlarmController {
-    val currentOnAlarmCreated = rememberUpdatedState(onAlarmCreated)
     val callbacks = remember(
         navigationState,
         editorRoute,
@@ -32,7 +29,6 @@ internal fun rememberAppAlarmController(
             editorRoute = editorRoute,
             alarmSetupViewModel = alarmSetupViewModel,
             homeViewModel = homeViewModel,
-            onAlarmCreated = { currentOnAlarmCreated.value() },
         )
     }
     return rememberAlarmController(
@@ -54,14 +50,12 @@ internal class AppAlarmControllerCallbacks(
     private val editorRoute: AppRoute?,
     private val alarmSetupViewModel: AlarmSetupViewModel?,
     private val homeViewModel: HomeViewModel,
-    private val onAlarmCreated: () -> Unit = {},
 ) {
     fun onSaveCompleted(request: AlarmScheduleRequest) {
         if (
             editorRoute != null && navigationState.editorRoute == editorRoute &&
             alarmSetupViewModel?.onSaveCompleted(request) == true
         ) {
-            if (editorRoute == AppRoute.AddAlarm) onAlarmCreated()
             navigationState.navigate(AppRoute.Home)
         }
     }

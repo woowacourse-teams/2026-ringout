@@ -5,12 +5,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal enum class AlarmCreationGuideStep { AddAlarm, Time, Weekdays, Destination, Interval, Sound, CreateAlarm }
-internal enum class AlarmCreationGuideSurface { Home, Editor, Destination, Sound, Other }
-internal enum class AlarmCreationGuideSelection { Destination, Sound }
+internal enum class AlarmCreationGuideSurface { Home, Editor, Other }
 
 internal data class AlarmCreationGuideUiState(
     val step: AlarmCreationGuideStep? = null,
-    val selection: AlarmCreationGuideSelection? = null,
     val isFinishing: Boolean = false,
 )
 
@@ -18,90 +16,59 @@ internal data class AlarmCreationGuideUiState(
 internal class AlarmCreationGuideViewModel : ViewModel() {
     private val mutableUiState = MutableStateFlow(AlarmCreationGuideUiState())
     val uiState = mutableUiState.asStateFlow()
-    private var previousSurface = AlarmCreationGuideSurface.Other
+    private var currentSurface = AlarmCreationGuideSurface.Other
+    private var lastPresentedSurface = AlarmCreationGuideSurface.Other
+    private var canAdvance = false
 
     fun onContextChanged(
         isPending: Boolean,
         surface: AlarmCreationGuideSurface,
         canPresent: Boolean,
-        hasDestination: Boolean,
     ) {
+        currentSurface = surface
+        canAdvance = isPending && canPresent && surface != AlarmCreationGuideSurface.Other
         if (!isPending) {
             mutableUiState.value = AlarmCreationGuideUiState()
-            previousSurface = surface
+            lastPresentedSurface = AlarmCreationGuideSurface.Other
             return
         }
-        if (uiState.value.isFinishing) return
-        if (!canPresent) {
-            // A priority screen may interrupt selection before its navigation is observed.
-            // Retain the selection surface until the editor can safely resume the guide.
-            if (surface == AlarmCreationGuideSurface.Destination || surface == AlarmCreationGuideSurface.Sound) {
-                previousSurface = surface
-            }
-            return
-        }
+        if (uiState.value.isFinishing || !canPresent) return
         val state = uiState.value
-        when {
-            surface == AlarmCreationGuideSurface.Home -> {
-                // A discarded or process-restored editor starts again at the real Home button.
-                mutableUiState.value = state.copy(step = AlarmCreationGuideStep.AddAlarm, selection = null)
-            }
-            state.step != null && surface == AlarmCreationGuideSurface.Editor -> {
-                when {
-                    state.step == AlarmCreationGuideStep.Destination && hasDestination ->
-                        onDestinationSelectionFinished(true)
-                    state.selection == AlarmCreationGuideSelection.Destination &&
-                        previousSurface == AlarmCreationGuideSurface.Destination ->
-                        onDestinationSelectionFinished(false)
-                    state.selection == AlarmCreationGuideSelection.Sound &&
-                        previousSurface == AlarmCreationGuideSurface.Sound -> onSoundSelectionFinished(false)
-                }
-            }
+        if (surface == AlarmCreationGuideSurface.Home &&
+            (state.step == null || lastPresentedSurface != AlarmCreationGuideSurface.Home)
+        ) {
+            // Returning to Home starts over, but a pending Home-to-editor transition does not.
+            mutableUiState.value = state.copy(step = AlarmCreationGuideStep.AddAlarm)
         }
-        previousSurface = surface
+        lastPresentedSurface = surface
     }
 
-    /** Only the currently highlighted target may advance the explanation. */
-    fun onTargetPressed(step: AlarmCreationGuideStep): Boolean {
+    /** Advance the explanation without reading or changing the alarm draft. */
+    fun onNext(step: AlarmCreationGuideStep): Boolean {
         val state = uiState.value
-        if (state.step != step || state.selection != null || state.isFinishing) return false
+        val expectedSurface = if (step == AlarmCreationGuideStep.AddAlarm) {
+            AlarmCreationGuideSurface.Home
+        } else {
+            AlarmCreationGuideSurface.Editor
+        }
+        if (!canAdvance || currentSurface != expectedSurface || state.step != step || state.isFinishing) return false
         mutableUiState.value = when (step) {
             AlarmCreationGuideStep.AddAlarm -> state.copy(step = AlarmCreationGuideStep.Time)
             AlarmCreationGuideStep.Time -> state.copy(step = AlarmCreationGuideStep.Weekdays)
             AlarmCreationGuideStep.Weekdays -> state.copy(step = AlarmCreationGuideStep.Destination)
-            AlarmCreationGuideStep.Destination -> state.copy(selection = AlarmCreationGuideSelection.Destination)
+            AlarmCreationGuideStep.Destination -> state.copy(step = AlarmCreationGuideStep.Interval)
             AlarmCreationGuideStep.Interval -> state.copy(step = AlarmCreationGuideStep.Sound)
-            AlarmCreationGuideStep.Sound -> state.copy(selection = AlarmCreationGuideSelection.Sound)
-            AlarmCreationGuideStep.CreateAlarm -> state // The existing save result completes the guide.
+            AlarmCreationGuideStep.Sound -> state.copy(step = AlarmCreationGuideStep.CreateAlarm)
+            AlarmCreationGuideStep.CreateAlarm -> state.copy(isFinishing = true)
         }
         return true
     }
 
-    fun onDestinationSelectionFinished(hasDestination: Boolean) {
-        val state = uiState.value
-        if (state.step != AlarmCreationGuideStep.Destination || state.isFinishing) return
-        mutableUiState.value = state.copy(
-            step = if (hasDestination) AlarmCreationGuideStep.Interval else AlarmCreationGuideStep.Destination,
-            selection = null,
-        )
-    }
-
-    fun onSoundSelectionFinished(selected: Boolean) {
-        val state = uiState.value
-        if (state.selection != AlarmCreationGuideSelection.Sound || state.isFinishing) return
-        mutableUiState.value = state.copy(
-            step = if (selected) AlarmCreationGuideStep.CreateAlarm else AlarmCreationGuideStep.Sound,
-            selection = null,
-        )
-    }
-
-    fun onAlarmCreated(): Boolean = if (uiState.value.step == AlarmCreationGuideStep.CreateAlarm) finish() else false
-
     /** Keep a terminal state while persistence is pending or awaiting a retry. */
     fun finish(): Boolean {
         val state = uiState.value
-        if (state.step == null || state.isFinishing) return false
-        mutableUiState.value = state.copy(selection = null, isFinishing = true)
+        if (!canAdvance || state.step == null || state.isFinishing) return false
+        mutableUiState.value = state.copy(isFinishing = true)
         return true
     }
 }

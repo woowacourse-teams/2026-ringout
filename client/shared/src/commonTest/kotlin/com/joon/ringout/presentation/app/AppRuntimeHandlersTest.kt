@@ -81,33 +81,30 @@ class AppRuntimeHandlersTest {
     }
 
     @Test
-    fun `신규 알람의 승인된 저장 성공만 홈 이동 전에 생성 완료를 한 번 전달한다`() {
+    fun `신규 알람의 승인된 저장 성공만 처리하고 다른 요청과 중복 결과는 무시한다`() {
         val navigationState = AppNavigationState().apply { navigate(AppRoute.AddAlarm) }
         val alarmSetupViewModel = alarmSetupViewModelWithPendingSave()
         val request = requireNotNull(alarmSetupViewModel.uiState.pendingSaveRequest)
         val otherRequest = requireNotNull(alarmSetupViewModelWithPendingSave().uiState.pendingSaveRequest)
-        val routesAtCreation = mutableListOf<AppRoute>()
         val callbacks = AppAlarmControllerCallbacks(
             navigationState = navigationState,
             editorRoute = AppRoute.AddAlarm,
             alarmSetupViewModel = alarmSetupViewModel,
             homeViewModel = HomeViewModel(),
-            onAlarmCreated = { routesAtCreation += navigationState.requestedRoute },
         )
 
         callbacks.onSaveCompleted(otherRequest)
-        assertTrue(routesAtCreation.isEmpty())
+        assertEquals(AppRoute.AddAlarm, navigationState.requestedRoute)
         assertSame(request, alarmSetupViewModel.uiState.pendingSaveRequest)
         callbacks.onSaveCompleted(request)
         callbacks.onSaveCompleted(request)
 
-        assertEquals(listOf<AppRoute>(AppRoute.AddAlarm), routesAtCreation)
         assertEquals(AppRoute.Home, navigationState.requestedRoute)
         assertNull(alarmSetupViewModel.uiState.pendingSaveRequest)
     }
 
     @Test
-    fun `기존 알람 수정 저장은 성공해도 신규 생성 완료를 전달하지 않는다`() {
+    fun `기존 알람 수정 저장이 성공하면 요청을 해제하고 홈으로 이동한다`() {
         val originalRequest = requireNotNull(alarmSetupViewModelWithPendingSave().uiState.pendingSaveRequest)
         val editorRoute = AppRoute.EditAlarm(originalRequest.id)
         val navigationState = AppNavigationState().apply { navigate(editorRoute) }
@@ -117,40 +114,34 @@ class AppRuntimeHandlersTest {
             assertTrue(requestSave())
         }
         val updateRequest = requireNotNull(alarmSetupViewModel.uiState.pendingSaveRequest)
-        var creationCount = 0
         val callbacks = AppAlarmControllerCallbacks(
             navigationState = navigationState,
             editorRoute = editorRoute,
             alarmSetupViewModel = alarmSetupViewModel,
             homeViewModel = HomeViewModel(),
-            onAlarmCreated = { creationCount += 1 },
         )
 
         callbacks.onSaveCompleted(updateRequest)
 
-        assertEquals(0, creationCount)
         assertEquals(AppRoute.Home, navigationState.requestedRoute)
         assertNull(alarmSetupViewModel.uiState.pendingSaveRequest)
     }
 
     @Test
-    fun `신규 알람 저장이 실패하면 생성 완료를 전달하지 않고 편집 화면에 머문다`() {
+    fun `신규 알람 저장이 실패하면 늦은 성공 결과를 무시하고 편집 화면에 머문다`() {
         val navigationState = AppNavigationState().apply { navigate(AppRoute.AddAlarm) }
         val alarmSetupViewModel = alarmSetupViewModelWithPendingSave()
         val request = requireNotNull(alarmSetupViewModel.uiState.pendingSaveRequest)
-        var creationCount = 0
         val callbacks = AppAlarmControllerCallbacks(
             navigationState = navigationState,
             editorRoute = AppRoute.AddAlarm,
             alarmSetupViewModel = alarmSetupViewModel,
             homeViewModel = HomeViewModel(),
-            onAlarmCreated = { creationCount += 1 },
         )
 
         callbacks.onSaveError(request, "저장 실패")
         callbacks.onSaveCompleted(request)
 
-        assertEquals(0, creationCount)
         assertEquals(AppRoute.AddAlarm, navigationState.requestedRoute)
         assertEquals("저장 실패", alarmSetupViewModel.uiState.errorMessage)
         assertNull(alarmSetupViewModel.uiState.pendingSaveRequest)

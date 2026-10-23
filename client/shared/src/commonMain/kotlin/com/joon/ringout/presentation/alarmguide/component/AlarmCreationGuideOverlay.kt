@@ -2,8 +2,8 @@ package com.joon.ringout.presentation.alarmguide.component
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,10 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -37,6 +35,9 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -44,8 +45,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -63,10 +67,10 @@ import kotlin.math.roundToInt
 internal fun AlarmCreationGuideOverlay(
     step: AlarmCreationGuideStep,
     targetBounds: Rect?,
-    onTargetClick: () -> Unit,
+    onNext: () -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
-    targetEnabled: Boolean = true,
+    nextEnabled: Boolean = true,
     isFinishing: Boolean = false,
     finishFailed: Boolean = false,
     onRetryFinish: () -> Unit = {},
@@ -82,15 +86,35 @@ internal fun AlarmCreationGuideOverlay(
     }
     var origin by remember { mutableStateOf(Offset.Zero) }
     val hasCompletionState = isFinishing || finishFailed
+    val canAdvance = nextEnabled && !hasCompletionState
+    val currentCanAdvance by rememberUpdatedState(canAdvance)
+    val currentOnNext by rememberUpdatedState(onNext)
+    val nextActionLabel = if (step == AlarmCreationGuideStep.CreateAlarm) "가이드 마치기" else "다음 안내"
 
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .onGloballyPositioned { origin = it.positionInRoot() }
             .testTag("guide-overlay")
+            .pointerInput(Unit) {
+                detectGuideTaps(
+                    isEnabled = { currentCanAdvance },
+                    onTap = { currentOnNext() },
+                )
+            }
             .semantics {
                 isTraversalGroup = true
                 paneTitle = "알람 생성 가이드"
+                role = Role.Button
+                if (!canAdvance) disabled()
+                onClick(label = nextActionLabel) {
+                    if (currentCanAdvance) {
+                        currentOnNext()
+                        true
+                    } else {
+                        false
+                    }
+                }
             },
     ) {
         val bounds = targetBounds
@@ -102,15 +126,7 @@ internal fun AlarmCreationGuideOverlay(
         } else {
             with(density) { 20.dp.toPx() }
         }
-        Canvas(
-            Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) awaitPointerEvent().changes.forEach { it.consume() }
-                    }
-                },
-        ) {
+        Canvas(Modifier.fillMaxSize()) {
             val mask = Path().apply {
                 fillType = PathFillType.EvenOdd
                 addRect(Rect(Offset.Zero, size))
@@ -140,16 +156,8 @@ internal fun AlarmCreationGuideOverlay(
                 Modifier
                     .offset { IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()) }
                     .size(with(density) { bounds.width.toDp() }, with(density) { bounds.height.toDp() })
-                    .clip(if (step == AlarmCreationGuideStep.AddAlarm) CircleShape else RoundedCornerShape(20.dp))
                     .testTag("guide-target")
-                    .semantics { contentDescription = step.targetActionDescription }
-                    .clickable(
-                        enabled = targetEnabled,
-                        role = Role.Button,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onTargetClick,
-                    ),
+                    .semantics { contentDescription = step.targetDescription },
             )
         }
 
@@ -181,14 +189,48 @@ internal fun AlarmCreationGuideOverlay(
     }
 }
 
-private val AlarmCreationGuideStep.targetActionDescription: String
+private suspend fun PointerInputScope.detectGuideTaps(
+    isEnabled: () -> Boolean,
+    onTap: () -> Unit,
+) {
+    awaitEachGesture {
+        // Skip/retry consume their own down events. The overlay owns every other gesture,
+        // so the underlying settings never join the pointer hit path.
+        val down = awaitFirstDown(requireUnconsumed = true)
+        down.consume()
+        var isTap = isEnabled()
+        while (true) {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+            val hasAnotherPointer = event.changes.any { it.id != down.id && (it.pressed || it.previousPressed) }
+            val movedPastSlop = (change.position - down.position).getDistance() > viewConfiguration.touchSlop
+            val outsideOverlay = change.position.x < 0 || change.position.x > size.width ||
+                change.position.y < 0 || change.position.y > size.height
+            if (hasAnotherPointer || movedPastSlop || outsideOverlay || change.isConsumed) isTap = false
+
+            if (change.changedToUpIgnoreConsumed()) {
+                // Consume release before dismissing, including the final guide tap.
+                change.consume()
+                if (isTap && isEnabled()) onTap()
+                return@awaitEachGesture
+            }
+
+            // Leave movement to the annotation's scroll container, but never advance after
+            // that child (or an ancestor) takes over a gesture.
+            val finalEvent = awaitPointerEvent(PointerEventPass.Final)
+            if (finalEvent.changes.any { it.isConsumed }) isTap = false
+        }
+    }
+}
+
+private val AlarmCreationGuideStep.targetDescription: String
     get() = when (this) {
         AlarmCreationGuideStep.AddAlarm -> "알람 추가"
-        AlarmCreationGuideStep.Time -> "시간 안내를 확인하고 요일 안내로 이동"
-        AlarmCreationGuideStep.Weekdays -> "요일 안내를 확인하고 목적지 안내로 이동"
-        AlarmCreationGuideStep.Destination -> "목적지 선택"
-        AlarmCreationGuideStep.Interval -> "반복 간격 안내를 확인하고 다음 안내로 이동"
-        AlarmCreationGuideStep.Sound -> "알람음 선택"
+        AlarmCreationGuideStep.Time -> "알람 시간"
+        AlarmCreationGuideStep.Weekdays -> "반복 요일"
+        AlarmCreationGuideStep.Destination -> "목적지"
+        AlarmCreationGuideStep.Interval -> "반복 간격"
+        AlarmCreationGuideStep.Sound -> "알람음"
         AlarmCreationGuideStep.CreateAlarm -> "알람 생성"
     }
 
@@ -225,7 +267,7 @@ private fun AlarmCreationGuideOverlayPreview() {
             AlarmCreationGuideOverlay(
                 step = AlarmCreationGuideStep.AddAlarm,
                 targetBounds = with(LocalDensity.current) { Rect(314.dp.toPx(), 702.dp.toPx(), 372.dp.toPx(), 760.dp.toPx()) },
-                onTargetClick = {},
+                onNext = {},
                 onSkip = {},
             )
         }
@@ -240,7 +282,37 @@ private fun AlarmCreationGuideOverlayLightPreview() {
             AlarmCreationGuideOverlay(
                 step = AlarmCreationGuideStep.Destination,
                 targetBounds = with(LocalDensity.current) { Rect(20.dp.toPx(), 500.dp.toPx(), 382.dp.toPx(), 625.dp.toPx()) },
-                onTargetClick = {},
+                onNext = {},
+                onSkip = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "가이드 · 작은 화면 · 큰 글자 · 다크", widthDp = 320, heightDp = 568, fontScale = 2f)
+@Composable
+private fun AlarmCreationGuideOverlayCompactPreview() {
+    RingoutTheme(ThemeMode.Dark) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            AlarmCreationGuideOverlay(
+                step = AlarmCreationGuideStep.CreateAlarm,
+                targetBounds = with(LocalDensity.current) { Rect(20.dp.toPx(), 490.dp.toPx(), 300.dp.toPx(), 548.dp.toPx()) },
+                onNext = {},
+                onSkip = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "가이드 · 작은 화면 · 큰 글자 · 라이트", widthDp = 320, heightDp = 568, fontScale = 2f)
+@Composable
+private fun AlarmCreationGuideOverlayCompactLightPreview() {
+    RingoutTheme(ThemeMode.Light) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            AlarmCreationGuideOverlay(
+                step = AlarmCreationGuideStep.CreateAlarm,
+                targetBounds = with(LocalDensity.current) { Rect(20.dp.toPx(), 490.dp.toPx(), 300.dp.toPx(), 548.dp.toPx()) },
+                onNext = {},
                 onSkip = {},
             )
         }

@@ -18,14 +18,11 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
     displayedRoute: AppRoute,
     authSessionState: AuthSessionState,
     productAnalyticsRecorder: ProductAnalyticsRecorder,
-    onGuideDestinationSelectionFinished: (Boolean) -> Unit = {},
-    onGuideSoundSelected: () -> Unit = {},
 ) {
     entry<AppRoute.AddAlarm>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         if (navigation.hasValidDraft()) {
             AlarmEditorDestinationEntry(
                 navigation, route, displayedRoute, authSessionState, productAnalyticsRecorder,
-                onGuideDestinationSelectionFinished,
             )
         }
     }
@@ -75,7 +72,6 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
                 onSaveClick = { sound, analyticsContext ->
                     if (navigation.isActive(AppRoute.AlarmSound, displayedRoute)) {
                         navigation.onAlarmSoundSelected(displayedRoute, sound, analyticsContext)
-                        onGuideSoundSelected()
                     }
                 },
             )
@@ -90,7 +86,6 @@ private fun AlarmEditorDestinationEntry(
     displayedRoute: AppRoute,
     authSessionState: AuthSessionState,
     analytics: ProductAnalyticsRecorder,
-    onGuideDestinationSelectionFinished: (Boolean) -> Unit = {},
 ) {
     val isActive = navigation.isActive(route, displayedRoute)
     DestinationEntry(
@@ -108,7 +103,6 @@ private fun AlarmEditorDestinationEntry(
         onRetry = navigation.destinationViewModel::onScreenEntered,
         onManage = { navigation.onManageDestination(route, displayedRoute, it) },
         openRequestId = navigation.destinationDialogRequestId,
-        onSelectionFinished = { onGuideDestinationSelectionFinished(navigation.alarmSetupViewModel.uiState.canSave) },
     ) { onDestinationClick ->
         AlarmSetupRoute(
             viewModel = navigation.alarmSetupViewModel,

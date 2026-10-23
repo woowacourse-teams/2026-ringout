@@ -89,7 +89,7 @@ class DestinationEntryTest {
     }
 
     @Test
-    fun `지도에서 찾기로 화면이 비활성화되어도 목적지 선택 종료를 전달하지 않는다`() = withEntry(
+    fun `지도에서 찾기로 화면이 비활성화되면 목록을 닫고 지도를 한 번 연다`() = withEntry(
         listOf(Destination),
         deactivateOnMap = true,
     ) { state ->
@@ -98,14 +98,13 @@ class DestinationEntryTest {
         compose.waitForIdle()
         compose.runOnIdle {
             assertEquals(1, state.mapEntries)
-            assertEquals(0, state.selectionFinishes)
             assertNull(state.selected)
         }
         compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
     }
 
     @Test
-    fun `열린 목적지 목록이 화면 비활성화로 닫히면 선택 종료를 한 번 전달한다`() = withEntry(listOf(Destination)) { state ->
+    fun `열린 목적지 목록이 화면 비활성화로 닫히면 복귀 후에도 닫힌 상태를 유지한다`() = withEntry(listOf(Destination)) { state ->
         compose.onNodeWithText("목적지 설정").performClick()
         compose.onNodeWithText("저장된 목적지").assertIsDisplayed()
 
@@ -114,14 +113,12 @@ class DestinationEntryTest {
 
         compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
         compose.runOnIdle {
-            assertEquals(1, state.selectionFinishes)
             assertEquals(0, state.mapEntries)
             assertNull(state.selected)
             state.active.value = true
         }
         compose.waitForIdle()
         compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
-        compose.runOnIdle { assertEquals(1, state.selectionFinishes) }
     }
 
     @Test
@@ -226,7 +223,6 @@ class DestinationEntryTest {
                         onManage = { state.managed = it },
                         openRequestId = state.openRequest.value,
                         onRetry = { state.retries++ },
-                        onSelectionFinished = { state.selectionFinishes++ },
                     ) { onClick -> TextButton(onClick = onClick) { Text("목적지 설정") } }
                 }
             }
@@ -243,7 +239,6 @@ class DestinationEntryTest {
         val active = mutableStateOf(true)
         var retries = 0
         var mapEntries = 0
-        var selectionFinishes = 0
         var selected: SavedDestination? = null
     }
 }

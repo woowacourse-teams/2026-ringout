@@ -125,31 +125,26 @@ class AlarmCreationGuideNavigationTest {
     }
 
     @Test
-    fun `목적지 선택 중 뒤로가기 제스처는 선택 화면을 닫고 목적지 가이드를 이어간다`() =
-        assertPickerBackResumesGuide(Route.Destination, AlarmCreationGuideStep.Destination)
+    fun `목적지 안내 중 뒤로가기 제스처는 작성 화면을 유지하고 가이드만 종료한다`() =
+        assertBackEndsGuideWithoutNavigation(AlarmCreationGuideStep.Destination)
 
     @Test
-    fun `알람음 선택 중 뒤로가기 제스처는 선택 화면을 닫고 알람음 가이드를 이어간다`() =
-        assertPickerBackResumesGuide(Route.Sound, AlarmCreationGuideStep.Sound)
+    fun `알람음 안내 중 뒤로가기 제스처는 작성 화면을 유지하고 가이드만 종료한다`() =
+        assertBackEndsGuideWithoutNavigation(AlarmCreationGuideStep.Sound)
 
-    private fun assertPickerBackResumesGuide(picker: Route, step: AlarmCreationGuideStep) {
+    private fun assertBackEndsGuideWithoutNavigation(step: AlarmCreationGuideStep) {
         val fixture = Fixture(step)
         launch(fixture).use {
             compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
-            compose.runOnIdle {
-                assertTrue(fixture.viewModel.onTargetPressed(step))
-                fixture.backStack.add(picker)
-            }
-            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
-            compose.onNodeWithText("선택 화면").assertIsDisplayed()
             compose.runOnIdle { fixture.input.gesture() }
 
-            compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
+            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
+            compose.onNodeWithText("작성 중인 알람 07:20").assertIsDisplayed()
             compose.runOnIdle {
                 assertEquals(listOf(Route.Home, Route.Editor), fixture.backStack.toList())
-                assertEquals(step, fixture.viewModel.uiState.value.step)
-                assertEquals(0, fixture.finishCalls)
-                assertEquals(1, fixture.navigationBackCalls)
+                assertEquals(1, fixture.finishCalls)
+                assertEquals(0, fixture.navigationBackCalls)
+                assertEquals(0, fixture.editorDisposals)
             }
         }
     }
@@ -163,8 +158,6 @@ class AlarmCreationGuideNavigationTest {
             val surface = when (fixture.backStack.last()) {
                 Route.Home -> AlarmCreationGuideSurface.Home
                 Route.Editor -> AlarmCreationGuideSurface.Editor
-                Route.Destination -> AlarmCreationGuideSurface.Destination
-                Route.Sound -> AlarmCreationGuideSurface.Sound
             }
             val guideState by fixture.viewModel.uiState.collectAsState()
             AlarmCreationGuideRoute(
@@ -172,10 +165,10 @@ class AlarmCreationGuideNavigationTest {
                 isPending = fixture.isPending,
                 surface = surface,
                 canPresent = true,
-                hasDestination = fixture.hasDestination,
                 isAlarmSaving = fixture.isAlarmSaving,
                 isFinishing = guideState.isFinishing,
                 finishFailed = false,
+                onOpenEditor = { fixture.backStack.add(Route.Editor) },
                 onFinish = fixture::finish,
             ) {
                 // NavDisplay registers the same common back handler used by the production host.
@@ -197,15 +190,13 @@ class AlarmCreationGuideNavigationTest {
                             }
                             Text(draft)
                         }
-                        entry(Route.Destination) { Text("선택 화면") }
-                        entry(Route.Sound) { Text("선택 화면") }
                     },
                 )
             }
         }
     }
 
-    private enum class Route : NavKey { Home, Editor, Destination, Sound }
+    private enum class Route : NavKey { Home, Editor }
 
     private class Fixture(initialStep: AlarmCreationGuideStep = AlarmCreationGuideStep.Time) :
         NavigationEventDispatcherOwner {
@@ -219,16 +210,14 @@ class AlarmCreationGuideNavigationTest {
         var finishCalls = 0
         var editorDisposals = 0
         var navigationBackCalls = 0
-        var hasDestination = false
 
         init {
-            viewModel.onContextChanged(true, AlarmCreationGuideSurface.Home, true, false)
+            viewModel.onContextChanged(true, AlarmCreationGuideSurface.Home, true)
             while (viewModel.uiState.value.step != initialStep) {
                 val step = requireNotNull(viewModel.uiState.value.step)
-                viewModel.onTargetPressed(step)
-                if (step == AlarmCreationGuideStep.Destination) {
-                    hasDestination = true
-                    viewModel.onDestinationSelectionFinished(true)
+                check(viewModel.onNext(step))
+                if (step == AlarmCreationGuideStep.AddAlarm) {
+                    viewModel.onContextChanged(true, AlarmCreationGuideSurface.Editor, true)
                 }
             }
         }

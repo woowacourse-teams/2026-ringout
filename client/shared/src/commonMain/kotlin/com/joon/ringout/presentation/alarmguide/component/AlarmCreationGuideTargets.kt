@@ -10,7 +10,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
@@ -24,7 +23,6 @@ import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideStep
 
 internal data class AlarmCreationGuideTarget(
     val boundsInRoot: Rect,
-    val onClick: (() -> Unit)?,
 )
 
 @Stable
@@ -54,14 +52,9 @@ internal fun rememberAlarmCreationGuideTargets(): AlarmCreationGuideTargets = re
 
 internal fun Modifier.alarmCreationGuideTarget(
     step: AlarmCreationGuideStep,
-    onClick: (() -> Unit)? = null,
 ): Modifier = composed {
     val targets = LocalAlarmCreationGuideTargets.current ?: return@composed this
     val owner = remember { Any() }
-    val latestOnClick by rememberUpdatedState(onClick)
-    val click = remember(onClick != null) {
-        if (onClick == null) null else ({ latestOnClick?.invoke(); Unit })
-    }
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
 
     DisposableEffect(targets, step, owner) {
@@ -83,7 +76,6 @@ internal fun Modifier.alarmCreationGuideTarget(
                 target = AlarmCreationGuideTarget(
                     // Keep the full target bounds even while a scroll ancestor clips it.
                     boundsInRoot = Rect(coordinates.positionInRoot(), coordinates.size.toSize()),
-                    onClick = click,
                 ),
             )
         }

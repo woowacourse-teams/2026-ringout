@@ -88,10 +88,7 @@ fun AlarmSetupScreen(
             DestinationCard(
                 destination = uiState.destinationDisplayName,
                 onClick = onDestinationClick,
-                modifier = Modifier.alarmCreationGuideTarget(
-                    step = AlarmCreationGuideStep.Destination,
-                    onClick = onDestinationClick,
-                ),
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Destination),
             )
             LimitTimeCard(
                 minutes = uiState.limitMinutes,
@@ -101,10 +98,7 @@ fun AlarmSetupScreen(
             AlarmSoundCard(
                 soundName = uiState.alarmSound.name,
                 onClick = onAlarmSoundClick,
-                modifier = Modifier.alarmCreationGuideTarget(
-                    step = AlarmCreationGuideStep.Sound,
-                    onClick = onAlarmSoundClick,
-                ),
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Sound),
             )
         }
 
@@ -119,14 +113,7 @@ fun AlarmSetupScreen(
                 enabled = uiState.canSave && !uiState.isSaveInProgress,
                 isInProgress = uiState.isSaveInProgress,
                 onClick = onSaveClick,
-                modifier = Modifier.alarmCreationGuideTarget(
-                    step = AlarmCreationGuideStep.CreateAlarm,
-                    onClick = {
-                        if (uiState.canSave && !uiState.isSaveInProgress) {
-                            onSaveClick()
-                        }
-                    },
-                ),
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.CreateAlarm),
             )
         }
     }

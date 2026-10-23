@@ -23,7 +23,6 @@ internal fun DestinationEntry(
     onRetry: () -> Unit,
     onManage: (SavedDestination) -> Unit = {},
     openRequestId: Long = 0,
-    onSelectionFinished: () -> Unit = {},
     content: @Composable (onDestinationClick: () -> Unit) -> Unit,
 ) {
     var isRequested by rememberSaveable { mutableStateOf(false) }
@@ -40,7 +39,6 @@ internal fun DestinationEntry(
     LaunchedEffect(isActive, isRequested, canOpenMap) {
         if (!isActive && isRequested) {
             isRequested = false
-            onSelectionFinished()
         } else if (isRequested && canOpenMap) {
             isRequested = false
             onFindInMap()
@@ -56,12 +54,10 @@ internal fun DestinationEntry(
             destinations = uiState.destinations,
             onDismissRequest = {
                 isRequested = false
-                onSelectionFinished()
             },
             onSelect = {
                 isRequested = false
                 onSelect(it)
-                onSelectionFinished()
             },
             onFindInMap = {
                 isRequested = false

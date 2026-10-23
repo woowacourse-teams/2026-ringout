@@ -268,10 +268,7 @@ internal fun HomeAddAlarmButton(
 ) {
     Box(
         modifier = modifier
-            .alarmCreationGuideTarget(
-                step = AlarmCreationGuideStep.AddAlarm,
-                onClick = onClick,
-            )
+            .alarmCreationGuideTarget(AlarmCreationGuideStep.AddAlarm)
             .size(58.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary)

@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.alarmguide.component
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,13 +29,13 @@ import kotlin.math.roundToInt
 
 internal val AlarmCreationGuideStep.guideDescription: String
     get() = when (this) {
-        AlarmCreationGuideStep.AddAlarm -> "여기를 눌러 알람을 생성해 보세요."
+        AlarmCreationGuideStep.AddAlarm -> "여기에서 새 알람을 만들 수 있어요."
         AlarmCreationGuideStep.Time -> "알람이 울릴 시간을 정할 수 있어요."
         AlarmCreationGuideStep.Weekdays -> "알람이 울릴 요일을 정할 수 있어요."
-        AlarmCreationGuideStep.Destination -> "알람을 끄고 이동할 목적지를 정해요.\n목적지에 도착해야 알람이 반복해서 울리지 않아요."
+        AlarmCreationGuideStep.Destination -> "여기에서 알람을 끄고 이동할 목적지를 정해요.\n목적지에 도착하면 알람이 더 이상 울리지 않아요."
         AlarmCreationGuideStep.Interval -> "알람이 반복해서 울릴 간격을 설정해요.\n시간 안에 목적지에 도착하지 않으면\n알람이 다시 울려요."
-        AlarmCreationGuideStep.Sound -> "알람음을 설정할 수 있어요."
-        AlarmCreationGuideStep.CreateAlarm -> "이제 알람을 생성하세요!"
+        AlarmCreationGuideStep.Sound -> "여기에서 알람음을 선택할 수 있어요."
+        AlarmCreationGuideStep.CreateAlarm -> "이제 원하는 설정으로 알람을 만들어 보세요."
     }
 
 @Composable
@@ -56,7 +57,10 @@ internal fun AlarmCreationGuideAnnotation(
     Layout(
         modifier = modifier,
         content = {
-            Box(Modifier.verticalScroll(descriptionScrollState)) {
+            Column(
+                modifier = Modifier.verticalScroll(descriptionScrollState),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     text = step.guideDescription,
                     modifier = Modifier
@@ -69,6 +73,17 @@ internal fun AlarmCreationGuideAnnotation(
                     lineHeight = 22.sp,
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Heading),
+                )
+                Text(
+                    text = if (step == AlarmCreationGuideStep.CreateAlarm) {
+                        "화면을 터치하면 가이드가 끝나요."
+                    } else {
+                        "화면을 터치하면 다음 안내로 넘어가요."
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("guide-next-hint"),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
                 )
             }
             AlarmCreationGuideArrow(step)

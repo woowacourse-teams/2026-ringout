@@ -23,26 +23,25 @@ internal fun AlarmCreationGuideRoute(
     isPending: Boolean,
     surface: AlarmCreationGuideSurface,
     canPresent: Boolean,
-    hasDestination: Boolean,
     isAlarmSaving: Boolean,
     isFinishing: Boolean,
     finishFailed: Boolean,
+    onOpenEditor: () -> Unit,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val targets = rememberAlarmCreationGuideTargets()
-    // Do not key this effect on the guide step: navigation can settle after the target tap.
-    LaunchedEffect(isPending, surface, canPresent, hasDestination) {
-        viewModel.onContextChanged(isPending, surface, canPresent, hasDestination)
+    // Do not key this effect on the guide step: navigation can settle after the first guide tap.
+    LaunchedEffect(isPending, surface, canPresent) {
+        viewModel.onContextChanged(isPending, surface, canPresent)
     }
     val step = state.step
     val isGuideSurface = surface == AlarmCreationGuideSurface.Home || surface == AlarmCreationGuideSurface.Editor
-    val visible = isPending && canPresent && isGuideSurface && step != null &&
-        (state.isFinishing || state.selection == null)
+    val visible = isPending && canPresent && isGuideSurface && step != null
     SideEffect { targets.activeStep = step.takeIf { visible && !state.isFinishing } }
-    val finish = { if (viewModel.finish()) onFinish() }
+    val finish = { if (!isAlarmSaving && !isFinishing && viewModel.finish()) onFinish() }
 
     Box(modifier.fillMaxSize()) {
         // Dimmed controls remain unchanged visually and cannot receive accessibility actions.
@@ -51,18 +50,21 @@ internal fun AlarmCreationGuideRoute(
         }
         if (visible) {
             val target = targets[step]
-            val targetEnabled = !isAlarmSaving && !state.isFinishing &&
-                (step != AlarmCreationGuideStep.CreateAlarm || hasDestination)
+            val nextEnabled = !isAlarmSaving && !state.isFinishing && !isFinishing && target != null
             AlarmCreationGuideOverlay(
                 step = step,
                 targetBounds = target?.boundsInRoot,
-                onTargetClick = {
-                    if (targetEnabled && target != null && viewModel.onTargetPressed(step)) {
-                        target.onClick?.invoke()
+                onNext = {
+                    if (nextEnabled && viewModel.onNext(step)) {
+                        when (step) {
+                            AlarmCreationGuideStep.AddAlarm -> onOpenEditor()
+                            AlarmCreationGuideStep.CreateAlarm -> onFinish()
+                            else -> Unit
+                        }
                     }
                 },
                 onSkip = finish,
-                targetEnabled = targetEnabled && target != null,
+                nextEnabled = nextEnabled,
                 isFinishing = (state.isFinishing || isFinishing) && !finishFailed,
                 finishFailed = finishFailed,
                 onRetryFinish = onFinish,
@@ -71,7 +73,7 @@ internal fun AlarmCreationGuideRoute(
     }
     AlarmCreationGuideBackHandler(
         visible = visible,
-        isBusy = isAlarmSaving || state.isFinishing,
+        isBusy = isAlarmSaving || state.isFinishing || isFinishing,
         onFinish = finish,
     )
 }

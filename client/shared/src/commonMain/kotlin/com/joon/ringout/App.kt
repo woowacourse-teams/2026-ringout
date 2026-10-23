@@ -336,9 +336,6 @@ private fun RingoutAppContent(
         editorRoute = editorRoute,
         alarmSetupViewModel = alarmEditorNavigation?.alarmSetupViewModel,
         homeViewModel = homeViewModel,
-        onAlarmCreated = {
-            if (alarmCreationGuideViewModel.onAlarmCreated()) onAlarmCreationGuideFinished()
-        },
     )
     AppRuntimeCoordinator(
         authSessionState = authSessionState,
@@ -369,11 +366,15 @@ private fun RingoutAppContent(
     } else {
         null
     }
+    val onAddAlarm: () -> Unit = {
+        viewModelScopes.createAlarmEditorNavigation(navigationState, AppRoute.AddAlarm)
+            .startCreating(
+                initialTime = currentLocalClockSnapshot().to24HourTimeString(),
+            )
+    }
     val guideSurface = when (displayedRoute) {
         AppRoute.Home -> AlarmCreationGuideSurface.Home
         AppRoute.AddAlarm -> AlarmCreationGuideSurface.Editor
-        is AppRoute.Destination, is AppRoute.DestinationManagement -> AlarmCreationGuideSurface.Destination
-        AppRoute.AlarmSound -> AlarmCreationGuideSurface.Sound
         else -> AlarmCreationGuideSurface.Other
     }
     AlarmCreationGuideRoute(
@@ -385,10 +386,10 @@ private fun RingoutAppContent(
             authSessionState != AuthSessionState.Restoring &&
             authSessionState != AuthSessionState.ReauthenticationRequired &&
             (displayedRoute != AppRoute.Home || !homeViewModel.uiState.isLoading),
-        hasDestination = alarmEditorNavigation?.alarmSetupViewModel?.uiState?.canSave == true,
         isAlarmSaving = alarmEditorNavigation?.alarmSetupViewModel?.uiState?.isSaveInProgress == true,
         isFinishing = isSavingAlarmCreationGuide,
         finishFailed = hasAlarmCreationGuideSaveFailed,
+        onOpenEditor = onAddAlarm,
         onFinish = onAlarmCreationGuideFinished,
     ) {
         RingoutNavHost(
@@ -447,12 +448,7 @@ private fun RingoutAppContent(
                     alarmController = alarmController,
                     activeAlarmMission = activeAlarmMission,
                     onThemeModeChange = onThemeModeChange,
-                    onAddAlarm = {
-                        viewModelScopes.createAlarmEditorNavigation(navigationState, AppRoute.AddAlarm)
-                            .startCreating(
-                                initialTime = currentLocalClockSnapshot().to24HourTimeString(),
-                            )
-                    },
+                    onAddAlarm = onAddAlarm,
                     onEditAlarm = { request ->
                         viewModelScopes.createAlarmEditorNavigation(
                             navigationState,
@@ -500,8 +496,6 @@ private fun RingoutAppContent(
                         displayedRoute = displayedRoute,
                         authSessionState = authSessionState,
                         productAnalyticsRecorder = productAnalyticsRecorder,
-                        onGuideDestinationSelectionFinished = alarmCreationGuideViewModel::onDestinationSelectionFinished,
-                        onGuideSoundSelected = { alarmCreationGuideViewModel.onSoundSelectionFinished(true) },
                     )
                 }
             },

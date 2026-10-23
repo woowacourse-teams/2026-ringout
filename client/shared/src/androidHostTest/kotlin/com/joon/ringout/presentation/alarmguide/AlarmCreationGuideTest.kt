@@ -11,6 +11,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -41,6 +47,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -50,36 +57,113 @@ class AlarmCreationGuideTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
-    fun `딤드 영역을 눌러도 동작하지 않고 강조한 대상을 눌러야 다음 설명으로 이동한다`() {
+    fun `딤드와 설명과 강조 영역 어디를 눌러도 설정을 변경하지 않고 다음 안내로 이동한다`() {
         val fixture = Fixture()
         launch(fixture).use {
-            assertStep(AlarmCreationGuideStep.AddAlarm)
-            compose.onNodeWithTag("guide-overlay").performTouchInput {
-                click(Offset(4f, height / 2f))
+            val original = fixture.setup
+            AlarmCreationGuideStep.entries.forEachIndexed { index, step ->
+                assertStep(step)
+                // Real controls are hidden from accessibility while the guide owns input.
+                compose.onNodeWithText("월").assertDoesNotExist()
+                when (index % 3) {
+                    0 -> pressDimmedArea()
+                    1 -> compose.onNodeWithTag("guide-description").performTouchInput { click() }
+                    else -> pressTarget()
+                }
             }
+            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
             compose.runOnIdle {
-                assertEquals(0, fixture.addClicks)
-                assertEquals(AlarmCreationGuideStep.AddAlarm, fixture.viewModel.uiState.value.step)
-            }
-
-            pressTarget()
-            assertStep(AlarmCreationGuideStep.Time)
-            compose.runOnIdle { assertEquals(1, fixture.addClicks) }
-            val originalSettings = fixture.setup
-            val originalInputChanges = fixture.inputChanges
-            compose.onNodeWithTag("guide-overlay").performTouchInput {
-                click(Offset(4f, height / 2f))
-            }
-            assertStep(AlarmCreationGuideStep.Time)
-
-            pressTarget()
-            assertStep(AlarmCreationGuideStep.Weekdays)
-            pressTarget()
-            assertStep(AlarmCreationGuideStep.Destination)
-            compose.runOnIdle {
-                assertEquals(originalSettings, fixture.setup)
-                assertEquals(originalInputChanges, fixture.inputChanges)
+                assertEquals(1, fixture.addClicks)
+                assertEquals(1, fixture.finishCalls)
+                assertEquals(original, fixture.setup)
+                assertEquals(0, fixture.inputChanges)
                 assertEquals(0, fixture.destinationClicks)
+                assertEquals(0, fixture.soundClicks)
+                assertEquals(0, fixture.saveClicks)
+                assertEquals(AlarmCreationGuideSurface.Editor, fixture.surface)
+                assertFalse(fixture.isPending)
+                assertFalse(fixture.setup.canSave)
+            }
+            compose.onNodeWithText("목적지를 설정해주세요").assertIsNotEnabled()
+        }
+    }
+
+    @Test
+    fun `시간과 반복 간격을 드래그해도 가이드 아래의 설정값이 바뀌지 않는다`() {
+        val fixture = Fixture(AlarmCreationGuideStep.Time)
+        launch(fixture).use {
+            val original = fixture.setup
+            compose.onNodeWithTag("guide-target").performTouchInput { swipeUp() }
+            assertStep(AlarmCreationGuideStep.Time)
+            repeat(3) { pressDimmedArea() }
+            assertStep(AlarmCreationGuideStep.Interval)
+            compose.onNodeWithTag("guide-target").performTouchInput { swipeLeft() }
+            assertStep(AlarmCreationGuideStep.Interval)
+            compose.runOnIdle {
+                assertEquals(original, fixture.setup)
+                assertEquals(0, fixture.inputChanges)
+            }
+        }
+    }
+
+    @Test
+    fun `목적지와 알람음을 강조한 영역을 눌러도 선택 화면은 열리지 않는다`() {
+        val fixture = Fixture(AlarmCreationGuideStep.Destination)
+        launch(fixture).use {
+            pressTarget()
+            assertStep(AlarmCreationGuideStep.Interval)
+            pressTarget()
+            assertStep(AlarmCreationGuideStep.Sound)
+            pressTarget()
+            assertStep(AlarmCreationGuideStep.CreateAlarm)
+            compose.runOnIdle {
+                assertEquals(AlarmCreationGuideSurface.Editor, fixture.surface)
+                assertEquals(0, fixture.destinationClicks)
+                assertEquals(0, fixture.soundClicks)
+            }
+        }
+    }
+
+    @Test
+    fun `마지막 강조 영역 터치는 가이드만 닫고 이후 새 터치로만 알람을 저장한다`() {
+        val fixture = Fixture(AlarmCreationGuideStep.CreateAlarm).apply {
+            setup = setup.copy(destination = PreviewDestination)
+        }
+        launch(fixture).use {
+            assertStep(AlarmCreationGuideStep.CreateAlarm)
+            compose.onNodeWithTag("guide-next-hint").assertIsDisplayed()
+            pressTarget()
+            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
+            compose.runOnIdle {
+                assertEquals(1, fixture.finishCalls)
+                assertEquals(0, fixture.saveClicks)
+                assertEquals(PreviewDestination, fixture.setup.destination)
+            }
+            compose.onNodeWithText("저장").performTouchInput { click() }
+            compose.runOnIdle {
+                assertEquals(1, fixture.saveClicks)
+                assertTrue(fixture.setup.isSaveInProgress)
+            }
+        }
+    }
+
+    @Test
+    fun `가이드 종료 뒤 시간과 요일과 반복 간격을 자유롭게 수정한다`() {
+        val fixture = Fixture(AlarmCreationGuideStep.Time)
+        launch(fixture).use {
+            compose.onNodeWithTag("guide-skip").performTouchInput { click() }
+            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
+            val originalTime = fixture.setup.time
+            compose.onNodeWithContentDescription("시").performTouchInput { swipeUp() }
+            compose.runOnIdle { assertNotEquals(originalTime, fixture.setup.time) }
+            compose.onNodeWithText("월").performScrollTo().performTouchInput { click() }
+            compose.runOnIdle { assertFalse("월" in fixture.setup.selectedDays) }
+            compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress))
+                .performScrollTo()
+                .performSemanticsAction(SemanticsActions.SetProgress) { it(10f) }
+            compose.runOnIdle {
+                assertEquals(10, fixture.setup.limitMinutes)
+                assertEquals(1, fixture.finishCalls)
             }
         }
     }
@@ -113,69 +197,20 @@ class AlarmCreationGuideTest {
         assertSkipRestoresControls(AlarmCreationGuideStep.CreateAlarm)
 
     @Test
-    fun `목적지와 알람음 선택 중에는 가이드를 숨기고 취소하거나 선택해 돌아오면 알맞은 단계를 이어간다`() {
-        val fixture = Fixture(AlarmCreationGuideStep.Destination)
-        launch(fixture).use {
-            assertStep(AlarmCreationGuideStep.Destination)
-            pressTarget()
-            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
-            compose.onNodeWithText("목적지 선택 화면").assertIsDisplayed()
-            compose.runOnIdle { fixture.returnFromDestination(selected = false) }
-            assertStep(AlarmCreationGuideStep.Destination)
-
-            pressTarget()
-            compose.runOnIdle { fixture.returnFromDestination(selected = true) }
-            assertStep(AlarmCreationGuideStep.Interval)
-            val originalSettings = fixture.setup
-            pressTarget()
-            assertStep(AlarmCreationGuideStep.Sound)
-            compose.runOnIdle { assertEquals(originalSettings, fixture.setup) }
-
-            pressTarget()
-            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
-            compose.onNodeWithText("알람음 선택 화면").assertIsDisplayed()
-            compose.runOnIdle { fixture.returnFromSound(selected = false) }
-            assertStep(AlarmCreationGuideStep.Sound)
-            pressTarget()
-            compose.runOnIdle { fixture.returnFromSound(selected = true) }
-            assertStep(AlarmCreationGuideStep.CreateAlarm)
-            compose.runOnIdle {
-                assertEquals(2, fixture.destinationClicks)
-                assertEquals(2, fixture.soundClicks)
-                assertEquals(0, fixture.finishCalls)
-            }
+    fun `가이드 종료 저장 중에는 반복 터치나 건너뛰기로 실제 설정을 실행하지 않는다`() {
+        val fixture = Fixture(AlarmCreationGuideStep.CreateAlarm).apply {
+            holdFinish = true
+            setup = setup.copy(destination = PreviewDestination)
         }
-    }
-
-    @Test
-    fun `알람 저장 중에는 중복 입력을 막고 저장 실패 뒤에는 같은 버튼으로 재시도할 수 있다`() {
-        val fixture = Fixture(AlarmCreationGuideStep.CreateAlarm)
         launch(fixture).use {
-            assertStep(AlarmCreationGuideStep.CreateAlarm)
-            val destination = fixture.setup.destination
-            compose.runOnIdle { fixture.setup = fixture.setup.copy(destination = null) }
-            compose.onNodeWithTag("guide-target").assertIsNotEnabled().performTouchInput { click() }
-            compose.runOnIdle {
-                assertEquals(0, fixture.saveClicks)
-                fixture.setup = fixture.setup.copy(destination = destination)
-            }
             pressTarget()
-            compose.onNodeWithTag("guide-target").assertIsNotEnabled().performTouchInput { click() }
-            compose.runOnIdle {
-                assertEquals(1, fixture.saveClicks)
-                assertEquals(0, fixture.finishCalls)
-                fixture.setup = fixture.setup.copy(isScheduling = false, errorMessage = "저장 실패")
-            }
-            assertStep(AlarmCreationGuideStep.CreateAlarm)
-            pressTarget()
-            compose.runOnIdle {
-                assertEquals(2, fixture.saveClicks)
-                fixture.completeAlarmSave()
-            }
-            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
+            repeat(3) { pressDimmedArea() }
+            compose.onNodeWithTag("guide-skip").assertIsNotEnabled().performTouchInput { click() }
+            compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
             compose.runOnIdle {
                 assertEquals(1, fixture.finishCalls)
-                assertFalse(fixture.isPending)
+                assertEquals(0, fixture.saveClicks)
+                assertEquals(0, fixture.inputChanges)
             }
         }
     }
@@ -185,10 +220,10 @@ class AlarmCreationGuideTest {
         val fixture = Fixture().apply { failNextFinish = true }
         launch(fixture).use {
             assertStep(AlarmCreationGuideStep.AddAlarm)
-            compose.onNodeWithTag("guide-skip").performClick()
+            compose.onNodeWithTag("guide-skip").performTouchInput { click() }
             compose.onNodeWithTag("guide-target").assertDoesNotExist()
             compose.onNodeWithText("가이드 종료를 저장하지 못했어요.").assertIsDisplayed()
-            compose.onNodeWithText("다시 시도").assertIsDisplayed().performClick()
+            compose.onNodeWithText("다시 시도").assertIsDisplayed().performTouchInput { click() }
             compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
             compose.runOnIdle {
                 assertEquals(2, fixture.finishCalls)
@@ -210,11 +245,28 @@ class AlarmCreationGuideTest {
         captureGuideJourney(fontScale = 2f, compact = true)
     }
 
+    @Test
+    @Config(qualifiers = "w320dp-h568dp")
+    fun `작은 화면에서 설명을 드래그하면 안내를 넘기지 않고 스크롤한다`() {
+        val fixture = Fixture(AlarmCreationGuideStep.Time)
+        launch(fixture, fontScale = 2f).use {
+            val scrollArea = compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy))
+            scrollArea.performTouchInput { swipeUp() }
+            compose.runOnIdle {
+                assertEquals(AlarmCreationGuideStep.Time, fixture.viewModel.uiState.value.step)
+                assertEquals(0, fixture.inputChanges)
+            }
+            assertTrue(scrollArea.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value() > 0f)
+            compose.onNodeWithTag("guide-next-hint").assertIsDisplayed().performTouchInput { click() }
+            assertStep(AlarmCreationGuideStep.Weekdays)
+        }
+    }
+
     private fun assertSkipRestoresControls(step: AlarmCreationGuideStep) {
         val fixture = Fixture(step)
         launch(fixture).use {
             assertStep(step)
-            compose.onNodeWithTag("guide-skip").assertIsDisplayed().performClick()
+            compose.onNodeWithTag("guide-skip").assertIsDisplayed().performTouchInput { click() }
             compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
             compose.runOnIdle {
                 assertFalse(fixture.isPending)
@@ -256,12 +308,6 @@ class AlarmCreationGuideTest {
                         content.captureLayout("$prefix-${theme.name.lowercase()}-${step.name.lowercase()}")
                     }
                     pressTarget()
-                    when (step) {
-                        AlarmCreationGuideStep.Destination -> compose.runOnIdle { fixture.returnFromDestination(true) }
-                        AlarmCreationGuideStep.Sound -> compose.runOnIdle { fixture.returnFromSound(true) }
-                        AlarmCreationGuideStep.CreateAlarm -> compose.runOnIdle { fixture.completeAlarmSave() }
-                        else -> Unit
-                    }
                 }
                 compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
                 compose.runOnIdle { assertEquals(1, fixture.finishCalls) }
@@ -273,6 +319,10 @@ class AlarmCreationGuideTest {
         compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
         compose.onNodeWithTag("guide-target").assertIsDisplayed()
         compose.onNodeWithText(step.guideDescription).assertIsDisplayed()
+    }
+
+    private fun pressDimmedArea() {
+        compose.onNodeWithTag("guide-overlay").performTouchInput { click(Offset(4f, height / 2f)) }
     }
 
     private fun pressTarget() {
@@ -290,10 +340,10 @@ class AlarmCreationGuideTest {
                 isPending = fixture.isPending,
                 surface = fixture.surface,
                 canPresent = true,
-                hasDestination = fixture.setup.canSave,
                 isAlarmSaving = fixture.setup.isSaveInProgress,
                 isFinishing = false,
                 finishFailed = fixture.finishFailed,
+                onOpenEditor = fixture::openEditor,
                 onFinish = fixture::finish,
             ) {
                 FixtureScreen(fixture)
@@ -306,10 +356,7 @@ class AlarmCreationGuideTest {
         when (fixture.surface) {
             AlarmCreationGuideSurface.Home -> HomeScreen(
                 uiState = HomeUiState(isLoading = false),
-                onAddAlarm = {
-                    fixture.addClicks++
-                    fixture.surface = AlarmCreationGuideSurface.Editor
-                },
+                onAddAlarm = fixture::openEditor,
                 onAlarmClick = {},
                 onAlarmEnabledChange = { _, _ -> },
                 onAlarmDelete = {},
@@ -351,11 +398,11 @@ class AlarmCreationGuideTest {
                 onBackClick = { fixture.backClicks++ },
                 onDestinationClick = {
                     fixture.destinationClicks++
-                    fixture.surface = AlarmCreationGuideSurface.Destination
+                    fixture.surface = AlarmCreationGuideSurface.Other
                 },
                 onAlarmSoundClick = {
                     fixture.soundClicks++
-                    fixture.surface = AlarmCreationGuideSurface.Sound
+                    fixture.surface = AlarmCreationGuideSurface.Other
                 },
                 onSaveClick = {
                     fixture.saveClicks++
@@ -363,7 +410,7 @@ class AlarmCreationGuideTest {
                 },
             )
             else -> Box(Modifier.fillMaxSize()) {
-                Text(if (fixture.surface == AlarmCreationGuideSurface.Destination) "목적지 선택 화면" else "알람음 선택 화면")
+                Text("선택 화면")
             }
         }
     }
@@ -375,6 +422,7 @@ class AlarmCreationGuideTest {
         var setup by mutableStateOf(AlarmSetupUiState())
         var finishFailed by mutableStateOf(false)
         var failNextFinish = false
+        var holdFinish = false
         var addClicks = 0
         var destinationClicks = 0
         var soundClicks = 0
@@ -384,42 +432,20 @@ class AlarmCreationGuideTest {
         var finishCalls = 0
 
         init {
-            viewModel.onContextChanged(true, AlarmCreationGuideSurface.Home, true, false)
+            viewModel.onContextChanged(true, surface, true)
             while (viewModel.uiState.value.step != initialStep) {
                 val step = requireNotNull(viewModel.uiState.value.step)
-                viewModel.onTargetPressed(step)
-                when (step) {
-                    AlarmCreationGuideStep.AddAlarm -> surface = AlarmCreationGuideSurface.Editor
-                    AlarmCreationGuideStep.Destination -> returnFromDestination(selected = true)
-                    AlarmCreationGuideStep.Sound -> returnFromSound(selected = true)
-                    else -> Unit
+                check(viewModel.onNext(step))
+                if (step == AlarmCreationGuideStep.AddAlarm) {
+                    surface = AlarmCreationGuideSurface.Editor
+                    viewModel.onContextChanged(true, surface, true)
                 }
             }
         }
 
-        fun returnFromDestination(selected: Boolean) {
-            if (selected) {
-                setup = setup.copy(
-                    destination = DestinationSelection(
-                        name = "아침 운동 공원",
-                        address = "서울특별시 중구 세종대로 110",
-                        latitude = 37.5665851,
-                        longitude = 126.9782038,
-                    ),
-                )
-            }
-            viewModel.onDestinationSelectionFinished(setup.canSave)
+        fun openEditor() {
+            addClicks++
             surface = AlarmCreationGuideSurface.Editor
-        }
-
-        fun returnFromSound(selected: Boolean) {
-            viewModel.onSoundSelectionFinished(selected)
-            surface = AlarmCreationGuideSurface.Editor
-        }
-
-        fun completeAlarmSave() {
-            setup = setup.copy(isScheduling = false)
-            if (viewModel.onAlarmCreated()) finish()
         }
 
         fun finish() {
@@ -429,8 +455,15 @@ class AlarmCreationGuideTest {
                 finishFailed = true
             } else {
                 finishFailed = false
-                isPending = false
+                if (!holdFinish) isPending = false
             }
         }
     }
 }
+
+private val PreviewDestination = DestinationSelection(
+    name = "아침 운동 공원",
+    address = "서울특별시 중구 세종대로 110",
+    latitude = 37.5665851,
+    longitude = 126.9782038,
+)
