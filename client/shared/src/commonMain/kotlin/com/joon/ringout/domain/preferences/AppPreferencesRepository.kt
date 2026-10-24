@@ -13,5 +13,7 @@ interface AppPreferencesRepository {
 
     suspend fun markOnboardingCompleted()
 
+    suspend fun completeAlarmCreationGuide()
+
     suspend fun saveTermConsents(records: List<TermConsentRecord>)
 }

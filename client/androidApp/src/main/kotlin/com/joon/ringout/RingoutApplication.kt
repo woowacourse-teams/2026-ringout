@@ -1,10 +1,14 @@
 package com.joon.ringout
 
 import android.app.Application
+import android.util.Log
+import com.google.firebase.messaging.FirebaseMessaging
 import com.kakao.sdk.common.KakaoSdk
 import com.google.android.libraries.places.api.Places
 import com.joon.ringout.di.AndroidAppContainer
 import com.joon.ringout.di.AppContainer
+import com.joon.ringout.data.push.AndroidFcmTokenSource
+import com.joon.ringout.push.PushNotifications
 
 class RingoutApplication : Application() {
     lateinit var appContainer: AppContainer
@@ -12,6 +16,12 @@ class RingoutApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        PushNotifications.createChannel(this)
+        FirebaseMessaging.getInstance().token
+            .addOnSuccessListener(AndroidFcmTokenSource::updateInitial)
+            .addOnFailureListener {
+                Log.w("RingoutPush", "Initial FCM token fetch failed")
+            }
         check(BuildConfig.MAPS_API_KEY.isNotBlank()) {
             "MAPS_API_KEY must be set in local.properties or the environment"
         }

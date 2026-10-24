@@ -11,20 +11,21 @@ import com.joon.ringout.domain.destination.SavedDestination
 @Composable
 internal fun DestinationRoute(
     viewModel: DestinationViewModel,
-    initialSelection: DestinationSelection,
+    initialSelection: DestinationSelection?,
     requestId: Long,
     authSessionState: AuthSessionState,
     productAnalyticsRecorder: ProductAnalyticsRecorder,
     isActive: Boolean,
     onBackClick: () -> Unit,
     onSavedDestinationConfirmClick: (SavedDestination) -> Unit,
+    onConfirmWithoutSave: (DestinationSelection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState = viewModel.uiState
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
     // A new fix must not change the initial camera of an already displayed map.
     val entrySelection = remember(viewModel, requestId) {
-        viewModel.initialCurrentLocation() ?: initialSelection
+        viewModel.initialCurrentLocation() ?: initialSelection ?: DefaultDestinationSelection
     }
 
     DestinationMapScreen(
@@ -42,6 +43,9 @@ internal fun DestinationRoute(
         onSavedDestinationConfirmClick = { destination ->
             if (isActive) onSavedDestinationConfirmClick(destination)
         },
+        onConfirmWithoutSave = { destination ->
+            if (isActive) onConfirmWithoutSave(destination.withAddressAsName())
+        },
         savedDestinations = uiState.destinations,
         onSavedDestinationRename = { id, nickname ->
             if (isActive) viewModel.rename(id, nickname)
@@ -55,7 +59,7 @@ internal fun DestinationRoute(
             }
         },
         isSaveInProgress = uiState.isSaving,
-        isDestinationActionEnabled = isActive && analyticsLoginState != null,
+        isDestinationActionEnabled = isActive && analyticsLoginState != null && uiState.hasLoadedDestinations,
         isBackHandlerEnabled = isActive,
         modifier = modifier,
     )

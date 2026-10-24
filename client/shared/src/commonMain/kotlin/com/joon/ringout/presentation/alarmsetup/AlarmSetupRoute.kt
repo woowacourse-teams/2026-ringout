@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.alarmsetup
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.joon.ringout.domain.destination.SavedDestination
 
 @Composable
 internal fun AlarmSetupRoute(
@@ -11,9 +12,10 @@ internal fun AlarmSetupRoute(
     onDestinationClick: () -> Unit,
     onAlarmSoundClick: () -> Unit,
     modifier: Modifier = Modifier,
+    savedDestinations: List<SavedDestination>? = null,
 ) {
     AlarmSetupScreen(
-        uiState = viewModel.uiState,
+        uiState = viewModel.uiState.copy(savedDestinations = savedDestinations),
         onAmPmChange = { isAm ->
             if (isActive) viewModel.updateAmPm(isAm)
         },

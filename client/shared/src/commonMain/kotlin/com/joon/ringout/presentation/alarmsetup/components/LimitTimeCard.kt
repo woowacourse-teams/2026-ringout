@@ -143,7 +143,7 @@ fun LimitTimeCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(14.dp),
+                    .heightIn(min = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -175,6 +175,7 @@ private val SliderThumbSize = 16.dp
 private val SliderThumbRadius = SliderThumbSize / 2
 
 @Preview(widthDp = 402)
+@Preview(name = "큰 글자 · 작은 화면", widthDp = 320, fontScale = 2f)
 @Composable
 private fun LimitTimeCardPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {

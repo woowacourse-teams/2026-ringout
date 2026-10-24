@@ -77,6 +77,7 @@ kotlin {
             kotlin.srcDir(generateApiConfig.flatMap { it.outputDirectory })
         }
         androidMain.dependencies {
+            implementation(libs.androidx.exifinterface)
             implementation(libs.androidx.work.runtime)
             implementation(libs.androidx.activity.compose)
             implementation(libs.compose.uiToolingPreview)

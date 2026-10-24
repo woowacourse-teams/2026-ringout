@@ -2,6 +2,28 @@
 
 Status (2026-10-10): recovery core implemented and physically observed in the product app. Dynamic foreground opening failed in the user test; automatic app opening with the installed deferred foreground build was subsequently confirmed by the user. No commit or full PRD completion claimed.
 
+## App direct stop and retry contract (2026-10-23)
+
+This change targets app ringing-screen dismissal. It must stop the actual ringing system UUID and await the same native journal/claim/scheduling implementation used by AlarmKit Intents. The app path must not enqueue legacy open/stop events or use legacy import as its return channel. Intent persistence and retry scheduling must still finish before foreground authentication.
+
+- A successful native result carries the latest persisted attempt and reservation UUID. Kotlin adopts that reservation and its original absolute deadline without scheduling a second retry. A retry's system UUID may differ from its source alarm ID; parent token and chain identity must survive dismissal.
+- Recovery and direct results share mission projection. Replaying the same occurrence must preserve the mission, deadline and UUID. A terminal or newer retry wins over a delayed direct result; direct revalidation reads a journal-only snapshot without importing legacy events or scheduling retries.
+- Native scheduling failure remains a persisted `FAILED` mission. OS stop failure, journal failure and an unsupported `NOT_FOUND` must not fabricate a successful stop. A previously handled matching execution may be adopted only with journal evidence.
+- Existing `UNKNOWN`/`IN_FLIGHT` attempts are not automatically resubmitted because an OS query is empty. Legacy IDs and deadlines remain authoritative; the change does not promise to heal previously imported `UNKNOWN` missions.
+- Mission and record ACKs remain independent. Record persistence or owner capture failure must not erase retry authority. Existing location acquisition grace, overlapping-mission policy, weekday schedules and late-success cancellation obligations remain required regression coverage.
+- OS stop and journal commit are separate operations. Process termination after OS stop but before commit is not covered by a no-loss guarantee. Restart recovery after a durable commit must preserve the recorded execution and deadline.
+- The `recordOpen`/`runtimeCustom` producer remains for protocol compatibility, with no callers in the new runtime dismissal path. The unused Kotlin `recordOpenAwait` helper was removed. Existing stored event decoding and legacy import remain available for older data.
+
+### Validation evidence for this change
+
+- CI now compiles and runs `AlarmRecoveryCommandTests.swift` with the actual Foundation command and journal sources immediately after the existing journal runner. The workflow contract suite verifies that the command source, test source and executable invocation remain wired into iOS CI.
+- `python3 -B -m unittest discover -s ci -p 'test_workflows.py' -v`: 9 tests PASS locally on 2026-10-23. This verifies workflow contracts, not AlarmKit or the Swift/Kotlin bridge.
+- `python3 -B -m unittest discover -s ci -p 'test_*.py'`: all 110 Python helper tests PASS locally on 2026-10-23.
+- Final native host run: all 14 command checks and 31 journal checks PASS. The command suite uses the real extracted core and temporary journal with only OS operations faked, including interrupted PENDING replay, tokenless roots, post-stop storage failure, compaction during OS await, and late terminal cancellation.
+- Although `xcode-select -p` reports `/Library/Developer/CommandLineTools`, explicit `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` selects Xcode 27.0, build 27A266a. The unsigned Debug app build for a generic iOS simulator destination succeeded, type-checking the new Swift/Kotlin bridge. Final build evidence is in `/tmp/ringout-direct-xcodebuild-final.log` (`BUILD SUCCEEDED`); a simulator app build does not establish real AlarmKit behavior.
+- Final `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./gradlew :shared:iosSimulatorArm64Test --console=plain`: all 1,196 tests PASS, zero failures/errors/skips. This includes direct retry projection with parent arrival evidence: no legacy recovery read, no reservation recovery, no Kotlin scheduling, and cancellation of both parent/child UUIDs. Evidence: `/tmp/ringout-direct-kotlin-tests-final.log` and `shared/build/test-results/iosSimulatorArm64Test/`. An initial fixture failure was corrected to exercise a parent after its deadline/location grace; product policy was preserved.
+- Device scenarios still require fresh evidence for original/retry app dismissal, locked Intent stop with canceled unlock, duplicate stop, scheduling denial/limits, restart after commit and terminal races. Record the OS/app build, timestamp, occurrence and reservation UUID for each observed result; avoid full snapshots, coordinates or account data. Historical physical evidence below applies only to the builds explicitly described there.
+
 ## Implemented behavior
 
 - Stop Intent commits an immutable source snapshot, stop time, original deadline, occurrence token and next reservation before any foreground authentication.

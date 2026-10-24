@@ -77,7 +77,7 @@ jobs:
         run: python3 ci/pipeline.py changes --platform ios
 
   quality:
-    name: iOS Kotlin and Swift journal tests
+    name: iOS Kotlin and Swift recovery tests
     needs: changes
     if: needs.changes.outputs.client_changed == 'true'
     runs-on: macos-26
@@ -112,6 +112,20 @@ jobs:
             ci/swift/AlarmRecoveryJournalTests.swift \
             -o "$RUNNER_TEMP/ringout-alarm-recovery-journal-tests"
           "$RUNNER_TEMP/ringout-alarm-recovery-journal-tests"
+      - name: Test mission arrival notification adapter
+        run: |
+          swiftc iosApp/iosApp/Platform/AlarmRecoveryJournal.swift \
+            iosApp/iosApp/Platform/MissionArrivalNotificationAdapter.swift \
+            ci/swift/MissionArrivalNotificationAdapterTests.swift \
+            -o "$RUNNER_TEMP/ringout-mission-arrival-notification-tests"
+          "$RUNNER_TEMP/ringout-mission-arrival-notification-tests"
+      - name: Test native alarm recovery commands
+        run: |
+          swiftc iosApp/iosApp/Platform/AlarmRecoveryJournal.swift \
+            iosApp/iosApp/Platform/AlarmRecoveryCommand.swift \
+            ci/swift/AlarmRecoveryCommandTests.swift \
+            -o "$RUNNER_TEMP/ringout-alarm-recovery-command-tests"
+          "$RUNNER_TEMP/ringout-alarm-recovery-command-tests"
       - name: Test shared Kotlin code on iOS simulator
         run: ./gradlew :shared:iosSimulatorArm64Test --stacktrace --profile
       - name: Upload Kotlin build timing reports

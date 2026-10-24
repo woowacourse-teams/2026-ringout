@@ -2,11 +2,12 @@ package com.joon.ringout.analytics
 
 /** Stable wire values, independent of translated screen titles. */
 enum class AnalyticsOnboardingStep(internal val wireName: String) {
-    Time("time"),
-    Weekdays("weekdays"),
+    Introduction("introduction"),
     Destination("destination"),
     Interval("interval"),
-    Sound("sound"),
+    Departure("departure"),
+    LocationPermission("location_permission"),
+    NotificationPermission("notification_permission"),
 }
 
 interface OnboardingAnalyticsRecorder {
@@ -28,13 +29,13 @@ internal fun onboardingAnalyticsEvent(
     stepCount: Int,
     step: AnalyticsOnboardingStep? = null,
 ): AnalyticsEvent {
-    require(stepCount == 4 || stepCount == 5)
+    require(stepCount == 4 || stepCount == 6)
     require(step == null || step.ordinal < stepCount)
     return AnalyticsEvent(
         name = name,
         parameters = buildMap {
-            put(AnalyticsParameterName.FlowName, AnalyticsParameterValue.Text("first_alarm"))
-            put(AnalyticsParameterName.FlowVersion, AnalyticsParameterValue.Number(1))
+            put(AnalyticsParameterName.FlowName, AnalyticsParameterValue.Text("service_introduction"))
+            put(AnalyticsParameterName.FlowVersion, AnalyticsParameterValue.Number(if (stepCount == 6) 3 else 2))
             put(AnalyticsParameterName.StepCount, AnalyticsParameterValue.Number(stepCount.toLong()))
             if (step != null) {
                 put(AnalyticsParameterName.StepName, AnalyticsParameterValue.Text(step.wireName))

@@ -9,7 +9,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -29,7 +28,7 @@ internal fun AlarmDestinationInfo(
     )
     val descriptionStyle = MaterialTheme.typography.bodySmall.copy(
         fontSize = 12.sp,
-        lineHeight = 14.sp,
+        lineHeight = 18.sp,
         fontWeight = FontWeight.Medium,
     )
 
@@ -44,8 +43,6 @@ internal fun AlarmDestinationInfo(
             },
             color = homeAlarmColors().cardSecondaryText,
             style = descriptionStyle,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = buildAnnotatedString {

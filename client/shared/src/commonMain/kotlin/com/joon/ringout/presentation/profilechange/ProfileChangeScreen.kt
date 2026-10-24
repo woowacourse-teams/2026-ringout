@@ -95,7 +95,8 @@ internal fun ProfileChangeScreen(
             ProfileImageEditor(
                 profileImage = profileImage,
                 profileImageUrl = uiState.profileImageUrl,
-                enabled = !uiState.isSaving,
+                enabled = !uiState.isSaving && !uiState.isPreparingImage,
+                isLoading = uiState.isImageLoading,
                 errorMessage = profileImageError,
                 onProfileImageChangeClick = onProfileImageChangeClick,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -157,7 +158,7 @@ internal fun ProfileChangeScreen(
                 ),
         ) {
             ProfileConfirmButton(
-                enabled = uiState.validation.isValid && !uiState.isSaving,
+                enabled = uiState.canConfirm,
                 isSaving = uiState.isSaving,
                 onClick = onConfirmClick,
             )

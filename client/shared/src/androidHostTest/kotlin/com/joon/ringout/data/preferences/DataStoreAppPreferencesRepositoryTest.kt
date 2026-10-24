@@ -26,9 +26,86 @@ import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DataStoreAppPreferencesRepositoryTest {
+    @Test
+    fun `새 사용자는 서비스 소개를 완료한 스냅샷부터 알람 생성 가이드를 시작한다`() = withRepository(
+        prefix = "ringout-new-user-guide-test",
+    ) { dataStore, repository ->
+        val initialSnapshot = repository.bootstrapState.first()
+        assertFalse(initialSnapshot.firstLaunchStatus.isOnboardingCompleted)
+        assertFalse(initialSnapshot.isAlarmCreationGuidePending)
+
+        repository.markOnboardingCompleted()
+
+        val preferences = dataStore.data.first()
+        assertEquals(true, preferences[booleanPreferencesKey("onboarding.completed")])
+        assertEquals(true, preferences[booleanPreferencesKey("onboarding.alarm_creation_guide_pending")])
+        val completedSnapshot = repository.bootstrapState.first()
+        assertTrue(completedSnapshot.firstLaunchStatus.isOnboardingCompleted)
+        assertTrue(completedSnapshot.isAlarmCreationGuidePending)
+    }
+
+    @Test
+    fun `이미 서비스 소개를 마친 기존 사용자는 가이드 상태가 없어도 가이드를 시작하지 않는다`() = withRepository(
+        prefix = "ringout-legacy-user-guide-test",
+    ) { dataStore, repository ->
+        dataStore.edit { preferences ->
+            preferences[booleanPreferencesKey("onboarding.completed")] = true
+        }
+
+        assertFalse(repository.bootstrapState.first().isAlarmCreationGuidePending)
+        repository.markOnboardingCompleted()
+        assertFalse(repository.bootstrapState.first().isAlarmCreationGuidePending)
+    }
+
+    @Test
+    fun `종료한 가이드는 서비스 소개 완료가 반복되어도 다시 시작하지 않는다`() = withRepository(
+        prefix = "ringout-completed-guide-test",
+    ) { _, repository ->
+        repository.markOnboardingCompleted()
+        repository.completeAlarmCreationGuide()
+        repository.markOnboardingCompleted()
+
+        assertFalse(repository.bootstrapState.first().isAlarmCreationGuidePending)
+        assertTrue(repository.bootstrapState.first().firstLaunchStatus.isOnboardingCompleted)
+    }
+
+    @Test
+    fun `가이드를 종료하면 앱을 다시 열어도 표시하지 않는다`() = runBlocking {
+        val directory = Files.createTempDirectory("ringout-guide-restoration-test").toFile()
+        val preferencesFile = directory.resolve("test.preferences_pb")
+        try {
+            val firstScope = dataStoreScope()
+            try {
+                val repository = DataStoreAppPreferencesRepository(
+                    createTestDataStore(preferencesFile, firstScope),
+                )
+                repository.markOnboardingCompleted()
+                repository.completeAlarmCreationGuide()
+            } finally {
+                firstScope.cancelAndJoinChildren()
+            }
+
+            val restoredScope = dataStoreScope()
+            try {
+                val restoredRepository = DataStoreAppPreferencesRepository(
+                    createTestDataStore(preferencesFile, restoredScope),
+                )
+                assertFalse(restoredRepository.bootstrapState.first().isAlarmCreationGuidePending)
+                restoredRepository.markOnboardingCompleted()
+                assertFalse(restoredRepository.bootstrapState.first().isAlarmCreationGuidePending)
+            } finally {
+                restoredScope.cancelAndJoinChildren()
+            }
+        } finally {
+            preferencesFile.delete()
+            directory.delete()
+        }
+    }
+
     @Test
     fun onePreferencesSnapshotContainsThemeAndFirstLaunchStatus() = withRepository(
         prefix = "ringout-bootstrap-snapshot-test",
@@ -120,6 +197,7 @@ class DataStoreAppPreferencesRepositoryTest {
 
                 assertEquals(ThemeMode.Light, restored.themeMode)
                 assertTrue(restored.firstLaunchStatus.isOnboardingCompleted)
+                assertTrue(restored.isAlarmCreationGuidePending)
                 assertEquals(
                     records.associateBy(TermConsentRecord::id),
                     restored.firstLaunchStatus.termConsents,

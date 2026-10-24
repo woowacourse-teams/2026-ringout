@@ -6,9 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
@@ -31,7 +31,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,6 +39,8 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.MissionRecoveryReservationState
 import com.joon.ringout.alarm.ActiveAlarmMission
+import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideStep
+import com.joon.ringout.presentation.alarmguide.component.alarmCreationGuideTarget
 import com.joon.ringout.presentation.common.component.MainScreenHeader
 import com.joon.ringout.ringoutColors
 import kotlinx.coroutines.delay
@@ -138,20 +139,18 @@ internal fun ActiveAlarmMissionRow(
             }
             .padding(16.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             Column(
-                modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = "목적지",
                     color = cardContentColor,
-                    maxLines = 1,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 11.sp,
                         lineHeight = 14.sp,
@@ -161,8 +160,6 @@ internal fun ActiveAlarmMissionRow(
                 Text(
                     text = mission.destinationName,
                     color = cardContentColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontSize = 20.sp,
                         lineHeight = 20.sp,
@@ -178,7 +175,6 @@ internal fun ActiveAlarmMissionRow(
                 Text(
                     text = "다음 알람까지",
                     color = cardContentColor,
-                    maxLines = 1,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 11.sp,
                         lineHeight = 14.sp,
@@ -188,7 +184,6 @@ internal fun ActiveAlarmMissionRow(
                 Text(
                     text = countdown,
                     color = cardContentColor,
-                    maxLines = 1,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontSize = 20.sp,
                         lineHeight = 20.sp,
@@ -273,6 +268,7 @@ internal fun HomeAddAlarmButton(
 ) {
     Box(
         modifier = modifier
+            .alarmCreationGuideTarget(AlarmCreationGuideStep.AddAlarm)
             .size(58.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primary)
@@ -299,6 +295,7 @@ private const val MillisecondsPerSecond = 1_000L
 private const val SecondsPerMinute = 60L
 
 @Preview
+@Preview(name = "큰 글자 · 작은 화면", widthDp = 320, fontScale = 2f)
 @Composable
 private fun DarkActiveAlarmMissionRowPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {

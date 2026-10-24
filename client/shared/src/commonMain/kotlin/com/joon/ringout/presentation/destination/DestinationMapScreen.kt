@@ -5,29 +5,30 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,15 +38,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -63,10 +68,13 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.presentation.common.TextInputLengthRule
 import com.joon.ringout.analytics.DestinationSelectionSource
+import com.joon.ringout.presentation.destination.component.DestinationSaveDialog
 import com.joon.ringout.domain.destination.SavedDestination
-import com.joon.ringout.presentation.destination.components.DestinationManagementDialog
-import com.joon.ringout.presentation.destination.components.DestinationNicknameDialog
-import com.joon.ringout.presentation.destination.components.DestinationShortcutRow
+import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbar
+import com.joon.ringout.presentation.destination.component.DestinationSearchScrollbarTouchWidth
+import com.joon.ringout.presentation.destination.component.DestinationMapMarker
+import com.joon.ringout.presentation.destination.component.DestinationManagementDialog
+import com.joon.ringout.presentation.destination.component.DestinationNicknameDialog
 import org.jetbrains.compose.resources.painterResource
 
 data class DestinationSelection(
@@ -95,6 +103,7 @@ fun DestinationMapScreen(
     onBackClick: () -> Unit,
     onConfirmClick: (SavedDestination) -> Unit,
     onSavedDestinationConfirmClick: (SavedDestination) -> Unit,
+    onConfirmWithoutSave: (DestinationSelection) -> Unit,
     savedDestinations: List<SavedDestination> = emptyList(),
     onSavedDestinationRename: (Long, String) -> Unit = { _, _ -> },
     onSavedDestinationDeleteClick: (Long) -> Unit = {},
@@ -103,6 +112,8 @@ fun DestinationMapScreen(
     isDestinationActionEnabled: Boolean = true,
     isBackHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier,
+    bottomContent: (@Composable (DestinationSelection, Boolean) -> Unit)? = null,
+    mapContent: (@Composable (Modifier) -> Unit)? = null,
 ) {
     var selection by remember(initialSelection) { mutableStateOf(initialSelection) }
     var isCameraMoving by remember { mutableStateOf(false) }
@@ -125,6 +136,7 @@ fun DestinationMapScreen(
     }
     var currentLocationError by remember { mutableStateOf<String?>(null) }
     var pendingSelection by remember { mutableStateOf<DestinationSelection?>(null) }
+    var pendingSaveDecision by remember { mutableStateOf<DestinationSelection?>(null) }
     var isDestinationManagementOpen by remember { mutableStateOf(false) }
     var nicknameEditingDestination by remember { mutableStateOf<SavedDestination?>(null) }
     var selectedSavedDestination by remember { mutableStateOf<SavedDestination?>(null) }
@@ -136,6 +148,7 @@ fun DestinationMapScreen(
     LaunchedEffect(isDestinationActionEnabled) {
         if (!isDestinationActionEnabled) {
             pendingSelection = null
+            pendingSaveDecision = null
             nicknameEditingDestination = null
             isDestinationManagementOpen = false
         }
@@ -144,13 +157,14 @@ fun DestinationMapScreen(
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
         isBackEnabled = isBackHandlerEnabled && (
-            nicknameEditingDestination != null || pendingSelection != null ||
+            nicknameEditingDestination != null || pendingSelection != null || pendingSaveDecision != null ||
                 isDestinationManagementOpen || isSearchOpen
             ),
         onBackCompleted = {
             when {
                 nicknameEditingDestination != null -> nicknameEditingDestination = null
                 pendingSelection != null -> pendingSelection = null
+                pendingSaveDecision != null -> pendingSaveDecision = null
                 isDestinationManagementOpen -> isDestinationManagementOpen = false
                 isSearchOpen -> isSearchOpen = false
                 else -> onBackClick()
@@ -158,19 +172,21 @@ fun DestinationMapScreen(
         },
     )
 
-    PlatformDestinationSearchEffect(
-        query = submittedQuery,
-        requestId = searchRequestId,
-        onLoadingChange = { isSearching = it },
-        onResults = {
-            searchResults = it
-            searchError = if (it.isEmpty()) "검색 결과가 없습니다." else null
-        },
-        onError = {
-            searchResults = emptyList()
-            searchError = it
-        },
-    )
+    if (isSearchOpen && submittedQuery != null) {
+        PlatformDestinationSearchEffect(
+            query = submittedQuery,
+            requestId = searchRequestId,
+            onLoadingChange = { isSearching = it },
+            onResults = {
+                searchResults = it
+                searchError = if (it.isEmpty()) "검색 결과가 없습니다." else null
+            },
+            onError = {
+                searchResults = emptyList()
+                searchError = it
+            },
+        )
+    }
 
     LaunchedEffect(savedDestinations) {
         val selectedId = selectedSavedDestination?.id ?: return@LaunchedEffect
@@ -204,7 +220,6 @@ fun DestinationMapScreen(
             searchResults = searchResults,
             isSearching = isSearching,
             searchError = searchError,
-            savedDestinations = savedDestinations,
             isLocatingCurrentLocation = isLocatingCurrentLocation,
             isSaveInProgress = isSaveInProgress,
             isDestinationActionEnabled = isDestinationActionEnabled,
@@ -213,7 +228,14 @@ fun DestinationMapScreen(
                 searchQuery = it
                 searchError = null
             },
-            onSearchClick = { isSearchOpen = true },
+            onSearchClick = {
+                searchQuery = ""
+                submittedQuery = null
+                searchResults = emptyList()
+                isSearching = false
+                searchError = null
+                isSearchOpen = true
+            },
             onSearchClose = { isSearchOpen = false },
             onSearchSubmit = {
                 val query = searchQuery.trim()
@@ -239,38 +261,23 @@ fun DestinationMapScreen(
                 isLocatingCurrentLocation = true
                 currentLocationRequestId += 1
             },
-            onDestinationManagementClick = {
-                isSearchOpen = false
-                isDestinationManagementOpen = true
-            },
-            onSavedDestinationClick = { savedDestination, source ->
-                if (isDestinationActionEnabled) {
-                    val savedSelection = savedDestination.toDestinationSelection()
-                    selection = savedSelection
-                    cameraTarget = savedSelection
-                    selectedSavedDestination = savedDestination
-                    onSavedDestinationSelected(source)
-                    mapError = null
-                    currentLocationError = null
-                    isSearchOpen = false
-                    searchResults = emptyList()
-                    searchError = null
-                }
-            },
             onConfirmClick = {
                 if (isDestinationActionEnabled) {
                     currentLocationCancellationId += 1
                     val savedDestination = savedDestinations.findAtLocation(selection)
                     if (savedDestination == null) {
-                        pendingSelection = selection
+                        pendingSaveDecision = selection
                     } else {
                         onSavedDestinationConfirmClick(savedDestination)
                     }
                 }
             },
             modifier = Modifier.fillMaxSize(),
+            bottomContent = bottomContent,
             mapContent = { mapModifier ->
-                PlatformDestinationMap(
+                if (mapContent != null) mapContent(mapModifier)
+                else if (LocalInspectionMode.current) Box(mapModifier)
+                else PlatformDestinationMap(
                     initialLatitude = initialSelection.latitude,
                     initialLongitude = initialSelection.longitude,
                     cameraTarget = cameraTarget,
@@ -299,7 +306,7 @@ fun DestinationMapScreen(
                         isCameraMoving = false
                         isResolvingAddress = shouldResolveAddress
                     },
-                    onAddressResolved = { latitude, longitude, placeName, address ->
+                    onAddressResolved = { latitude, longitude, _, address ->
                         if (
                             shouldApplyResolvedAddress(
                                 isResolvingAddress = isResolvingAddress,
@@ -309,16 +316,20 @@ fun DestinationMapScreen(
                                 longitude = longitude,
                             )
                         ) {
-                            selection = selection.withResolvedAddress(
+                            val resolvedSelection = selection.withResolvedAddress(
                                 latitude = latitude,
                                 longitude = longitude,
-                                placeName = placeName,
                                 address = address,
                             )
+                            selection = resolvedSelection
                             pendingSelection = pendingSelection?.withResolvedAddress(
                                 latitude = latitude,
                                 longitude = longitude,
-                                placeName = placeName,
+                                address = address,
+                            )
+                            pendingSaveDecision = pendingSaveDecision?.withResolvedAddress(
+                                latitude = latitude,
+                                longitude = longitude,
                                 address = address,
                             )
                             isResolvingAddress = false
@@ -374,6 +385,24 @@ fun DestinationMapScreen(
             )
         }
 
+        pendingSaveDecision?.let { selectedDestination ->
+            DestinationSaveDialog(
+                onDismissRequest = { pendingSaveDecision = null },
+                onSkipSave = {
+                    if (pendingSaveDecision != null && isDestinationActionEnabled) {
+                        pendingSaveDecision = null
+                        onConfirmWithoutSave(selectedDestination)
+                    }
+                },
+                onSave = {
+                    if (pendingSaveDecision != null && isDestinationActionEnabled) {
+                        pendingSaveDecision = null
+                        pendingSelection = selectedDestination
+                    }
+                },
+            )
+        }
+
         pendingSelection?.let { selectedDestination ->
             DestinationNicknameDialog(
                 address = selectedDestination.address,
@@ -395,7 +424,7 @@ fun DestinationMapScreen(
 }
 
 @Composable
-private fun DestinationMapLayout(
+internal fun DestinationMapLayout(
     selection: DestinationSelection,
     isCameraMoving: Boolean,
     isResolvingAddress: Boolean,
@@ -406,7 +435,6 @@ private fun DestinationMapLayout(
     searchResults: List<DestinationSelection>,
     isSearching: Boolean,
     searchError: String?,
-    savedDestinations: List<SavedDestination>,
     isLocatingCurrentLocation: Boolean,
     isSaveInProgress: Boolean,
     isDestinationActionEnabled: Boolean,
@@ -417,11 +445,10 @@ private fun DestinationMapLayout(
     onSearchSubmit: () -> Unit,
     onSearchResultClick: (DestinationSelection) -> Unit,
     onCurrentLocationClick: () -> Unit,
-    onDestinationManagementClick: () -> Unit,
-    onSavedDestinationClick: (SavedDestination, DestinationSelectionSource) -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
+    bottomContent: (@Composable (DestinationSelection, Boolean) -> Unit)? = null,
 ) {
     Box(
         modifier = modifier
@@ -463,99 +490,77 @@ private fun DestinationMapLayout(
             }
         }
 
+        if (isSearchOpen) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable(
+                        interactionSource = null,
+                        indication = null,
+                        onClickLabel = "검색 닫기",
+                        onClick = onSearchClose,
+                    )
+                    .semantics { contentDescription = "검색창 바깥 영역" },
+            )
+        }
+
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .zIndex(1f)
                 .statusBarsPadding()
                 .fillMaxWidth()
                 .padding(top = 16.dp),
         ) {
             FloatingMapHeader(
-                onBackClick = onBackClick,
+                isSearchOpen = isSearchOpen,
+                query = searchQuery,
+                onQueryChange = onSearchQueryChange,
+                onBackClick = if (isSearchOpen) onSearchClose else onBackClick,
                 onSearchClick = onSearchClick,
+                onSubmit = onSearchSubmit,
                 modifier = Modifier.padding(horizontal = 10.5.dp),
             )
-            if (!isSearchOpen) {
-                DestinationShortcutRow(
-                    destinations = savedDestinations,
-                    onManagementClick = onDestinationManagementClick,
-                    onDestinationClick = { savedDestination ->
-                        onSavedDestinationClick(
-                            savedDestination,
-                            DestinationSelectionSource.MapShortcut,
-                        )
-                    },
-                    modifier = Modifier.padding(
-                        start = 3.dp,
-                        top = 10.dp,
-                        end = 17.dp,
-                    ),
-                    enabled = isDestinationActionEnabled,
+            if (isSearchOpen && (isSearching || searchError != null || searchResults.isNotEmpty())) {
+                DestinationSearchResultsPanel(
+                    results = searchResults,
+                    isSearching = isSearching,
+                    error = searchError,
+                    onResultClick = onSearchResultClick,
+                    modifier = Modifier.padding(horizontal = 10.5.dp, vertical = 8.dp),
                 )
             }
         }
 
-        if (isSearchOpen) {
-            DestinationSearchPanel(
-                query = searchQuery,
-                results = searchResults,
-                isSearching = isSearching,
-                error = searchError,
-                onQueryChange = onSearchQueryChange,
-                onClose = onSearchClose,
-                onSubmit = onSearchSubmit,
-                onResultClick = onSearchResultClick,
-                onDestinationManagementClick = onDestinationManagementClick,
-                savedDestinations = savedDestinations,
-                onSavedDestinationClick = { savedDestination ->
-                    onSavedDestinationClick(
-                        savedDestination,
-                        DestinationSelectionSource.SearchShortcut,
-                    )
-                },
-                isDestinationActionEnabled = isDestinationActionEnabled,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .zIndex(1f)
-                    .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-            )
-        }
-
         if (mapError == null) {
-            AddressBubble(
-                title = when {
-                    isCameraMoving -> "위치를 선택하는 중..."
-                    isResolvingAddress -> "주소를 찾는 중..."
-                    else -> selection.name
-                },
-                address = when {
-                    isCameraMoving -> "지도를 움직여 위치를 선택하세요"
-                    else -> selection.address
-                },
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = (-110).dp),
-            )
-            CenterDestinationPin(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = (-29).dp),
+            val address = when {
+                isCameraMoving -> "지도를 움직여 위치를 선택하세요"
+                isResolvingAddress -> ResolvingDestinationAddress
+                else -> selection.address.ifBlank { UnavailableDestinationAddress }
+            }
+            DestinationMapMarker(
+                address = address,
+                modifier = Modifier.align(Alignment.Center),
             )
         }
 
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(start = 24.dp, end = 24.dp, bottom = 18.dp),
+                .then(if (bottomContent == null) Modifier.navigationBarsPadding() else Modifier)
+                .padding(
+                    start = if (bottomContent == null) 24.dp else 0.dp,
+                    end = if (bottomContent == null) 24.dp else 0.dp,
+                    bottom = if (bottomContent == null) 18.dp else 0.dp,
+                ),
             horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (bottomContent == null) 12.dp else 4.dp),
         ) {
             currentLocationError?.let {
                 CurrentLocationErrorMessage(message = it)
             }
             CurrentLocationButton(
+                modifier = if (bottomContent == null) Modifier else Modifier.padding(end = 17.dp),
                 enabled = canConfirmDestination(
                     isCameraMoving = isCameraMoving,
                     isLocatingCurrentLocation = isLocatingCurrentLocation,
@@ -565,7 +570,14 @@ private fun DestinationMapLayout(
                 isLoading = isLocatingCurrentLocation,
                 onClick = onCurrentLocationClick,
             )
-            ConfirmDestinationButton(
+            if (bottomContent != null) {
+                bottomContent(
+                    selection,
+                    isDestinationActionEnabled && !isResolvingAddress &&
+                        selection.isConfiguredDestination() && currentLocationError == null &&
+                        canConfirmDestination(isCameraMoving, isLocatingCurrentLocation, mapError, isSaveInProgress),
+                )
+            } else ConfirmDestinationButton(
                 enabled = isDestinationActionEnabled &&
                     selection.isConfiguredDestination() &&
                     currentLocationError == null &&
@@ -584,11 +596,30 @@ private fun DestinationMapLayout(
 
 @Composable
 private fun FloatingMapHeader(
+    isSearchOpen: Boolean,
+    query: String,
+    onQueryChange: (String) -> Unit,
     onBackClick: () -> Unit,
     onSearchClick: () -> Unit,
+    onSubmit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(15.dp)
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val isPreview = LocalInspectionMode.current
+
+    LaunchedEffect(isSearchOpen) {
+        if (!isPreview) {
+            if (isSearchOpen) {
+                focusRequester.requestFocus()
+            } else {
+                focusManager.clearFocus()
+                keyboardController?.hide()
+            }
+        }
+    }
 
     Row(
         modifier = modifier
@@ -596,6 +627,20 @@ private fun FloatingMapHeader(
             .height(62.dp)
             .background(Color.White, shape)
             .border(1.dp, HeaderBorder, shape)
+            .clip(shape)
+            .then(
+                if (isSearchOpen) {
+                    Modifier.pointerInput(Unit) { detectTapGestures(onTap = {}) }
+                } else {
+                    Modifier
+                        .clickable(
+                            role = Role.Button,
+                            onClickLabel = "목적지 검색 열기",
+                            onClick = onSearchClick,
+                        )
+                        .semantics { contentDescription = "검색" }
+                },
+            )
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -604,8 +649,10 @@ private fun FloatingMapHeader(
             modifier = Modifier
                 .size(44.dp)
                 .clickable(
+                    interactionSource = null,
+                    indication = null,
                     role = Role.Button,
-                    onClickLabel = "이전 화면으로 이동",
+                    onClickLabel = if (isSearchOpen) "검색 닫기" else "이전 화면으로 이동",
                     onClick = onBackClick,
                 )
                 .semantics { contentDescription = "뒤로가기" },
@@ -617,16 +664,60 @@ private fun FloatingMapHeader(
                 modifier = Modifier.size(44.dp),
             )
         }
+        if (isSearchOpen) {
+            BasicTextField(
+                value = query,
+                onValueChange = { proposed ->
+                    if (DestinationSearchInputLengthRule.allows(query, proposed)) {
+                        onQueryChange(proposed)
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(horizontal = 8.dp)
+                    .focusRequester(focusRequester)
+                    .semantics { contentDescription = "장소 또는 주소 검색" },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = PrimaryText),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                decorationBox = { innerTextField ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = "장소 또는 주소 검색",
+                                color = SecondaryText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+        }
         Box(
             modifier = Modifier
                 .size(44.dp)
                 .background(MaterialTheme.colorScheme.primary, shape)
-                .clickable(
-                    role = Role.Button,
-                    onClickLabel = "목적지 검색 열기",
-                    onClick = onSearchClick,
-                )
-                .semantics { contentDescription = "검색" },
+                .then(
+                    if (isSearchOpen) {
+                        Modifier
+                            .clickable(
+                                interactionSource = null,
+                                indication = null,
+                                role = Role.Button,
+                                onClickLabel = "목적지 검색 실행",
+                                onClick = onSubmit,
+                            )
+                            .semantics { contentDescription = "검색" }
+                    } else {
+                        Modifier
+                    },
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Image(
@@ -639,104 +730,35 @@ private fun FloatingMapHeader(
 }
 
 @Composable
-private fun DestinationSearchPanel(
-    query: String,
+private fun DestinationSearchResultsPanel(
     results: List<DestinationSelection>,
     isSearching: Boolean,
     error: String?,
-    onQueryChange: (String) -> Unit,
-    onClose: () -> Unit,
-    onSubmit: () -> Unit,
     onResultClick: (DestinationSelection) -> Unit,
-    onDestinationManagementClick: () -> Unit,
-    savedDestinations: List<SavedDestination>,
-    onSavedDestinationClick: (SavedDestination) -> Unit,
-    isDestinationActionEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
-
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(14.dp, RoundedCornerShape(24.dp))
-            .background(Color.White, RoundedCornerShape(24.dp))
+            .shadow(14.dp, RoundedCornerShape(15.dp))
+            .background(Color.White, RoundedCornerShape(15.dp))
+            .pointerInput(Unit) { detectTapGestures(onTap = {}) }
             .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(
+        when {
+            isSearching -> SearchStatusText("검색 중...")
+            error != null -> SearchStatusText(error)
+            else -> Box(
                 modifier = Modifier
-                    .size(50.dp)
-                    .background(Pale, RoundedCornerShape(18.dp))
-                    .clickable(onClick = onClose),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .height(280.dp),
             ) {
-                BackIcon()
-            }
-            TextField(
-                value = query,
-                onValueChange = { proposed ->
-                    if (DestinationSearchInputLengthRule.allows(query, proposed)) {
-                        onQueryChange(proposed)
-                    }
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(50.dp)
-                    .focusRequester(focusRequester),
-                placeholder = {
-                    Text(
-                        text = "장소 또는 주소 검색",
-                        color = SecondaryText,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(18.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Pale,
-                    unfocusedContainerColor = Pale,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                ),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { onSubmit() }),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = PrimaryText,
-                    fontWeight = FontWeight.Bold,
-                ),
-            )
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .background(Orange, RoundedCornerShape(18.dp))
-                    .clickable(onClick = onSubmit),
-                contentAlignment = Alignment.Center,
-            ) {
-                SearchIcon()
-            }
-        }
-
-        DestinationShortcutRow(
-            destinations = savedDestinations,
-            onManagementClick = onDestinationManagementClick,
-            onDestinationClick = onSavedDestinationClick,
-            enabled = isDestinationActionEnabled,
-        )
-
-        if (isSearching || error != null || results.isNotEmpty()) {
-            when {
-                isSearching -> SearchStatusText("검색 중...")
-                error != null -> SearchStatusText(error)
-                else -> LazyColumn(
+                val listState = rememberLazyListState()
+                LazyColumn(
+                    state = listState,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(280.dp),
+                        .fillMaxSize()
+                        .padding(end = DestinationSearchScrollbarTouchWidth),
                 ) {
                     item {
                         Text(
@@ -750,6 +772,10 @@ private fun DestinationSearchPanel(
                         SearchResultRow(result = result, onClick = { onResultClick(result) })
                     }
                 }
+                DestinationSearchScrollbar(
+                    state = listState,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                )
             }
         }
     }
@@ -795,102 +821,6 @@ private fun SearchResultRow(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-    }
-}
-
-@Composable
-private fun AddressBubble(
-    title: String,
-    address: String,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .padding(horizontal = 32.dp)
-            .shadow(12.dp, RoundedCornerShape(18.dp))
-            .background(Color.White, RoundedCornerShape(18.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        MiniPinIcon()
-        Column(
-            modifier = Modifier.weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = title,
-                color = PrimaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                ),
-            )
-            Text(
-                text = address,
-                color = SecondaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun CenterDestinationPin(modifier: Modifier = Modifier) {
-    Canvas(modifier.size(54.dp, 80.dp)) {
-        drawOval(
-            color = Color(0x33000000),
-            topLeft = Offset(size.width * .17f, size.height * .84f),
-            size = Size(size.width * .66f, size.height * .12f),
-        )
-
-        val pin = Path().apply {
-            moveTo(size.width / 2f, size.height * .86f)
-            cubicTo(
-                size.width * .42f,
-                size.height * .72f,
-                size.width * .12f,
-                size.height * .52f,
-                size.width * .12f,
-                size.height * .32f,
-            )
-            cubicTo(
-                size.width * .12f,
-                size.height * .12f,
-                size.width * .29f,
-                size.height * .04f,
-                size.width / 2f,
-                size.height * .04f,
-            )
-            cubicTo(
-                size.width * .71f,
-                size.height * .04f,
-                size.width * .88f,
-                size.height * .12f,
-                size.width * .88f,
-                size.height * .32f,
-            )
-            cubicTo(
-                size.width * .88f,
-                size.height * .52f,
-                size.width * .58f,
-                size.height * .72f,
-                size.width / 2f,
-                size.height * .86f,
-            )
-            close()
-        }
-        drawPath(pin, Orange)
-        drawPath(pin, Color.White, style = Stroke(width = 3.dp.toPx()))
-        drawCircle(
-            color = Color.White,
-            radius = size.width * .16f,
-            center = Offset(size.width / 2f, size.height * .3f),
-        )
     }
 }
 
@@ -984,20 +914,6 @@ private fun ConfirmDestinationButton(
 }
 
 @Composable
-private fun BackIcon() = Canvas(Modifier.size(22.dp)) {
-    val stroke = 1.8.dp.toPx()
-    drawLine(PrimaryText, Offset(size.width * .65f, size.height * .2f), Offset(size.width * .35f, size.height * .5f), stroke, StrokeCap.Round)
-    drawLine(PrimaryText, Offset(size.width * .35f, size.height * .5f), Offset(size.width * .65f, size.height * .8f), stroke, StrokeCap.Round)
-}
-
-@Composable
-private fun SearchIcon() = Canvas(Modifier.size(22.dp)) {
-    val stroke = 1.8.dp.toPx()
-    drawCircle(Color.White, size.minDimension * .27f, Offset(size.width * .43f, size.height * .43f), style = Stroke(stroke))
-    drawLine(Color.White, Offset(size.width * .63f, size.height * .63f), Offset(size.width * .82f, size.height * .82f), stroke, StrokeCap.Round)
-}
-
-@Composable
 private fun MiniPinIcon() = Canvas(Modifier.size(22.dp)) {
     val stroke = 1.7.dp.toPx()
     drawCircle(Orange, size.minDimension * .22f, Offset(size.width / 2f, size.height * .4f), style = Stroke(stroke))
@@ -1006,7 +922,6 @@ private fun MiniPinIcon() = Canvas(Modifier.size(22.dp)) {
 
 private val PrimaryText = Color(0xFF161A17)
 private val SecondaryText = Color(0xFF6E756F)
-private val Pale = Color(0xFFF5F6F2)
 private val MapFallback = Color(0xFFDCE8DF)
 private val Orange = Color(0xFFFF6B2C)
 private val DisabledButton = Color(0xFFB8BDB7)
@@ -1014,30 +929,6 @@ private val HeaderBorder = Color(0xFFD0D0D0)
 private val CurrentLocationIconColor = Color(0xFFF5F5F6)
 private const val DisabledControlAlpha = 0.45f
 private const val InitialCurrentLocationRequestId = 1
-
-private val DestinationPreviewSavedDestinations = listOf(
-    SavedDestination(
-        id = 1L,
-        name = "런닝",
-        address = "서울 중구 세종대로 110",
-        latitude = 37.5665851,
-        longitude = 126.9782038,
-    ),
-    SavedDestination(
-        id = 2L,
-        name = "공부하러가야지",
-        address = "서울 서초구 반포대로 201",
-        latitude = 37.5001,
-        longitude = 127.0001,
-    ),
-    SavedDestination(
-        id = 3L,
-        name = "헬스장",
-        address = "서울 강남구 테헤란로 123",
-        latitude = 37.5012,
-        longitude = 127.0396,
-    ),
-)
 
 @Preview
 @Composable
@@ -1054,7 +945,6 @@ private fun DestinationMapScreenPreview() {
             searchResults = emptyList(),
             isSearching = false,
             searchError = null,
-            savedDestinations = DestinationPreviewSavedDestinations,
             isLocatingCurrentLocation = false,
             isSaveInProgress = false,
             isDestinationActionEnabled = true,
@@ -1065,8 +955,37 @@ private fun DestinationMapScreenPreview() {
             onSearchSubmit = {},
             onSearchResultClick = {},
             onCurrentLocationClick = {},
-            onDestinationManagementClick = {},
-            onSavedDestinationClick = { _, _ -> },
+            onConfirmClick = {},
+            mapContent = { mapModifier -> Box(mapModifier.background(MapFallback)) },
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun DestinationMapScreenSearchPreview() {
+    RingoutTheme {
+        DestinationMapLayout(
+            selection = DefaultDestinationSelection,
+            isCameraMoving = false,
+            isResolvingAddress = false,
+            mapError = null,
+            onBackClick = {},
+            isSearchOpen = true,
+            searchQuery = "서울",
+            searchResults = listOf(DefaultDestinationSelection),
+            isSearching = false,
+            searchError = null,
+            isLocatingCurrentLocation = false,
+            isSaveInProgress = false,
+            isDestinationActionEnabled = true,
+            currentLocationError = null,
+            onSearchQueryChange = {},
+            onSearchClick = {},
+            onSearchClose = {},
+            onSearchSubmit = {},
+            onSearchResultClick = {},
+            onCurrentLocationClick = {},
             onConfirmClick = {},
             mapContent = { mapModifier -> Box(mapModifier.background(MapFallback)) },
         )
@@ -1084,8 +1003,34 @@ private fun FloatingMapHeaderPreview() {
                 .padding(horizontal = 10.5.dp, vertical = 10.dp),
         ) {
             FloatingMapHeader(
+                isSearchOpen = false,
+                query = "",
+                onQueryChange = {},
                 onBackClick = {},
                 onSearchClick = {},
+                onSubmit = {},
+            )
+        }
+    }
+}
+
+@Preview(widthDp = 402, heightDp = 82)
+@Composable
+private fun FloatingMapHeaderSearchPreview() {
+    RingoutTheme {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MapFallback)
+                .padding(horizontal = 10.5.dp, vertical = 10.dp),
+        ) {
+            FloatingMapHeader(
+                isSearchOpen = true,
+                query = "강남역",
+                onQueryChange = {},
+                onBackClick = {},
+                onSearchClick = {},
+                onSubmit = {},
             )
         }
     }
@@ -1112,15 +1057,14 @@ private fun CurrentLocationButtonPreview() {
 
 @Preview
 @Composable
-private fun DestinationSearchPanelPreview() {
+private fun DestinationSearchResultsPanelPreview() {
     RingoutTheme {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MapFallback),
         ) {
-            DestinationSearchPanel(
-                query = "강남역",
+            DestinationSearchResultsPanel(
                 results = listOf(
                     DefaultDestinationSelection,
                     DestinationSelection(
@@ -1132,14 +1076,7 @@ private fun DestinationSearchPanelPreview() {
                 ),
                 isSearching = false,
                 error = null,
-                onQueryChange = {},
-                onClose = {},
-                onSubmit = {},
                 onResultClick = {},
-                onDestinationManagementClick = {},
-                savedDestinations = DestinationPreviewSavedDestinations,
-                onSavedDestinationClick = {},
-                isDestinationActionEnabled = true,
                 modifier = Modifier.padding(16.dp),
             )
         }

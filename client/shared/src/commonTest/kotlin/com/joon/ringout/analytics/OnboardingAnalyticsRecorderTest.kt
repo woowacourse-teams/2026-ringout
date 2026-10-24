@@ -17,8 +17,8 @@ class OnboardingAnalyticsRecorderTest {
         f.events.forEach { event ->
             assertEquals(
                 mapOf(
-                    AnalyticsParameterName.FlowName to AnalyticsParameterValue.Text("first_alarm"),
-                    AnalyticsParameterName.FlowVersion to AnalyticsParameterValue.Number(1),
+                    AnalyticsParameterName.FlowName to AnalyticsParameterValue.Text("service_introduction"),
+                    AnalyticsParameterName.FlowVersion to AnalyticsParameterValue.Number(2),
                     AnalyticsParameterName.StepCount to AnalyticsParameterValue.Number(4),
                 ),
                 event.parameters,
@@ -27,41 +27,97 @@ class OnboardingAnalyticsRecorderTest {
     }
 
     @Test
-    fun `단계 조회와 제출 이벤트는 허용된 매개변수만 사용하고 플랫폼별 마지막 단계를 반영한다`() {
-        for (count in listOf(4, 5)) {
-            val f = OnboardingAnalyticsFixture()
-            AnalyticsOnboardingStep.entries.take(count).forEach { step ->
-                f.recorder.recordOnboardingStepViewed(step, count)
-            }
-            repeat(2) { f.recorder.recordOnboardingSubmitted(count) }
-            assertEquals(count + 2, f.events.size)
-            f.events.forEachIndexed { index, event ->
-                val expectedIndex = (index + 1).coerceAtMost(count)
-                assertEquals(
-                    setOf(
-                        AnalyticsParameterName.FlowName, AnalyticsParameterName.FlowVersion,
-                        AnalyticsParameterName.StepCount, AnalyticsParameterName.StepName,
-                        AnalyticsParameterName.StepIndex,
-                    ),
-                    event.parameters.keys,
-                )
-                assertEquals(AnalyticsParameterValue.Number(expectedIndex.toLong()), event.parameters[AnalyticsParameterName.StepIndex])
-                assertEquals(AnalyticsParameterValue.Text(AnalyticsOnboardingStep.entries[expectedIndex - 1].wireName), event.parameters[AnalyticsParameterName.StepName])
-            }
-            assertEquals("onboarding_submit", f.events.last().name.wireName)
+    fun `네 소개 페이지의 조회와 마지막 출발 페이지의 제출을 기록한다`() {
+        val f = OnboardingAnalyticsFixture()
+        val steps = listOf(
+            AnalyticsOnboardingStep.Introduction,
+            AnalyticsOnboardingStep.Destination,
+            AnalyticsOnboardingStep.Interval,
+            AnalyticsOnboardingStep.Departure,
+        )
+        steps.forEach { step -> f.recorder.recordOnboardingStepViewed(step, 4) }
+        repeat(2) { f.recorder.recordOnboardingSubmitted(4) }
+
+        assertEquals(
+            listOf(
+                "onboarding_step_viewed", "onboarding_step_viewed",
+                "onboarding_step_viewed", "onboarding_step_viewed",
+                "onboarding_submit", "onboarding_submit",
+            ),
+            f.events.map { it.name.wireName },
+        )
+        val expectedNames = listOf("introduction", "destination", "interval", "departure", "departure", "departure")
+        f.events.forEachIndexed { index, event ->
+            assertEquals(
+                mapOf(
+                    AnalyticsParameterName.FlowName to AnalyticsParameterValue.Text("service_introduction"),
+                    AnalyticsParameterName.FlowVersion to AnalyticsParameterValue.Number(2),
+                    AnalyticsParameterName.StepCount to AnalyticsParameterValue.Number(4),
+                    AnalyticsParameterName.StepName to AnalyticsParameterValue.Text(expectedNames[index]),
+                    AnalyticsParameterName.StepIndex to AnalyticsParameterValue.Number((index + 1L).coerceAtMost(4)),
+                ),
+                event.parameters,
+            )
         }
+    }
+
+    @Test
+    fun `이전 버전의 시작과 완료 기록이 있으면 새 소개 흐름에서도 다시 기록하지 않는다`() {
+        val f = OnboardingAnalyticsFixture()
+        assertTrue(f.store.claimOnboardingEvent(AnalyticsEventName.TutorialBegin))
+        assertTrue(f.store.claimOnboardingEvent(AnalyticsEventName.TutorialComplete))
+
+        f.recorder.recordOnboardingStarted(4)
+        f.recorder.recordOnboardingCompleted(4)
+
+        assertTrue(f.events.isEmpty())
+    }
+
+    @Test
+    fun `이미 조회한 페이지에 다시 진입하면 조회를 추가로 기록한다`() {
+        val f = OnboardingAnalyticsFixture()
+        listOf(
+            AnalyticsOnboardingStep.Introduction,
+            AnalyticsOnboardingStep.Destination,
+            AnalyticsOnboardingStep.Introduction,
+        ).forEach { f.recorder.recordOnboardingStepViewed(it, 4) }
+
+        assertEquals(
+            listOf("introduction", "destination", "introduction").map { AnalyticsParameterValue.Text(it) },
+            f.events.map { it.parameters[AnalyticsParameterName.StepName] },
+        )
     }
 
     @Test
     fun `유효하지 않은 흐름 정보는 이벤트를 전송하지 않고 시작 이벤트 기록 기회를 소진하지 않는다`() {
         val f = OnboardingAnalyticsFixture()
-        f.recorder.recordOnboardingStarted(3)
-        f.recorder.recordOnboardingStepViewed(AnalyticsOnboardingStep.Sound, 4)
-        f.recorder.recordOnboardingSubmitted(6)
-        f.recorder.recordOnboardingCompleted(0)
+        for (count in listOf(0, 3, 5, 7)) {
+            f.recorder.recordOnboardingStarted(count)
+            f.recorder.recordOnboardingStepViewed(AnalyticsOnboardingStep.Introduction, count)
+            f.recorder.recordOnboardingSubmitted(count)
+            f.recorder.recordOnboardingCompleted(count)
+        }
         assertTrue(f.events.isEmpty())
-        f.recorder.recordOnboardingStarted(5)
-        assertEquals(1, f.events.size)
+        f.recorder.recordOnboardingStarted(4)
+        f.recorder.recordOnboardingCompleted(4)
+        assertEquals(listOf("tutorial_begin", "tutorial_complete"), f.events.map { it.name.wireName })
+    }
+
+    @Test
+    fun `권한 안내가 추가된 여섯 단계는 새 버전과 마지막 알림 단계로 제출을 기록한다`() {
+        val f = OnboardingAnalyticsFixture()
+        f.recorder.recordOnboardingStarted(6)
+        AnalyticsOnboardingStep.entries.forEach { f.recorder.recordOnboardingStepViewed(it, 6) }
+        f.recorder.recordOnboardingSubmitted(6)
+        f.recorder.recordOnboardingCompleted(6)
+        assertEquals(9, f.events.size)
+        f.events.forEach {
+            assertEquals(AnalyticsParameterValue.Number(3), it.parameters[AnalyticsParameterName.FlowVersion])
+            assertEquals(AnalyticsParameterValue.Number(6), it.parameters[AnalyticsParameterName.StepCount])
+        }
+        val submit = f.events.single { it.name == AnalyticsEventName.OnboardingSubmit }
+        assertEquals(AnalyticsParameterValue.Text("notification_permission"), submit.parameters[AnalyticsParameterName.StepName])
+        assertEquals(AnalyticsParameterValue.Number(6), submit.parameters[AnalyticsParameterName.StepIndex])
     }
 
     @Test
@@ -69,17 +125,17 @@ class OnboardingAnalyticsRecorderTest {
         val trackerFailure = DefaultProductAnalyticsRecorder(
             AnalyticsTracker { error("offline") }, InMemoryProductAnalyticsUsageStore(),
         )
-        trackerFailure.recordOnboardingStarted(5)
-        trackerFailure.recordOnboardingStepViewed(AnalyticsOnboardingStep.Time, 5)
-        trackerFailure.recordOnboardingSubmitted(5)
-        trackerFailure.recordOnboardingCompleted(5)
+        trackerFailure.recordOnboardingStarted(4)
+        trackerFailure.recordOnboardingStepViewed(AnalyticsOnboardingStep.Introduction, 4)
+        trackerFailure.recordOnboardingSubmitted(4)
+        trackerFailure.recordOnboardingCompleted(4)
         val f = OnboardingAnalyticsFixture()
         val storeFailure = DefaultProductAnalyticsRecorder(f.tracker, object : ProductAnalyticsUsageStore {
             override fun claimDestinationCreation(destinationKey: String): Long? = null
             override fun claimOnboardingEvent(eventName: AnalyticsEventName): Boolean = error("disk failure")
         })
-        storeFailure.recordOnboardingStarted(5)
-        storeFailure.recordOnboardingCompleted(5)
+        storeFailure.recordOnboardingStarted(4)
+        storeFailure.recordOnboardingCompleted(4)
         assertTrue(f.events.isEmpty())
     }
 }

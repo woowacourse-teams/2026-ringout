@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.profilechange
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,6 +16,8 @@ import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus
+import com.joon.ringout.presentation.navigation.supportsPredictiveBackTransitions
+import com.joon.ringout.presentation.navigation.NavigationBackAction
 
 @Composable
 internal fun ProfileChangeRoute(
@@ -41,17 +44,22 @@ internal fun ProfileChangeRoute(
     val viewModel: ProfileChangeViewModel = viewModel {
         ProfileChangeViewModel(account.nickname, memberRepository)
     }
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.finishImageSelection() }
+    }
     val uiState = viewModel.uiState
-    val onBack = { if (!uiState.isSaving) onBackClick() }
+    val onBack = { if (!viewModel.uiState.isSaving) onBackClick() }
+    if (supportsPredictiveBackTransitions) NavigationBackAction(onBack)
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = true,
+        isBackEnabled = !supportsPredictiveBackTransitions || uiState.isSaving,
         onBackCompleted = onBack,
     )
     var profileImage by remember { mutableStateOf<ImageBitmap?>(null) }
     var profileImageError by remember { mutableStateOf<String?>(null) }
     var showProfileImageSizeLimitDialog by remember { mutableStateOf(false) }
     val launchProfileImagePicker = rememberProfileImagePicker { result ->
+        viewModel.finishImageSelection()
         when (result) {
             is ProfileImagePickResult.Selected -> {
                 if (viewModel.onProfileImageSelected(result.upload)) {
@@ -82,7 +90,10 @@ internal fun ProfileChangeRoute(
         showProfileImageSizeLimitDialog = showProfileImageSizeLimitDialog,
         onProfileImageSizeLimitConfirm = { showProfileImageSizeLimitDialog = false },
         onProfileImageChangeClick = {
-            if (!uiState.isSaving) launchProfileImagePicker()
+            if (viewModel.startImageSelection()) {
+                profileImageError = null
+                launchProfileImagePicker()
+            }
         },
         onConfirmClick = viewModel::confirm,
         modifier = modifier,

@@ -19,7 +19,7 @@ internal class AnalyticsUsageStore internal constructor(
 
     override fun claimOnboardingEvent(eventName: AnalyticsEventName): Boolean {
         require(eventName == AnalyticsEventName.TutorialBegin || eventName == AnalyticsEventName.TutorialComplete)
-        // The claim belongs to the first-alarm flow, not an app version or process lifetime.
+        // Preserve the v1 claim identity across onboarding redesigns so existing installs are not counted again.
         return claimEvent(eventName, "first_alarm")
     }
 
