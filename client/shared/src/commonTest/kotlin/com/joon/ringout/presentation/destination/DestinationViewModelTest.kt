@@ -29,6 +29,109 @@ import kotlin.test.assertTrue
 
 class DestinationViewModelTest {
     @Test
+    fun `관리 저장은 기존 아이디의 별명 주소 좌표를 수정하고 목적지 선택 이벤트를 만들지 않는다`() =
+        withViewModel { viewModel, repository, recorder ->
+            val original = NewDestination.copy(id = 9)
+            repository.localDestinations.value = listOf(original)
+            assertTrue(viewModel.beginManagement(9))
+            val edited = original.copy(name = " 도서관 ", address = "경기도 수원시", latitude = 37.28, longitude = 127.01)
+            repository.saveResult = edited.copy(name = "도서관")
+
+            viewModel.saveManagedDestination(edited)
+
+            assertEquals(listOf(edited.copy(name = "도서관")), repository.saveRequests)
+            assertEquals(listOf(repository.saveResult), viewModel.uiState.destinations)
+            assertNull(viewModel.uiState.managedDestination)
+            assertNull(viewModel.uiState.savedEvent)
+            assertTrue(recorder.destinationCreatedRecords.isEmpty())
+        }
+
+    @Test
+    fun `관리 화면을 취소하면 원본 목적지를 변경하지 않는다`() =
+        withViewModel { viewModel, repository, _ ->
+            val original = NewDestination.copy(id = 9)
+            repository.localDestinations.value = listOf(original)
+            viewModel.beginManagement(9)
+            viewModel.closeManagement()
+            assertEquals(listOf(original), viewModel.uiState.destinations)
+            assertTrue(repository.saveRequests.isEmpty())
+            assertTrue(repository.deleteRequests.isEmpty())
+            assertNull(viewModel.uiState.managedDestination)
+        }
+
+    @Test
+    fun `관리 저장 실패 시 화면과 원본을 유지하고 재시도할 수 있다`() =
+        withViewModel { viewModel, repository, _ ->
+            val original = NewDestination.copy(id = 9)
+            repository.localDestinations.value = listOf(original)
+            repository.saveFailure = IllegalStateException("저장 실패")
+            viewModel.beginManagement(9)
+            viewModel.saveManagedDestination(original.copy(name = "회사"))
+            assertEquals(original, viewModel.uiState.managedDestination)
+            assertEquals(listOf(original), viewModel.uiState.destinations)
+            assertEquals("저장 실패", viewModel.uiState.errorMessage)
+            assertFalse(viewModel.uiState.isSaving)
+            repository.saveFailure = null
+            repository.saveResult = original.copy(name = "회사")
+            viewModel.saveManagedDestination(repository.saveResult)
+            assertNull(viewModel.uiState.managedDestination)
+            assertNull(viewModel.uiState.errorMessage)
+        }
+
+    @Test
+    fun `관리 작업 중 중복 저장 삭제와 화면 이탈을 막는다`() =
+        withViewModel { viewModel, repository, _ ->
+            val original = NewDestination.copy(id = 9)
+            repository.localDestinations.value = listOf(original)
+            val gate = CompletableDeferred<Unit>()
+            repository.saveGate = gate
+            repository.saveResult = original
+            viewModel.beginManagement(9)
+            viewModel.saveManagedDestination(original)
+            viewModel.saveManagedDestination(original)
+            viewModel.deleteManagedDestination()
+            viewModel.closeManagement()
+            assertFalse(viewModel.beginManagement(9))
+            assertEquals(original, viewModel.uiState.managedDestination)
+            assertEquals(1, repository.saveRequests.size)
+            assertTrue(repository.deleteRequests.isEmpty())
+            gate.complete(Unit)
+            assertNull(viewModel.uiState.managedDestination)
+        }
+
+    @Test
+    fun `관리 삭제 성공 시 해당 항목만 제거하고 선택 이벤트를 만들지 않는다`() =
+        withViewModel { viewModel, repository, _ ->
+            val original = NewDestination.copy(id = 9)
+            val other = original.copy(id = 10)
+            repository.localDestinations.value = listOf(original, other)
+            repository.deleteResult = true
+            viewModel.beginManagement(9)
+            viewModel.deleteManagedDestination()
+            assertEquals(listOf(9L), repository.deleteRequests)
+            assertEquals(listOf(other), viewModel.uiState.destinations)
+            assertNull(viewModel.uiState.managedDestination)
+            assertNull(viewModel.uiState.savedEvent)
+        }
+
+    @Test
+    fun `삭제 실패와 잘못된 저장 입력은 원본을 유지한다`() =
+        withViewModel { viewModel, repository, _ ->
+            val original = NewDestination.copy(id = 9)
+            repository.localDestinations.value = listOf(original)
+            assertFalse(viewModel.beginManagement(99))
+            viewModel.beginManagement(9)
+            viewModel.saveManagedDestination(original.copy(id = 10))
+            viewModel.saveManagedDestination(original.copy(name = "가".repeat(13)))
+            assertTrue(repository.saveRequests.isEmpty())
+            viewModel.deleteManagedDestination()
+            assertEquals(original, viewModel.uiState.managedDestination)
+            assertEquals(listOf(original), viewModel.uiState.destinations)
+            assertNotNull(viewModel.uiState.errorMessage)
+            assertFalse(viewModel.uiState.isSaving)
+        }
+
+    @Test
     fun `홈까지 나간 뒤 새 목적지 화면 모델로 진입해도 앱의 현재 위치 캐시를 재사용한다`() {
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val appViewModel = AppLocationCacheViewModel(
@@ -282,6 +385,8 @@ private inline fun withViewModel(
 private class FakeDestinationRepository : DestinationRepository {
     val localDestinations = MutableStateFlow(emptyList<SavedDestination>())
 
+    val deleteRequests = mutableListOf<Long>()
+    var deleteResult = false
     val saveRequests = mutableListOf<SavedDestination>()
     var fetchAllResult: List<SavedDestination> = emptyList()
     var nextFetchGate: CompletableDeferred<Unit>? = null
@@ -323,7 +428,10 @@ private class FakeDestinationRepository : DestinationRepository {
 
     override suspend fun updateName(id: Long, name: String): Boolean = false
 
-    override suspend fun delete(id: Long): Boolean = false
+    override suspend fun delete(id: Long): Boolean {
+        deleteRequests += id
+        return deleteResult
+    }
 }
 
 private data class DestinationCreatedRecord(

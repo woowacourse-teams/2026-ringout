@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -58,24 +58,26 @@ internal fun AlarmRow(
             )
             .padding(horizontal = 20.dp, vertical = 10.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column {
                 Text(
                     text = alarm.days,
                     color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontSize = 11.sp,
                         lineHeight = 14.sp,
                         fontWeight = FontWeight.Medium,
                     ),
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
                         text = displayTime.period,
                         modifier = Modifier.alignByBaseline(),
@@ -86,7 +88,6 @@ internal fun AlarmRow(
                             fontWeight = FontWeight.Medium,
                         ),
                     )
-                    Spacer(Modifier.width(6.dp))
                     Text(
                         text = displayTime.time,
                         modifier = Modifier.alignByBaseline(),
@@ -117,7 +118,7 @@ internal fun AlarmRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AlarmDestinationInfo(
-                destination = alarm.destination,
+                destination = alarm.destinationDisplayName,
                 intervalMinutes = alarm.timeLimitMinutes,
                 modifier = Modifier.weight(1f),
             )
@@ -156,6 +157,7 @@ private fun AlarmDeleteButton(
 }
 
 @Preview(widthDp = 402)
+@Preview(name = "큰 글자 · 작은 화면", widthDp = 320, fontScale = 2f)
 @Composable
 private fun DarkAlarmRowPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {

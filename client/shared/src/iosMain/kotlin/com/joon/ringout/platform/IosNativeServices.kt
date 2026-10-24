@@ -1,9 +1,14 @@
 package com.joon.ringout.platform
 
 import androidx.compose.runtime.staticCompositionLocalOf
+import com.joon.ringout.alarm.IosAlarmMissionCommands
 import com.joon.ringout.alarm.IosAlarmMissionEventInbox
+import com.joon.ringout.alarm.IosMissionArrivalNotifier
 import com.joon.ringout.alarm.IosAlarmScheduler
 import com.joon.ringout.alarm.IosMissionLocationService
+import com.joon.ringout.presentation.onboarding.OnboardingPermission
+import com.joon.ringout.presentation.onboarding.OnboardingPermissionState
+import com.joon.ringout.presentation.onboarding.OnboardingPermissionStatus
 
 enum class IosAlarmAuthorizationState {
     NOT_DETERMINED,
@@ -24,6 +29,18 @@ data class IosAnalyticsEventDto(
 
 interface IosAnalyticsTracker {
     fun log(event: IosAnalyticsEventDto)
+}
+
+interface IosFcmTokenListener {
+    fun onTokenChanged(token: String?)
+}
+
+interface IosRoomActivityPushListener {
+    fun onRoomActivityPushRequest(
+        requestId: String,
+        roomId: String?,
+        activityDate: String?,
+    )
 }
 
 interface IosAppleSignInCallback {
@@ -56,6 +73,15 @@ interface IosKakaoSignInService {
     fun signIn(kakaoCallback: IosKakaoSignInCallback)
 }
 
+interface IosOnboardingPermissionService {
+    fun refresh(callback: (OnboardingPermissionState) -> Unit)
+
+    fun request(
+        permission: OnboardingPermission,
+        callback: (OnboardingPermissionStatus) -> Unit,
+    )
+}
+
 interface IosNativeServices {
     fun appleSignInService(): IosAppleSignInService
 
@@ -86,13 +112,31 @@ interface IosNativeServices {
 
     fun alarmScheduler(): IosAlarmScheduler
 
+    fun alarmMissionCommands(): IosAlarmMissionCommands
+
     fun alarmMissionEventInbox(): IosAlarmMissionEventInbox
+
+    fun missionArrivalNotifier(): IosMissionArrivalNotifier
 
     fun missionLocationService(): IosMissionLocationService
 
     fun googleSignInService(): IosGoogleSignInService
 
     fun analyticsTracker(): IosAnalyticsTracker
+
+    fun latestFcmToken(): String?
+
+    fun observeFcmToken(listener: IosFcmTokenListener)
+
+    fun observeRoomActivityPush(listener: IosRoomActivityPushListener): Long
+
+    fun removeRoomActivityPushObserver(observerId: Long)
+
+    fun acknowledgeRoomActivityPush(requestId: String)
+
+    fun requestNotificationPermissionIfNeeded()
+
+    fun onboardingPermissionService(): IosOnboardingPermissionService
 }
 
 val LocalIosNativeServices = staticCompositionLocalOf<IosNativeServices> {

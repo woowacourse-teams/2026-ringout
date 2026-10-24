@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		292AE7CC3087353100BF5648 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 292AE7CB3087353100BF5648 /* FirebaseMessaging */; };
 		7629DCA7302E11DA0036CA91 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 7629DCA6302E11DA0036CA91 /* FirebaseAnalytics */; };
 		AA0000000000000000000001 /* GoogleMaps in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000021 /* GoogleMaps */; };
 		AA0000000000000000000002 /* GooglePlacesSwift in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000022 /* GooglePlacesSwift */; };
@@ -51,6 +52,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				292AE7CC3087353100BF5648 /* FirebaseMessaging in Frameworks */,
 				AA0000000000000000000001 /* GoogleMaps in Frameworks */,
 				AA0000000000000000000002 /* GooglePlacesSwift in Frameworks */,
 				AA0000000000000000000003 /* GoogleSignIn in Frameworks */,
@@ -69,8 +71,16 @@
 			children = (
 				96D7A819F0D65BBD11B369DE /* Configuration */,
 				C09F6187C105D1FEDF7C6A46 /* iosApp */,
+				292AE7CA3087353100BF5648 /* Frameworks */,
 				E77BFC93116D4324A2C2477A /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		292AE7CA3087353100BF5648 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		E77BFC93116D4324A2C2477A /* Products */ = {
@@ -109,6 +119,7 @@
 				AA0000000000000000000025 /* KakaoSDKAuth */,
 				AA0000000000000000000026 /* KakaoSDKUser */,
 				7629DCA6302E11DA0036CA91 /* FirebaseAnalytics */,
+				292AE7CB3087353100BF5648 /* FirebaseMessaging */,
 			);
 			productName = iosApp;
 			productReference = D4AF531677E404E06FE184C2 /* Ringout.app */;
@@ -207,7 +218,7 @@
 				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 261010201;
+				CURRENT_PROJECT_VERSION = 261020001;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
 				DEVELOPMENT_TEAM = 475GWW72JW;
 				ENABLE_PREVIEWS = YES;
@@ -225,7 +236,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.2;
+				MARKETING_VERSION = 1.2.0;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
@@ -245,7 +256,7 @@
 				CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 261010201;
+				CURRENT_PROJECT_VERSION = 261020001;
 				DEVELOPMENT_ASSET_PATHS = "\"iosApp/Preview Content\"";
 				DEVELOPMENT_TEAM = 475GWW72JW;
 				ENABLE_PREVIEWS = YES;
@@ -262,7 +273,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.2;
+				MARKETING_VERSION = 1.2.0;
 				PROVISIONING_PROFILE_SPECIFIER = "$(RINGOUT_CI_PROFILE_UUID)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -464,6 +475,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		292AE7CB3087353100BF5648 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7629DCA5302E11DA0036CA91 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
 		7629DCA6302E11DA0036CA91 /* FirebaseAnalytics */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 7629DCA5302E11DA0036CA91 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;

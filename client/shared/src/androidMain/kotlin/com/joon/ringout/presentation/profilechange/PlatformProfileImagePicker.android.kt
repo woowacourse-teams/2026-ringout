@@ -2,7 +2,6 @@ package com.joon.ringout.presentation.profilechange
 
 import android.content.Context
 import android.database.Cursor
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -14,8 +13,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,10 +28,14 @@ internal actual fun rememberProfileImagePicker(
     val context = LocalContext.current
     val currentOnResult = rememberUpdatedState(onResult)
     val lifetime = remember { ProfileImagePickerLifetime() }
+    val launchGuard = remember { ProfileImagePickerLaunchGuard() }
     val coroutineScope = rememberCoroutineScope()
-    DisposableEffect(lifetime) {
+    DisposableEffect(lifetime, launchGuard) {
         lifetime.active = true
-        onDispose { lifetime.active = false }
+        onDispose {
+            lifetime.active = false
+            launchGuard.dispose()
+        }
     }
 
     val pickerLauncher = rememberLauncherForActivityResult(
@@ -42,7 +43,7 @@ internal actual fun rememberProfileImagePicker(
     ) { uri ->
         if (!lifetime.active) return@rememberLauncherForActivityResult
         if (uri == null) {
-            currentOnResult.value(ProfileImagePickResult.Cancelled)
+            finishProfileImagePick(launchGuard, lifetime, currentOnResult.value, ProfileImagePickResult.Cancelled)
         } else {
             coroutineScope.launch {
                 val result = runCatching {
@@ -57,22 +58,34 @@ internal actual fun rememberProfileImagePicker(
                     onSuccess = { it },
                     onFailure = { ProfileImagePickResult.Failure },
                 )
-                if (lifetime.active) currentOnResult.value(result)
+                finishProfileImagePick(launchGuard, lifetime, currentOnResult.value, result)
             }
         }
     }
 
-    return remember(pickerLauncher, lifetime) {
-        {
+    return remember(pickerLauncher, lifetime, launchGuard) {
+        launch@{
+            if (!lifetime.active || !launchGuard.tryStart()) return@launch
             runCatching {
                 pickerLauncher.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                 )
             }.onFailure {
-                if (lifetime.active) currentOnResult.value(ProfileImagePickResult.Failure)
+                finishProfileImagePick(launchGuard, lifetime, currentOnResult.value, ProfileImagePickResult.Failure)
             }
         }
     }
+}
+
+private fun finishProfileImagePick(
+    launchGuard: ProfileImagePickerLaunchGuard,
+    lifetime: ProfileImagePickerLifetime,
+    onResult: (ProfileImagePickResult) -> Unit,
+    result: ProfileImagePickResult,
+) {
+    if (!lifetime.active) return
+    launchGuard.complete()
+    if (lifetime.active) onResult(result)
 }
 
 private class ProfileImagePickerLifetime(var active: Boolean = true)
@@ -116,36 +129,6 @@ internal fun isProfileImageTooLarge(inputStream: InputStream): Boolean {
     return false
 }
 
-private fun decodePreviewImage(context: Context, uri: Uri): ImageBitmap {
-    val resolver = context.contentResolver
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    val boundsInput = resolver.openInputStream(uri)
-        ?: error("The selected image could not be opened")
-    boundsInput.use { input -> BitmapFactory.decodeStream(input, null, bounds) }
-
-    check(bounds.outWidth > 0 && bounds.outHeight > 0) { "The selected file is not a readable image" }
-
-    val options = BitmapFactory.Options().apply {
-        inSampleSize = calculateSampleSize(bounds.outWidth, bounds.outHeight)
-        inPreferredConfig = Bitmap.Config.ARGB_8888
-    }
-    val bitmap = resolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(input, null, options)
-    } ?: error("The selected image could not be decoded")
-
-    return bitmap.asImageBitmap()
-}
-
-private fun calculateSampleSize(width: Int, height: Int): Int {
-    val largestDimension = maxOf(width.toLong(), height.toLong())
-    var sampleSize = 1
-    while (largestDimension / sampleSize > MaxPreviewDimension && sampleSize < (1 shl 30)) {
-        sampleSize *= 2
-    }
-    return sampleSize
-}
-
-private const val MaxPreviewDimension = 768
 private const val ProfileImageSizeReadBufferBytes = 8 * 1024
 
 private fun readSelectedImage(context: Context, uri: Uri): ProfileImagePickResult {
@@ -160,7 +143,7 @@ private fun readSelectedImage(context: Context, uri: Uri): ProfileImagePickResul
         ?: error("The selected image type could not be read")
     val extension = type.substringAfter('/').replace("+xml", "")
     return ProfileImagePickResult.Selected(
-        image = decodePreviewImage(context, uri),
+        image = decodeProfileImagePreview(bytes),
         upload = ProfileImageUpload(bytes, type, "profile.$extension"),
     )
 }

@@ -18,6 +18,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideStep
+import com.joon.ringout.presentation.alarmguide.component.alarmCreationGuideTarget
 import com.joon.ringout.presentation.alarmsetup.components.AlarmSoundCard
 import com.joon.ringout.presentation.alarmsetup.components.DestinationCard
 import com.joon.ringout.presentation.alarmsetup.components.LimitTimeCard
@@ -45,7 +47,7 @@ fun AlarmSetupScreen(
     val alarmTime = uiState.time.toAlarmTimePickerValue()
     val colors = alarmSetupColors()
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background)
@@ -54,13 +56,14 @@ fun AlarmSetupScreen(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(
                     start = 20.dp,
                     top = 20.dp,
                     end = 20.dp,
-                    bottom = 117.dp,
+                    bottom = 8.dp,
                 ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -75,43 +78,49 @@ fun AlarmSetupScreen(
                 onAmPmChange = onAmPmChange,
                 onHourChange = onHourChange,
                 onMinuteChange = onMinuteChange,
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Time),
             )
             WeekdaySelector(
                 selectedDays = uiState.selectedDays,
                 onDayClick = onDayClick,
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Weekdays),
             )
             DestinationCard(
-                destination = uiState.destination?.name.orEmpty(),
+                destination = uiState.destinationDisplayName,
                 onClick = onDestinationClick,
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Destination),
             )
             LimitTimeCard(
                 minutes = uiState.limitMinutes,
                 onMinutesChange = onLimitMinutesChange,
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Interval),
             )
             AlarmSoundCard(
                 soundName = uiState.alarmSound.name,
                 onClick = onAlarmSoundClick,
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.Sound),
             )
         }
 
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(colors.background)
-                .padding(bottom = 47.dp, top = 18.dp),
+                .padding(start = 20.dp, end = 20.dp, bottom = 47.dp, top = 18.dp),
             contentAlignment = Alignment.Center,
         ) {
             SaveAlarmButton(
                 enabled = uiState.canSave && !uiState.isSaveInProgress,
                 isInProgress = uiState.isSaveInProgress,
                 onClick = onSaveClick,
+                modifier = Modifier.alarmCreationGuideTarget(AlarmCreationGuideStep.CreateAlarm),
             )
         }
     }
 }
 
 @Preview(widthDp = 402, heightDp = 941)
+@Preview(name = "큰 글자 · 작은 화면", widthDp = 320, heightDp = 568, fontScale = 2f)
 @Composable
 private fun AlarmSetupScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {

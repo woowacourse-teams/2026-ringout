@@ -8,9 +8,11 @@ final class PlatformServices: @preconcurrency IosNativeServices {
     private let alarmKitAdapter: AlarmKitAdapter
     private let missionLocationAdapter: MissionLocationAdapter
     private let firebaseAnalyticsAdapter: FirebaseAnalyticsAdapter
+    private let arrivalNotificationAdapter = MissionArrivalNotificationAdapter()
     private let appleSignInAdapter = AppleSignInAdapter()
     private let kakaoSignInAdapter = KakaoSignInAdapter()
     private let googleSignInAdapter = GoogleSignInAdapter()
+    private let onboardingPermissionAdapter = OnboardingPermissionAdapter()
 
     init(googleSdkConfiguration: GoogleSdkConfiguration) {
         mapsAdapter = MapsAdapter(configurationState: googleSdkConfiguration.maps)
@@ -75,6 +77,14 @@ final class PlatformServices: @preconcurrency IosNativeServices {
         RingoutAlarmMissionEventInbox.shared
     }
 
+    func missionArrivalNotifier() -> IosMissionArrivalNotifier {
+        arrivalNotificationAdapter
+    }
+
+    func alarmMissionCommands() -> IosAlarmMissionCommands {
+        RingoutAlarmMissionCommands.shared
+    }
+
     func missionLocationService() -> IosMissionLocationService {
         missionLocationAdapter
     }
@@ -93,5 +103,33 @@ final class PlatformServices: @preconcurrency IosNativeServices {
 
     func analyticsTracker() -> IosAnalyticsTracker {
         firebaseAnalyticsAdapter
+    }
+
+    func latestFcmToken() -> String? {
+        FirebaseMessagingAdapter.shared.latestToken
+    }
+
+    func observeFcmToken(listener: IosFcmTokenListener) {
+        FirebaseMessagingAdapter.shared.observeToken(listener: listener)
+    }
+
+    func observeRoomActivityPush(listener: IosRoomActivityPushListener) -> Int64 {
+        FirebaseMessagingAdapter.shared.observeRoomActivityPush(listener: listener)
+    }
+
+    func removeRoomActivityPushObserver(observerId: Int64) {
+        FirebaseMessagingAdapter.shared.removeRoomActivityPushObserver(observerId: observerId)
+    }
+
+    func acknowledgeRoomActivityPush(requestId: String) {
+        FirebaseMessagingAdapter.shared.acknowledgeRoomActivityPush(requestId: requestId)
+    }
+
+    func requestNotificationPermissionIfNeeded() {
+        FirebaseMessagingAdapter.shared.requestNotificationPermissionIfNeeded()
+    }
+
+    func onboardingPermissionService() -> IosOnboardingPermissionService {
+        onboardingPermissionAdapter
     }
 }

@@ -35,6 +35,86 @@ import kotlinx.coroutines.test.runTest
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomEditViewModelTest {
     @Test
+    fun `모임 사진 선택 중 스피너 없이 저장과 재선택을 막고 업로드할 때만 스피너를 표시한다`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val upload = RoomImageUpload(byteArrayOf(1), "image/png", "room.png")
+        val requests = mutableListOf<RoomUpdateInput>()
+        val viewModel = loadedViewModel(updateRoom = { id, input ->
+            requests += input
+            gate.await()
+            RoomUpdateResult(id, "저녁 러닝", "함께 달려요.", "https://cdn.test/new.png")
+        })
+        viewModel.updateName("저녁 러닝")
+        assertTrue(viewModel.startImageSelection())
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertFalse(viewModel.uiState.canSave)
+        assertFalse(viewModel.startImageSelection())
+        viewModel.saveChanges()
+        advanceUntilIdle()
+        assertTrue(requests.isEmpty())
+
+        viewModel.finishImageSelection()
+        viewModel.onImageSelected(1L, upload)
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertTrue(viewModel.uiState.canSave)
+        viewModel.saveChanges()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.isImageLoading)
+        assertFalse(viewModel.startImageSelection())
+        assertSame(upload, requests.single().image)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertNotNull(viewModel.uiState.successfulUpdate)
+    }
+
+    @Test
+    fun `모임 사진 선택 종료와 업로드 실패 후 로딩을 해제하고 재시도할 수 있다`() = runTest {
+        val upload = RoomImageUpload(byteArrayOf(1), "image/png", "room.png")
+        var attempts = 0
+        val viewModel = loadedViewModel(updateRoom = { id, _ ->
+            if (++attempts == 1) error("업로드 실패")
+            RoomUpdateResult(id, "아침 러닝", "함께 달려요.", "https://cdn.test/new.png")
+        })
+        viewModel.onImageSelected(1L, upload)
+        assertTrue(viewModel.startImageSelection())
+        viewModel.finishImageSelection()
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertEquals(1L, viewModel.uiState.imageSelectionToken)
+        assertTrue(viewModel.startImageSelection())
+        viewModel.finishImageSelection()
+
+        viewModel.saveChanges()
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertNotNull(viewModel.uiState.saveErrorMessage)
+        assertTrue(viewModel.uiState.canSave)
+        viewModel.saveChanges()
+        assertTrue(viewModel.uiState.isImageLoading)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertEquals(2, attempts)
+    }
+
+    @Test
+    fun `모임 이름만 저장하는 동안 이미지 로딩을 표시하지 않는다`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = loadedViewModel(updateRoom = { id, input ->
+            gate.await()
+            RoomUpdateResult(id, checkNotNull(input.name), "함께 달려요.", null)
+        })
+        viewModel.updateName("저녁 러닝")
+        viewModel.saveChanges()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.isSaving)
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertFalse(viewModel.startImageSelection())
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.isSaving)
+    }
+
+    @Test
     fun `일정만 수정해 저장하고 실패해도 선택값을 유지한다`() = runTest {
         var captured: RoomUpdateInput? = null
         val viewModel = loadedViewModel(updateRoom = { _, input ->

@@ -43,12 +43,18 @@ class IosAlarmRuntime internal constructor(
     private val occurrenceRecorder: IosAlarmOccurrenceRecorder? = null,
     private val startOccurrenceSync: (suspend () -> Unit, suspend () -> Unit) -> Unit = { _, _ -> },
     private val nativeCleanup: IosAlarmNativeCleanupCoordinator? = null,
+    private val missionCommands: IosAlarmMissionCommands? = null,
 ) {
     private val startMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + runtimeDispatcher)
     private val currentLocation = MutableStateFlow(missionCoordinator.loadLastLocation())
     private val locationState = MutableStateFlow(locationService.currentState())
     private val ringingAlarm = MutableStateFlow<IosRingingAlarm?>(null)
+    private val dismissError = MutableStateFlow<String?>(null)
+    internal val dismissErrorFlow = dismissError.asStateFlow()
+
+    internal fun clearDismissError() { dismissError.value = null }
+
     private val ringingDismissMutex = Mutex()
     private val ringingTransitionMutex = Mutex()
     private var trackedOccurrenceId: String? = null
@@ -164,26 +170,30 @@ class IosAlarmRuntime internal constructor(
             }
 
             isDismissingRingingAlarm = true
+            dismissError.value = null
+            var osStopped = false
             try {
-                if (scheduler.stopAwait(ringing.systemAlarmId)) {
-                    eventInbox.recordOpenEventAwait(
-                        alarmId = ringing.alarmId,
-                        occurrenceId = ringing.occurrenceId,
-                        retryAttempt = ringing.retryAttempt,
-                        scheduleVersion = ringing.scheduleVersion,
-                        chainId = ringing.chainId,
-                    )
-                } else {
-                    // A late snapshot cannot tell us when the ringing actually stopped.
-                    eventInbox.recordStopEventAwait(
-                        alarmId = ringing.alarmId,
-                        occurrenceId = ringing.occurrenceId,
-                        retryAttempt = ringing.retryAttempt,
-                        scheduleVersion = ringing.scheduleVersion,
-                        chainId = ringing.chainId,
-                    )
+                val commands = missionCommands ?: error("Native alarm commands unavailable")
+                // The root snapshot must exist before the OS alert is stopped.
+                if (ringing.retryAttempt == 0) {
+                    val source = dataSource.getById(ringing.alarmId)
+                        ?: error("Alarm source unavailable")
+                    eventInbox.upsertSourceSnapshotAwait(source.request.toRecoverySnapshot())
                 }
-                missionCoordinator.processPendingEvents()
+                val result = commands.dismissRingingAlarmAwait(
+                    IosAlarmDismissRequest(
+                        systemAlarmId = ringing.systemAlarmId,
+                        sourceAlarmId = ringing.alarmId,
+                        occurrenceId = ringing.occurrenceId,
+                        retryAttempt = ringing.retryAttempt,
+                        scheduleVersion = ringing.scheduleVersion,
+                        chainId = ringing.chainId,
+                    ),
+                )
+                osStopped = result.osStopCode == IosAlarmOperationCode.SUCCESS
+                check(missionCoordinator.applyDirectDismissResult(result, commands)) {
+                    result.message ?: "알람 종료 결과를 저장하지 못했습니다. 다시 시도해 주세요."
+                }
                 if (ringingAlarm.value?.systemAlarmId == expectedSystemAlarmId) {
                     cancelRingingHandoff()
                     ringingAlarm.value = null
@@ -192,9 +202,15 @@ class IosAlarmRuntime internal constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {
+                dismissError.value = if (osStopped) {
+                    "알람 소리는 멈췄지만 미션과 재울림 상태를 확인하지 못했어요. 다시 시도해 주세요."
+                } else {
+                    "알람을 종료하지 못했어요. 다시 시도해 주세요."
+                }
                 false
             } finally {
                 isDismissingRingingAlarm = false
+                if (missionCoordinator.hasPendingTerminal()) scheduleTerminalRecovery()
                 syncTracking()
                 scheduleRetryDeliveryRecoveryIfNeeded()
                 nativeCleanup?.requestCleanup()
@@ -760,6 +776,7 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
         scheduler = scheduler,
         outcomeRecorder = RoomIosMissionOutcomeRecorder(occurrenceRecorder = occurrenceRecorder),
         analytics = analytics,
+        arrivalNotifier = nativeServices.missionArrivalNotifier(),
     )
     val nativeCleanup = IosAlarmNativeCleanupCoordinator(
         inbox = eventInbox,
@@ -785,6 +802,7 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
             IosAlarmOccurrenceSyncRuntime.start(onAuthReady, onSyncCompleted)
         },
         nativeCleanup = nativeCleanup,
+        missionCommands = nativeServices.alarmMissionCommands(),
     )
 }
 

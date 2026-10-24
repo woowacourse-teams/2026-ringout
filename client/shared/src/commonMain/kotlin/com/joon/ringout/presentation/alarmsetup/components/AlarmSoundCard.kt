@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,7 +20,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,7 +40,7 @@ fun AlarmSoundCard(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(99.dp)
+            .heightIn(min = 99.dp)
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -49,7 +48,7 @@ fun AlarmSoundCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(55.dp)
+                .heightIn(min = 55.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .clickable(
                     role = Role.Button,
@@ -74,8 +73,6 @@ fun AlarmSoundCard(
                 text = soundName,
                 modifier = Modifier.weight(1f),
                 color = colors.primaryText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontSize = 18.sp,
                     lineHeight = 22.sp,
@@ -94,6 +91,7 @@ fun AlarmSoundCard(
 }
 
 @Preview(widthDp = 402)
+@Preview(name = "큰 글자 · 작은 화면", widthDp = 320, fontScale = 2f)
 @Composable
 private fun AlarmSoundCardPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {

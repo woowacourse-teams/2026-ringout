@@ -6,4 +6,5 @@ import com.joon.ringout.domain.firstlaunch.FirstLaunchStatus
 data class AppBootstrapSnapshot(
     val themeMode: ThemeMode? = null,
     val firstLaunchStatus: FirstLaunchStatus,
+    val isAlarmCreationGuidePending: Boolean = false,
 )

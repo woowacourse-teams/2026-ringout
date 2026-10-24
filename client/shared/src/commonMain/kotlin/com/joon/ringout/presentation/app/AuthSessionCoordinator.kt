@@ -5,20 +5,29 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import com.joon.ringout.diagnostics.AuthDiagnosticLogger
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
+import com.joon.ringout.domain.push.PushTokenRegistrar
+import com.joon.ringout.domain.push.PushTokenSource
 import com.joon.ringout.presentation.destination.DestinationViewModel
 import com.joon.ringout.presentation.mypage.MyPageViewModel
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
 import com.joon.ringout.presentation.roomactivity.RoomActivityViewModel
 import com.joon.ringout.presentation.roomlist.RoomListViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 internal fun AuthSessionCoordinator(
     authRepository: AuthRepository,
     authSession: AuthSession,
     authSessionState: AuthSessionState,
+    pushTokenSource: PushTokenSource,
+    pushTokenRegistrationReadiness: PushTokenRegistrationReadiness,
+    pushTokenRegistrar: PushTokenRegistrar,
     myPageViewModel: MyPageViewModel?,
     destinationViewModel: DestinationViewModel?,
     roomListViewModel: RoomListViewModel? = null,
@@ -26,6 +35,26 @@ internal fun AuthSessionCoordinator(
     roomActivityViewModels: List<RoomActivityViewModel> = emptyList(),
 ) {
     val sessionIdentity by authSession.identity.collectAsState()
+    val latestFcmToken by pushTokenSource.latestFcmToken.collectAsState()
+    LaunchedEffect(authSessionState, latestFcmToken, pushTokenRegistrationReadiness) {
+        pushTokenRegistrationReadiness.updateAuthSession(authSessionState)
+        pushTokenRegistrationReadiness.updateFcmToken(latestFcmToken)
+    }
+    LaunchedEffect(sessionIdentity, pushTokenRegistrationReadiness, pushTokenRegistrar) {
+        pushTokenRegistrationReadiness.candidate.collectLatest { candidate ->
+            if (candidate == null) return@collectLatest
+            pushTokenRegistrationReadiness.markRegistrationInProgress(candidate)
+            try {
+                pushTokenRegistrar.register(candidate)
+                pushTokenRegistrationReadiness.markRegistrationSucceeded(candidate)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                pushTokenRegistrationReadiness.markRegistrationFailed(candidate)
+                AuthDiagnosticLogger.error("push_token_registration_failed", error)
+            }
+        }
+    }
     AuthSessionStateBinding(
         sessionIdentity = sessionIdentity,
         authSessionState = authSessionState,

@@ -46,6 +46,9 @@ import platform.PhotosUI.PHPickerViewController
 import platform.PhotosUI.PHPickerViewControllerDelegateProtocol
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
+import platform.UIKit.UIAdaptivePresentationControllerDelegateProtocol
+import platform.UIKit.UIPresentationController
+import platform.UIKit.presentationController
 import platform.darwin.NSObject
 import platform.ImageIO.CGImageSourceCreateThumbnailAtIndex
 import platform.ImageIO.CGImageSourceCreateWithURL
@@ -60,67 +63,107 @@ internal actual fun rememberProfileImagePicker(
     val viewController = LocalUIViewController.current
     val currentOnResult = rememberUpdatedState(onResult)
     val lifetime = remember { ProfileImagePickerLifetime() }
+    val launchGuard = remember { ProfileImagePickerLaunchGuard() }
     val session = remember(lifetime) { ProfileImagePickerSession() }
     val coroutineScope = rememberCoroutineScope()
 
-    DisposableEffect(lifetime, session) {
+    DisposableEffect(lifetime, session, launchGuard) {
         lifetime.active = true
         onDispose {
             lifetime.active = false
+            launchGuard.dispose()
+            session.completionGate?.dispose()
+            session.completionGate = null
             session.picker?.dismissViewControllerAnimated(flag = false, completion = null)
             session.picker = null
             session.delegate = null
         }
     }
 
-    return remember(viewController, lifetime, session) {
-        {
+    return remember(viewController, lifetime, session, launchGuard) {
+        launch@{
+            if (!lifetime.active || !launchGuard.tryStart()) return@launch
+            if (
+                viewController.presentedViewController != null ||
+                viewController.beingPresented ||
+                viewController.beingDismissed
+            ) {
+                launchGuard.complete()
+                // 선택창이 열리지 않아도 화면의 사진 선택 대기 상태를 해제한다.
+                currentOnResult.value(ProfileImagePickResult.Cancelled)
+                return@launch
+            }
+
+            val completionGate = ProfileImagePickerDismissalGate { result ->
+                session.picker = null
+                session.delegate = null
+                session.completionGate = null
+                launchGuard.complete()
+                if (lifetime.active) currentOnResult.value(result)
+            }
+            session.completionGate = completionGate
+
             runCatching {
                 val configuration = PHPickerConfiguration().apply {
                     filter = PHPickerFilter.imagesFilter()
                     selectionLimit = 1
                 }
                 val picker = PHPickerViewController(configuration)
-                val delegate = object : NSObject(), PHPickerViewControllerDelegateProtocol {
-                    override fun picker(picker: PHPickerViewController, didFinishPicking: List<*>) {
-                        picker.dismissViewControllerAnimated(flag = true, completion = null)
-                        session.picker = null
+                val delegate = object : NSObject(),
+                    PHPickerViewControllerDelegateProtocol,
+                    UIAdaptivePresentationControllerDelegateProtocol {
 
+                    override fun presentationControllerDidDismiss(presentationController: UIPresentationController) {
+                        coroutineScope.launch { completionGate.markDismissed() }
+                    }
+
+                    override fun picker(picker: PHPickerViewController, didFinishPicking: List<*>) {
                         val result = didFinishPicking.firstOrNull() as? PHPickerResult
                         if (result == null) {
-                            session.delegate = null
-                            if (lifetime.active) currentOnResult.value(ProfileImagePickResult.Cancelled)
-                            return
+                            completionGate.reportResult(ProfileImagePickResult.Cancelled)
+                        } else {
+                            completionGate.markPickerFinished()
+                            runCatching {
+                                result.itemProvider.loadFileRepresentationForTypeIdentifier("public.image") { fileUrl, _ ->
+                                    val pickResult = if (fileUrl == null) {
+                                        ProfileImagePickResult.Failure
+                                    } else {
+                                        runCatching {
+                                            val fileSizeBytes = profileImageFileSize(fileUrl)
+                                                ?: error("The selected image size could not be read")
+                                            if (isProfileImageSizeTooLarge(fileSizeBytes)) {
+                                                ProfileImagePickResult.TooLarge
+                                            } else {
+                                                readSelectedImage(fileUrl)
+                                            }
+                                        }.getOrElse { ProfileImagePickResult.Failure }
+                                    }
+                                    coroutineScope.launch { completionGate.reportResult(pickResult) }
+                                }
+                            }.onFailure {
+                                coroutineScope.launch {
+                                    completionGate.reportResult(ProfileImagePickResult.Failure)
+                                }
+                            }
                         }
 
-                        result.itemProvider.loadFileRepresentationForTypeIdentifier("public.image") { fileUrl, _ ->
-                            val pickResult = if (fileUrl == null) {
-                                ProfileImagePickResult.Failure
-                            } else {
-                                runCatching {
-                                    val fileSizeBytes = profileImageFileSize(fileUrl)
-                                        ?: error("The selected image size could not be read")
-                                    if (isProfileImageSizeTooLarge(fileSizeBytes)) {
-                                        ProfileImagePickResult.TooLarge
-                                    } else {
-                                        readSelectedImage(fileUrl)
-                                    }
-                                }.getOrElse { ProfileImagePickResult.Failure }
-                            }
-                            coroutineScope.launch {
-                                if (lifetime.active) currentOnResult.value(pickResult)
-                            }
-                            session.delegate = null
+                        picker.dismissViewControllerAnimated(flag = true) {
+                            coroutineScope.launch { completionGate.markDismissed() }
                         }
                     }
                 }
                 session.picker = picker
                 session.delegate = delegate
                 picker.setDelegate(delegate)
-                viewController.presentViewController(picker, animated = true, completion = null)
+                viewController.presentViewController(picker, animated = true) {
+                    picker.presentationController()?.delegate = delegate
+                }
             }.onFailure {
+                session.completionGate?.dispose()
+                session.completionGate = null
                 session.picker = null
                 session.delegate = null
+                launchGuard.complete()
                 if (lifetime.active) currentOnResult.value(ProfileImagePickResult.Failure)
             }
         }
@@ -132,6 +175,7 @@ private class ProfileImagePickerLifetime(var active: Boolean = true)
 private class ProfileImagePickerSession(
     var picker: PHPickerViewController? = null,
     var delegate: PHPickerViewControllerDelegateProtocol? = null,
+    var completionGate: ProfileImagePickerDismissalGate? = null,
 )
 
 @OptIn(ExperimentalForeignApi::class)

@@ -4,14 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -28,6 +32,7 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -45,8 +50,8 @@ data class ConfirmationDialogLayout(
     val actionRowMaxWidth: Dp = 272.dp,
     val cancelButtonWeight: Float = 99f,
     val actionAlignment: Alignment.Horizontal = Alignment.End,
-    val titleMaxLines: Int = 1,
-    val descriptionMaxLines: Int = 2,
+    val titleMaxLines: Int = Int.MAX_VALUE,
+    val descriptionMaxLines: Int = Int.MAX_VALUE,
     val singleActionMaxWidth: Dp = 272.dp,
 )
 
@@ -83,7 +88,7 @@ fun ConfirmationDialog(
         ) {
             Box(
                 modifier = modifier
-                    .padding(horizontal = layout.screenPadding),
+                    .padding(horizontal = layout.screenPadding, vertical = 24.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
@@ -99,6 +104,7 @@ fun ConfirmationDialog(
                         )
                         .clip(shape)
                         .background(colors.surface)
+                        .verticalScroll(rememberScrollState())
                         .padding(DialogContentPadding)
                         .semantics {
                             paneTitle = "${title} 확인"
@@ -138,41 +144,55 @@ fun ConfirmationDialog(
                     }
                     content?.invoke(this)
                     if (showConfirmButton || cancelLabel != null) {
-                        Row(
+                        BoxWithConstraints(
                             modifier = Modifier
                                 .align(layout.actionAlignment)
-                                .widthIn(
-                                    max = if (cancelLabel == null) {
-                                        layout.singleActionMaxWidth
-                                    } else {
-                                        layout.actionRowMaxWidth
-                                    },
-                                )
-                                .fillMaxWidth()
-                                .height(ActionTouchHeight),
-                            horizontalArrangement = Arrangement.spacedBy(ActionButtonSpacing),
-                            verticalAlignment = Alignment.CenterVertically,
+                                .widthIn(max = if (cancelLabel == null) layout.singleActionMaxWidth else layout.actionRowMaxWidth)
+                                .fillMaxWidth(),
                         ) {
-                            if (cancelLabel != null) {
-                                ConfirmationDialogButton(
-                                    text = cancelLabel,
-                                    containerColor = colors.cancel,
-                                    onClick = cancelOnClick ?: onDismiss,
-                                    modifier = Modifier.weight(layout.cancelButtonWeight),
-                                )
+                            val measurer = rememberTextMeasurer()
+                            val density = LocalDensity.current
+                            val textStyle = MaterialTheme.typography.labelLarge.copy(
+                                fontSize = 16.sp, lineHeight = 19.2.sp, fontWeight = FontWeight.Medium,
+                            )
+                            fun labelWidth(label: String): Dp = with(density) {
+                                measurer.measure(label, textStyle, softWrap = false).size.width.toDp() + 24.dp
                             }
-                            if (showConfirmButton) {
-                                ConfirmationDialogButton(
-                                    text = confirmLabel,
-                                    containerColor = confirmColor,
-                                    onClick = onConfirm,
-                                    enabled = confirmEnabled,
-                                    modifier = if (cancelLabel == null) {
-                                        Modifier.fillMaxWidth()
-                                    } else {
-                                        Modifier.weight(ConfirmButtonWeight)
-                                    },
+                            val hasTwoActions = cancelLabel != null && showConfirmButton
+                            val available = maxWidth - ActionButtonSpacing
+                            val cancelWidth = available * (layout.cancelButtonWeight / (layout.cancelButtonWeight + ConfirmButtonWeight))
+                            val stackActions = hasTwoActions && (
+                                labelWidth(cancelLabel.orEmpty()) > cancelWidth ||
+                                    labelWidth(confirmLabel) > available - cancelWidth
                                 )
+                            val buttons: @Composable (Modifier, Modifier) -> Unit = { cancelModifier, confirmModifier ->
+                                if (cancelLabel != null) {
+                                    ConfirmationDialogButton(
+                                        text = cancelLabel, containerColor = colors.cancel,
+                                        onClick = cancelOnClick ?: onDismiss, modifier = cancelModifier,
+                                    )
+                                }
+                                if (showConfirmButton) {
+                                    ConfirmationDialogButton(
+                                        text = confirmLabel, containerColor = confirmColor,
+                                        onClick = onConfirm, enabled = confirmEnabled, modifier = confirmModifier,
+                                    )
+                                }
+                            }
+                            if (stackActions) {
+                                Column(verticalArrangement = Arrangement.spacedBy(ActionButtonSpacing)) {
+                                    buttons(Modifier.fillMaxWidth(), Modifier.fillMaxWidth())
+                                }
+                            } else {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(ActionButtonSpacing),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    buttons(
+                                        if (hasTwoActions) Modifier.weight(layout.cancelButtonWeight) else Modifier.fillMaxWidth(),
+                                        if (hasTwoActions) Modifier.weight(ConfirmButtonWeight) else Modifier.fillMaxWidth(),
+                                    )
+                                }
                             }
                         }
                     }
@@ -194,19 +214,19 @@ private fun ConfirmationDialogButton(
 
     Box(
         modifier = modifier
-            .height(ActionTouchHeight)
-                .clickable(
-                    enabled = enabled,
-                    role = Role.Button,
-                    onClick = onClick,
-                )
-                .semantics { contentDescription = text },
+            .heightIn(min = ActionTouchHeight)
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { contentDescription = text },
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(ActionVisualHeight)
+                .heightIn(min = ActionVisualHeight)
                 .shadow(
                     elevation = ActionShadowElevation,
                     shape = shape,
@@ -215,13 +235,14 @@ private fun ConfirmationDialogButton(
                     spotColor = MaterialTheme.ringoutColors.dialog.actionShadow,
                 )
                 .clip(shape)
-                .background(containerColor),
+                .background(containerColor)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = text,
                 color = MaterialTheme.ringoutColors.dialog.actionContent,
-                maxLines = 1,
+                textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontSize = 16.sp,
                     lineHeight = 19.2.sp,
@@ -245,6 +266,7 @@ private val ActionShadowElevation = 1.5.dp
 private const val ConfirmButtonWeight = 162f
 
 @Preview
+@Preview(name = "큰 글자 · 작은 화면", widthDp = 320, heightDp = 480, fontScale = 2f)
 @Composable
 private fun ConfirmationDialogPreview() {
     RingoutTheme {

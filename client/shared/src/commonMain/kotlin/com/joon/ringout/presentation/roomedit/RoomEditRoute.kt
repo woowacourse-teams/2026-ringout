@@ -32,7 +32,10 @@ internal fun RoomEditRoute(
 
     DisposableEffect(routeIsActive) {
         routeIsActive.value = true
-        onDispose { routeIsActive.value = false }
+        onDispose {
+            routeIsActive.value = false
+            viewModel.finishImageSelection()
+        }
     }
 
     LaunchedEffect(viewModel, roomId) {
@@ -55,6 +58,7 @@ internal fun RoomEditRoute(
 
     val launchImagePicker = rememberProfileImagePicker { result ->
         if (!routeIsActive.value) return@rememberProfileImagePicker
+        viewModel.finishImageSelection()
         when (result) {
             is ProfileImagePickResult.Selected -> {
                 val token = nextImageSelectionToken + 1L
@@ -108,7 +112,12 @@ internal fun RoomEditRoute(
             onHourChange = viewModel::updateHour,
             onMinuteChange = viewModel::updateMinute,
             onIntroductionChange = viewModel::updateIntroduction,
-            onImageChangeClick = launchImagePicker,
+            onImageChangeClick = {
+                if (viewModel.startImageSelection()) {
+                    imageError = null
+                    launchImagePicker()
+                }
+            },
             onSaveClick = {
                 if (!uiState.canSave || !previewMatchesSelection) return@RoomEditScreen
                 viewModel.saveChanges()

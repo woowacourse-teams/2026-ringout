@@ -12,6 +12,7 @@ enum class DestinationSelectionSource(
 ) {
     MapShortcut("map_shortcut"),
     SearchShortcut("search_shortcut"),
+    SavedDestinationDialog("saved_destination_dialog"),
 }
 
 enum class StampMonthChangeDirection(
@@ -89,8 +90,8 @@ internal class DefaultProductAnalyticsRecorder(
     }
 
     override fun recordOnboardingSubmitted(stepCount: Int) = safelyRecord {
-        val step = if (stepCount == 4) AnalyticsOnboardingStep.Interval else AnalyticsOnboardingStep.Sound
-        tracker.log(onboardingAnalyticsEvent(AnalyticsEventName.OnboardingSubmit, stepCount, step))
+        val lastStep = if (stepCount == 6) AnalyticsOnboardingStep.NotificationPermission else AnalyticsOnboardingStep.Departure
+        tracker.log(onboardingAnalyticsEvent(AnalyticsEventName.OnboardingSubmit, stepCount, lastStep))
     }
 
     override fun recordOnboardingCompleted(stepCount: Int) = safelyRecord {

@@ -256,6 +256,7 @@ internal class IosAnalyticsUsageStore(
         require(eventName == AnalyticsEventName.TutorialBegin || eventName == AnalyticsEventName.TutorialComplete)
         OnboardingClaimLock.lock()
         return try {
+            // Preserve the v1 claim identity across onboarding redesigns so existing installs are not counted again.
             claimEvent(eventName.wireName, "first_alarm")
         } finally {
             OnboardingClaimLock.unlock()

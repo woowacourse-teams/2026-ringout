@@ -1,11 +1,15 @@
 package com.joon.ringout.presentation.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSerializable
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.serialization.NavBackStackSerializer
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.push.RoomActivityPushTarget
 
 @Composable
 internal fun rememberAppNavigationState(): AppNavigationState {
@@ -26,6 +30,9 @@ internal class AppNavigationState(
     private val routes: NavBackStack<AppRoute> = NavBackStack(AppRoute.Home),
     private val guestOnlyMode: Boolean = false,
 ) {
+    // Not saved: a restored stack must never replay an old back animation.
+    private var lastBackTransition: Pair<AppRoute, AppRoute>? by mutableStateOf(null)
+
     val backStack: List<AppRoute>
         get() = routes
 
@@ -86,6 +93,7 @@ internal class AppNavigationState(
             AppRoute.AddAlarm -> listOf(AppRoute.Home, AppRoute.AddAlarm)
             is AppRoute.EditAlarm -> listOf(AppRoute.Home, route)
             is AppRoute.Destination,
+            is AppRoute.DestinationManagement,
             AppRoute.AlarmSound,
             -> {
                 val parent = requireNotNull(editorRoute) { "An alarm picker requires an editor parent" }
@@ -120,11 +128,39 @@ internal class AppNavigationState(
         return true
     }
 
+    /** Builds the complete room activity stack for an explicit notification click. */
+    fun openRoomActivityFromPush(target: RoomActivityPushTarget): Boolean {
+        val activityRoute = AppRoute.RoomActivity(target.roomId, target.activityDate)
+        if (!activityRoute.isValid()) return false
+
+        val destinationStack = listOf(
+            AppRoute.Home,
+            AppRoute.Social,
+            AppRoute.RoomHome(target.roomId),
+            activityRoute,
+        )
+        if (routes.toList() != destinationStack) {
+            replaceBackStack(destinationStack)
+        }
+        return true
+    }
+
     fun popBackStack(from: AppRoute = routes.last()) {
         // 이미 벗어난 백스택 항목의 콜백은 무시하고, 루트 항목은 제거하지 않는다.
         if (routes.size > 1 && isCurrentRoute(from)) {
+            lastBackTransition = from to routes[routes.lastIndex - 1]
             routes.removeLastOrNull()
         }
+    }
+
+    /** Only a nested screen's explicit pop or gesture preview animates, never a tab/reset. */
+    internal fun isBackTransition(from: AppRoute, to: AppRoute): Boolean {
+        if (from.mainNavigationTab() != null && to.mainNavigationTab() != null) return false
+        if (from is AppRoute.AlarmRinging || from is AppRoute.ActiveAlarmTracking ||
+            to is AppRoute.AlarmRinging || to is AppRoute.ActiveAlarmTracking
+        ) return false
+        return lastBackTransition == (from to to) ||
+            (routes.lastOrNull() == from && routes.getOrNull(routes.lastIndex - 1) == to)
     }
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
@@ -154,6 +190,7 @@ internal class AppNavigationState(
     }
 
     private fun replaceBackStack(destinationStack: List<AppRoute>) {
+        lastBackTransition = null
         // 공통 백스택 항목과 화면 상태는 유지하고 달라진 뒷부분만 교체한다.
         val sharedSize = routes.zip(destinationStack).takeWhile { (a, b) -> a == b }.size
         routes.subList(sharedSize, routes.size).clear()

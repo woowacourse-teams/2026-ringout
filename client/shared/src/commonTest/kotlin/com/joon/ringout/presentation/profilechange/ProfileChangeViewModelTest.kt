@@ -17,6 +17,64 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProfileChangeViewModelTest {
     @Test
+    fun `사진 선택 중 스피너 없이 저장과 재선택을 막고 업로드할 때만 스피너를 표시한다`() = runTest {
+        val repository = FakeMemberRepository()
+        val viewModel = ProfileChangeViewModel("닉네임", repository, this)
+        viewModel.onNicknameChange("새닉네임")
+
+        assertTrue(viewModel.startImageSelection())
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertFalse(viewModel.uiState.canConfirm)
+        assertFalse(viewModel.startImageSelection())
+        viewModel.confirm()
+        runCurrent()
+        assertTrue(repository.requests.isEmpty())
+        assertTrue(repository.uploads.isEmpty())
+
+        viewModel.finishImageSelection()
+        viewModel.onProfileImageSelected(Photo)
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertTrue(viewModel.uiState.canConfirm)
+        viewModel.confirm()
+        assertTrue(viewModel.uiState.isImageLoading)
+        runCurrent()
+        assertEquals(listOf(Photo), repository.uploads)
+        assertFalse(viewModel.uiState.isImageLoading)
+    }
+
+    @Test
+    fun `사진 선택이 취소되거나 실패해도 기존 사진 선택을 유지하고 다시 선택할 수 있다`() = runTest {
+        val repository = FakeMemberRepository()
+        val viewModel = ProfileChangeViewModel("닉네임", repository, this)
+        viewModel.onProfileImageSelected(Photo)
+        assertTrue(viewModel.startImageSelection())
+        viewModel.finishImageSelection()
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertTrue(viewModel.uiState.canConfirm)
+        assertTrue(viewModel.startImageSelection())
+        viewModel.finishImageSelection()
+        viewModel.confirm()
+        runCurrent()
+        assertEquals(listOf(Photo), repository.uploads)
+    }
+
+    @Test
+    fun `닉네임만 저장하는 동안 이미지 로딩을 표시하지 않는다`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val repository = FakeMemberRepository().apply { beforeNickname = { gate.await() } }
+        val viewModel = ProfileChangeViewModel("닉네임", repository, this)
+        viewModel.onNicknameChange("새닉네임")
+        viewModel.confirm()
+        runCurrent()
+        assertTrue(viewModel.uiState.isSaving)
+        assertFalse(viewModel.uiState.isImageLoading)
+        assertFalse(viewModel.startImageSelection())
+        gate.complete(Unit)
+        runCurrent()
+        assertFalse(viewModel.uiState.isSaving)
+    }
+
+    @Test
     fun `닉네임만 변경하면 사진을 업로드하지 않는다`() = runTest {
         val repository = FakeMemberRepository()
         val viewModel = ProfileChangeViewModel("기존닉네임", repository, this)
@@ -56,6 +114,7 @@ class ProfileChangeViewModelTest {
         assertNull(viewModel.uiState.completedNickname)
         assertTrue(viewModel.uiState.hasImageChanges)
         assertTrue(viewModel.uiState.errorMessage.orEmpty().contains("닉네임은 저장됐어요"))
+        assertFalse(viewModel.uiState.isImageLoading)
         repository.failUpload = false
         viewModel.confirm()
         runCurrent()
@@ -73,6 +132,8 @@ class ProfileChangeViewModelTest {
         viewModel.confirm()
         runCurrent()
         assertTrue(viewModel.uiState.isSaving)
+        assertTrue(viewModel.uiState.isImageLoading)
+        assertFalse(viewModel.startImageSelection())
         viewModel.confirm()
         assertFalse(viewModel.onProfileImageSelected(Photo))
         viewModel.onNicknameChange("변경금지")
@@ -140,6 +201,7 @@ private class FakeMemberRepository : MemberRepository {
     var cachedImage: MemberProfileImage? = MemberProfileImage(null)
     var imageLoader: suspend () -> MemberProfileImage = { MemberProfileImage(null) }
     var beforeUpload: suspend () -> Unit = {}
+    var beforeNickname: suspend () -> Unit = {}
     var failUpload = false
     var failNickname = false
 
@@ -154,6 +216,7 @@ private class FakeMemberRepository : MemberRepository {
     override suspend fun getProfile(): MemberProfile = error("사용하지 않는 요청입니다.")
     override suspend fun updateNickname(nickname: String): String {
         requests += nickname
+        beforeNickname()
         if (failNickname) error("닉네임 변경 실패")
         return nickname
     }

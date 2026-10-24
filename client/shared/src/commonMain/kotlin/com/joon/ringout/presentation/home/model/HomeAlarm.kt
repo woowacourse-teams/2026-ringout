@@ -15,4 +15,5 @@ data class HomeAlarm(
     val alarmSoundUri: String? = null,
     val selectedDays: List<String> = emptyList(),
     val repeatEnabled: Boolean = true,
+    val destinationDisplayName: String = destination,
 )

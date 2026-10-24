@@ -1,115 +1,173 @@
 package com.joon.ringout.presentation.onboarding
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import com.joon.ringout.analytics.AnalyticsOnboardingStep
 import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
 import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
-import com.joon.ringout.presentation.alarmsetup.AlarmSetupUiState
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
-internal enum class OnboardingStep(val title: String, val description: String) {
-    Time("알람이 울릴 시간을 정해주세요", "설정한 시간에 알람이 울려요."),
-    Weekdays("알람이 울릴 요일을 선택해주세요", "설정한 요일마다 알람이 울려요."),
-    Destination("목적지를 선택해주세요", "설정한 목적지에 도착해야\n알람이 반복해서 울리지 않아요."),
-    Interval("알람의 간격을 선택해주세요", "목적지에 도착하기 전까지\n설정한 간격으로 알람이 반복해서 울려요."),
-    Sound("알람음을 선택해주세요", "선택한 알람음으로 알람이 울려요."),
+internal enum class OnboardingStep {
+    Introduction, Destination, Interval, Departure, LocationPermission, NotificationPermission,
 }
+
+internal val OnboardingStep.permission: OnboardingPermission?
+    get() = when (this) {
+        OnboardingStep.LocationPermission -> OnboardingPermission.Location
+        OnboardingStep.NotificationPermission -> OnboardingPermission.Notifications
+        else -> null
+    }
 
 internal data class OnboardingUiState(
-    val step: OnboardingStep = OnboardingStep.Time,
-    val includesSoundSelection: Boolean = true,
-    val destinationRequestId: Long = 0,
-    val isDestinationOpen: Boolean = false,
-    val isAlarmSaved: Boolean = false,
+    val step: OnboardingStep = OnboardingStep.Introduction,
+    val isCompletionRequested: Boolean = false,
+    val permissions: OnboardingPermissionState = OnboardingPermissionState(),
+    val requestingPermission: OnboardingPermission? = null,
+    val permissionRequestId: Int = 0,
+    val completionRequestToken: Int? = null,
+    val settledStep: OnboardingStep? = null,
 ) {
-    val steps: List<OnboardingStep>
-        get() = OnboardingStep.entries.filter { includesSoundSelection || it != OnboardingStep.Sound }
-
+    val steps: List<OnboardingStep> get() = OnboardingStep.entries
     val currentStepIndex: Int get() = steps.indexOf(step)
     val isLastStep: Boolean get() = step == steps.last()
+    val permissionStatus: OnboardingPermissionStatus? get() = step.permission?.let { permissions[it] }
 }
 
-internal enum class OnboardingAdvance { None, SaveAlarm, Complete }
+internal enum class OnboardingAdvance { None, RequestLocationPermission, RequestNotificationPermission, Complete }
 
 internal class OnboardingViewModel(
-    includesSoundSelection: Boolean = true,
     private val analytics: OnboardingAnalyticsRecorder = NoOpOnboardingAnalyticsRecorder,
 ) : ViewModel() {
-    var uiState by mutableStateOf(OnboardingUiState(includesSoundSelection = includesSoundSelection))
-        private set
+    private val mutableUiState = MutableStateFlow(OnboardingUiState())
+    val uiState: StateFlow<OnboardingUiState> = mutableUiState.asStateFlow()
 
     private var lastCompletionToken: Int? = null
+    private var lastSubmittedToken: Int? = null
     private var lastViewedStep: OnboardingStep? = null
+    private val requestedPermissions = mutableSetOf<OnboardingPermission>()
 
-    /** Called only when the step is displayed; recomposition and app resume are not entries. */
-    fun onStepVisible() {
-        if (uiState.isDestinationOpen || lastViewedStep == uiState.step) return
-        lastViewedStep = uiState.step
+    /** Recomposition and app resume do not count as a new page entry. */
+    fun onStepVisible(index: Int) {
+        val state = uiState.value
+        val step = state.steps.getOrNull(index) ?: return
+        if (step != state.step) return
+        mutableUiState.value = state.copy(settledStep = step)
+        if (lastViewedStep == step) return
+        lastViewedStep = step
         runCatching {
-            analytics.recordOnboardingStarted(uiState.steps.size)
-            analytics.recordOnboardingStepViewed(uiState.step.analyticsStep(), uiState.steps.size)
+            analytics.recordOnboardingStarted(state.steps.size)
+            analytics.recordOnboardingStepViewed(step.analyticsStep(), state.steps.size)
         }
     }
 
-    /** Called after a save request (or completion-only retry) has been accepted. */
-    fun onSubmitAccepted() {
-        if (!uiState.isLastStep || uiState.isDestinationOpen) return
-        runCatching { analytics.recordOnboardingSubmitted(uiState.steps.size) }
+    fun onSubmitAccepted(): Boolean {
+        val token = lastCompletionToken ?: return false
+        if (lastSubmittedToken == token) return false
+        lastSubmittedToken = token
+        runCatching { analytics.recordOnboardingSubmitted(uiState.value.steps.size) }
+        return true
     }
 
-    fun requestNext(alarm: AlarmSetupUiState, completionRetryToken: Int): OnboardingAdvance {
-        if (alarm.isSaveInProgress || uiState.isDestinationOpen) return OnboardingAdvance.None
-        if (uiState.isAlarmSaved) return requestCompletion(completionRetryToken)
-        if (uiState.step == OnboardingStep.Destination && !alarm.canSave) return OnboardingAdvance.None
-        if (uiState.isLastStep) {
-            return if (alarm.canSave) OnboardingAdvance.SaveAlarm else OnboardingAdvance.None
+    fun requestNext(completionRetryToken: Int = 0): OnboardingAdvance {
+        val state = uiState.value
+        if (state.requestingPermission != null) return OnboardingAdvance.None
+        if (state.isCompletionRequested) return requestCompletion(completionRetryToken)
+        val permission = state.step.permission
+        if (permission == null) {
+            onPageChanged(state.currentStepIndex + 1)
+            return OnboardingAdvance.None
         }
-        uiState = uiState.copy(step = uiState.steps[uiState.currentStepIndex + 1])
+        if (state.permissions[permission] == OnboardingPermissionStatus.Unknown) return OnboardingAdvance.None
+        // Give the first automatic request a chance to run before a fast Next tap.
+        if (state.permissions[permission] == OnboardingPermissionStatus.Requestable &&
+            permission !in requestedPermissions
+        ) return OnboardingAdvance.None
+        if (state.isLastStep) return requestCompletion(completionRetryToken)
+        onPageChanged(state.currentStepIndex + 1)
         return OnboardingAdvance.None
     }
 
-    fun onAlarmSaved(completionRetryToken: Int): OnboardingAdvance {
-        uiState = uiState.copy(isAlarmSaved = true)
-        return requestCompletion(completionRetryToken)
-    }
-
-    private fun requestCompletion(token: Int): OnboardingAdvance {
-        if (lastCompletionToken == token) return OnboardingAdvance.None
-        lastCompletionToken = token
-        return OnboardingAdvance.Complete
-    }
-
-    fun back() {
-        if (uiState.isAlarmSaved) return
-        uiState = when {
-            uiState.isDestinationOpen -> uiState.copy(isDestinationOpen = false)
-            uiState.currentStepIndex > 0 -> uiState.copy(step = uiState.steps[uiState.currentStepIndex - 1])
-            else -> uiState
+    fun requestPermissionOnEntry(): OnboardingAdvance {
+        val state = uiState.value
+        val permission = state.step.permission ?: return OnboardingAdvance.None
+        if (state.settledStep != state.step || state.isCompletionRequested ||
+            state.requestingPermission != null || permission in requestedPermissions ||
+            state.permissions[permission] != OnboardingPermissionStatus.Requestable
+        ) return OnboardingAdvance.None
+        requestedPermissions += permission
+        mutableUiState.value = state.copy(
+            requestingPermission = permission,
+            permissionRequestId = state.permissionRequestId + 1,
+        )
+        return when (permission) {
+            OnboardingPermission.Location -> OnboardingAdvance.RequestLocationPermission
+            OnboardingPermission.Notifications -> OnboardingAdvance.RequestNotificationPermission
         }
     }
 
-    fun openDestination() {
-        if (uiState.step != OnboardingStep.Destination || uiState.isAlarmSaved) return
-        lastViewedStep = null
-        uiState = uiState.copy(
-            destinationRequestId = uiState.destinationRequestId + 1,
-            isDestinationOpen = true,
-        )
+    fun onPermissionsRefreshed(
+        permissions: OnboardingPermissionState,
+        requestId: Int = uiState.value.permissionRequestId,
+    ) {
+        val state = uiState.value
+        if (state.requestingPermission != null || state.isCompletionRequested || state.permissionRequestId != requestId) return
+        mutableUiState.value = state.copy(permissions = permissions)
     }
 
-    fun acceptDestination(requestId: Long): Boolean {
-        if (!uiState.isDestinationOpen || uiState.destinationRequestId != requestId) return false
-        uiState = uiState.copy(isDestinationOpen = false)
-        return true
+    fun onPermissionResult(
+        permission: OnboardingPermission,
+        requestId: Int,
+        permissions: OnboardingPermissionState,
+        completionRetryToken: Int = 0,
+    ): OnboardingAdvance {
+        val state = uiState.value
+        if (state.requestingPermission != permission || state.permissionRequestId != requestId) {
+            return OnboardingAdvance.None
+        }
+        mutableUiState.value = state.copy(permissions = permissions, requestingPermission = null)
+        if (permissions[permission] != OnboardingPermissionStatus.Granted) return OnboardingAdvance.None
+        if (permission == OnboardingPermission.Location) {
+            onPageChanged(OnboardingStep.NotificationPermission.ordinal)
+            return OnboardingAdvance.None
+        }
+        return requestCompletion(completionRetryToken)
+    }
+
+    private fun requestCompletion(completionRetryToken: Int): OnboardingAdvance {
+        val state = uiState.value
+        if (!state.isLastStep) return OnboardingAdvance.None
+
+        // Retry tokens increase only after a failed preferences write. Ignore stale callbacks
+        // and duplicate taps while that write is in flight or its result is being observed.
+        if (completionRetryToken < 0 ||
+            lastCompletionToken?.let { completionRetryToken <= it } == true
+        ) {
+            return OnboardingAdvance.None
+        }
+        lastCompletionToken = completionRetryToken
+        mutableUiState.value = state.copy(isCompletionRequested = true, completionRequestToken = completionRetryToken)
+        return OnboardingAdvance.Complete
+    }
+
+    fun onPageChanged(index: Int) {
+        val state = uiState.value
+        if (state.isCompletionRequested || state.requestingPermission != null) return
+        val step = state.steps.getOrNull(index) ?: return
+        if (step == state.step) return
+        mutableUiState.value = state.copy(step = step, settledStep = null)
+    }
+
+    fun back() {
+        onPageChanged(uiState.value.currentStepIndex - 1)
     }
 }
 
 private fun OnboardingStep.analyticsStep(): AnalyticsOnboardingStep = when (this) {
-    OnboardingStep.Time -> AnalyticsOnboardingStep.Time
-    OnboardingStep.Weekdays -> AnalyticsOnboardingStep.Weekdays
+    OnboardingStep.Introduction -> AnalyticsOnboardingStep.Introduction
     OnboardingStep.Destination -> AnalyticsOnboardingStep.Destination
     OnboardingStep.Interval -> AnalyticsOnboardingStep.Interval
-    OnboardingStep.Sound -> AnalyticsOnboardingStep.Sound
+    OnboardingStep.Departure -> AnalyticsOnboardingStep.Departure
+    OnboardingStep.LocationPermission -> AnalyticsOnboardingStep.LocationPermission
+    OnboardingStep.NotificationPermission -> AnalyticsOnboardingStep.NotificationPermission
 }

@@ -2,6 +2,8 @@ package com.joon.ringout.presentation.alarmsetup
 
 import androidx.compose.runtime.Immutable
 import com.joon.ringout.alarm.AlarmScheduleRequest
+import com.joon.ringout.domain.destination.SavedDestination
+import com.joon.ringout.domain.destination.resolveDestinationDisplayName
 import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
 import com.joon.ringout.presentation.destination.DestinationSelection
 import com.joon.ringout.presentation.destination.isConfiguredDestination
@@ -21,7 +23,13 @@ data class AlarmSetupUiState(
     val pendingSaveRequest: AlarmScheduleRequest? = null,
     val isScheduling: Boolean = false,
     val errorMessage: String? = null,
+    val savedDestinations: List<SavedDestination>? = null,
 ) {
+    val destinationDisplayName: String
+        get() = destination?.let {
+            resolveDestinationDisplayName(it.name, it.address, it.latitude, it.longitude, savedDestinations)
+        }.orEmpty()
+
     val isEditing: Boolean
         get() = alarmId != null
 
