@@ -48,9 +48,10 @@ jobs:
       - name: Save frontend build
         uses: actions/upload-artifact@v6
         with:
-          name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          name: frontend-${{ github.run_id }}
           path: ${{ runner.temp }}/frontend.tar.gz
           if-no-files-found: error
+          overwrite: true
           retention-days: 1
 
   deploy:
@@ -81,7 +82,7 @@ jobs:
       - name: Download frontend build
         uses: actions/download-artifact@v7
         with:
-          name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          name: frontend-${{ github.run_id }}
           path: ${{ runner.temp }}/ringout-frontend-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload frontend using EC2 instance role
