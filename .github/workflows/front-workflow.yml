@@ -2,7 +2,7 @@ name: Front workflow
 
 on:
   push:
-    branches: [main]
+    branches: [front/develop]
     paths:
       - 'admin/**'
   workflow_dispatch:
@@ -15,18 +15,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment: production
+  build:
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 20
     env:
-      # Repository variables. Defaults assume a Vite app at repository root.
       FRONTEND_DIR: ${{ vars.FRONTEND_DIR || 'admin' }}
       BUILD_DIR: ${{ vars.FRONTEND_BUILD_DIR || 'dist' }}
-      S3_BUCKET: ${{ vars.FRONTEND_S3_BUCKET }}
-      DISTRIBUTION_ID: ${{ vars.FRONTEND_CLOUDFRONT_DISTRIBUTION_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
-
     steps:
       - uses: actions/checkout@v5
         with:
@@ -44,78 +39,74 @@ jobs:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
         run: |
           set -euo pipefail
+          test -n "$VITE_API_BASE_URL" || { echo '::error::VITE_API_BASE_URL variable is missing.'; exit 1; }
           npm ci
           npm run build
           test -f "${BUILD_DIR}/index.html"
-          tar -czf "${RUNNER_TEMP}/frontend.tar.gz" -C "${BUILD_DIR}" .
+          tar -czf "${RUNNER_TEMP}/frontend.tar.gz" -C "$BUILD_DIR" .
 
-      - name: Configure SSH
-        env:
-          EC2_PORT: ${{ secrets.SERVER_SSH_PORT }}
-          EC2_HOST: ${{ secrets.SERVER_HOST }}
-          EC2_USER: ${{ secrets.SERVER_USERNAME }}
-          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      - name: Save frontend build
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/frontend.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, Linux, ARM64, ringout-production]
+    environment: production
+    timeout-minutes: 15
+    env:
+      S3_BUCKET: ${{ vars.FRONTEND_S3_BUCKET }}
+      DISTRIBUTION_ID: ${{ vars.FRONTEND_CLOUDFRONT_DISTRIBUTION_ID }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
+      AWS_PAGER: ''
+      # Keep this run's files separate from server deployments and other runs.
+      DEPLOY_DIR: ${{ runner.temp }}/ringout-frontend-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Validate deployment settings
+        shell: bash
         run: |
           set -euo pipefail
           fail() { printf '::error::%s\n' "$1"; exit 1; }
-          test -n "$EC2_HOST" || fail 'SERVER_HOST is missing.'
-          test -n "$EC2_USER" || fail 'SERVER_USERNAME is missing.'
-          test -n "$SSH_PRIVATE_KEY" || fail 'SERVER_SSH_KEY is missing.'
-          [[ "$EC2_PORT" =~ ^[0-9]+$ ]] || fail 'SERVER_SSH_PORT is missing or invalid.'
           [[ "$S3_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || fail 'FRONTEND_S3_BUCKET variable is missing or invalid; use a bucket name only.'
           [[ "$DISTRIBUTION_ID" =~ ^[A-Z0-9]+$ ]] || fail 'FRONTEND_CLOUDFRONT_DISTRIBUTION_ID variable is missing or invalid; use the distribution ID, not its domain.'
-          [[ "$AWS_REGION" =~ ^[a-z0-9-]+$ ]] || fail 'AWS_REGION is invalid.'
-          install -m 700 -d ~/.ssh
-          # Restrict permissions before creating the private key, not afterwards.
+          [[ "$AWS_DEFAULT_REGION" =~ ^[a-z0-9-]+$ ]] || fail 'AWS_REGION is invalid.'
+          command -v aws >/dev/null || fail 'AWS CLI must be installed on the production runner.'
           umask 077
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/frontend_deploy
-          chmod 600 ~/.ssh/frontend_deploy
-          touch ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
+          mkdir -p "$DEPLOY_DIR"
 
-      - name: Upload build to EC2 and deploy using its IAM role
-        env:
-          EC2_PORT: ${{ secrets.SERVER_SSH_PORT }}
-          EC2_HOST: ${{ secrets.SERVER_HOST }}
-          EC2_USER: ${{ secrets.SERVER_USERNAME }}
+      - name: Download frontend build
+        uses: actions/download-artifact@v7
+        with:
+          name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.DEPLOY_DIR }}
+
+      - name: Upload frontend using EC2 instance role
+        shell: bash
         run: |
           set -euo pipefail
-          SSH_OPTIONS=(-i "$HOME/.ssh/frontend_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR -o ConnectTimeout=15)
-          REMOTE_DIR=$(ssh "${SSH_OPTIONS[@]}" -p "$EC2_PORT" \
-            "${EC2_USER}@${EC2_HOST}" 'mktemp -d /tmp/ringout-frontend.XXXXXXXXXX')
-          [[ "$REMOTE_DIR" =~ ^/tmp/ringout-frontend\.[a-zA-Z0-9]+$ ]]
-          # Also clean up if file transfer or the remote deployment fails.
-          cleanup() {
-            ssh "${SSH_OPTIONS[@]}" -p "$EC2_PORT" "${EC2_USER}@${EC2_HOST}" \
-              "rm -rf -- '$REMOTE_DIR'" || true
-          }
-          trap cleanup EXIT
-          scp "${SSH_OPTIONS[@]}" -P "$EC2_PORT" \
-            "${RUNNER_TEMP}/frontend.tar.gz" "${EC2_USER}@${EC2_HOST}:${REMOTE_DIR}/frontend.tar.gz"
-          ssh "${SSH_OPTIONS[@]}" -p "$EC2_PORT" "${EC2_USER}@${EC2_HOST}" \
-            "bash -s -- '$REMOTE_DIR' '$S3_BUCKET' '$DISTRIBUTION_ID' '$AWS_REGION'" <<'REMOTE_SCRIPT'
-          set -euo pipefail
-          deploy_dir="$1"
-          bucket="$2"
-          distribution_id="$3"
-          export AWS_DEFAULT_REGION="$4"
-          export AWS_PAGER=""
-          # Avoid static credentials taking precedence over the EC2 instance role.
+          # Use the instance role, without changing the runner's saved credentials.
           unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_PROFILE AWS_DEFAULT_PROFILE
           export AWS_SHARED_CREDENTIALS_FILE=/dev/null
           export AWS_CONFIG_FILE=/dev/null
-          command -v aws >/dev/null
           aws sts get-caller-identity >/dev/null
-          mkdir "$deploy_dir/build"
-          tar -xzf "$deploy_dir/frontend.tar.gz" -C "$deploy_dir/build"
-          test -f "$deploy_dir/build/index.html"
-          aws s3 sync "$deploy_dir/build/" "s3://$bucket/frontend/" --exclude "index.html" --only-show-errors
-          aws s3 cp "$deploy_dir/build/index.html" "s3://$bucket/frontend/index.html" \
-            --cache-control "no-cache" --content-type "text/html" --only-show-errors
-          aws cloudfront create-invalidation --distribution-id "$distribution_id" --paths '/*' >/dev/null
-          printf '%s\n' 'Frontend uploaded; CloudFront invalidation requested.'
-          REMOTE_SCRIPT
+          mkdir -p "$DEPLOY_DIR/build"
+          tar -xzf "$DEPLOY_DIR/frontend.tar.gz" -C "$DEPLOY_DIR/build"
+          test -f "$DEPLOY_DIR/build/index.html"
+          aws s3 sync "$DEPLOY_DIR/build/" "s3://$S3_BUCKET/frontend/" --exclude 'index.html' --only-show-errors
+          aws s3 cp "$DEPLOY_DIR/build/index.html" "s3://$S3_BUCKET/frontend/index.html" \
+            --cache-control 'no-cache' --content-type 'text/html' --only-show-errors
+          aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' >/dev/null
+          echo 'Frontend uploaded; CloudFront invalidation requested.'
 
-      - name: Remove local SSH key
+      - name: Remove this run's temporary build files
         if: always()
-        run: rm -f "$HOME/.ssh/frontend_deploy"
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_dir="${RUNNER_TEMP}/ringout-frontend-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ "$DEPLOY_DIR" == "$expected_dir" ]]
+          rm -rf -- "$DEPLOY_DIR"
