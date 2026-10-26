@@ -63,10 +63,10 @@ jobs:
       DISTRIBUTION_ID: ${{ vars.FRONTEND_CLOUDFRONT_DISTRIBUTION_ID }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'ap-northeast-2' }}
       AWS_PAGER: ''
-      # Keep this run's files separate from server deployments and other runs.
-      DEPLOY_DIR: ${{ runner.temp }}/ringout-frontend-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Validate deployment settings
+        env:
+          DEPLOY_DIR: ${{ runner.temp }}/ringout-frontend-${{ github.run_id }}-${{ github.run_attempt }}
         shell: bash
         run: |
           set -euo pipefail
@@ -82,9 +82,11 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.DEPLOY_DIR }}
+          path: ${{ runner.temp }}/ringout-frontend-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload frontend using EC2 instance role
+        env:
+          DEPLOY_DIR: ${{ runner.temp }}/ringout-frontend-${{ github.run_id }}-${{ github.run_attempt }}
         shell: bash
         run: |
           set -euo pipefail
@@ -103,6 +105,8 @@ jobs:
           echo 'Frontend uploaded; CloudFront invalidation requested.'
 
       - name: Remove this run's temporary build files
+        env:
+          DEPLOY_DIR: ${{ runner.temp }}/ringout-frontend-${{ github.run_id }}-${{ github.run_attempt }}
         if: always()
         shell: bash
         run: |
