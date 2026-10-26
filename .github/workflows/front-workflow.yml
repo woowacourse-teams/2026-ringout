@@ -99,8 +99,8 @@ jobs:
           mkdir -p "$DEPLOY_DIR/build"
           tar -xzf "$DEPLOY_DIR/frontend.tar.gz" -C "$DEPLOY_DIR/build"
           test -f "$DEPLOY_DIR/build/index.html"
-          aws s3 sync "$DEPLOY_DIR/build/" "s3://$S3_BUCKET/frontend/" --exclude 'index.html' --only-show-errors
-          aws s3 cp "$DEPLOY_DIR/build/index.html" "s3://$S3_BUCKET/frontend/index.html" \
+          aws s3 sync "$DEPLOY_DIR/build/" "s3://$S3_BUCKET/ringout/frontend/" --exclude 'index.html' --only-show-errors
+          aws s3 cp "$DEPLOY_DIR/build/index.html" "s3://$S3_BUCKET/ringout/frontend/index.html" \
             --cache-control 'no-cache' --content-type 'text/html' --only-show-errors
           aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths '/*' >/dev/null
           echo 'Frontend uploaded; CloudFront invalidation requested.'
