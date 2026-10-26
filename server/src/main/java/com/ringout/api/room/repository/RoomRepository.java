@@ -20,4 +20,18 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
         order by room.latestActivityAt desc, room.id asc
         """)
     List<Room> findAllActiveOrderByLatestActivityAtDescIdAsc();
+
+    @Query(value = """
+        select *
+        from room
+        where deleted_at is null
+          and (activity_days & :dayMask) != 0
+          and hour(activity_time) = :hour
+          and minute(activity_time) = :minute
+        """, nativeQuery = true)
+    List<Room> findActiveByActivityDayAndTime(
+        @Param("dayMask") int dayMask,
+        @Param("hour") int hour,
+        @Param("minute") int minute
+    );
 }
