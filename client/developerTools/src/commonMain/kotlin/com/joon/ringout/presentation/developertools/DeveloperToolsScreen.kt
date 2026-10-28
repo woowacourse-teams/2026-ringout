@@ -19,12 +19,14 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.developertools.component.BuildInfoSection
 import com.joon.ringout.presentation.developertools.component.PushTokenRegistrationSection
+import com.joon.ringout.presentation.developertools.component.RemoteConfigSection
 
 @Composable
 internal fun DeveloperToolsScreen(
     uiState: DeveloperToolsUiState,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onRefreshRemoteConfig: () -> Unit = {},
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -34,12 +36,15 @@ internal fun DeveloperToolsScreen(
             TextButton(onClick = onBack) { Text("뒤로") }
             Text("개발자 도구", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "현재 설치된 앱의 빌드 정보예요.",
+                "현재 설치된 앱의 정보와 상태를 확인해요.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
             )
             BuildInfoSection(uiState = uiState)
             PushTokenRegistrationSection(status = uiState.pushTokenRegistrationStatus)
+            uiState.remoteConfig?.let { remoteConfig ->
+                RemoteConfigSection(state = remoteConfig, onRefresh = onRefreshRemoteConfig)
+            }
             Text(
                 "서버 환경은 앱에 설정된 주소를 기준으로 표시해요. 서버 연결 상태를 확인하는 기능은 아니에요.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -74,6 +79,7 @@ private fun DeveloperToolsScreenIosPreview() {
                 versionName = "1.1.1",
                 versionCode = "261010101",
                 buildType = "Debug",
+                remoteConfig = null,
             ),
             onBack = {},
         )

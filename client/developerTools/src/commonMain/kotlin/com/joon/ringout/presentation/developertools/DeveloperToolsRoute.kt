@@ -12,11 +12,17 @@ fun DeveloperToolsRoute(
     buildInfo: AppBuildInfo,
     pushTokenRegistrationReadiness: PushTokenRegistrationReadiness,
     onBack: () -> Unit,
+    remoteConfig: RemoteConfigUiState? = null,
+    onRefreshRemoteConfig: () -> Unit = {},
 ) {
     val toolsViewModel = viewModel { DeveloperToolsViewModel(buildInfo) }
     val registrationStatus by pushTokenRegistrationReadiness.registrationStatus.collectAsState()
     DeveloperToolsScreen(
-        uiState = toolsViewModel.uiState.copy(pushTokenRegistrationStatus = registrationStatus),
+        uiState = toolsViewModel.uiState.copy(
+            pushTokenRegistrationStatus = registrationStatus,
+            remoteConfig = remoteConfig,
+        ),
         onBack = onBack,
+        onRefreshRemoteConfig = onRefreshRemoteConfig,
     )
 }
