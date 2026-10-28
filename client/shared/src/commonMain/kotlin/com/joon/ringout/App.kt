@@ -439,6 +439,7 @@ private fun RingoutAppContent(
                 homeGraph(
                     authSessionState = authSessionState,
                     sessionIdentity = authSessionIdentity,
+                    networkMonitor = appContainer.networkMonitor,
                     memberRepository = appContainer.memberRepository,
                     viewModelScopes = viewModelScopes,
                     navigationState = navigationState,

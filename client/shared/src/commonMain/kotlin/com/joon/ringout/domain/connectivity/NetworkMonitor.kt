@@ -1,9 +1,9 @@
 package com.joon.ringout.domain.connectivity
 
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 enum class NetworkStatus { Unknown, Online, Offline }
 
 interface NetworkMonitor {
-    val status: Flow<NetworkStatus>
+    val status: StateFlow<NetworkStatus>
 }
