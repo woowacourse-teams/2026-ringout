@@ -9,13 +9,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.MaterialTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.connectivity.NetworkMonitor
+import com.joon.ringout.domain.connectivity.NetworkStatus
 import com.joon.ringout.presentation.common.component.ConfirmationDialog
+import com.joon.ringout.presentation.common.component.NetworkUnavailableScreen
 
 @Composable
 internal fun RoomListRoute(
     viewModel: RoomListViewModel,
+    networkMonitor: NetworkMonitor,
     authSessionState: AuthSessionState,
     sessionIdentity: Any?,
     onCreateRoom: () -> Unit,
@@ -25,6 +30,7 @@ internal fun RoomListRoute(
     modifier: Modifier = Modifier,
 ) {
     var isLoginDialogVisible by rememberSaveable { mutableStateOf(false) }
+    val networkStatus by networkMonitor.status.collectAsStateWithLifecycle()
 
     val analyticsVisit = remember(viewModel, sessionIdentity) { RoomAnalyticsVisit() }
     LaunchedEffect(viewModel, authSessionState, sessionIdentity) {
@@ -33,30 +39,37 @@ internal fun RoomListRoute(
             analyticsVisit.recordOnce { viewModel.recordListViewed(authSessionState) }
         }
     }
+    LaunchedEffect(networkStatus) {
+        if (networkStatus == NetworkStatus.Offline) isLoginDialogVisible = false
+    }
 
-    RoomListScreen(
-        uiState = viewModel.uiState,
-        onCreateRoom = {
-            if (authSessionState == AuthSessionState.Authenticated) {
-                onCreateRoom()
-            } else {
-                isLoginDialogVisible = true
-            }
-        },
-        onRoomClick = { roomId ->
-            val room = viewModel.uiState.allRooms.firstOrNull { it.id == roomId }
-            if (room?.isJoined == true) {
-                onJoinedRoomClick(roomId)
-            } else {
-                onRoomClick(roomId)
-            }
-        },
-        onJoinedRoomClick = onJoinedRoomClick,
-        onRetryRooms = viewModel::onRetryRooms,
-        modifier = modifier,
-    )
+    if (networkStatus == NetworkStatus.Offline) {
+        NetworkUnavailableScreen(modifier)
+    } else {
+        RoomListScreen(
+            uiState = viewModel.uiState,
+            onCreateRoom = {
+                if (authSessionState == AuthSessionState.Authenticated) {
+                    onCreateRoom()
+                } else {
+                    isLoginDialogVisible = true
+                }
+            },
+            onRoomClick = { roomId ->
+                val room = viewModel.uiState.allRooms.firstOrNull { it.id == roomId }
+                if (room?.isJoined == true) {
+                    onJoinedRoomClick(roomId)
+                } else {
+                    onRoomClick(roomId)
+                }
+            },
+            onJoinedRoomClick = onJoinedRoomClick,
+            onRetryRooms = viewModel::onRetryRooms,
+            modifier = modifier,
+        )
+    }
 
-    if (isLoginDialogVisible) {
+    if (networkStatus != NetworkStatus.Offline && isLoginDialogVisible) {
         ConfirmationDialog(
             title = "로그인이 필요해요",
             description = "모임 기능을 사용하려면 로그인이 필요해요.\n지금 로그인을 하러 가볼까요?",

@@ -2,6 +2,11 @@ package com.joon.ringout.presentation.mypage
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.joon.ringout.domain.connectivity.NetworkMonitor
+import com.joon.ringout.domain.connectivity.NetworkStatus
+import com.joon.ringout.presentation.common.component.NetworkUnavailableScreen
 import com.joon.ringout.presentation.mypage.component.MyPageAccountActionErrorDialog
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.mypage.model.MyPageAccountActionState
@@ -12,6 +17,7 @@ import com.joon.ringout.ThemeMode
 @Composable
 internal fun MyPageRoute(
     viewModel: MyPageViewModel,
+    networkMonitor: NetworkMonitor,
     themeMode: ThemeMode,
     appVersion: String,
     onThemeModeChange: (ThemeMode) -> Unit,
@@ -21,6 +27,7 @@ internal fun MyPageRoute(
     onEditProfileClick: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
+    val networkStatus by networkMonitor.status.collectAsStateWithLifecycle()
     val accountAction = viewModel.uiState.accountAction
     LaunchedEffect(accountAction) {
         if (accountAction is MyPageAccountActionState.Completed) {
@@ -28,33 +35,37 @@ internal fun MyPageRoute(
         }
     }
 
-    MyPageScreen(
-        accountStatus = viewModel.uiState.accountStatus,
-        profileImageUrl = viewModel.uiState.profileImageUrl,
-        onAccountRetry = viewModel::retryAccount,
-        isAccountActionInProgress = accountAction is MyPageAccountActionState.InProgress,
-        onConfirmAccountAction = { action ->
-            when (action) {
-                MyPageAccountAction.Logout -> viewModel.logout()
-                MyPageAccountAction.Withdraw -> viewModel.withdraw()
-            }
-        },
-        themeMode = themeMode,
-        appVersion = appVersion,
-        extraContent = extraContent,
-        policies = DefaultMyPagePolicies,
-        onThemeModeChange = onThemeModeChange,
-        onLoginClick = onLoginClick,
-        onEditProfileClick = onEditProfileClick,
-        onPolicyClick = { policyId ->
-            findPolicyUrl(policyId)?.let { url ->
-                runCatching { uriHandler.openUri(url) }
-            }
-        },
-        modifier = modifier,
-    )
+    if (networkStatus == NetworkStatus.Offline) {
+        NetworkUnavailableScreen(modifier)
+    } else {
+        MyPageScreen(
+            accountStatus = viewModel.uiState.accountStatus,
+            profileImageUrl = viewModel.uiState.profileImageUrl,
+            onAccountRetry = viewModel::retryAccount,
+            isAccountActionInProgress = accountAction is MyPageAccountActionState.InProgress,
+            onConfirmAccountAction = { action ->
+                when (action) {
+                    MyPageAccountAction.Logout -> viewModel.logout()
+                    MyPageAccountAction.Withdraw -> viewModel.withdraw()
+                }
+            },
+            themeMode = themeMode,
+            appVersion = appVersion,
+            extraContent = extraContent,
+            policies = DefaultMyPagePolicies,
+            onThemeModeChange = onThemeModeChange,
+            onLoginClick = onLoginClick,
+            onEditProfileClick = onEditProfileClick,
+            onPolicyClick = { policyId ->
+                findPolicyUrl(policyId)?.let { url ->
+                    runCatching { uriHandler.openUri(url) }
+                }
+            },
+            modifier = modifier,
+        )
+    }
 
-    if (accountAction is MyPageAccountActionState.Error) {
+    if (networkStatus != NetworkStatus.Offline && accountAction is MyPageAccountActionState.Error) {
         MyPageAccountActionErrorDialog(
             action = accountAction.action,
             message = accountAction.message,

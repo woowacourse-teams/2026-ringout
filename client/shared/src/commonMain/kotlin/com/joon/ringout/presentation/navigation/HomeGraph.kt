@@ -8,6 +8,7 @@ import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.compose.runtime.Composable
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.connectivity.NetworkMonitor
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.presentation.profilechange.ProfileChangeRoute
 import com.joon.ringout.ThemeMode
@@ -38,6 +39,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     viewModelScopes: NavigationViewModelScopes,
     sessionIdentity: Any?,
     myPageViewModel: MyPageViewModel?,
+    networkMonitor: NetworkMonitor,
     authSessionState: AuthSessionState,
     memberRepository: MemberRepository,
     themeMode: ThemeMode,
@@ -68,6 +70,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     entry<AppRoute.MyPage>(clazzContentKey = AppRoute::viewModelStoreKey) {
         MyPageRoute(
             viewModel = checkNotNull(myPageViewModel),
+            networkMonitor = networkMonitor,
             themeMode = themeMode,
             appVersion = appVersion,
             extraContent = myPageExtraContent,
@@ -80,6 +83,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     entry<AppRoute.Social>(clazzContentKey = AppRoute::viewModelStoreKey) {
         RoomListRoute(
             viewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class),
+            networkMonitor = networkMonitor,
             authSessionState = authSessionState,
             sessionIdentity = sessionIdentity,
             onCreateRoom = { navigationState.navigate(AppRoute.RoomCreate) },
