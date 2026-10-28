@@ -120,6 +120,8 @@ dependencies {
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.messaging)
+    implementation(libs.firebase.config)
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
 
