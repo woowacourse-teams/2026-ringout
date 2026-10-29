@@ -49,4 +49,6 @@ jobs:
           persist-credentials: false
 
       - name: Deploy Spring using EC2 environment
+        env:
+          DEPLOY_COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: bash server/deploy/deploy.sh
