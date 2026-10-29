@@ -17,7 +17,6 @@ internal fun DestinationRoute(
     productAnalyticsRecorder: ProductAnalyticsRecorder,
     isActive: Boolean,
     onBackClick: () -> Unit,
-    onSavedDestinationConfirmClick: (SavedDestination) -> Unit,
     onConfirmWithoutSave: (DestinationSelection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -40,23 +39,8 @@ internal fun DestinationRoute(
                 viewModel.save(destination, requestId, analyticsLoginState)
             }
         },
-        onSavedDestinationConfirmClick = { destination ->
-            if (isActive) onSavedDestinationConfirmClick(destination)
-        },
         onConfirmWithoutSave = { destination ->
             if (isActive) onConfirmWithoutSave(destination.withAddressAsName())
-        },
-        savedDestinations = uiState.destinations,
-        onSavedDestinationRename = { id, nickname ->
-            if (isActive) viewModel.rename(id, nickname)
-        },
-        onSavedDestinationDeleteClick = { id ->
-            if (isActive) viewModel.delete(id)
-        },
-        onSavedDestinationSelected = { source ->
-            if (isActive && analyticsLoginState != null) {
-                productAnalyticsRecorder.recordDestinationSelected(source, analyticsLoginState)
-            }
         },
         isSaveInProgress = uiState.isSaving,
         isDestinationActionEnabled = isActive && analyticsLoginState != null && uiState.hasLoadedDestinations,

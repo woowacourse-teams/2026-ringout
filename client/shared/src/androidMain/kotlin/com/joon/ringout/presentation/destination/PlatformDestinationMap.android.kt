@@ -57,6 +57,9 @@ actual fun PlatformDestinationMap(
     cameraTarget: DestinationSelection?,
     currentLocationRequestId: Int,
     currentLocationCancellationId: Int,
+    addressResolutionRequestId: Int,
+    addressResolutionLatitude: Double,
+    addressResolutionLongitude: Double,
     onCameraMoveStarted: () -> Unit,
     onCameraSettled: (
         latitude: Double,
@@ -337,6 +340,14 @@ actual fun PlatformDestinationMap(
 
         lastHandledCurrentLocationCancellationId = currentLocationCancellationId
         cancelCurrentLocationRequest()
+    }
+
+    LaunchedEffect(addressResolutionRequestId) {
+        if (addressResolutionRequestId > 0) {
+            settleCameraAndResolveAddress(
+                LatLng(addressResolutionLatitude, addressResolutionLongitude),
+            )
+        }
     }
 
     LaunchedEffect(cameraPositionState) {

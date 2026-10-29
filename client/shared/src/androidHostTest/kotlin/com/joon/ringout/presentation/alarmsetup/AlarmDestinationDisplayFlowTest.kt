@@ -3,7 +3,6 @@ package com.joon.ringout.presentation.alarmsetup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -16,10 +15,8 @@ import androidx.compose.ui.test.performClick
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.SavedAlarmSchedule
-import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.home.HomeScreen
 import com.joon.ringout.presentation.home.HomeViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
 import org.junit.Test
@@ -37,28 +34,25 @@ class AlarmDestinationDisplayFlowTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
-    fun `편집 중 즐겨찾기를 삭제하면 주소로 바뀌고 저장 없이 홈으로 돌아와도 주소를 표시한다`() {
-        val favorite = SavedDestination(1, "헬스장", "서울 서초구 반포동 748-10", 37.5, 127.0)
+    fun `저장 목적지 목록이 없어도 알람에 복사한 라벨을 홈과 편집 화면에서 표시한다`() {
         val request = AlarmScheduleRequest(
             id = "alarm-1", time = "07:00", selectedDays = listOf("월"), repeatEnabled = true,
-            limitMinutes = 5, destinationName = favorite.name, destinationAddress = favorite.address,
-            destinationLatitude = favorite.latitude, destinationLongitude = favorite.longitude,
+            limitMinutes = 5, destinationLabel = "헬스장",
+            destinationLatitude = 37.5, destinationLongitude = 127.0,
             alarmSoundName = "기본 알람음", alarmSoundUri = null,
         )
-        val favorites = MutableStateFlow(listOf(favorite))
-        val home = HomeViewModel(favorites)
+        val home = HomeViewModel()
         val editor = AlarmSetupViewModel()
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
             activity.get().setContent {
                 var editing by remember { mutableStateOf(false) }
-                val saved by favorites.collectAsState()
                 LaunchedEffect(Unit) { home.observeAlarms(flowOf(listOf(SavedAlarmSchedule(request, true)))) }
                 RingoutTheme {
                     if (editing) {
                         AlarmSetupRoute(
                             viewModel = editor, isActive = true, onBackClick = { editing = false },
-                            onDestinationClick = {}, onAlarmSoundClick = {}, savedDestinations = saved,
+                            onDestinationClick = {}, onAlarmSoundClick = {},
                         )
                     } else {
                         HomeScreen(
@@ -73,26 +67,18 @@ class AlarmDestinationDisplayFlowTest {
                 }
             }
             compose.waitUntil(5_000) {
-                home.uiState.alarms.firstOrNull()?.destinationDisplayName == favorite.name
+                home.uiState.alarms.firstOrNull()?.destinationDisplayName == request.destinationLabel
             }
             compose.onNodeWithText("헬스장으로 이동").assertIsDisplayed().performClick()
             compose.onNodeWithText("헬스장").assertIsDisplayed()
-            compose.runOnIdle { favorites.value = emptyList() }
-            compose.waitUntil(5_000) {
-                home.uiState.alarms.firstOrNull()?.destinationDisplayName == favorite.address
-            }
-            compose.onNodeWithText(favorite.address).assertIsDisplayed()
-            compose.onNodeWithText("헬스장").assertDoesNotExist()
             compose.onNodeWithContentDescription("뒤로").performClick()
-            compose.onNodeWithText("${favorite.address}으로 이동").assertIsDisplayed()
-            compose.onNodeWithText("헬스장", substring = true).assertDoesNotExist()
+            compose.onNodeWithText("헬스장으로 이동").assertIsDisplayed()
             compose.runOnIdle {
                 assertEquals(request, home.alarmScheduleRequest(request.id))
                 assertEquals(request, editor.createScheduleRequest())
             }
-            // 재진입도 원본 별명 대신 현재 즐겨찾기 상태를 기준으로 표시한다.
-            compose.onNodeWithText("${favorite.address}으로 이동").performClick()
-            compose.onNodeWithText(favorite.address).assertIsDisplayed()
+            compose.onNodeWithText("헬스장으로 이동").performClick()
+            compose.onNodeWithText("헬스장").assertIsDisplayed()
         } finally {
             activity.pause().stop().destroy()
         }

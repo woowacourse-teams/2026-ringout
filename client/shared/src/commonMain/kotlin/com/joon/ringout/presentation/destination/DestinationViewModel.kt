@@ -9,7 +9,6 @@ import com.joon.ringout.analytics.AnalyticsLoginState
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.destination.SavedDestination
-import com.joon.ringout.presentation.destination.component.normalizeDestinationNickname
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -26,7 +25,9 @@ data class DestinationUiState(
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
     val savedEvent: DestinationSavedEvent? = null,
-    val managedDestination: SavedDestination? = null,
+    val pendingDeleteDestinationId: Long? = null,
+    val isDeletingDestination: Boolean = false,
+    val deleteErrorMessage: String? = null,
 )
 
 data class DestinationSavedEvent(
@@ -148,70 +149,50 @@ class DestinationViewModel internal constructor(
         }
     }
 
-    fun rename(
-        destinationId: Long,
-        nickname: String,
-    ) {
-        if (uiState.isSaving) return
-
+    fun requestDelete(destinationId: Long) {
+        if (uiState.isSaving || uiState.pendingDeleteDestinationId != null) return
+        if (uiState.destinations.none { it.id == destinationId }) return
         uiState = uiState.copy(
-            isSaving = true,
-            errorMessage = null,
+            pendingDeleteDestinationId = destinationId,
+            deleteErrorMessage = null,
         )
-        scope.launch {
-            try {
-                val renamed = mutationMutex.withLock {
-                    repository.updateName(destinationId, nickname)
-                }
-                uiState = if (renamed) {
-                    uiState.copy(
-                        destinations = uiState.destinations.map { destination ->
-                            if (destination.id == destinationId) {
-                                destination.copy(name = nickname)
-                            } else {
-                                destination
-                            }
-                        },
-                        isSaving = false,
-                    )
-                } else {
-                    uiState.copy(
-                        isSaving = false,
-                        errorMessage = "수정할 목적지를 찾지 못했어요.",
-                    )
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                uiState = uiState.copy(
-                    isSaving = false,
-                    errorMessage = error.message ?: "목적지 별명을 수정하지 못했어요.",
-                )
-            }
-        }
     }
 
-    fun delete(destinationId: Long) {
-        if (uiState.isSaving) return
+    fun dismissDelete() {
+        if (uiState.isDeletingDestination) return
+        uiState = uiState.copy(
+            pendingDeleteDestinationId = null,
+            deleteErrorMessage = null,
+        )
+    }
 
+    fun confirmDelete() {
+        val destinationId = uiState.pendingDeleteDestinationId ?: return
+        if (uiState.isSaving || uiState.isDeletingDestination) return
+        fetchJob?.cancel()
+        fetchJob = null
+        fetchRequestId += 1L
         uiState = uiState.copy(
             isSaving = true,
-            errorMessage = null,
+            isDeletingDestination = true,
+            deleteErrorMessage = null,
         )
         scope.launch {
             try {
-                val deleted = mutationMutex.withLock {
-                    repository.delete(destinationId)
-                }
+                val deleted = mutationMutex.withLock { repository.delete(destinationId) }
                 uiState = if (deleted) {
                     uiState.copy(
                         destinations = uiState.destinations.filterNot { it.id == destinationId },
+                        pendingDeleteDestinationId = null,
                         isSaving = false,
+                        isDeletingDestination = false,
+                        deleteErrorMessage = null,
                     )
                 } else {
                     uiState.copy(
                         isSaving = false,
-                        errorMessage = "삭제할 목적지를 찾지 못했어요.",
+                        isDeletingDestination = false,
+                        deleteErrorMessage = "삭제할 목적지를 찾지 못했어요.",
                     )
                 }
             } catch (error: CancellationException) {
@@ -219,64 +200,9 @@ class DestinationViewModel internal constructor(
             } catch (error: Throwable) {
                 uiState = uiState.copy(
                     isSaving = false,
-                    errorMessage = error.message ?: "목적지를 삭제하지 못했어요.",
+                    isDeletingDestination = false,
+                    deleteErrorMessage = error.message ?: "목적지를 삭제하지 못했어요.",
                 )
-            }
-        }
-    }
-
-    fun beginManagement(destinationId: Long): Boolean {
-        if (uiState.isSaving) return false
-        val destination = uiState.destinations.firstOrNull { it.id == destinationId } ?: return false
-        uiState = uiState.copy(
-            managedDestination = destination,
-            errorMessage = null,
-        )
-        return true
-    }
-
-    fun closeManagement() {
-        if (!uiState.isSaving) {
-            uiState = uiState.copy(
-                managedDestination = null,
-                errorMessage = null,
-            )
-        }
-    }
-
-    fun saveManagedDestination(destination: SavedDestination) {
-        val original = uiState.managedDestination ?: return
-        if (uiState.isSaving || original.id != destination.id) return
-        val nickname = normalizeDestinationNickname(destination.name)
-            ?: return
-        mutateManagedDestination {
-            val saved = repository.save(destination.copy(name = nickname))
-            uiState = uiState.copy(destinations = uiState.destinations.map { if (it.id == saved.id) saved else it })
-        }
-    }
-
-    fun deleteManagedDestination() {
-        val destination = uiState.managedDestination ?: return
-        if (uiState.isSaving) return
-        mutateManagedDestination {
-            check(repository.delete(destination.id)) { "삭제할 목적지를 찾지 못했어요." }
-            uiState = uiState.copy(
-                destinations = uiState.destinations.filterNot { it.id == destination.id },
-            )
-        }
-    }
-
-    private fun mutateManagedDestination(action: suspend () -> Unit) {
-        uiState = uiState.copy(isSaving = true, errorMessage = null)
-        scope.launch {
-            try {
-                mutationMutex.withLock { action() }
-                // 관리 완료는 목적지 선택 이벤트 없이 화면 복귀로 처리한다.
-                uiState = uiState.copy(isSaving = false, managedDestination = null)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                uiState = uiState.copy(isSaving = false, errorMessage = error.message ?: "목적지를 변경하지 못했어요.")
             }
         }
     }

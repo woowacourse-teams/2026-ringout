@@ -6,25 +6,23 @@ import kotlin.test.assertFailsWith
 
 class SavedDestinationTest {
     @Test
-    fun acceptsBlankAddressAndNamesLongerThanTheUiNicknameLimit() {
+    fun acceptsLabelsLongerThanTheUiInputLimit() {
         val destination = SavedDestination(
-            name = "열한글자보다긴목적지별명도보존",
-            address = "",
+            label = "열한글자보다긴목적지라벨도보존",
             latitude = 37.5665,
             longitude = 126.978,
         )
 
-        assertEquals("", destination.address)
-        assertEquals("열한글자보다긴목적지별명도보존", destination.name)
+        assertEquals("열한글자보다긴목적지라벨도보존", destination.label)
     }
 
     @Test
-    fun rejectsNegativeIdsAndBlankNames() {
+    fun rejectsNegativeIdsAndBlankLabels() {
         assertFailsWith<IllegalArgumentException> {
             destination(id = -1)
         }
         assertFailsWith<IllegalArgumentException> {
-            destination(name = "   ")
+            destination(label = "   ")
         }
     }
 
@@ -44,13 +42,12 @@ class SavedDestinationTest {
 
     private fun destination(
         id: Long = 0,
-        name: String = "회사",
+        label: String = "회사",
         latitude: Double = 37.5665,
         longitude: Double = 126.978,
     ) = SavedDestination(
         id = id,
-        name = name,
-        address = "서울특별시 중구 세종대로 110",
+        label = label,
         latitude = latitude,
         longitude = longitude,
     )

@@ -177,8 +177,8 @@ internal fun AlarmScheduleRequest.toIosAlarmScheduleDto(): IosAlarmScheduleDto {
             .distinct()
             .sorted(),
         repeats = repeatEnabled,
-        title = destinationName.ifBlank { "Ringout" },
-        destinationName = destinationName,
+        title = destinationLabel.ifBlank { "Ringout" },
+        destinationName = destinationLabel,
         destinationLatitude = destinationLatitude,
         destinationLongitude = destinationLongitude,
         arrivalRadiusMeters = DefaultArrivalRadiusMeters,

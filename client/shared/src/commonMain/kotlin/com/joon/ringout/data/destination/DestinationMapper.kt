@@ -4,16 +4,14 @@ import com.joon.ringout.domain.destination.SavedDestination
 
 internal fun SavedDestination.toEntity(): SavedDestinationEntity = SavedDestinationEntity(
     id = id,
-    name = name,
-    address = address,
+    label = label,
     latitude = latitude,
     longitude = longitude,
 )
 
 internal fun SavedDestinationEntity.toDomain(): SavedDestination = SavedDestination(
     id = id,
-    name = name,
-    address = address,
+    label = label,
     latitude = latitude,
     longitude = longitude,
 )

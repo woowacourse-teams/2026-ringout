@@ -47,7 +47,7 @@ internal fun Intent.putAlarmExtras(request: AlarmScheduleRequest): Intent = appl
     putExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, request.scheduleVersion)
     putExtra(AlarmRuntime.EXTRA_LIMIT_MINUTES, request.limitMinutes)
     putExtra(AlarmRuntime.EXTRA_TARGET_DISTANCE_KM, request.targetDistanceKm)
-    putExtra(AlarmRuntime.EXTRA_DESTINATION_NAME, request.destinationName)
+    putExtra(AlarmRuntime.EXTRA_DESTINATION_NAME, request.destinationLabel)
     putExtra(AlarmRuntime.EXTRA_DESTINATION_LATITUDE, request.destinationLatitude)
     putExtra(AlarmRuntime.EXTRA_DESTINATION_LONGITUDE, request.destinationLongitude)
     putExtra(AlarmRuntime.EXTRA_ARRIVAL_RADIUS_METERS, DefaultArrivalRadiusMeters)
@@ -55,6 +55,25 @@ internal fun Intent.putAlarmExtras(request: AlarmScheduleRequest): Intent = appl
     putExtra(AlarmRuntime.EXTRA_SCHEDULE_FINGERPRINT, request.scheduleFingerprint())
     removeExtra(AlarmRuntime.EXTRA_SOUND_URI)
     request.alarmSoundUri?.let { putExtra(AlarmRuntime.EXTRA_SOUND_URI, it) }
+}
+
+/** Checks fields available in old broadcast payloads when their pre-v13 fingerprint has changed. */
+internal fun Intent.matchesLegacyAlarmScheduleSnapshot(request: AlarmScheduleRequest): Boolean {
+    val intentDestinationLabel = getStringExtra(AlarmRuntime.EXTRA_DESTINATION_NAME)
+    val destinationLabelMatches = intentDestinationLabel == request.destinationLabel ||
+        (intentDestinationLabel.isNullOrBlank() && request.destinationLabel in LegacyDestinationLabels)
+    val hasSoundUri = getBooleanExtra(AlarmRuntime.EXTRA_HAS_SOUND_URI, false)
+    val soundUri = if (hasSoundUri) getStringExtra(AlarmRuntime.EXTRA_SOUND_URI) else null
+
+    return getStringExtra(AlarmRuntime.EXTRA_ALARM_ID) == request.id &&
+        getStringExtra(AlarmRuntime.EXTRA_ALARM_TIME) == request.time &&
+        getLongExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, 1L) == request.scheduleVersion &&
+        getIntExtra(AlarmRuntime.EXTRA_LIMIT_MINUTES, Int.MIN_VALUE) == request.limitMinutes &&
+        getDoubleExtra(AlarmRuntime.EXTRA_TARGET_DISTANCE_KM, Double.NaN) == request.targetDistanceKm &&
+        destinationLabelMatches &&
+        getDoubleExtra(AlarmRuntime.EXTRA_DESTINATION_LATITUDE, Double.NaN) == request.destinationLatitude &&
+        getDoubleExtra(AlarmRuntime.EXTRA_DESTINATION_LONGITUDE, Double.NaN) == request.destinationLongitude &&
+        soundUri == request.alarmSoundUri
 }
 
 internal fun AlarmScheduleRequest.scheduleFingerprint(): String {
@@ -70,8 +89,7 @@ internal fun AlarmScheduleRequest.scheduleFingerprint(): String {
         canonicalDays.forEach { day -> appendFingerprintPart(day) }
         appendFingerprintPart(repeatEnabled.toString())
         appendFingerprintPart(limitMinutes.toString())
-        appendFingerprintPart(destinationName)
-        appendFingerprintPart(destinationAddress)
+        appendFingerprintPart(destinationLabel)
         appendFingerprintPart(destinationLatitude.fingerprintBits().toString())
         appendFingerprintPart(destinationLongitude.fingerprintBits().toString())
         appendFingerprintPart(targetDistanceKm.fingerprintBits().toString())
@@ -113,6 +131,7 @@ class AlarmReceiver : BroadcastReceiver() {
                         expectedFingerprint = sourceIntent.getStringExtra(
                             AlarmRuntime.EXTRA_SCHEDULE_FINGERPRINT,
                         ),
+                        legacySnapshotMatches = sourceIntent::matchesLegacyAlarmScheduleSnapshot,
                     ) { request ->
                         val runtimeIntent = sourceIntent.apply {
                             putAlarmExtras(request)
@@ -283,3 +302,4 @@ private val AlarmDayOrder = mapOf(
     "토" to 6,
     "일" to 7,
 )
+private val LegacyDestinationLabels = setOf("주소 정보 없음")

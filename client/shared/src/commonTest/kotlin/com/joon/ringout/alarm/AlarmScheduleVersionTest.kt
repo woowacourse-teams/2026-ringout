@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 class AlarmScheduleVersionTest {
     private val original = AlarmScheduleRequest(
         id = "alarm", time = "07:00", selectedDays = listOf("월", "금"), repeatEnabled = true, limitMinutes = 5,
-        destinationName = "회사", destinationAddress = "서울", destinationLatitude = 37.5, destinationLongitude = 127.0,
+        destinationLabel = "회사", destinationLatitude = 37.5, destinationLongitude = 127.0,
         alarmSoundName = "기본", alarmSoundUri = null,
     )
 
@@ -23,7 +23,7 @@ class AlarmScheduleVersionTest {
     fun `같은 설정이나 요일 순서와 다른 항목만 바꾸면 기존 버전을 유지한다`() {
         val previous = original.copy(scheduleVersion = 7)
         val edited = original.copy(
-            selectedDays = listOf("금", "월", "월"), limitMinutes = 10, destinationName = "집", alarmSoundName = "다른 소리",
+            selectedDays = listOf("금", "월", "월"), limitMinutes = 10, destinationLabel = "집", alarmSoundName = "다른 소리",
         )
 
         assertEquals(7L, original.withScheduleVersion(previous).scheduleVersion)

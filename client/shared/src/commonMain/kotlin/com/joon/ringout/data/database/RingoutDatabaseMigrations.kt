@@ -229,3 +229,32 @@ internal val RingoutMigration11To12 = Migration(11, 12) { connection ->
     """.trimIndent())
     connection.executeSQL("CREATE INDEX IF NOT EXISTS index_ios_alarm_occurrence_recording_state ON ios_alarm_occurrence_recording (state)")
 }
+
+/** Keep alarm and destination snapshots while removing their redundant address/name columns. */
+internal val RingoutMigration12To13 = Migration(12, 13) { connection ->
+    connection.executeSQL(
+        """
+        UPDATE saved_destinations
+        SET name = CASE
+            WHEN trim(name, char(9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288)) <> '' THEN name
+            WHEN trim(address, char(9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288)) <> '' THEN address
+            ELSE '주소 정보 없음'
+        END
+        """.trimIndent(),
+    )
+    connection.executeSQL("ALTER TABLE saved_destinations RENAME COLUMN name TO label")
+    connection.executeSQL("ALTER TABLE saved_destinations DROP COLUMN address")
+
+    connection.executeSQL(
+        """
+        UPDATE alarms
+        SET destination_name = CASE
+            WHEN trim(destination_name, char(9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288)) <> '' THEN destination_name
+            WHEN trim(destination_address, char(9, 10, 11, 12, 13, 28, 29, 30, 31, 32, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288)) <> '' THEN destination_address
+            ELSE '주소 정보 없음'
+        END
+        """.trimIndent(),
+    )
+    connection.executeSQL("ALTER TABLE alarms RENAME COLUMN destination_name TO destination_label")
+    connection.executeSQL("ALTER TABLE alarms DROP COLUMN destination_address")
+}

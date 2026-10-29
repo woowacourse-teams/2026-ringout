@@ -29,106 +29,46 @@ import kotlin.test.assertTrue
 
 class DestinationViewModelTest {
     @Test
-    fun `관리 저장은 기존 아이디의 별명 주소 좌표를 수정하고 목적지 선택 이벤트를 만들지 않는다`() =
-        withViewModel { viewModel, repository, recorder ->
-            val original = NewDestination.copy(id = 9)
-            repository.localDestinations.value = listOf(original)
-            assertTrue(viewModel.beginManagement(9))
-            val edited = original.copy(name = " 도서관 ", address = "경기도 수원시", latitude = 37.28, longitude = 127.01)
-            repository.saveResult = edited.copy(name = "도서관")
-
-            viewModel.saveManagedDestination(edited)
-
-            assertEquals(listOf(edited.copy(name = "도서관")), repository.saveRequests)
-            assertEquals(listOf(repository.saveResult), viewModel.uiState.destinations)
-            assertNull(viewModel.uiState.managedDestination)
-            assertNull(viewModel.uiState.savedEvent)
-            assertTrue(recorder.destinationCreatedRecords.isEmpty())
-        }
-
-    @Test
-    fun `관리 화면을 취소하면 원본 목적지를 변경하지 않는다`() =
+    fun `삭제 요청은 확인 전까지 호출하지 않고 취소하면 선택창 상태를 유지한다`() =
         withViewModel { viewModel, repository, _ ->
-            val original = NewDestination.copy(id = 9)
-            repository.localDestinations.value = listOf(original)
-            viewModel.beginManagement(9)
-            viewModel.closeManagement()
-            assertEquals(listOf(original), viewModel.uiState.destinations)
-            assertTrue(repository.saveRequests.isEmpty())
+            val destination = NewDestination.copy(id = 9)
+            repository.localDestinations.value = listOf(destination)
+
+            viewModel.requestDelete(destination.id)
+
+            assertEquals(destination.id, viewModel.uiState.pendingDeleteDestinationId)
             assertTrue(repository.deleteRequests.isEmpty())
-            assertNull(viewModel.uiState.managedDestination)
-        }
+            assertEquals(listOf(destination), viewModel.uiState.destinations)
 
-    @Test
-    fun `관리 저장 실패 시 화면과 원본을 유지하고 재시도할 수 있다`() =
-        withViewModel { viewModel, repository, _ ->
-            val original = NewDestination.copy(id = 9)
-            repository.localDestinations.value = listOf(original)
-            repository.saveFailure = IllegalStateException("저장 실패")
-            viewModel.beginManagement(9)
-            viewModel.saveManagedDestination(original.copy(name = "회사"))
-            assertEquals(original, viewModel.uiState.managedDestination)
-            assertEquals(listOf(original), viewModel.uiState.destinations)
-            assertEquals("저장 실패", viewModel.uiState.errorMessage)
-            assertFalse(viewModel.uiState.isSaving)
-            repository.saveFailure = null
-            repository.saveResult = original.copy(name = "회사")
-            viewModel.saveManagedDestination(repository.saveResult)
-            assertNull(viewModel.uiState.managedDestination)
-            assertNull(viewModel.uiState.errorMessage)
-        }
+            viewModel.dismissDelete()
 
-    @Test
-    fun `관리 작업 중 중복 저장 삭제와 화면 이탈을 막는다`() =
-        withViewModel { viewModel, repository, _ ->
-            val original = NewDestination.copy(id = 9)
-            repository.localDestinations.value = listOf(original)
-            val gate = CompletableDeferred<Unit>()
-            repository.saveGate = gate
-            repository.saveResult = original
-            viewModel.beginManagement(9)
-            viewModel.saveManagedDestination(original)
-            viewModel.saveManagedDestination(original)
-            viewModel.deleteManagedDestination()
-            viewModel.closeManagement()
-            assertFalse(viewModel.beginManagement(9))
-            assertEquals(original, viewModel.uiState.managedDestination)
-            assertEquals(1, repository.saveRequests.size)
+            assertNull(viewModel.uiState.pendingDeleteDestinationId)
             assertTrue(repository.deleteRequests.isEmpty())
-            gate.complete(Unit)
-            assertNull(viewModel.uiState.managedDestination)
+            assertEquals(listOf(destination), viewModel.uiState.destinations)
         }
 
     @Test
-    fun `관리 삭제 성공 시 해당 항목만 제거하고 선택 이벤트를 만들지 않는다`() =
+    fun `삭제 실패는 선택창에 남고 같은 목적지로 재시도할 수 있다`() =
         withViewModel { viewModel, repository, _ ->
-            val original = NewDestination.copy(id = 9)
-            val other = original.copy(id = 10)
-            repository.localDestinations.value = listOf(original, other)
+            val destination = NewDestination.copy(id = 9)
+            repository.localDestinations.value = listOf(destination)
+            viewModel.requestDelete(destination.id)
+
+            viewModel.confirmDelete()
+
+            assertEquals(listOf(destination.id), repository.deleteRequests)
+            assertEquals(destination.id, viewModel.uiState.pendingDeleteDestinationId)
+            assertEquals(listOf(destination), viewModel.uiState.destinations)
+            assertEquals("삭제할 목적지를 찾지 못했어요.", viewModel.uiState.deleteErrorMessage)
+            assertFalse(viewModel.uiState.isDeletingDestination)
+
             repository.deleteResult = true
-            viewModel.beginManagement(9)
-            viewModel.deleteManagedDestination()
-            assertEquals(listOf(9L), repository.deleteRequests)
-            assertEquals(listOf(other), viewModel.uiState.destinations)
-            assertNull(viewModel.uiState.managedDestination)
-            assertNull(viewModel.uiState.savedEvent)
-        }
+            viewModel.confirmDelete()
 
-    @Test
-    fun `삭제 실패와 잘못된 저장 입력은 원본을 유지한다`() =
-        withViewModel { viewModel, repository, _ ->
-            val original = NewDestination.copy(id = 9)
-            repository.localDestinations.value = listOf(original)
-            assertFalse(viewModel.beginManagement(99))
-            viewModel.beginManagement(9)
-            viewModel.saveManagedDestination(original.copy(id = 10))
-            viewModel.saveManagedDestination(original.copy(name = "가".repeat(13)))
-            assertTrue(repository.saveRequests.isEmpty())
-            viewModel.deleteManagedDestination()
-            assertEquals(original, viewModel.uiState.managedDestination)
-            assertEquals(listOf(original), viewModel.uiState.destinations)
-            assertNotNull(viewModel.uiState.errorMessage)
-            assertFalse(viewModel.uiState.isSaving)
+            assertEquals(listOf(destination.id, destination.id), repository.deleteRequests)
+            assertNull(viewModel.uiState.pendingDeleteDestinationId)
+            assertTrue(viewModel.uiState.destinations.isEmpty())
+            assertNull(viewModel.uiState.deleteErrorMessage)
         }
 
     @Test
@@ -227,7 +167,7 @@ class DestinationViewModelTest {
     fun updatingAnExistingDestinationDoesNotRecordCreation() =
         withViewModel { viewModel, repository, recorder ->
             val existingDestination = NewDestination.copy(id = 9L)
-            repository.saveResult = existingDestination.copy(name = "회사")
+            repository.saveResult = existingDestination.copy(label = "회사")
 
             viewModel.save(
                 destination = existingDestination,
@@ -236,7 +176,7 @@ class DestinationViewModelTest {
             )
 
             assertTrue(recorder.destinationCreatedRecords.isEmpty())
-            assertEquals("회사", assertNotNull(viewModel.uiState.savedEvent).destination.name)
+            assertEquals("회사", assertNotNull(viewModel.uiState.savedEvent).destination.label)
         }
 
     @Test
@@ -301,7 +241,7 @@ class DestinationViewModelTest {
                 loginState = AnalyticsLoginState.LoggedIn,
             )
             viewModel.save(
-                destination = NewDestination.copy(name = "두 번째 요청"),
+                destination = NewDestination.copy(label = "두 번째 요청"),
                 requestId = 12L,
                 loginState = AnalyticsLoginState.LoggedIn,
             )
@@ -319,8 +259,8 @@ class DestinationViewModelTest {
     @Test
     fun loggingOutReplacesTheServerDestinationListWithTheLocalDestinationList() =
         withViewModel { viewModel, repository, _ ->
-            val localDestination = NewDestination.copy(id = 1L, name = "로컬 집")
-            val serverDestination = NewDestination.copy(id = 101L, name = "서버 집")
+            val localDestination = NewDestination.copy(id = 1L, label = "로컬 집")
+            val serverDestination = NewDestination.copy(id = 101L, label = "서버 집")
             repository.localDestinations.value = listOf(localDestination)
             repository.fetchAllResult = listOf(serverDestination)
 
@@ -337,8 +277,8 @@ class DestinationViewModelTest {
     @Test
     fun loggingOutIgnoresALateServerDestinationResponse() =
         withViewModel { viewModel, repository, _ ->
-            val localDestination = NewDestination.copy(id = 1L, name = "로컬 집")
-            val serverDestination = NewDestination.copy(id = 101L, name = "서버 집")
+            val localDestination = NewDestination.copy(id = 1L, label = "로컬 집")
+            val serverDestination = NewDestination.copy(id = 101L, label = "서버 집")
             val serverFetchGate = CompletableDeferred<Unit>()
             repository.localDestinations.value = listOf(localDestination)
             repository.fetchAllResult = listOf(serverDestination)
@@ -426,8 +366,6 @@ private class FakeDestinationRepository : DestinationRepository {
         return saveResult
     }
 
-    override suspend fun updateName(id: Long, name: String): Boolean = false
-
     override suspend fun delete(id: Long): Boolean {
         deleteRequests += id
         return deleteResult
@@ -485,8 +423,7 @@ private class RecordingProductAnalyticsRecorder : ProductAnalyticsRecorder,
 }
 
 private val NewDestination = SavedDestination(
-    name = "집",
-    address = "서울특별시 중구 세종대로 110",
+    label = "집",
     latitude = 37.5665851,
     longitude = 126.9782038,
 )

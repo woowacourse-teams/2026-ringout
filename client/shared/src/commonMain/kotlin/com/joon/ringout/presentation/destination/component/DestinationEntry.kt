@@ -21,16 +21,18 @@ internal fun DestinationEntry(
     onFindInMap: () -> Unit,
     onSelect: (SavedDestination) -> Unit,
     onRetry: () -> Unit,
-    onManage: (SavedDestination) -> Unit = {},
+    onDeleteRequest: (Long) -> Unit,
+    onDeleteConfirm: () -> Unit,
+    onDeleteDismiss: () -> Unit,
     openRequestId: Long = 0,
     content: @Composable (onDestinationClick: () -> Unit) -> Unit,
 ) {
     var isRequested by rememberSaveable { mutableStateOf(false) }
+    var keepEmptyListOpenAfterDelete by rememberSaveable { mutableStateOf(false) }
     var consumedOpenRequest by rememberSaveable { mutableStateOf(0L) }
     LaunchedEffect(isActive, openRequestId) {
         if (isActive && openRequestId > consumedOpenRequest) {
             consumedOpenRequest = openRequestId
-            // 관리에서 돌아온 빈 목록은 지도를 자동으로 열지 않는다.
             isRequested = uiState.destinations.isNotEmpty()
         }
     }
@@ -39,7 +41,7 @@ internal fun DestinationEntry(
     LaunchedEffect(isActive, isRequested, canOpenMap) {
         if (!isActive && isRequested) {
             isRequested = false
-        } else if (isRequested && canOpenMap) {
+        } else if (isRequested && canOpenMap && !keepEmptyListOpenAfterDelete) {
             isRequested = false
             onFindInMap()
         }
@@ -49,11 +51,13 @@ internal fun DestinationEntry(
             if (canOpenMap) onFindInMap() else isRequested = true
         }
     }
-    if (isRequested && isActive && !canOpenMap) {
+    if (isRequested && isActive) {
         DestinationSelectionDialog(
             destinations = uiState.destinations,
             onDismissRequest = {
                 isRequested = false
+                keepEmptyListOpenAfterDelete = false
+                if (uiState.pendingDeleteDestinationId != null) onDeleteDismiss()
             },
             onSelect = {
                 isRequested = false
@@ -66,10 +70,19 @@ internal fun DestinationEntry(
             isLoading = uiState.isLoading,
             errorMessage = uiState.errorMessage,
             onRetry = onRetry,
-            onManage = {
-                isRequested = false
-                onManage(it)
+            isDeleteConfirmationOpen = uiState.pendingDeleteDestinationId != null,
+            onDelete = {
+                keepEmptyListOpenAfterDelete = true
+                onDeleteRequest(it.id)
             },
+        )
+    }
+    if (isRequested && isActive && uiState.pendingDeleteDestinationId != null) {
+        DestinationDeleteDialog(
+            onDismissRequest = onDeleteDismiss,
+            onConfirm = onDeleteConfirm,
+            isDeleting = uiState.isDeletingDestination,
+            errorMessage = uiState.deleteErrorMessage,
         )
     }
 }
@@ -78,7 +91,7 @@ internal fun DestinationEntry(
 @Composable
 private fun DestinationEntryPreview() {
     RingoutTheme {
-        DestinationEntry(DestinationUiState(isLoading = false), true, {}, {}, {}) { onClick ->
+        DestinationEntry(DestinationUiState(isLoading = false), true, {}, {}, {}, {}, {}, {}) { onClick ->
             TextButton(onClick = onClick) { Text("목적지 선택") }
         }
     }

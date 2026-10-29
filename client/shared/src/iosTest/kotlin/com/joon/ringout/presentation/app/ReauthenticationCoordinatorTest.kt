@@ -344,8 +344,6 @@ private class ReauthenticationDestinationRepository : DestinationRepository {
 
     override suspend fun save(destination: SavedDestination): SavedDestination = destination
 
-    override suspend fun updateName(id: Long, name: String): Boolean = false
-
     override suspend fun delete(id: Long): Boolean = false
 }
 
@@ -371,8 +369,7 @@ private val LoginStack = listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
 
 private val SavedPlace = SavedDestination(
     id = 1L,
-    name = "회사",
-    address = "서울특별시 강남구 테헤란로 1",
+    label = "회사",
     latitude = 37.4979,
     longitude = 127.0276,
 )

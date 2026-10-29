@@ -317,7 +317,7 @@ internal fun AlarmScheduleRequest.toRecoverySnapshot(): IosAlarmRecoverySourceSn
         sourceAlarmId = id,
         scheduleVersion = scheduleVersion,
         destination = IosAlarmRecoveryDestinationSnapshotDto(
-            name = destinationName,
+            name = destinationLabel,
             latitude = destinationLatitude,
             longitude = destinationLongitude,
         ),
@@ -325,7 +325,7 @@ internal fun AlarmScheduleRequest.toRecoverySnapshot(): IosAlarmRecoverySourceSn
         originalTime = time,
         arrivalRadiusMeters = DefaultArrivalRadiusMeters,
         repeatRule = if (repeatEnabled) selectedDays.joinToString(",") else null,
-        title = destinationName.ifBlank { "Ringout" },
+        title = destinationLabel.ifBlank { "Ringout" },
         soundName = alarmSoundName,
         soundUri = alarmSoundUri,
         owner = IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.UNCAPTURED),

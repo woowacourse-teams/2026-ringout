@@ -102,28 +102,12 @@ internal class AlarmEditorNavigation(
 
     fun isBackBlocked(displayedRoute: AppRoute): Boolean = when (displayedRoute) {
         AppRoute.AddAlarm, is AppRoute.EditAlarm -> alarmSetupViewModel.uiState.isSaveInProgress
-        is AppRoute.DestinationManagement -> destinationViewModel.uiState.isSaving
         else -> false
     }
 
     fun onBack(route: AppRoute, displayedRoute: AppRoute) {
         if (!isActive(route, displayedRoute) || isBackBlocked(displayedRoute)) return
-        if (route is AppRoute.DestinationManagement) {
-            val destinationState = destinationViewModel.uiState
-            if (destinationState.destinations.isNotEmpty()) {
-                destinationDialogRequestId += 1
-            }
-            destinationViewModel.closeManagement()
-        }
         navigationState.popBackStack(route)
-    }
-
-    fun onManageDestination(from: AppRoute, displayedRoute: AppRoute, destination: SavedDestination) {
-        if (from != navigationState.editorRoute || !isActive(from, displayedRoute)) return
-        if (alarmSetupViewModel.uiState.isSaveInProgress) return
-        if (destinationViewModel.beginManagement(destination.id)) {
-            navigationState.navigate(AppRoute.DestinationManagement(destination.id))
-        }
     }
 
     fun onDestinationClick(from: AppRoute, displayedRoute: AppRoute) {
@@ -148,14 +132,6 @@ internal class AlarmEditorNavigation(
     fun onAlarmSoundClick(from: AppRoute, displayedRoute: AppRoute) {
         if (from != navigationState.editorRoute || !isActive(from, displayedRoute)) return
         navigationState.navigate(AppRoute.AlarmSound)
-    }
-
-    fun onSavedDestinationSelected(
-        route: AppRoute.Destination,
-        displayedRoute: AppRoute,
-        destination: SavedDestination,
-    ) {
-        onDestinationSelected(route, displayedRoute, destination.toDestinationSelection())
     }
 
     fun onDestinationSelected(
@@ -212,7 +188,6 @@ private fun AppRoute.isAlarmEditorRoute(): Boolean = when (this) {
     AppRoute.AlarmSound,
     is AppRoute.EditAlarm,
     is AppRoute.Destination,
-    is AppRoute.DestinationManagement,
     -> true
     else -> false
 }

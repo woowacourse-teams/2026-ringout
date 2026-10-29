@@ -115,6 +115,7 @@ class DestinationSearchDismissTest {
                         isSaveInProgress = false,
                         isDestinationActionEnabled = true,
                         currentLocationError = null,
+                        onRetryAddressResolution = {},
                         onSearchQueryChange = { state.query.value = it },
                         onSearchClick = { state.isOpen.value = true },
                         onSearchClose = { state.isOpen.value = false },

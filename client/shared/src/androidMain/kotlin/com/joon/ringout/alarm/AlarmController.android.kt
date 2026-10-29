@@ -488,6 +488,7 @@ internal class AndroidAlarmScheduler(
     suspend fun ringTriggeredIfCurrent(
         alarmId: String,
         expectedFingerprint: String?,
+        legacySnapshotMatches: (AlarmScheduleRequest) -> Boolean = { false },
         startRinging: suspend (AlarmScheduleRequest) -> Unit,
     ): Boolean = AlarmSchedulerMutationMutex.withLock {
         ensureMigrated()
@@ -497,7 +498,8 @@ internal class AndroidAlarmScheduler(
         val request = storedAlarm.request
         if (
             expectedFingerprint != null &&
-            expectedFingerprint != request.scheduleFingerprint()
+            expectedFingerprint != request.scheduleFingerprint() &&
+            !(request.scheduleVersion == 1L && legacySnapshotMatches(request))
         ) {
             return@withLock false
         }

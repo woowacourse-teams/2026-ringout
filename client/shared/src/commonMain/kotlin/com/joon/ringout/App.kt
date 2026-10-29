@@ -413,7 +413,6 @@ private fun RingoutAppContent(
                     AppRoute.AddAlarm,
                     is AppRoute.EditAlarm,
                     is AppRoute.Destination,
-                    is AppRoute.DestinationManagement,
                     AppRoute.AlarmSound,
                     -> alarmEditorNavigation?.onBack(route, displayedRoute)
                     AppRoute.RoomCreate -> viewModelScopes

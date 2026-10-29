@@ -290,7 +290,7 @@ class IosAlarmLifecycleTest {
     fun `목적지만 수정해도 새 네이티브 snapshot 버전을 예약한다`() = runBlocking {
         val original = savedAlarm(id = CanonicalUuid)
         val data = LifecycleAlarmDataSource(listOf(original))
-        IosAlarmStore(data, LifecycleScheduler()).save(original.request.copy(destinationName = "새 목적지"))
+        IosAlarmStore(data, LifecycleScheduler()).save(original.request.copy(destinationLabel = "새 목적지"))
         assertEquals(original.request.scheduleVersion + 1, data.getById(CanonicalUuid)?.request?.scheduleVersion)
     }
 
@@ -2141,8 +2141,7 @@ class IosAlarmLifecycleTest {
             selectedDays = selectedDays,
             repeatEnabled = repeatEnabled,
             limitMinutes = limitMinutes,
-            destinationName = "회사",
-            destinationAddress = "주소",
+            destinationLabel = "회사",
             destinationLatitude = 37.5,
             destinationLongitude = 127.0,
             alarmSoundName = "기본",
