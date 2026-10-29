@@ -5,15 +5,14 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.defaultViewModelCreationExtras
 import androidx.lifecycle.viewmodel.ViewModelStoreProvider
-import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
-import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.joon.ringout.presentation.roomlist.RoomListViewModel
 import com.joon.ringout.presentation.records.RecordsViewModel
+import com.joon.ringout.LocalAppNavigationStoreProvider
+import com.joon.ringout.rememberAppNavigationStoreProvider
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.domain.room.RoomSummary
 import com.joon.ringout.domain.missionhistory.GetMissionSuccessDates
@@ -46,17 +45,8 @@ internal fun rememberNavigationViewModelScopes(
     retainedRoutes: List<AppRoute>,
     destinationCurrentLocationCache: DestinationCurrentLocationCache,
 ): NavigationViewModelScopes {
-    val parent = checkNotNull(LocalViewModelStoreOwner.current) {
-        "CompositionLocal LocalViewModelStoreOwner not present"
-    }
-    // Android의 Intent extras는 조회마다 새 Bundle이므로 재구성 시 저장소가 교체되지 않게 고정한다.
-    // 부모 owner가 바뀌면 새 생성 정보를 사용하고, 저장소 수명 관리는 기존 provider에 맡긴다.
-    val creationExtras = remember(parent) { parent.defaultViewModelCreationExtras }
-    val stores = rememberViewModelStoreProvider(
-        key = "ringout-navigation",
-        parent = parent,
-        defaultCreationExtras = creationExtras,
-    )
+    // A platform gate may remove all screen content without popping its navigation stack.
+    val stores = LocalAppNavigationStoreProvider.current ?: rememberAppNavigationStoreProvider()
     // 부모 화면이 가려져도 앱 루트의 부수 효과에서 부모 ViewModel을 사용할 수 있다.
     // 백스택에 남아 있는 경로의 소유자만 유지하고, 경로가 완전히 제거되면 항목 데코레이터가 정리한다.
     for (route in retainedRoutes) {

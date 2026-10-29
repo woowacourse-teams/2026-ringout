@@ -27,7 +27,7 @@ internal class RoomActivityPushClickViewModel(
         private set
 
     /** Accepts both app-created notification intents and FCM's launcher extras. */
-    fun receive(intent: Intent, isNewIntent: Boolean) {
+    fun receive(intent: Intent, isNewIntent: Boolean, preservePendingRequest: Boolean = false) {
         val extras = intent.extras
         val customRequestId = extras.string(PushNotifications.EXTRA_REQUEST_ID)
         val hasRoomData = extras?.let {
@@ -36,6 +36,8 @@ internal class RoomActivityPushClickViewModel(
         } == true
 
         if (customRequestId == null && !hasRoomData && !isNewIntent) return
+        // An alarm/launcher return while gated must not consume a notification awaiting app access.
+        if (preservePendingRequest && customRequestId == null && !hasRoomData) return
 
         val externalFingerprint = if (customRequestId == null && hasRoomData) {
             externalFingerprint(intent)
