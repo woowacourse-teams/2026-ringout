@@ -5,6 +5,7 @@ services:
     image: ${SERVER_IMAGE:?SERVER_IMAGE is required}
     container_name: ${SERVER_CONTAINER_NAME:-ringout-server}
     restart: unless-stopped
+    stop_grace_period: 40s
     environment:
       DB_URL: ${DB_URL:?DB_URL is required}
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
