@@ -22,14 +22,15 @@ internal fun DestinationRoute(
 ) {
     val uiState = viewModel.uiState
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
-    // A new fix must not change the initial camera of an already displayed map.
+    // An alarm's configured destination is the map's starting point. Use the cached
+    // current location only when the caller has no destination to restore.
     val entrySelection = remember(viewModel, requestId) {
-        viewModel.initialCurrentLocation() ?: initialSelection ?: DefaultDestinationSelection
+        initialSelection ?: viewModel.initialCurrentLocation() ?: DefaultDestinationSelection
     }
 
     DestinationMapScreen(
         initialSelection = entrySelection,
-        requestCurrentLocationOnStart = true,
+        requestCurrentLocationOnStart = initialSelection == null,
         onCurrentLocationResolved = viewModel::onCurrentLocationResolved,
         isAuthenticated = authSessionState == AuthSessionState.Authenticated,
         onEntered = { if (isActive) viewModel.onScreenEntered() },
