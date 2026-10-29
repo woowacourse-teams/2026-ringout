@@ -7,27 +7,25 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class AlarmDestinationDisplayTest {
-    private val destination = SavedDestination(1, "헬스장", "서울 서초구 반포동 748-10", 37.5, 127.0)
+    private val destination = SavedDestination(1, "헬스장", 37.5, 127.0)
 
     @Test
-    fun `알람 초안의 선택 정보는 유지하고 즐겨찾기 삭제 후 표시 이름만 주소로 바꾼다`() {
+    fun `선택한 목적지 라벨은 저장 목적지 목록과 독립적으로 알람 요청에 복사된다`() {
         val editor = AlarmSetupViewModel()
         editor.startCreating("07:00")
         editor.updateDestination(destination.toDestinationSelection())
-        val draft = editor.uiState
-        assertEquals("헬스장", draft.copy(savedDestinations = listOf(destination)).destinationDisplayName)
-        val afterDeletion = draft.copy(savedDestinations = emptyList())
-        assertEquals(destination.address, afterDeletion.destinationDisplayName)
-        assertEquals(draft.destination, afterDeletion.destination)
-        assertTrue(afterDeletion.canSave)
-        assertEquals(draft, editor.uiState)
-        assertEquals(destination.name, editor.createScheduleRequest()?.destinationName)
+        val copiedLabel = editor.uiState.destinationDisplayName
+
+        assertEquals("헬스장", copiedLabel)
+        assertTrue(editor.uiState.canSave)
+        assertEquals(copiedLabel, editor.createScheduleRequest()?.destinationLabel)
         assertEquals(destination.latitude, editor.createScheduleRequest()?.destinationLatitude)
+        assertEquals(destination.longitude, editor.createScheduleRequest()?.destinationLongitude)
     }
 
     @Test
     fun `목적지를 선택하지 않았거나 목록 조회 전이면 기존 표시 상태를 유지한다`() {
-        assertEquals("", AlarmSetupUiState(savedDestinations = emptyList()).destinationDisplayName)
+        assertEquals("", AlarmSetupUiState().destinationDisplayName)
         assertEquals("헬스장", AlarmSetupUiState(destination = destination.toDestinationSelection()).destinationDisplayName)
     }
 }

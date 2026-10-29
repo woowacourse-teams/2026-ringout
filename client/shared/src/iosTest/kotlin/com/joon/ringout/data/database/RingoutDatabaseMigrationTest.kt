@@ -20,10 +20,120 @@ import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTest {
+    @Test
+    fun `버전 십이에서 label을 보정하고 알람과 연관 저장 데이터를 보존한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        var database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val destinationRepo = destinationRepository(database)
+            destinationRepo.save(destination(label = "회사", latitude = 37.5, longitude = 127.0))
+            destinationRepo.save(destination(label = "임시", latitude = 37.6, longitude = 127.1))
+            destinationRepo.save(destination(label = "임시", latitude = 37.7, longitude = 127.2))
+
+            val alarmDataSource = RoomAlarmDataSource(database.alarmDao())
+            val originalRequest = savedAlarm().request.copy(scheduleVersion = 7)
+            alarmDataSource.replace(SavedAlarmSchedule(originalRequest, enabled = true))
+            alarmDataSource.replace(
+                SavedAlarmSchedule(
+                    originalRequest.copy(id = "alarm-address-fallback", destinationLabel = "임시"),
+                    enabled = false,
+                ),
+            )
+            alarmDataSource.replace(
+                SavedAlarmSchedule(
+                    originalRequest.copy(id = "alarm-empty-fallback", destinationLabel = "임시"),
+                    enabled = true,
+                ),
+            )
+            database.missionHistoryDao().insert(
+                com.joon.ringout.data.missionhistory.MissionHistoryEntity(
+                    result = "SUCCESS",
+                    completedAt = "2026-10-01",
+                    occurrenceId = "migration-occurrence",
+                ),
+            )
+            database.alarmActivityDao().record(
+                com.joon.ringout.data.alarmactivity.AlarmActivityEntity.rang(
+                    alarmId = "alarm-1",
+                    occurrenceId = "migration-occurrence",
+                    timestamp = com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp(
+                        1_000,
+                        "2026-10-01",
+                    ),
+                    scheduleVersion = 7,
+                ),
+            )
+            val sync = database.alarmOccurrenceSyncDao()
+            sync.recordStart(
+                com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity(
+                    "migration-execution",
+                    "migration-account",
+                    "alarm-1",
+                    7,
+                    1_000,
+                    1_010,
+                ),
+            )
+            sync.recordDismissal("migration-account", "migration-execution", 2_000)
+            database.close()
+
+            BundledSQLiteDriver().open(path).use { connection ->
+                connection.execSQL("ALTER TABLE saved_destinations ADD COLUMN address TEXT NOT NULL DEFAULT ''")
+                connection.execSQL("ALTER TABLE saved_destinations RENAME COLUMN label TO name")
+                connection.execSQL("UPDATE saved_destinations SET name = char(9, 32), address = ' 서울 주소 ' WHERE id = 2")
+                connection.execSQL("UPDATE saved_destinations SET name = char(9, 32), address = char(9, 32) WHERE id = 3")
+                connection.execSQL("ALTER TABLE alarms ADD COLUMN destination_address TEXT NOT NULL DEFAULT ''")
+                connection.execSQL("ALTER TABLE alarms RENAME COLUMN destination_label TO destination_name")
+                connection.execSQL("UPDATE alarms SET destination_address = '서울특별시 중구 세종대로 110' WHERE id = 'alarm-1'")
+                connection.execSQL("UPDATE alarms SET destination_name = char(9, 32), destination_address = '부산 주소' WHERE id = 'alarm-address-fallback'")
+                connection.execSQL("UPDATE alarms SET destination_name = char(9, 32), destination_address = char(9, 32) WHERE id = 'alarm-empty-fallback'")
+                connection.execSQL("UPDATE room_master_table SET identity_hash = '7f803ac5d546788e54963c61d86ea315' WHERE id = 42")
+                connection.execSQL("PRAGMA user_version = 12")
+            }
+
+            database = buildRingoutDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+            val migratedDestinations = destinationRepository(database).observeAll().first()
+            assertEquals(listOf(1L, 2L, 3L), migratedDestinations.map(SavedDestination::id))
+            assertEquals(listOf("회사", " 서울 주소 ", "주소 정보 없음"), migratedDestinations.map(SavedDestination::label))
+            assertEquals(listOf(37.5, 37.6, 37.7), migratedDestinations.map(SavedDestination::latitude))
+
+            val migratedAlarms = RoomAlarmDataSource(database.alarmDao()).getAll().associateBy { it.request.id }
+            assertEquals("회사", migratedAlarms.getValue("alarm-1").request.destinationLabel)
+            assertEquals("부산 주소", migratedAlarms.getValue("alarm-address-fallback").request.destinationLabel)
+            assertEquals("주소 정보 없음", migratedAlarms.getValue("alarm-empty-fallback").request.destinationLabel)
+            assertEquals(listOf("월", "금"), migratedAlarms.getValue("alarm-1").request.selectedDays)
+            assertEquals(7L, migratedAlarms.getValue("alarm-1").request.scheduleVersion)
+            assertTrue(migratedAlarms.getValue("alarm-1").enabled)
+            assertTrue(!migratedAlarms.getValue("alarm-address-fallback").enabled)
+            assertEquals(37.5665, migratedAlarms.getValue("alarm-1").request.destinationLatitude)
+            assertEquals("기본 알람음", migratedAlarms.getValue("alarm-1").request.alarmSoundName)
+
+            assertEquals(1, database.missionHistoryDao().getHistory("2026-10-01", "2026-10-31").size)
+            assertEquals(1, database.alarmActivityDao().observeCounts("2026-10-01").first().ringingCount)
+            assertEquals(2, database.alarmOccurrenceSyncDao().getUnsentEvents("migration-account").size)
+            BundledSQLiteDriver().open(path).use { connection ->
+                val savedDestinationColumns = columnNames(connection, "saved_destinations")
+                val alarmColumns = columnNames(connection, "alarms")
+                assertTrue("label" in savedDestinationColumns)
+                assertTrue("name" !in savedDestinationColumns && "address" !in savedDestinationColumns)
+                assertTrue("destination_label" in alarmColumns)
+                assertTrue("destination_name" !in alarmColumns && "destination_address" !in alarmColumns)
+                assertTrue("index_alarms_enabled" in indexNames(connection, "alarms"))
+                connection.prepare("PRAGMA foreign_key_check").use { statement ->
+                    assertFalse(statement.step())
+                }
+            }
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
     @Test
     fun `버전 십일에서 iOS 기록 판단 테이블을 추가하고 로컬 전용 결정을 보존한다`() = runBlocking {
         val path = temporaryDatabasePath()
@@ -114,7 +224,7 @@ class RingoutDatabaseMigrationTest {
             assertEquals("rang:one", database.alarmActivityDao().getObservations().single().eventKey)
             assertEquals(1_000L, database.alarmActivityDao().getOccurrenceTimes("one")?.ringingScheduledAtEpochMillis)
             assertEquals(4_000L, database.alarmActivityDao().getOccurrenceTimes("one")?.missionCompletedAtEpochMillis)
-            assertEquals("회사", destinationRepository(database).observeAll().first().single().name)
+            assertEquals("회사", destinationRepository(database).observeAll().first().single().label)
             val sync = database.alarmOccurrenceSyncDao()
             assertTrue(sync.getUnsentEvents("account-1").isEmpty())
             sync.recordStart(com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity(
@@ -265,7 +375,7 @@ class RingoutDatabaseMigrationTest {
             )
 
             val destinationRepository = destinationRepository(database)
-            val savedDestination = destinationRepository.save(destination(name = "회사"))
+            val savedDestination = destinationRepository.save(destination(label = "회사"))
             assertTrue(savedDestination.id > 0L)
             assertEquals(listOf(savedDestination), destinationRepository.observeAll().first())
         } finally {
@@ -299,7 +409,7 @@ class RingoutDatabaseMigrationTest {
             val destinationRepository = destinationRepository(database)
             assertTrue(destinationRepository.observeAll().first().isEmpty())
             val savedDestination = destinationRepository.save(
-                destination(name = "집", address = ""),
+                destination(label = "집"),
             )
             assertEquals(listOf(savedDestination), destinationRepository.observeAll().first())
         } finally {
@@ -558,8 +668,7 @@ class RingoutDatabaseMigrationTest {
             selectedDays = listOf("월", "금"),
             repeatEnabled = true,
             limitMinutes = 12,
-            destinationName = "회사",
-            destinationAddress = "서울특별시 중구 세종대로 110",
+            destinationLabel = "회사",
             destinationLatitude = 37.5665,
             destinationLongitude = 126.978,
             targetDistanceKm = 1.2,
@@ -573,14 +682,32 @@ class RingoutDatabaseMigrationTest {
         DefaultDestinationRepository(RoomDestinationDataSource(database.destinationDao()))
 
     private fun destination(
-        name: String,
-        address: String = "서울특별시 중구 세종대로 110",
+        label: String,
+        latitude: Double = 37.5665,
+        longitude: Double = 126.978,
     ) = SavedDestination(
-        name = name,
-        address = address,
-        latitude = 37.5665,
-        longitude = 126.978,
+        label = label,
+        latitude = latitude,
+        longitude = longitude,
     )
+
+    private fun columnNames(
+        connection: androidx.sqlite.SQLiteConnection,
+        tableName: String,
+    ): Set<String> = connection.prepare("PRAGMA table_info(`$tableName`)").use { statement ->
+        buildSet {
+            while (statement.step()) add(statement.getText(1))
+        }
+    }
+
+    private fun indexNames(
+        connection: androidx.sqlite.SQLiteConnection,
+        tableName: String,
+    ): Set<String> = connection.prepare("PRAGMA index_list(`$tableName`)").use { statement ->
+        buildSet {
+            while (statement.step()) add(statement.getText(1))
+        }
+    }
 
     private fun temporaryDatabasePath(): String =
         NSTemporaryDirectory() + "ringout-migration-${NSUUID().UUIDString}.db"

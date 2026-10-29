@@ -152,7 +152,7 @@ class NavigationViewModelScopesTest {
             assertSame(original, fixture.home)
             assertSame(original, fixture.displayedHome)
             assertFalse(original.uiState.isLoading)
-            assertEquals(1, fixture.container.destinationRepository.observations)
+            assertEquals(0, fixture.container.destinationRepository.observations)
             assertEquals(1, fixture.alarmSubscriptions)
             assertEquals(0, fixture.alarmCompletions)
         }
@@ -295,6 +295,5 @@ private class HomeTestDestinationRepository : DestinationRepository {
     override suspend fun fetchAll(): List<SavedDestination> = error("Unused dependency")
     override suspend fun sync(): List<SavedDestination> = error("Unused dependency")
     override suspend fun save(destination: SavedDestination): SavedDestination = error("Unused dependency")
-    override suspend fun updateName(id: Long, name: String): Boolean = error("Unused dependency")
     override suspend fun delete(id: Long): Boolean = error("Unused dependency")
 }

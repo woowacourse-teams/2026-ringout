@@ -93,7 +93,6 @@ internal class AppNavigationState(
             AppRoute.AddAlarm -> listOf(AppRoute.Home, AppRoute.AddAlarm)
             is AppRoute.EditAlarm -> listOf(AppRoute.Home, route)
             is AppRoute.Destination,
-            is AppRoute.DestinationManagement,
             AppRoute.AlarmSound,
             -> {
                 val parent = requireNotNull(editorRoute) { "An alarm picker requires an editor parent" }

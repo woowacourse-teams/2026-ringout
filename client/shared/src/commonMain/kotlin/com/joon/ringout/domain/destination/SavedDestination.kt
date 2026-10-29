@@ -2,14 +2,13 @@ package com.joon.ringout.domain.destination
 
 data class SavedDestination(
     val id: Long = 0,
-    val name: String,
-    val address: String,
+    val label: String,
     val latitude: Double,
     val longitude: Double,
 ) {
     init {
         require(id >= 0L) { "Saved destination id must not be negative: $id" }
-        require(name.isNotBlank()) { "Saved destination name must not be blank." }
+        require(label.isNotBlank()) { "Saved destination label must not be blank." }
         require(latitude.isFinite() && latitude in ValidLatitudeRange) {
             "Saved destination latitude is out of range: $latitude"
         }

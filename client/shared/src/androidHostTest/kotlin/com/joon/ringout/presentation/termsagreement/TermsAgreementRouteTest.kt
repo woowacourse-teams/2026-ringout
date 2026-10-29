@@ -105,6 +105,5 @@ private class ExitDestinationRepository : DestinationRepository {
     override suspend fun fetchAll(): List<SavedDestination> = emptyList()
     override suspend fun sync(): List<SavedDestination> = emptyList()
     override suspend fun save(destination: SavedDestination): SavedDestination = destination
-    override suspend fun updateName(id: Long, name: String): Boolean = false
     override suspend fun delete(id: Long): Boolean = false
 }

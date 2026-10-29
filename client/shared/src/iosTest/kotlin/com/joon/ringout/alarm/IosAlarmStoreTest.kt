@@ -33,8 +33,8 @@ class IosAlarmStoreTest {
         assertEquals(2L, dataSource.getById(original.id)!!.request.scheduleVersion)
         store.save(original.copy(selectedDays = listOf("화")))
         assertEquals(3L, scheduler.scheduledRequests.getValue(original.id).scheduleVersion)
-        store.save(original.copy(selectedDays = listOf("화"), destinationName = "집"))
-        store.save(original.copy(selectedDays = listOf("화"), destinationName = "집"))
+        store.save(original.copy(selectedDays = listOf("화"), destinationLabel = "집"))
+        store.save(original.copy(selectedDays = listOf("화"), destinationLabel = "집"))
         store.setEnabled(original.id, false)
         store.setEnabled(original.id, true)
         assertEquals(4L, dataSource.getById(original.id)!!.request.scheduleVersion)
@@ -56,7 +56,7 @@ class IosAlarmStoreTest {
         store.save(
             original.copy(
                 time = "21:40",
-                destinationName = "집",
+                destinationLabel = "집",
                 selectedDays = listOf("월", "월", "금"),
             ),
         )
@@ -64,7 +64,7 @@ class IosAlarmStoreTest {
         val replaced = dataSource.getById(original.id)!!
         assertTrue(replaced.enabled)
         assertEquals("21:40", replaced.request.time)
-        assertEquals("집", replaced.request.destinationName)
+        assertEquals("집", replaced.request.destinationLabel)
         assertEquals(1, dataSource.getAll().size)
         assertEquals(
             listOf("schedule:alarm-1", "cancel:alarm-1", "schedule:alarm-1"),
@@ -384,8 +384,7 @@ class IosAlarmStoreTest {
         selectedDays = listOf("월", "금"),
         repeatEnabled = true,
         limitMinutes = 12,
-        destinationName = "회사",
-        destinationAddress = "서울특별시 중구 세종대로 110",
+        destinationLabel = "회사",
         destinationLatitude = 37.5665,
         destinationLongitude = 126.978,
         targetDistanceKm = 1.2,

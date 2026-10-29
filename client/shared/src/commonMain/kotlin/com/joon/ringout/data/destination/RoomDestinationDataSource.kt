@@ -17,17 +17,8 @@ class RoomDestinationDataSource(
         return if (entity.id == 0L) {
             destination.copy(id = destinationDao.insert(entity))
         } else {
-            check(destinationDao.update(entity) == 1) {
-                "Saved destination does not exist: ${entity.id}"
-            }
-            destination
+            error("Saved destinations are immutable once created: ${entity.id}")
         }
-    }
-
-    override suspend fun updateName(id: Long, name: String): Boolean {
-        require(id >= 0L) { "Saved destination id must not be negative: $id" }
-        require(name.isNotBlank()) { "Saved destination name must not be blank." }
-        return destinationDao.updateName(id, name) == 1
     }
 
     override suspend fun delete(id: Long): Boolean {

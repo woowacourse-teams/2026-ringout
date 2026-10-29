@@ -104,7 +104,7 @@ class AlarmSetupViewModelTest {
         assertEquals("08:30", viewModel.uiState.time)
         assertEquals(emptyList(), viewModel.uiState.selectedDays)
         assertEquals(17, viewModel.uiState.limitMinutes)
-        assertEquals(destination, viewModel.uiState.destination)
+        assertEquals(destination.copy(address = ""), viewModel.uiState.destination)
         assertEquals(alarmSound, viewModel.uiState.alarmSound)
         assertTrue(viewModel.uiState.isEditing)
         assertTrue(viewModel.uiState.canSave)
@@ -173,8 +173,7 @@ class AlarmSetupViewModelTest {
                 selectedDays = listOf("월", "화", "수", "목", "금"),
                 repeatEnabled = true,
                 limitMinutes = 20,
-                destinationName = "회사",
-                destinationAddress = "서울특별시 강남구 테헤란로 1",
+                destinationLabel = "회사",
                 destinationLatitude = 37.4979,
                 destinationLongitude = 127.0276,
                 alarmSoundName = "파도",
@@ -449,8 +448,7 @@ class AlarmSetupViewModelTest {
             selectedDays = listOf("월", "수", "금"),
             repeatEnabled = true,
             limitMinutes = 17,
-            destinationName = destination.name,
-            destinationAddress = destination.address,
+            destinationLabel = destination.name,
             destinationLatitude = destination.latitude,
             destinationLongitude = destination.longitude,
             alarmSoundName = alarmSound.name,
@@ -462,8 +460,7 @@ class AlarmSetupViewModelTest {
             selectedDays = listOf("월", "화", "수", "목", "금"),
             repeatEnabled = true,
             limitMinutes = 13,
-            destinationName = "회사",
-            destinationAddress = "서울특별시 강남구 테헤란로 1",
+            destinationLabel = "회사",
             destinationLatitude = 37.4979,
             destinationLongitude = 127.0276,
             alarmSoundName = "기본 알람음",

@@ -7,8 +7,7 @@ import androidx.room3.PrimaryKey
 data class SavedDestinationEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    val name: String,
-    val address: String,
+    val label: String,
     val latitude: Double,
     val longitude: Double,
 )

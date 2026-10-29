@@ -10,8 +10,7 @@ class DestinationMapperTest {
     fun roundTripsEveryStoredDestinationField() {
         val destination = SavedDestination(
             id = 42,
-            name = "회사",
-            address = "",
+            label = "회사",
             latitude = 37.5665,
             longitude = 126.978,
         )
@@ -23,15 +22,14 @@ class DestinationMapperTest {
     fun rejectsInvalidPersistedDestinationsWhenMappingToDomain() {
         val valid = SavedDestinationEntity(
             id = 1,
-            name = "회사",
-            address = "서울특별시 중구 세종대로 110",
+            label = "회사",
             latitude = 37.5665,
             longitude = 126.978,
         )
 
         listOf(
             valid.copy(id = -1),
-            valid.copy(name = " "),
+            valid.copy(label = " "),
             valid.copy(latitude = Double.NaN),
             valid.copy(latitude = 90.0001),
             valid.copy(longitude = Double.POSITIVE_INFINITY),

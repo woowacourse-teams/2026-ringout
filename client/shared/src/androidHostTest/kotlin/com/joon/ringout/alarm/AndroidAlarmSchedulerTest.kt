@@ -26,7 +26,7 @@ class AndroidAlarmSchedulerTest {
         assertEquals(2L, dataSource.getById(original.id)!!.request.scheduleVersion)
         scheduler.schedule(original.copy(selectedDays = listOf("화")))
         assertEquals(3L, gateway.scheduled.getValue(original.id).scheduleVersion)
-        scheduler.schedule(original.copy(selectedDays = listOf("화"), destinationName = "집"))
+        scheduler.schedule(original.copy(selectedDays = listOf("화"), destinationLabel = "집"))
         scheduler.setEnabled(original.id, false)
         scheduler.setEnabled(original.id, true)
         assertEquals(3L, dataSource.getById(original.id)!!.request.scheduleVersion)
@@ -107,7 +107,7 @@ class AndroidAlarmSchedulerTest {
             time = "08:10",
             selectedDays = listOf("화", "목"),
             limitMinutes = 20,
-            destinationName = "집",
+            destinationLabel = "집",
             alarmSoundUri = "content://ringout/alarm/wave",
         )
         val dataSource = FakeAlarmDataSource(
@@ -128,7 +128,7 @@ class AndroidAlarmSchedulerTest {
     @Test
     fun `활성 기존 알람 수정 저장은 같은 ID의 최신 예약 하나만 남긴다`() = runBlocking {
         val previous = request()
-        val latest = previous.copy(time = "09:20", destinationAddress = "서울특별시 강남구")
+        val latest = previous.copy(time = "09:20", destinationLabel = "서울특별시 강남구")
         val dataSource = FakeAlarmDataSource(
             initial = listOf(SavedAlarmSchedule(previous, enabled = true)),
         )
@@ -229,6 +229,44 @@ class AndroidAlarmSchedulerTest {
         )
     }
 
+    @Test
+    fun `마이그레이션 전 version 1 발화는 예전 fingerprint여도 일치 스냅샷이면 허용한다`() = runBlocking {
+        val request = request()
+        val scheduler = AndroidAlarmScheduler(
+            dataSource = FakeAlarmDataSource(initial = listOf(SavedAlarmSchedule(request, enabled = true))),
+            alarmGateway = FakeAndroidAlarmGateway(),
+        )
+        var started = false
+
+        val didRing = scheduler.ringTriggeredIfCurrent(
+            alarmId = request.id,
+            expectedFingerprint = "pre-v13-fingerprint",
+            legacySnapshotMatches = { it == request },
+        ) { started = true }
+
+        assertTrue(didRing)
+        assertTrue(started)
+    }
+
+    @Test
+    fun `version 2 예약은 legacy snapshot이 일치해도 fingerprint 불일치를 거부한다`() = runBlocking {
+        val request = request().copy(scheduleVersion = 2)
+        val scheduler = AndroidAlarmScheduler(
+            dataSource = FakeAlarmDataSource(initial = listOf(SavedAlarmSchedule(request, enabled = true))),
+            alarmGateway = FakeAndroidAlarmGateway(),
+        )
+        var started = false
+
+        val didRing = scheduler.ringTriggeredIfCurrent(
+            alarmId = request.id,
+            expectedFingerprint = "stale-fingerprint",
+            legacySnapshotMatches = { true },
+        ) { started = true }
+
+        assertFalse(didRing)
+        assertFalse(started)
+    }
+
     private fun request(
         time: String = "07:05",
     ) = AlarmScheduleRequest(
@@ -237,8 +275,7 @@ class AndroidAlarmSchedulerTest {
         selectedDays = listOf("월", "금"),
         repeatEnabled = true,
         limitMinutes = 12,
-        destinationName = "회사",
-        destinationAddress = "서울특별시 중구 세종대로 110",
+        destinationLabel = "회사",
         destinationLatitude = 37.5665,
         destinationLongitude = 126.978,
         targetDistanceKm = 1.2,

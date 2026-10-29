@@ -82,7 +82,7 @@ class RoomAlarmDataSourceTest {
                 savedAlarm(selectedDays = listOf("월", "월", "금")).copy(
                     request = savedAlarm(listOf("월", "월", "금")).request.copy(
                         time = "20:45",
-                        destinationName = "집",
+                        destinationLabel = "집",
                     ),
                     enabled = false,
                 ),
@@ -90,7 +90,7 @@ class RoomAlarmDataSourceTest {
 
             val stored = dataSource.getAll().single()
             assertEquals("20:45", stored.request.time)
-            assertEquals("집", stored.request.destinationName)
+            assertEquals("집", stored.request.destinationLabel)
             assertEquals(listOf("월", "금"), stored.request.selectedDays)
             assertFalse(stored.enabled)
             assertEquals(2, assertNotNull(dao.getById("alarm-1")).repeatDays.size)
@@ -268,8 +268,7 @@ class RoomAlarmDataSourceTest {
             selectedDays = selectedDays,
             repeatEnabled = true,
             limitMinutes = 12,
-            destinationName = "회사",
-            destinationAddress = "서울특별시 중구 세종대로 110",
+            destinationLabel = "회사",
             destinationLatitude = 37.5665,
             destinationLongitude = 126.978,
             targetDistanceKm = 1.2,

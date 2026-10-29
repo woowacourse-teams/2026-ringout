@@ -42,7 +42,7 @@ import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
         IosAlarmOccurrenceRecordEntity::class,
         AlarmMovementOutboxEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -79,6 +79,7 @@ fun buildRingoutDatabase(
         RingoutMigration9To10,
         RingoutMigration10To11,
         RingoutMigration11To12,
+        RingoutMigration12To13,
     )
     .build()
 
