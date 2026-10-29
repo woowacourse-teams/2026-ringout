@@ -5,6 +5,7 @@ import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.analytics.toAnalyticsLoginStateOrNull
+import com.joon.ringout.domain.connectivity.NetworkMonitor
 import com.joon.ringout.presentation.destination.component.DestinationEntry
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.alarmsound.AlarmSoundRoute
@@ -17,6 +18,7 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
     displayedRoute: AppRoute,
     authSessionState: AuthSessionState,
     productAnalyticsRecorder: ProductAnalyticsRecorder,
+    networkMonitor: NetworkMonitor,
 ) {
     // 연속 뒤로 가기로 부모까지 제거되어도 퇴장 중인 선택 화면은 원래 초안을 표시한다.
     val parentRoute = navigation.editorRoute
@@ -42,6 +44,7 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
                 requestId = route.requestId,
                 authSessionState = authSessionState,
                 productAnalyticsRecorder = productAnalyticsRecorder,
+                networkMonitor = networkMonitor,
                 isActive = navigation.isActive(route, displayedRoute),
                 onBackClick = { navigation.onBack(route, displayedRoute) },
                 onConfirmWithoutSave = { destination ->

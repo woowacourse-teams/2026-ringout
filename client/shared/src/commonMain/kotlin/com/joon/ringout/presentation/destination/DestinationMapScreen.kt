@@ -101,6 +101,7 @@ fun DestinationMapScreen(
     onBackClick: () -> Unit,
     onConfirmClick: (SavedDestination) -> Unit,
     onConfirmWithoutSave: (DestinationSelection) -> Unit,
+    isNetworkConnected: Boolean = true,
     isSaveInProgress: Boolean = false,
     isDestinationActionEnabled: Boolean = true,
     isBackHandlerEnabled: Boolean = true,
@@ -136,8 +137,8 @@ fun DestinationMapScreen(
         if (isAuthenticated) onEntered()
     }
 
-    LaunchedEffect(isDestinationActionEnabled) {
-        if (!isDestinationActionEnabled) {
+    LaunchedEffect(isDestinationActionEnabled, isNetworkConnected) {
+        if (!isDestinationActionEnabled || !isNetworkConnected) {
             pendingSelection = null
             pendingSaveDecision = null
         }
@@ -190,6 +191,7 @@ fun DestinationMapScreen(
             searchError = searchError,
             isLocatingCurrentLocation = isLocatingCurrentLocation,
             isSaveInProgress = isSaveInProgress,
+            isNetworkConnected = isNetworkConnected,
             isDestinationActionEnabled = isDestinationActionEnabled,
             currentLocationError = currentLocationError,
             onRetryAddressResolution = {
@@ -236,8 +238,10 @@ fun DestinationMapScreen(
             },
             onConfirmClick = {
                 if (isDestinationActionEnabled) {
-                    currentLocationCancellationId += 1
-                    pendingSaveDecision = selection
+                    if (isNetworkConnected) {
+                        currentLocationCancellationId += 1
+                        pendingSaveDecision = selection
+                    }
                 }
             },
             modifier = Modifier.fillMaxSize(),
@@ -324,13 +328,13 @@ fun DestinationMapScreen(
             DestinationSaveDialog(
                 onDismissRequest = { pendingSaveDecision = null },
                 onSkipSave = {
-                    if (pendingSaveDecision != null && isDestinationActionEnabled) {
+                    if (pendingSaveDecision != null && isDestinationActionEnabled && isNetworkConnected) {
                         pendingSaveDecision = null
                         onConfirmWithoutSave(selectedDestination)
                     }
                 },
                 onSave = {
-                    if (pendingSaveDecision != null && isDestinationActionEnabled) {
+                    if (pendingSaveDecision != null && isDestinationActionEnabled && isNetworkConnected) {
                         pendingSaveDecision = null
                         pendingSelection = selectedDestination
                     }
@@ -372,6 +376,7 @@ internal fun DestinationMapLayout(
     searchError: String?,
     isLocatingCurrentLocation: Boolean,
     isSaveInProgress: Boolean,
+    isNetworkConnected: Boolean = true,
     isDestinationActionEnabled: Boolean,
     currentLocationError: String?,
     onRetryAddressResolution: () -> Unit,
@@ -509,7 +514,7 @@ internal fun DestinationMapLayout(
             if (bottomContent != null) {
                 bottomContent(
                     selection,
-                    isDestinationActionEnabled && !isResolvingAddress &&
+                    isNetworkConnected && isDestinationActionEnabled && !isResolvingAddress &&
                         selection.isConfiguredDestination() && currentLocationError == null &&
                         canConfirmDestination(
                             isCameraMoving,
@@ -522,7 +527,7 @@ internal fun DestinationMapLayout(
                         ),
                 )
             } else ConfirmDestinationButton(
-                enabled = isDestinationActionEnabled &&
+                enabled = isNetworkConnected && isDestinationActionEnabled &&
                     selection.isConfiguredDestination() &&
                     currentLocationError == null &&
                     canConfirmDestination(
@@ -535,6 +540,7 @@ internal fun DestinationMapLayout(
                             selection.address != ResolvingDestinationAddress,
                     ),
                 isSaving = isSaveInProgress,
+                isNetworkConnected = isNetworkConnected,
                 onClick = onConfirmClick,
             )
         }
@@ -837,6 +843,7 @@ private fun CurrentLocationButton(
 private fun ConfirmDestinationButton(
     enabled: Boolean,
     isSaving: Boolean,
+    isNetworkConnected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -845,12 +852,23 @@ private fun ConfirmDestinationButton(
             .fillMaxWidth()
             .height(56.dp)
             .shadow(10.dp, RoundedCornerShape(16.dp))
-            .background(if (enabled) Orange else DisabledButton, RoundedCornerShape(16.dp))
-            .clickable(enabled = enabled, onClick = onClick),
+            .background(
+                color = when {
+                    !isNetworkConnected -> OfflineButton
+                    enabled -> Orange
+                    else -> DisabledButton
+                },
+                shape = RoundedCornerShape(16.dp),
+            )
+            .clickable(enabled = enabled && isNetworkConnected, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = if (isSaving) "목적지 저장 중..." else "이 위치를 목적지로 설정",
+            text = when {
+                !isNetworkConnected -> "네트워크가 연결되지 않았어요"
+                isSaving -> "목적지 저장 중..."
+                else -> "이 위치를 목적지로 설정"
+            },
             color = Color.White,
             style = MaterialTheme.typography.bodyLarge.copy(
                 fontSize = 16.sp,
@@ -872,6 +890,7 @@ private val SecondaryText = Color(0xFF6E756F)
 private val MapFallback = Color(0xFFDCE8DF)
 private val Orange = Color(0xFFFF6B2C)
 private val DisabledButton = Color(0xFFB8BDB7)
+private val OfflineButton = Color(0xFF858585)
 private val HeaderBorder = Color(0xFFD0D0D0)
 private val CurrentLocationIconColor = Color(0xFFF5F5F6)
 private const val DisabledControlAlpha = 0.45f

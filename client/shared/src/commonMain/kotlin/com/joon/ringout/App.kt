@@ -498,6 +498,7 @@ private fun RingoutAppContent(
                         displayedRoute = displayedRoute,
                         authSessionState = authSessionState,
                         productAnalyticsRecorder = productAnalyticsRecorder,
+                        networkMonitor = appContainer.networkMonitor,
                     )
                 }
             },

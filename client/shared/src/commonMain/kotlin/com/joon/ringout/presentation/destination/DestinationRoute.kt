@@ -1,11 +1,15 @@
 package com.joon.ringout.presentation.destination
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.toAnalyticsLoginStateOrNull
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.connectivity.NetworkMonitor
+import com.joon.ringout.domain.connectivity.NetworkStatus
 import com.joon.ringout.domain.destination.SavedDestination
 
 @Composable
@@ -15,6 +19,7 @@ internal fun DestinationRoute(
     requestId: Long,
     authSessionState: AuthSessionState,
     productAnalyticsRecorder: ProductAnalyticsRecorder,
+    networkMonitor: NetworkMonitor,
     isActive: Boolean,
     onBackClick: () -> Unit,
     onConfirmWithoutSave: (DestinationSelection) -> Unit,
@@ -22,6 +27,7 @@ internal fun DestinationRoute(
 ) {
     val uiState = viewModel.uiState
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
+    val networkStatus by networkMonitor.status.collectAsStateWithLifecycle()
     // An alarm's configured destination is the map's starting point. Use the cached
     // current location only when the caller has no destination to restore.
     val entrySelection = remember(viewModel, requestId) {
@@ -43,6 +49,7 @@ internal fun DestinationRoute(
         onConfirmWithoutSave = { destination ->
             if (isActive) onConfirmWithoutSave(destination.withAddressAsName())
         },
+        isNetworkConnected = networkStatus != NetworkStatus.Offline,
         isSaveInProgress = uiState.isSaving,
         isDestinationActionEnabled = isActive && analyticsLoginState != null && uiState.hasLoadedDestinations,
         isBackHandlerEnabled = isActive,
