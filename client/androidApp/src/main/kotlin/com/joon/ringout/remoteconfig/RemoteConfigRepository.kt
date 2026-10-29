@@ -21,6 +21,7 @@ internal enum class RemoteConfigValueSource { DEFAULT, REMOTE, INVALID_REMOTE }
 internal enum class RemoteConfigFetchStatus { NOT_FETCHED, FETCHING, SUCCESS, FAILURE, THROTTLED }
 
 internal data class RemoteConfigState(
+    val isInitialized: Boolean = false,
     val minVersionCode: Int = DEFAULT_MIN_VERSION_CODE,
     val valueSource: RemoteConfigValueSource = RemoteConfigValueSource.DEFAULT,
     val lastFetchTimeMillis: Long? = null,
@@ -80,7 +81,10 @@ internal class RemoteConfigRepository(
                 throw exception
             } catch (exception: Exception) {
                 Log.w(TAG, "Remote Config initialization failed", exception)
-                mutableState.value = mutableState.value.copy(fetchStatus = RemoteConfigFetchStatus.FAILURE)
+                mutableState.value = mutableState.value.copy(
+                    isInitialized = true,
+                    fetchStatus = RemoteConfigFetchStatus.FAILURE,
+                )
             }
         }
     }
@@ -142,6 +146,7 @@ internal class RemoteConfigRepository(
     ) {
         val validValue = snapshot.rawValue.toIntOrNull()?.takeIf { it > 0 }
         mutableState.value = RemoteConfigState(
+            isInitialized = true,
             minVersionCode = validValue ?: DEFAULT_MIN_VERSION_CODE,
             valueSource = when {
                 snapshot.isRemote && validValue == null -> RemoteConfigValueSource.INVALID_REMOTE

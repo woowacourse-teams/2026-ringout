@@ -25,6 +25,52 @@ class RemoteConfigRepositoryTest {
     }
 
     @Test
+    fun `저장된 설정을 읽기 전에는 초기화가 완료되지 않는다`() {
+        val defaultsGate = CompletableDeferred<Unit>()
+        val backend = FakeRemoteConfigBackend().apply {
+            this.defaultsGate = defaultsGate
+            active = remoteSnapshot("42", 123L)
+            gate = CompletableDeferred()
+        }
+
+        val repository = RemoteConfigRepository(backend, scope)
+
+        assertFalse(repository.state.value.isInitialized)
+        assertTrue(backend.fetchArguments.isEmpty())
+        defaultsGate.complete(Unit)
+        assertTrue(repository.state.value.isInitialized)
+        assertEquals(42, repository.state.value.minVersionCode)
+        assertEquals(RemoteConfigFetchStatus.FETCHING, repository.state.value.fetchStatus)
+    }
+
+    @Test
+    fun `네트워크 응답이 끝나기 전에도 저장된 설정으로 버전을 판단할 수 있다`() {
+        val backend = FakeRemoteConfigBackend().apply {
+            active = remoteSnapshot("42", 123L)
+            gate = CompletableDeferred()
+        }
+
+        val repository = RemoteConfigRepository(backend, scope)
+
+        assertTrue(repository.state.value.isInitialized)
+        assertEquals(42, repository.state.value.minVersionCode)
+        assertEquals(RemoteConfigValueSource.REMOTE, repository.state.value.valueSource)
+        assertEquals(RemoteConfigFetchStatus.FETCHING, repository.state.value.fetchStatus)
+    }
+
+    @Test
+    fun `로컬 설정 초기화가 실패해도 기본값으로 초기화를 완료한다`() {
+        val backend = FakeRemoteConfigBackend().apply { defaultsFail = true }
+
+        val repository = RemoteConfigRepository(backend, scope)
+
+        assertTrue(repository.state.value.isInitialized)
+        assertEquals(1, repository.state.value.minVersionCode)
+        assertEquals(RemoteConfigValueSource.DEFAULT, repository.state.value.valueSource)
+        assertEquals(RemoteConfigFetchStatus.FAILURE, repository.state.value.fetchStatus)
+    }
+
+    @Test
     fun `첫 실행에 설정을 가져오지 못하면 기본값과 실패 상태를 표시한다`() {
         val backend = FakeRemoteConfigBackend().apply { fetchFails = true }
 
@@ -133,6 +179,8 @@ class RemoteConfigRepositoryTest {
         var active = RemoteConfigSnapshot("1", false, null, RemoteConfigFetchStatus.NOT_FETCHED)
         var next: RemoteConfigSnapshot? = null
         var fetchFails = false
+        var defaultsFail = false
+        var defaultsGate: CompletableDeferred<Unit>? = null
         var gate: CompletableDeferred<Unit>? = null
         var activationCount = 0
         var activationDuringFetch = false
@@ -143,6 +191,8 @@ class RemoteConfigRepositoryTest {
         private lateinit var onError: () -> Unit
 
         override suspend fun setDefaults() {
+            defaultsGate?.await()
+            check(!defaultsFail) { "local config initialization failed" }
             defaultsSet = true
         }
 
