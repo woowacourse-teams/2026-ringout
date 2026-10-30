@@ -60,7 +60,10 @@ export default function useAdminAuth() {
       }
     } catch (failure) {
       if (!signal?.aborted && version === sessionVersion.current) {
-        setAdmin(null);
+        // Transport/server errors do not prove that an existing session is invalid.
+        if (failure instanceof AdminAuthError && [401, 403].includes(failure.status)) {
+          setAdmin(null);
+        }
         setError(authErrorMessage(failure));
       }
     } finally {
@@ -68,21 +71,11 @@ export default function useAdminAuth() {
     }
   }, []);
 
-  useEffect(() => onSessionFailure(failure => {
+  useEffect(() => onSessionFailure(() => {
     if (loginAttempt.current || logoutInFlight.current) return;
-    if (failure.status === 401) {
-      ++sessionVersion.current;
-      const message = '세션이 만료되었습니다. 다시 로그인해 주세요.';
-      loginResult.current = { pending: false, message };
-      setApprovalPending(false);
-      setAdmin(null);
-      setChecking(false);
-      setError(message);
-      window.location.hash = 'login';
-    } else {
-      // A 403 can also mean insufficient permission; recheck before dropping the session.
-      void checkSession();
-    }
+    // A resource endpoint can return 401/403 for reasons other than session expiry.
+    // Only the session endpoint decides whether the current admin is still signed in.
+    void checkSession();
   }), [checkSession]);
 
   useEffect(() => {
