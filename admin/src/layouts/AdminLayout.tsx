@@ -5,6 +5,7 @@ import {
   UsersRound,
   BellRing,
   History,
+  Rocket,
   LockKeyhole,
   Monitor,
   ArrowUpRight,
@@ -38,6 +39,11 @@ export const navigation = [{
   inDevelopment: true,
   label: '알람 실행 기록',
   icon: BellRing
+}, {
+  id: 'deployments' as Page,
+  inDevelopment: false,
+  label: '배포 관리',
+  icon: Rocket
 }, {
   id: 'logs' as Page,
   inDevelopment: true,
