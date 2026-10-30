@@ -10,6 +10,7 @@ services:
       DB_URL: ${DB_URL:?DB_URL is required}
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME is required}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DEPLOYMENT_INGEST_TOKEN: ${DEPLOYMENT_INGEST_TOKEN:-}
       DDL_AUTO: ${DDL_AUTO:-validate}
       APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:?APPLE_CLIENT_ID is required}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
@@ -35,7 +36,7 @@ services:
       AWS_EC2_METADATA_V1_DISABLED: "true"
       TZ: Asia/Seoul
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
-      APP_ENV: ${APP_ENV:-prod}
+      APP_ENV: ${APP_ENV:-production}
       JAVA_TOOL_OPTIONS: >-
         -XX:MaxRAMPercentage=70
         -Duser.timezone=Asia/Seoul

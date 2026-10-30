@@ -1,21 +1,48 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Outbox delivery uses Python's standard library; no application credentials enter logs.
+command -v python3 >/dev/null || { echo "python3 is required for deployment history" >&2; exit 1; }
+export DEPLOYMENT_ID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+export DEPLOY_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export DEPLOY_EVENTS_FILE="$(mktemp)"
+export DEPLOY_SUCCESS=false
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export APP_DIR="${RINGOUT_APP_DIR:-/home/ubuntu/ringout}"
+RECORDER="$SCRIPT_DIR/deployment.py"
+
 log() {
-  printf '%s event=%s image=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "${SERVER_IMAGE:-unknown}" "${2:-}"
+  printf '%s event=%s image=%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "${SERVER_IMAGE:-unknown}" "${2:-}" | tee -a "$DEPLOY_EVENTS_FILE"
 }
 finish() {
   local status=$?
   if (( status != 0 )); then log DEPLOY_FAILED "exit_code=$status"; fi
   log DEPLOY_FINISHED "exit_code=$status duration_seconds=$SECONDS"
+  if [[ -f "$RECORDER" ]]; then
+    if python3 "$RECORDER" record; then
+      rm -f "$DEPLOY_EVENTS_FILE"
+    else
+      echo "Deployment history could not be queued; deployment logs remain at $DEPLOY_EVENTS_FILE" >&2
+    fi
+  fi
   if [[ -n "${NGINX_BACKUP:-}" ]]; then rm -f "$NGINX_BACKUP"; fi
+}
+# 태그·digest를 뗀 저장소 이름 (예: user/ringout-server:abc → user/ringout-server)
+image_repository() {
+  local ref="${1%%@*}"
+  if [[ "${ref##*/}" == *:* ]]; then ref="${ref%:*}"; fi
+  printf '%s' "$ref"
+}
+# 로컬 이미지의 Docker Hub digest 참조(repo@sha256:...). 같은 저장소를 우선하고 형식이 맞는 값만 사용한다.
+repo_digest() {
+  docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$1" 2>/dev/null \
+    | grep -E '^[^[:space:]@]+@sha256:[0-9a-f]{64}$' \
+    | awk -v p="$2@" 'NR==1{first=$0} index($0,p)==1{print; found=1; exit} END{if(!found && first!="") print first}' || true
 }
 SECONDS=0
 trap finish EXIT
 log DEPLOY_STARTED
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_DIR="/home/ubuntu/ringout"
 if [[ "$SCRIPT_DIR" == "$APP_DIR" ]]; then
   COMPOSE_SOURCE="$APP_DIR/docker-compose.yaml"
 else
@@ -26,6 +53,9 @@ source "$APP_DIR/.env"
 SERVER_PORT="${SERVER_PORT:-8081}"
 set +a
 : "${SERVER_IMAGE:?Set SERVER_IMAGE in the EC2 .env}"
+# Serialize deployments and their history collection on this host.
+exec 9>"$APP_DIR/deployment.lock"
+flock -w 600 9 || { log DEPLOY_FAILED "reason=deployment_lock_timeout"; exit 1; }
 if [[ -n "${DEPLOY_COMMIT_SHA:-}" ]]; then
   [[ "$DEPLOY_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid commit SHA" >&2; exit 1; }
   IMAGE_REPOSITORY="${SERVER_IMAGE%%@*}"
@@ -43,15 +73,19 @@ if [[ ! "$COMPOSE_SOURCE" -ef "$APP_DIR/docker-compose.yaml" ]]; then
 fi
 if [[ ! "$SCRIPT_DIR/deploy.sh" -ef "$APP_DIR/deploy.sh" ]]; then
   install -m 755 "$SCRIPT_DIR/deploy.sh" "$APP_DIR/deploy.sh"
+  install -m 755 "$RECORDER" "$APP_DIR/deployment.py"
+
 fi
 
-# 2. .env의 브랜치 태그를 pull. 다운로드 실패 시 기존 컨테이너는 유지
+# Pull the requested deployment image before collecting its immutable references.
 log IMAGE_PULL_STARTED
 if ! "${compose[@]}" pull server; then
-  echo "Image pull failed. Existing container was not replaced; check Docker login, image tag and network." >&2
+  echo "Image pull failed. Existing container was not replaced." >&2
   exit 1
 fi
 
+export DEPLOY_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$SERVER_IMAGE")"
+export DEPLOY_IMAGE_DIGEST="$(repo_digest "$SERVER_IMAGE" "$(image_repository "$SERVER_IMAGE")")"
 log IMAGE_PULL_FINISHED
 docker image inspect --format 'image_id={{.Id}} repo_digests={{json .RepoDigests}}' "$SERVER_IMAGE"
 
@@ -72,6 +106,9 @@ if healthy 8082; then
 fi
 
 if [[ -n "$ACTIVE_PORT" ]]; then
+  export PREVIOUS_IMAGE="$(docker inspect --format '{{.Config.Image}}' "ringout-server-$ACTIVE_PORT")"
+  export PREVIOUS_IMAGE_ID="$(docker inspect --format '{{.Image}}' "ringout-server-$ACTIVE_PORT")"
+  export PREVIOUS_IMAGE_DIGEST="$(repo_digest "$PREVIOUS_IMAGE_ID" "$(image_repository "$PREVIOUS_IMAGE")")"
   log PREVIOUS_SERVER "port=$ACTIVE_PORT"
   docker inspect --format 'previous_image={{.Config.Image}} previous_image_id={{.Image}}' "ringout-server-$ACTIVE_PORT"
 fi
@@ -82,21 +119,21 @@ export SERVER_PORT
 export SERVER_CONTAINER_NAME="ringout-server-$SERVER_PORT"
 compose+=(-p "ringout-$SERVER_PORT")
 HEALTH_URL="http://127.0.0.1:$SERVER_PORT/actuator/health"
-NGINX_CONFIG="/etc/nginx/sites-available/ringout-api.conf"
+NGINX_CONFIG="${RINGOUT_NGINX_CONFIG:-/etc/nginx/sites-available/ringout-api.conf}"
 NGINX_BACKUP="$(mktemp)"
 sudo cat "$NGINX_CONFIG" > "$NGINX_BACKUP"
-if ! grep -Eq 'proxy_pass http://127\.0\.0\.1:(8080|8081|8082);' "$NGINX_BACKUP"; then
+if ! grep -Eq 'proxy_pass http://127\.0\.0\.1:(8081|8082);' "$NGINX_BACKUP"; then
   echo "Expected nginx proxy_pass was not found in $NGINX_CONFIG." >&2
   exit 1
 fi
 
 # 4. Spring 갱신 및 헬스체크. 실패하면 상태와 로그를 출력하고 종료
-if "${compose[@]}" up -d --no-build --no-deps server; then
+if "${compose[@]}" up -d --pull never --no-build --no-deps server; then
   for attempt in {1..30}; do
     if curl --fail --silent --connect-timeout 2 --max-time 3 "$HEALTH_URL" > /dev/null; then
       log NEW_SERVER_READY "port=$SERVER_PORT attempt=$attempt"
       # 새 서버가 정상일 때만 nginx 전환. 설정 검사/리로드 실패 시 복구
-      sed -E "s@proxy_pass http://127\.0\.0\.1:(8080|8081|8082);@proxy_pass http://127.0.0.1:$SERVER_PORT;@g" \
+      sed -E "s@proxy_pass http://127\.0\.0\.1:(8081|8082);@proxy_pass http://127.0.0.1:$SERVER_PORT;@g" \
         "$NGINX_BACKUP" | sudo tee "$NGINX_CONFIG" > /dev/null
       if ! sudo nginx -t || ! sudo systemctl reload nginx; then
         log DEPLOY_FAILED "reason=nginx_switch_failed"
@@ -104,6 +141,7 @@ if "${compose[@]}" up -d --no-build --no-deps server; then
         if ! { sudo tee "$NGINX_CONFIG" < "$NGINX_BACKUP" > /dev/null &&
                sudo nginx -t && sudo systemctl reload nginx; }; then
           log ROLLBACK_FAILED "reason=nginx_restore_failed"
+          "${compose[@]}" stop server || true
           exit 1
         fi
         if [[ -n "$ACTIVE_PORT" ]] && healthy "$ACTIVE_PORT"; then
@@ -122,6 +160,7 @@ if "${compose[@]}" up -d --no-build --no-deps server; then
         sleep 10
         docker stop "ringout-server-$ACTIVE_PORT" || true
       fi
+      export DEPLOY_SUCCESS=true
       log DEPLOY_SUCCEEDED "port=$SERVER_PORT"
       exit 0
     fi
