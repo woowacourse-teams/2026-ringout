@@ -8,6 +8,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +22,7 @@ public class RoomActivityNotificationScheduler {
     private final Clock clock;
 
     @Scheduled(cron = "0 * * * * *")
+    @SchedulerLock(name = "roomActivityNotification", lockAtLeastFor = "30s", lockAtMostFor = "50s")
     public void notifyRoomActivity() {
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.MINUTES);
         log.debug("방 활동 알림 스케줄러 실행 - {}", now);
