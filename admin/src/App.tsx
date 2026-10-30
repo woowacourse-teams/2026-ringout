@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Page } from './types';
 import AdminLayout, { navigation } from './layouts/AdminLayout';
 import UsersPage from './pages/users/UsersPage';
+import DeploymentsPage from './pages/deployments/DeploymentsPage';
 import RoomsPage from './pages/rooms/RoomsPage';
 import useAdminAuth from './hooks/useAdminAuth';
 import type { Admin } from './api/adminAuth';
@@ -43,6 +44,9 @@ function AdminWorkspace({ admin, onLogout, loggingOut, authError }: {
   }
   let content;
   switch (route.page) {
+    case 'deployments':
+      content = <DeploymentsPage />;
+      break;
     case 'users':
       content = <UsersPage />;
       break;
