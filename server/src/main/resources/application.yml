@@ -64,6 +64,9 @@ springdoc:
   packages-to-scan: com.ringout.api
 
 app:
+  deployment:
+    environment: ${APP_ENV:local}
+    ingest-token: ${DEPLOYMENT_INGEST_TOKEN:}
   admin:
     google:
       enabled: ${ADMIN_GOOGLE_ENABLED:false}
