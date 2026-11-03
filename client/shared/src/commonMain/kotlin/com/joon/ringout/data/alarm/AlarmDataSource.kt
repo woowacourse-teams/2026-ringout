@@ -16,6 +16,12 @@ interface AlarmDataSource {
 
     suspend fun setEnabled(id: String, enabled: Boolean): Boolean
 
+    suspend fun disableAll() {
+        getAll().forEach { alarm ->
+            check(setEnabled(alarm.request.id, false)) { "저장된 알람을 비활성화하지 못했습니다." }
+        }
+    }
+
     suspend fun delete(id: String): Boolean
 
     /** Atomically replaces a persisted alarm primary key while preserving its full snapshot. */

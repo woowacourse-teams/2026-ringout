@@ -44,6 +44,7 @@ class IosAlarmRuntime internal constructor(
     private val startOccurrenceSync: (suspend () -> Unit, suspend () -> Unit) -> Unit = { _, _ -> },
     private val nativeCleanup: IosAlarmNativeCleanupCoordinator? = null,
     private val missionCommands: IosAlarmMissionCommands? = null,
+    private val restoreMissionAccess: suspend () -> Boolean = { true },
 ) {
     private val startMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + runtimeDispatcher)
@@ -138,7 +139,7 @@ class IosAlarmRuntime internal constructor(
         }
         var startedMission: ActiveAlarmMission? = null
         runStartupStep {
-            startedMission = missionCoordinator.processPendingEvents()
+            startedMission = processPendingMissionEventsOrNull()
         }
         startedMission?.let(::clearRingingIfMissionMatches)
         if (missionCoordinator.hasPendingTerminal()) scheduleTerminalRecovery()
@@ -174,6 +175,19 @@ class IosAlarmRuntime internal constructor(
             var osStopped = false
             try {
                 val commands = missionCommands ?: error("Native alarm commands unavailable")
+                if (!restoreMissionAccess()) {
+                    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+                        commands.stopRingingAlarmWithoutMission(ringing.toDismissRequest(), callback)
+                    }
+                    if (result.code != IosAlarmOperationCode.NOT_FOUND) {
+                        result.requireAlarmKitSuccess("알람을 종료하지 못했습니다.")
+                    }
+                    if (ringingAlarm.value?.systemAlarmId == expectedSystemAlarmId) {
+                        cancelRingingHandoff()
+                        ringingAlarm.value = null
+                    }
+                    return@withLock true
+                }
                 // The root snapshot must exist before the OS alert is stopped.
                 if (ringing.retryAttempt == 0) {
                     val source = dataSource.getById(ringing.alarmId)
@@ -191,7 +205,8 @@ class IosAlarmRuntime internal constructor(
                     ),
                 )
                 osStopped = result.osStopCode == IosAlarmOperationCode.SUCCESS
-                check(missionCoordinator.applyDirectDismissResult(result, commands)) {
+                check(result.disposition == IosAlarmDismissDisposition.STOP_ONLY ||
+                    missionCoordinator.applyDirectDismissResult(result, commands)) {
                     result.message ?: "알람 종료 결과를 저장하지 못했습니다. 다시 시도해 주세요."
                 }
                 if (ringingAlarm.value?.systemAlarmId == expectedSystemAlarmId) {
@@ -252,7 +267,7 @@ class IosAlarmRuntime internal constructor(
                     Clock.System.now().toEpochMilliseconds()).coerceAtLeast(0L)
             delay(remainingGraceMillis)
             missionCoordinator.handleDeadline(current.occurrenceId)
-            missionCoordinator.processPendingEvents()
+            processPendingMissionEventsOrNull()
         } catch (error: CancellationException) {
             throw error
         } catch (_: Throwable) {
@@ -489,7 +504,8 @@ class IosAlarmRuntime internal constructor(
     }
 
     private suspend fun processPendingMissionEventsOrNull(): ActiveAlarmMission? = try {
-        missionCoordinator.processPendingEvents()
+        if (restoreMissionAccess()) missionCoordinator.processPendingEvents()
+        else activeMissionFlow.value
     } catch (error: CancellationException) {
         throw error
     } catch (_: Throwable) {
@@ -524,6 +540,11 @@ class IosAlarmRuntime internal constructor(
                             alarm.state == IosScheduledAlarmState.ALERTING
                     } -> Unit
                     else -> {
+                        if (!restoreMissionAccess()) {
+                            cancelRingingHandoff()
+                            ringingAlarm.value = null
+                            return@withLock
+                        }
                         var startedMission = processPendingMissionEventsOrNull()
                         if (startedMission == null && activeMissionFlow.value == null) {
                             startedMission = recordStoppedRingingAndStartMission(stoppedRinging)
@@ -564,14 +585,16 @@ class IosAlarmRuntime internal constructor(
     private suspend fun recordStoppedRingingAndStartMission(
         ringing: IosRingingAlarm,
     ): ActiveAlarmMission? = try {
-        eventInbox.recordStopEventAwait(
-            alarmId = ringing.alarmId,
-            occurrenceId = ringing.occurrenceId,
-            retryAttempt = ringing.retryAttempt,
-            scheduleVersion = ringing.scheduleVersion,
-            chainId = ringing.chainId,
-        )
-        missionCoordinator.processPendingEvents()
+        if (restoreMissionAccess()) {
+            eventInbox.recordStopEventAwait(
+                alarmId = ringing.alarmId,
+                occurrenceId = ringing.occurrenceId,
+                retryAttempt = ringing.retryAttempt,
+                scheduleVersion = ringing.scheduleVersion,
+                chainId = ringing.chainId,
+            )
+            missionCoordinator.processPendingEvents()
+        } else null
     } catch (error: CancellationException) {
         throw error
     } catch (_: Throwable) {
@@ -803,8 +826,18 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
         },
         nativeCleanup = nativeCleanup,
         missionCommands = nativeServices.alarmMissionCommands(),
+        restoreMissionAccess = ::restoreIosAlarmMissionAccess,
     )
 }
+
+private fun IosRingingAlarm.toDismissRequest() = IosAlarmDismissRequest(
+    systemAlarmId = systemAlarmId,
+    sourceAlarmId = alarmId,
+    occurrenceId = occurrenceId,
+    retryAttempt = retryAttempt,
+    scheduleVersion = scheduleVersion,
+    chainId = chainId,
+)
 
 private fun currentElapsedRealtimeNanos(): Long =
     (platform.Foundation.NSProcessInfo.processInfo.systemUptime * NanosPerSecond).toLong()

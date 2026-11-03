@@ -1772,6 +1772,22 @@ class IosAlarmLifecycleTest {
     }
 
     @Test
+    fun `미인증 울림 종료는 미션과 재울림 없이 현재 소리만 멈추고 반복 설정을 보존한다`() = runBlocking {
+        val fixture = ringingRuntimeFixture(restoreMissionAccess = { false })
+        fixture.runtime.start()
+        fixture.presentRingingAlarm()
+        assertTrue(fixture.runtime.dismissRingingAlarm(CanonicalUuid))
+        assertNull(fixture.runtime.activeMissionFlow.value)
+        assertNull(fixture.runtime.ringingAlarmFlow.value)
+        assertTrue(fixture.commands.requests.isEmpty())
+        assertEquals(1, fixture.commands.stopOnlyRequests.size)
+        assertTrue(fixture.commands.snapshot.attempts.isEmpty())
+        assertTrue(fixture.scheduler.retryScheduleRequests.isEmpty())
+        assertTrue(fixture.dataSource.getById(CanonicalUuid)?.enabled == true)
+        assertTrue(fixture.inbox.events.none { it.startsWith("stop:") || it.startsWith("open:") })
+    }
+
+    @Test
     fun `직접 종료 응답 전에 다른 알람이 울리면 새 울림 화면을 유지한다`() = runBlocking {
         val fixture = ringingRuntimeFixture(
             alarmIds = listOf(CanonicalUuid, EarlierSortingUuid),
@@ -2017,6 +2033,7 @@ class IosAlarmLifecycleTest {
         repeatEnabled: Boolean = true,
         selectedDays: List<String> = listOf("월"),
         currentMinuteOfDay: () -> Int = { 0 },
+        restoreMissionAccess: suspend () -> Boolean = { true },
     ): RingingRuntimeFixture {
         val dataSource = LifecycleAlarmDataSource(
             alarmIds.map { id ->
@@ -2059,6 +2076,7 @@ class IosAlarmLifecycleTest {
                 locationService = locationService,
                 ringingHandoffGraceMillis = handoffGraceMillis,
                 runtimeDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+                restoreMissionAccess = restoreMissionAccess,
             ),
             scheduler = scheduler,
             inbox = inbox,
@@ -2649,8 +2667,13 @@ private class LifecycleMissionCommands(
     private val dismissCode: IosAlarmOperationCode = IosAlarmOperationCode.SUCCESS,
 ) : IosAlarmMissionCommands {
     val requests = mutableListOf<IosAlarmDismissRequest>()
+    val stopOnlyRequests = mutableListOf<IosAlarmDismissRequest>()
     var snapshot = IosAlarmRecoveryAttemptsResult()
     var snapshotReads = 0
+    override fun stopRingingAlarmWithoutMission(request: IosAlarmDismissRequest, callback: (IosAlarmOperationResult) -> Unit) {
+        stopOnlyRequests += request
+        scheduler.stop(request.systemAlarmId, callback)
+    }
     override fun readRecoverySnapshot(callback: (IosAlarmRecoveryAttemptsResult) -> Unit) {
         snapshotReads++
         callback(snapshot)

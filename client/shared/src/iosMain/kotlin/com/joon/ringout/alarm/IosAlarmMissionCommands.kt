@@ -4,6 +4,13 @@ package com.joon.ringout.alarm
 interface IosAlarmMissionCommands {
     fun dismissRingingAlarm(request: IosAlarmDismissRequest, callback: (IosAlarmDismissResult) -> Unit)
 
+    fun stopRingingAlarmWithoutMission(
+        request: IosAlarmDismissRequest,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.UNKNOWN_ERROR))
+    }
+
     /** Reads one journal snapshot without importing events or submitting reservations. */
     fun readRecoverySnapshot(callback: (IosAlarmRecoveryAttemptsResult) -> Unit)
 }
@@ -17,7 +24,7 @@ data class IosAlarmDismissRequest(
     val chainId: String?,
 )
 
-enum class IosAlarmDismissDisposition { HANDLED, FALLBACK, PRESERVED, FAILED }
+enum class IosAlarmDismissDisposition { HANDLED, FALLBACK, PRESERVED, FAILED, STOP_ONLY }
 
 data class IosAlarmDismissResult(
     val osStopCode: IosAlarmOperationCode,

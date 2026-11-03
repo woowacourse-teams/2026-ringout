@@ -15,6 +15,42 @@ import kotlin.test.assertTrue
 
 class AndroidAlarmSchedulerTest {
     @Test
+    fun `로그아웃 취소 실패 뒤 재시도해도 모든 정의는 남고 비활성 상태를 유지한다`() = runBlocking {
+        val first = request()
+        val second = first.copy(id = "alarm-2")
+        val dataSource = FakeAlarmDataSource(initial = listOf(
+            SavedAlarmSchedule(first, true),
+            SavedAlarmSchedule(second, false),
+        ))
+        val gateway = FakeAndroidAlarmGateway(initial = mapOf(first.id to first, second.id to second))
+        gateway.cancelFailure = { id -> if (id == first.id) IllegalStateException("cancel") else null }
+        val scheduler = AndroidAlarmScheduler(dataSource, gateway)
+
+        assertFailsWith<IllegalStateException> { scheduler.cancelAllForLogout() }
+        assertEquals(2, dataSource.getAll().size)
+        assertTrue(dataSource.getAll().none { it.enabled })
+        assertFalse(second.id in gateway.scheduled)
+
+        gateway.cancelFailure = { null }
+        scheduler.cancelAllForLogout()
+        assertTrue(gateway.scheduled.isEmpty())
+        assertTrue(dataSource.getAll().none { it.enabled })
+    }
+
+    @Test
+    fun `예약 차단 동안 저장 활성화 발화와 재등록은 알람을 만들지 않는다`() = runBlocking {
+        val alarm = request()
+        val dataSource = FakeAlarmDataSource(initial = listOf(SavedAlarmSchedule(alarm, true)))
+        val gateway = FakeAndroidAlarmGateway()
+        val scheduler = AndroidAlarmScheduler(dataSource, gateway, isSchedulingAllowed = { false })
+        assertFailsWith<IllegalStateException> { scheduler.schedule(alarm) }
+        assertFailsWith<IllegalStateException> { scheduler.setEnabled(alarm.id, true) }
+        assertFalse(scheduler.ringTriggeredIfCurrent(alarm.id, alarm.scheduleFingerprint()) { error("ring") })
+        scheduler.rescheduleAll()
+        assertTrue(gateway.events.isEmpty())
+    }
+
+    @Test
     fun `시간과 요일 수정 버전을 예약과 저장소에 함께 전달하고 활성화만 바꾸면 유지한다`() = runBlocking {
         val dataSource = FakeAlarmDataSource()
         val gateway = FakeAndroidAlarmGateway()
@@ -341,6 +377,7 @@ private class FakeAndroidAlarmGateway(
     val scheduled = initial.toMutableMap()
     val events = mutableListOf<String>()
     var scheduleFailure: Exception? = null
+    var cancelFailure: (String) -> Exception? = { null }
 
     override fun currentTimeMillis(): Long = 1_700_000_000_000L
 
@@ -355,6 +392,7 @@ private class FakeAndroidAlarmGateway(
 
     override fun cancel(alarmId: String) {
         events += "cancel:$alarmId"
+        cancelFailure(alarmId)?.let { throw it }
         scheduled.remove(alarmId)
     }
 }

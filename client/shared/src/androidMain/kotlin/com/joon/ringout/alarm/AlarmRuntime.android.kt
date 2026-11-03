@@ -231,6 +231,7 @@ internal fun scheduleAlarmRescheduleRetry(
     context: Context,
     attempt: Int,
 ) {
+    if (isAlarmSchedulingBlocked(context)) return
     val retryDelayMillis = AlarmRescheduleRetryDelaysMillis.getOrNull(attempt - 1)
     if (retryDelayMillis == null) {
         Log.e(AlarmPersistenceLogTag, "알람 재등록 재시도 횟수를 초과했습니다.")

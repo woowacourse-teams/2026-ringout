@@ -544,6 +544,17 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         }
     }
 
+    func suppressFutureReservationsForLogout(callback: @escaping (IosAlarmOperationResult) -> Void) {
+        Task { @MainActor in
+            do {
+                try await AlarmRecoveryDriver.suppressFutureReservationsForLogout()
+                callback(IosAlarmOperationResult(code: .success, message: nil))
+            } catch {
+                callback(IosAlarmOperationResult(code: .sdkError, message: error.localizedDescription))
+            }
+        }
+    }
+
     func recoveryState(callback: @escaping (IosAlarmRecoveryAttemptsResult) -> Void) {
         do {
             try importLegacyProjection()

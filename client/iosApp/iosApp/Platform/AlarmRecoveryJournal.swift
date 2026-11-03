@@ -127,6 +127,7 @@ struct AlarmRecoveryAttempt: Codable, Equatable {
     var missionProjectionAck: Bool
     var recordProjectionAck: Bool
     var outcome: AlarmRecoveryAttemptOutcome
+    var logoutSuppressed: Bool? = nil
 }
 
 enum AlarmRecoveryArrivalState: String, Codable {
@@ -299,6 +300,27 @@ final class AlarmRecoveryJournal {
         }
     }
 
+    func suppressFutureReservationsForLogout(excluding alertingIds: Set<String>) throws {
+        try mutate { state in
+            for key in state.sources.keys { state.sources[key] = .disabled }
+            for chainId in state.chains.keys {
+                guard var chain = state.chains[chainId] else { continue }
+                for index in chain.attempts.indices {
+                    var attempt = chain.attempts[index]
+                    attempt.logoutSuppressed = true
+                    state.sources[attempt.sourceKey] = .disabled
+                    if !alertingIds.contains(attempt.nextReservationUUID) &&
+                        attempt.currentReservation.status != .cancellationConfirmed {
+                        attempt.currentReservation.cancellationRequired = true
+                        attempt.currentReservation.status = .cancellationRequired
+                    }
+                    chain.attempts[index] = attempt
+                }
+                state.chains[chainId] = chain
+            }
+        }
+    }
+
     func upsertSourceSnapshot(_ snapshot: AlarmRecoverySourceSnapshot) throws -> AlarmRecoverySourceSnapshot {
         try mutate { state in
             let key = AlarmRecoverySourceKey(
@@ -378,6 +400,9 @@ final class AlarmRecoveryJournal {
                 }
             }
             if let parent {
+                guard parent.logoutSuppressed != true else {
+                    throw AlarmRecoveryJournalError.sourceNotEligible
+                }
                 guard state.chains[parent.chainId]?.terminalOutcome == nil else {
                     throw AlarmRecoveryJournalError.terminalChain
                 }
@@ -637,7 +662,8 @@ final class AlarmRecoveryJournal {
             var chain = state.chains[location.chainId]!
             var attempt = chain.attempts[location.attemptIndex]
             guard chain.terminalOutcome == nil,
-                  attempt.outcome == .active else {
+                  attempt.outcome == .active,
+                  attempt.logoutSuppressed != true else {
                 return nil
             }
             guard attempt.expiresAtEpochMillis > nowMillis else {
@@ -685,7 +711,7 @@ final class AlarmRecoveryJournal {
                 && attempt.currentReservation.reservationUUID == claim.reservationUUID
                 && attempt.currentReservation.executionEpoch == claim.executionEpoch
             guard matches else { throw AlarmRecoveryJournalError.staleReservationClaim }
-            if chain.terminalOutcome != nil {
+            if chain.terminalOutcome != nil || attempt.currentReservation.cancellationRequired {
                 attempt.currentReservation.lateScheduleAfterTerminal = status == .confirmed || status == .unknown
                 attempt.currentReservation.cancellationRequired = true
                 attempt.currentReservation.status = .cancellationRequired

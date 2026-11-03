@@ -408,6 +408,10 @@ class AlarmMissionCoordinator(context: Context) {
         triggerAtMillis: Long,
         operation: PendingIntent,
     ) {
+        if (isMissionReservationBlocked(applicationContext, mission.occurrenceId)) {
+            operation.cancel()
+            return
+        }
         val showIntent = missionShowPendingIntent(
             mission = mission,
             flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
@@ -665,6 +669,7 @@ class AlarmMissionCoordinator(context: Context) {
     }
 
     private fun startRetryAlarm(mission: ActiveAlarmMission): Boolean {
+        if (isMissionReservationBlocked(applicationContext, mission.occurrenceId)) return false
         val retryRuntimeIntent = mission.toRetryRuntimeIntent()
         return runCatching {
             applicationContext.startForegroundService(
@@ -675,6 +680,15 @@ class AlarmMissionCoordinator(context: Context) {
                 },
             )
         }.isSuccess
+    }
+
+    fun cancelFutureReservationsForLogout() {
+        synchronized(AlarmMissionSideEffectLock) {
+            store.readStoredMission()?.mission?.let { mission ->
+                blockMissionReservations(applicationContext, mission.occurrenceId)
+                cancelDeadline(mission)
+            }
+        }
     }
 
     private fun showArrivalNotification(mission: ActiveAlarmMission) {

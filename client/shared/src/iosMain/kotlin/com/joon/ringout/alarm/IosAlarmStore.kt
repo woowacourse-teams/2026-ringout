@@ -4,6 +4,7 @@ import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarm.validateForStorage
 import com.joon.ringout.platform.IosAlarmAuthorizationState
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -221,6 +222,49 @@ internal class IosAlarmStore(
             }
             error("저장된 알람을 삭제하지 못했습니다.")
         }
+    }
+
+    suspend fun cancelAllForLogout(
+        isValidNativeId: (String) -> Boolean = { true },
+    ): Unit = IosAlarmStoreMutationMutex.withLock {
+        val alarms = dataSource.getAll()
+        dataSource.disableAll()
+        var firstFailure: Exception? = null
+        try {
+            recoveryInbox?.let { inbox ->
+                val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+                    inbox.suppressFutureReservationsForLogout(callback)
+                }
+                result.requireAlarmKitSuccess("알람 복구 예약을 차단하지 못했습니다.")
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            firstFailure = error
+        }
+        val scheduled = try {
+            scheduler.scheduledAlarmsAwait()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            firstFailure?.addSuppressed(error) ?: run { firstFailure = error }
+            throw requireNotNull(firstFailure)
+        }
+        val alertingIds = scheduled.filter { it.state == IosScheduledAlarmState.ALERTING }
+            .mapTo(mutableSetOf()) { it.alarmId }
+        val ids = alarms.map { it.request.id }.filterTo(mutableSetOf(), isValidNativeId)
+        ids += scheduled.map { it.alarmId }
+        ids.removeAll(alertingIds)
+        ids.forEach { alarmId ->
+            try {
+                scheduler.cancelFutureForLogoutAwait(alarmId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                firstFailure?.addSuppressed(error) ?: run { firstFailure = error }
+            }
+        }
+        firstFailure?.let { throw it }
     }
 
     fun observeAll(): Flow<List<SavedAlarmSchedule>> = dataSource.observeAll()

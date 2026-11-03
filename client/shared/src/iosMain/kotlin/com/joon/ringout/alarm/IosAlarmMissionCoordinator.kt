@@ -43,6 +43,10 @@ interface IosAlarmMissionEventListener {
 }
 
 interface IosAlarmMissionEventInbox {
+    fun suppressFutureReservationsForLogout(callback: (IosAlarmOperationResult) -> Unit) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
     fun setEventListener(listener: IosAlarmMissionEventListener?)
 
     fun recordStopEvent(
