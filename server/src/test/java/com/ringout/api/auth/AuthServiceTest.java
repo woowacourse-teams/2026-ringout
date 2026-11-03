@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -157,6 +158,7 @@ class AuthServiceTest {
         );
 
         verify(userRepository, never()).save(any(User.class));
+        assertThat(result.userId()).isNull();
         assertThat(result.signupToken()).isEqualTo("signup-token");
         assertThat(result.accessToken()).isNull();
         assertThat(result.isNewUser()).isTrue();
@@ -171,6 +173,7 @@ class AuthServiceTest {
             "old@example.com",
             previousLoginAt
         );
+        ReflectionTestUtils.setField(user, "id", 1L);
         SocialUserInfo socialUserInfo = new SocialUserInfo(
             SocialProvider.KAKAO,
             PROVIDER_ID,
@@ -189,6 +192,7 @@ class AuthServiceTest {
         );
 
         verify(userRepository, never()).save(any(User.class));
+        assertThat(result.userId()).isEqualTo(1L);
         assertThat(result.accessToken()).isEqualTo("access-token");
         assertThat(result.signupToken()).isNull();
         assertThat(result.isNewUser()).isFalse();
