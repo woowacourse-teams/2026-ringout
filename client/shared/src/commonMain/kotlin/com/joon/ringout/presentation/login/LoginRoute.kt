@@ -9,7 +9,6 @@ import com.joon.ringout.analytics.AnalyticsAuthProvider
 internal fun LoginRoute(
     viewModel: LoginViewModel,
     isActive: Boolean,
-    onBackClick: () -> Unit,
     onAuthenticated: () -> Boolean,
     onSignupRequired: (String, AnalyticsAuthProvider) -> Boolean,
     modifier: Modifier = Modifier,
@@ -40,7 +39,6 @@ internal fun LoginRoute(
 
     LoginScreen(
         uiState = uiState,
-        onBackClick = onBackClick,
         onSocialLoginClick = { provider ->
             if (isActive) {
                 when (provider) {

@@ -489,7 +489,6 @@ private fun RingoutAppContent(
                     authGraph(
                         authNavigation = authNavigation,
                         displayedRoute = displayedRoute,
-                        authSessionState = authSessionState,
                     )
                 }
                 if (alarmEditorNavigation != null) {
