@@ -31,9 +31,8 @@ internal data class LoginColors(
 
 @Immutable
 internal data class LoginDimensions(
-    val referenceScreenHeight: Dp,
-    val referenceLogoTop: Dp,
-    val referenceFirstButtonTop: Dp,
+    val contentTopSpacing: Dp,
+    val heroToButtonsSpacing: Dp,
     val contentHorizontalPadding: Dp,
     val heroLogoSize: Dp,
     val logoToGreetingSpacing: Dp,
@@ -84,28 +83,9 @@ private val LoginLightColors = LoginColors(
     naverText = Color(0xFFFFFFFF),
 )
 
-private val LoginDarkDimensions = LoginDimensions(
-    referenceScreenHeight = 941.dp,
-    referenceLogoTop = 114.dp,
-    referenceFirstButtonTop = 478.dp,
-    contentHorizontalPadding = 40.dp,
-    heroLogoSize = 67.dp,
-    logoToGreetingSpacing = 14.dp,
-    greetingToDescriptionSpacing = 24.dp,
-    greetingFontSize = 36.sp,
-    greetingLineHeight = 43.sp,
-    descriptionFontSize = 20.sp,
-    descriptionLineHeight = 32.sp,
-    socialPadding = 7.dp,
-    socialButtonSpacing = 10.dp,
-    socialButtonWidth = 308.dp,
-    socialButtonHeight = 56.dp,
-)
-
-private val LoginLightDimensions = LoginDimensions(
-    referenceScreenHeight = 941.dp,
-    referenceLogoTop = 114.dp,
-    referenceFirstButtonTop = 478.dp,
+private val DefaultLoginDimensions = LoginDimensions(
+    contentTopSpacing = 114.dp,
+    heroToButtonsSpacing = 152.dp,
     contentHorizontalPadding = 40.dp,
     heroLogoSize = 67.dp,
     logoToGreetingSpacing = 14.dp,
@@ -126,8 +106,4 @@ internal fun loginColors(): LoginColors = when (LocalRingoutThemeMode.current) {
     ThemeMode.Light -> LoginLightColors
 }
 
-@Composable
-internal fun loginDimensions(): LoginDimensions = when (LocalRingoutThemeMode.current) {
-    ThemeMode.Dark -> LoginDarkDimensions
-    ThemeMode.Light -> LoginLightDimensions
-}
+internal fun loginDimensions(): LoginDimensions = DefaultLoginDimensions

@@ -1,13 +1,14 @@
 package com.joon.ringout.presentation.login
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -16,7 +17,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -35,8 +35,6 @@ enum class SocialLoginProvider {
     Kakao,
 }
 
-private const val MaximumSocialLoginProviderCount = 3
-
 @Composable
 internal fun LoginScreen(
     uiState: LoginUiState,
@@ -53,47 +51,27 @@ internal fun LoginScreen(
         Modifier
     }
 
-    BoxWithConstraints(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(colors.background),
     ) {
-        val safeDrawingPadding = WindowInsets.safeDrawing.asPaddingValues()
-        val safeTopInset = safeDrawingPadding.calculateTopPadding()
-        val safeBottomInset = safeDrawingPadding.calculateBottomPadding()
-        val verticalScale = (maxHeight / dimensions.referenceScreenHeight).coerceAtMost(1f)
-        val logoTop = dimensions.referenceLogoTop * verticalScale
-        val firstButtonTop = dimensions.referenceFirstButtonTop * verticalScale
-        val logoTopSpacing = (logoTop - safeTopInset).coerceAtLeast(0.dp)
-        val estimatedHeroHeight = with(LocalDensity.current) {
-            dimensions.heroLogoSize +
-                dimensions.logoToGreetingSpacing +
-                dimensions.greetingLineHeight.toDp() +
-                dimensions.greetingToDescriptionSpacing +
-                dimensions.descriptionLineHeight.toDp() * 2
-        }
-        val reservedButtonAreaHeight = dimensions.socialButtonHeight * MaximumSocialLoginProviderCount +
-            dimensions.socialButtonSpacing * (MaximumSocialLoginProviderCount - 1)
-        val errorAreaHeight = if (uiState.errorMessage == null) 0.dp else 48.dp
-        val availableDecorativeSpacing = (
-            maxHeight - safeTopInset - safeBottomInset - logoTopSpacing - estimatedHeroHeight -
-                reservedButtonAreaHeight - errorAreaHeight - 12.dp
-            ).coerceAtLeast(0.dp)
-        val referenceDecorativeSpacing = (firstButtonTop - logoTop - estimatedHeroHeight).coerceAtLeast(0.dp)
-        val heroToButtonsSpacing = minOf(referenceDecorativeSpacing, availableDecorativeSpacing)
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                    ),
+                )
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = dimensions.contentHorizontalPadding)
                 .then(backgroundSemantics),
             horizontalAlignment = Alignment.Start,
         ) {
-            Spacer(Modifier.height(logoTopSpacing))
+            Spacer(Modifier.height(dimensions.contentTopSpacing))
             LoginHero()
-            Spacer(Modifier.height(heroToButtonsSpacing))
+            Spacer(Modifier.height(dimensions.heroToButtonsSpacing))
             SocialLoginButtons(
                 onSocialLoginClick = onSocialLoginClick,
                 providers = providers,
