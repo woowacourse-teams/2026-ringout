@@ -10,13 +10,10 @@ type Props = {
   unit: '명' | '개';
   loading: boolean;
   error: string;
-  date?: string;
-  excluded: string;
-  activityNote: string;
   onRetry: () => void;
 };
 
-export default function ManagementStats({ label, metrics, unit, loading, error, date, excluded, activityNote, onRetry }: Props) {
+export default function ManagementStats({ label, metrics, unit, loading, error, onRetry }: Props) {
   return (
     <section className="management-summary" aria-label={label} aria-busy={loading}>
       <div className="management-summary-grid">
@@ -38,12 +35,7 @@ export default function ManagementStats({ label, metrics, unit, loading, error, 
           <span>{error}</span>
           <button className="text-button" onClick={onRetry}>통계 다시 불러오기</button>
         </div>
-      ) : (
-        <p className="management-summary-note" role="status">
-          {loading ? '통계 확인 중' : `${date ?? ''} · 한국 시간 기준 · ${excluded}`}
-          <span>{activityNote}</span>
-        </p>
-      )}
+      ) : loading ? <p className="management-summary-note" role="status">통계 확인 중</p> : null}
     </section>
   );
 }

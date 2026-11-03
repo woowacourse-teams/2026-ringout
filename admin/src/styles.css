@@ -2661,3 +2661,97 @@ main.approval-pending-page { display: grid; place-items: center; min-height: 100
   .room-personal-alarm { padding: 14px 12px; }
   .room-personal-period strong { font-size: 12px; }
 }
+
+.sort-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.sort-header.active,.sort-header:hover {
+  color: var(--orange);
+}
+
+.sort-header:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+.sort-indicator {
+  min-width: 12px;
+  font-size: 13px;
+}
+
+.activity-badge {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.management-control-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.management-control-field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #697585;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.management-control-field select {
+  min-width: 130px;
+}
+
+@media (max-width: 700px) {
+  .records-toolbar .search-input { flex-basis: 100%; max-width: none; }
+  .management-control-field { flex: 1; }
+  .management-control-field select { width: 100%; min-width: 0; }
+}
+
+.active-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.clear-filters,.active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.clear-filters {
+  padding: 6px 0;
+  color: #697585;
+}
+
+.active-filters-divider {
+  height: 14px;
+  width: 1px;
+  background: var(--line);
+}
+
+.active-filter-chip {
+  padding: 8px 12px;
+  border: 1px solid #e5e8ee;
+  border-radius: 999px;
+  color: var(--orange);
+  font-weight: 600;
+}
+
+.active-filter-chip svg { color: #8b95a1; }
+.active-filter-chip:hover { border-color: var(--orange); background: #fff6f1; }

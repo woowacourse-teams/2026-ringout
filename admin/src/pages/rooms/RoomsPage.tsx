@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowUpRight, Search, ChevronLeft, ChevronRight, Users } from 'lucide-react';
-import { getRooms, getRoomStats, type RoomPage } from '../../api/adminRooms';
+import { ArrowUpRight, Search, ChevronLeft, ChevronRight, SlidersHorizontal, ArrowDownUp, Users } from 'lucide-react';
+import { getRooms, getRoomStats, type RoomPage, type RoomSort } from '../../api/adminRooms';
 import { roomSchedule } from '../../utils/format';
 import useApiData from '../../hooks/useApiData';
 import RoomDetailDialog from './RoomDetailDialog';
 import ManagementStats from '../../components/ManagementStats';
+import SortHeader from '../../components/SortHeader';
+import ActiveActivityFilter from '../../components/ActiveActivityFilter';
 
 export default function RoomsPage() {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
+  const [sortBy, setSortBy] = useState<RoomSort>('id');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [activity, setActivity] = useState('');
+  const changeSort = (field: RoomSort) => {
+    setSortDirection(sortBy === field && sortDirection === 'desc' ? 'asc' : 'desc');
+    setSortBy(field);
+    setPage(0);
+  };
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const size = 20;
 
@@ -21,7 +31,7 @@ export default function RoomsPage() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const loadRooms = useCallback((signal: AbortSignal) => getRooms({ search: query, page, size }, signal), [query, page]);
+  const loadRooms = useCallback((signal: AbortSignal) => getRooms({ search: query, page, size, sortBy, sortDirection, activeToday: activity === '' ? undefined : activity === 'true' }, signal), [query, page, sortBy, sortDirection, activity]);
   const result = useApiData<RoomPage>(loadRooms);
   const loadStats = useCallback((signal: AbortSignal) => getRoomStats(signal), []);
   const stats = useApiData(loadStats);
@@ -47,9 +57,6 @@ export default function RoomsPage() {
       unit="개"
       loading={stats.loading}
       error={stats.error}
-      date={stats.data?.date}
-      excluded="삭제 모임 제외"
-      activityNote="활동: 최근 활동 시각 기준 · 생성·정보 수정·알람 활동 포함"
       onRetry={stats.retry}
     />
     <section className="panel records-panel" aria-busy={pending}>
@@ -64,12 +71,35 @@ export default function RoomsPage() {
             onChange={event => setSearch(event.target.value)}
           />
         </div>
+        <label className="management-control-field">
+          <span><ArrowDownUp size={14} aria-hidden="true" />정렬</span>
+          <select aria-label="정렬 기준" value={sortBy} onChange={event => {
+            setSortBy(event.target.value as RoomSort);
+            setSortDirection('desc');
+            setPage(0);
+          }}>
+            <option value="id">기본순</option>
+            <option value="memberCount">멤버 수 순</option>
+          </select>
+        </label>
+        <label className="management-control-field">
+          <span><SlidersHorizontal size={14} aria-hidden="true" />필터</span>
+          <select aria-label="활동 필터" value={activity} onChange={event => { setActivity(event.target.value); setPage(0); }}>
+            <option value="">전체 활동</option>
+            <option value="true">🔥 오늘 활동함</option>
+            <option value="false">오늘 활동 없음</option>
+          </select>
+        </label>
         <button className="text-button" onClick={() => {
           setSearch('');
           setQuery('');
           setPage(0);
+          setActivity('');
+          setSortBy('id');
+          setSortDirection('desc');
         }}>초기화</button>
       </div>
+      <ActiveActivityFilter activity={activity} onClear={() => { setActivity(''); setPage(0); }} />
       {pending ? <p className="empty-state" role="status">모임을 불러오는 중이에요.</p> : result.error ? (
         <div className="empty-state" role="alert">
           <p>{result.error}</p>
@@ -79,7 +109,7 @@ export default function RoomsPage() {
         <div className="list-count">전체 <strong>{data.totalElements}</strong>개의 결과</div>
         <div className="table-scroll">
           <table className="data-table">
-            <thead><tr><th>모임</th><th>모임 ID</th><th>방장</th><th>멤버</th><th>일정</th><th>상세</th></tr></thead>
+            <thead><tr><th>모임</th><th>모임 ID</th><th>방장</th><SortHeader label="멤버" active={sortBy === 'memberCount'} direction={sortDirection} onSort={() => changeSort('memberCount')} /><th>일정</th><th>상세</th></tr></thead>
             <tbody>
               {data.content.map(room => <tr
                 key={room.id}
@@ -103,7 +133,7 @@ export default function RoomsPage() {
                 <td>
                   <button className="person-cell" onClick={() => setSelectedId(room.id)}>
                     <span className="room-emoji"><Users size={22} /></span>
-                    <strong>{room.name}</strong>
+                    <strong>{room.name}</strong>{room.activeToday && <span className="activity-badge" role="img" aria-label="오늘 활동한 모임" title="오늘 활동한 모임">🔥</span>}
                   </button>
                 </td>
                 <td>#{room.id}</td>
