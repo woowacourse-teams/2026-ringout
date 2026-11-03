@@ -1,5 +1,6 @@
 package com.joon.ringout.data.auth
 
+import com.joon.ringout.data.auth.local.AnalyticsTokenStorage
 import com.joon.ringout.data.auth.remote.KtorAuthApi
 import com.joon.ringout.data.auth.remote.model.ReissueRequest
 import com.joon.ringout.data.network.ApiErrorResponse
@@ -342,8 +343,12 @@ private var lastRefreshTransition: RefreshTransition? = null
 internal suspend fun SecureTokenStorage.restoreAuthSession(authSession: AuthSession) {
     withContext(NonCancellable) {
         tokenStateMutex.withLock {
+            val tokens = read()
+            if (this@restoreAuthSession is AnalyticsTokenStorage) {
+                synchronizeUserId(tokens)
+            }
             when {
-                read() != null -> authSession.markAuthenticated()
+                tokens != null -> authSession.markAuthenticated()
                 isReauthenticationRequired() ||
                     authSession.state.value == AuthSessionState.ReauthenticationRequired -> {
                     authSession.requireReauthentication()

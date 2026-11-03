@@ -76,9 +76,19 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 - 날짜, timezone, 다음 울림 timestamp, 실제 울림/미션 시작·종료 시각을 복제한 파라미터. 사용자가 저장한 로컬 `HH:mm`은 `alarm_time`으로만 허용한다.
 - 알람음 이름, URI 또는 단순 해시, 알림 본문, 사용자가 입력한 자유 텍스트. Android에서는 확정 당시 화면 위치·목록 크기·변경 여부만 허용한다.
 - 원시 `alarmId`, `occurrenceId`, 로컬 데이터베이스 키 또는 이를 단순 해시한 값
-- 이메일, 전화번호, 광고 식별자 등 직접·간접 식별자
+- 이메일, 전화번호, 닉네임, 소셜 로그인 토큰, JWT 원문, 광고 식별자. 서버 회원 ID는 아래의 SDK `user_id` 용도로만 허용한다.
 
-분석에는 Firebase가 제공하는 `user_pseudo_id`, `event_timestamp`, 위에서 승인한 이벤트 파라미터만 사용한다. 미션 진행 시간은 정확한 값 대신 `elapsed_bucket`을 사용한다. `hold_duration_ms`는 위치나 벽시계 정보가 없는 짧은 UI 제스처 경과 시간에만 사용한다. `user_id`는 설정하지 않는다.
+분석에는 Firebase가 제공하는 `user_pseudo_id`, `event_timestamp`, 위에서 승인한 이벤트 파라미터와 로그인 회원의 `user_id`를 사용한다. 미션 진행 시간은 정확한 값 대신 `elapsed_bucket`을 사용한다. `hold_duration_ms`는 위치나 벽시계 정보가 없는 짧은 UI 제스처 경과 시간에만 사용한다.
+
+### 3.1 회원 ID 연동
+
+- Android `FirebaseAnalytics.setUserId`와 iOS `Analytics.setUserID`에 동일한 서버 회원 ID의 문자열을 전달한다. 이벤트 파라미터나 사용자 속성으로 중복 전송하지 않는다.
+- 앱 시작 시 저장된 계정을 복원하고 로그인·회원가입·계정 전환·토큰 갱신이 저장소에 반영된 직후 ID를 갱신한다. 로그아웃·탈퇴 후 로그아웃·재인증 필요 상태로 전환될 때는 `null`로 해제한다. 백그라운드 알람 런타임도 같은 저장소를 사용한다.
+- 서버에서 받은 ACCESS 토큰의 양수 `userId`와 일치하는 `sub`만 식별에 사용한다. 토큰 파싱은 로컬 식별용이며 서버의 서명·만료 검증을 대체하지 않는다. 식별할 수 없으면 `null`로 설정한다.
+- SDK 설정 이후 발생한 이벤트부터 BigQuery 최상위 `user_id`에 반영된다. 기존 데이터, 로그인 전 이벤트, 앱 시작 시 ID 복원이 끝나기 전에 SDK가 자동 수집한 이벤트에는 소급 적용되지 않는다. 비로그인 분석과 기존 설치 단위 리텐션 SQL은 계속 `user_pseudo_id`를 사용한다.
+- SDK 사용자 ID 설정 실패가 인증 처리를 실패시키지 않도록 격리한다. 실기기 검증에서는 ID 설정·해제가 실제로 반영되는지 별도로 확인한다.
+
+동작 기준: [Firebase 사용자 ID 설정](https://firebase.google.com/docs/analytics/userid).
 
 Android Manifest에서 Advertising ID 수집과 광고 개인화 신호를 기본 비활성화한다. 이 설정은 제품 사용 측정에는 영향을 주지 않으며, 향후 광고 기능이 필요해지더라도 개인정보 정책과 사용자 동의 흐름을 먼저 확정한 뒤 별도 변경한다.
 
@@ -160,6 +170,21 @@ Android Manifest에서 Advertising ID 수집과 광고 개인화 신호를 기�
 | 최소 앱 버전 | `REPLACE_ME` |
 
 ## 8. 출시 전 데이터 품질 점검
+
+### 8.1 사용자 ID 검증
+
+Android와 iOS 각각 다음 순서를 DebugView 및 배포 후 BigQuery export에서 확인한다. DebugView 트래픽은 BigQuery 일별 export 검증용으로 사용하지 않는다.
+
+1. 비로그인 상태의 이벤트: `user_id` 없음, `user_pseudo_id` 유지.
+2. 회원 A 로그인·회원가입 후 이벤트와 앱 재시작 후 이벤트: 서버 회원 ID A.
+3. 같은 계정의 토큰 재발급 후 이벤트: A 유지.
+4. 로그아웃·탈퇴·인증 만료 후 이벤트: `user_id` 없음.
+5. 회원 B 로그인 후 이벤트: B이며 A가 남지 않음. A의 지연된 재발급 응답이 도착해도 B 유지.
+6. 로그인 상태의 백그라운드 알람 이벤트에도 해당 회원 ID가 기록됨.
+
+운영 BigQuery 확인은 새 버전에서 실제 수집한 이벤트의 export가 끝난 후 진행한다. 과거 `events_20261030`의 `null` 값은 변경되지 않는다.
+
+### 8.2 이벤트 계약 검증
 
 - 각 이벤트의 필수 파라미터 누락률이 0%인지 확인한다.
 - `creation_index`와 `use_index`가 1부터 단조 증가하고, `retry_attempt > 0`에서 `use_index`가 바뀌지 않는지 확인한다.
