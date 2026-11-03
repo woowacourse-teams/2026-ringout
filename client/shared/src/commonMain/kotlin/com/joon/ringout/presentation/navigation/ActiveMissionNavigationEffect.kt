@@ -17,6 +17,7 @@ internal fun ActiveMissionNavigationEffect(
     authSessionState: AuthSessionState = AuthSessionState.Authenticated,
     pendingRoomActivityPush: RoomActivityPushRequest? = null,
     isRingingAlarm: Boolean = false,
+    canHandleRoomActivityPush: Boolean = true,
     onRoomActivityPushHandled: (String) -> Unit = {},
 ) {
     var handledOccurrenceId by rememberSaveable {
@@ -30,6 +31,7 @@ internal fun ActiveMissionNavigationEffect(
         authSessionState,
         pendingRoomActivityPush?.requestId,
         isRingingAlarm,
+        canHandleRoomActivityPush,
     ) {
         when {
             activeMissionOccurrenceId == null -> {
@@ -45,6 +47,7 @@ internal fun ActiveMissionNavigationEffect(
             }
         }
 
+        if (!canHandleRoomActivityPush || activeMissionOccurrenceId != null) return@LaunchedEffect
         val pushRequest = pendingRoomActivityPush ?: return@LaunchedEffect
         when (authSessionState) {
             AuthSessionState.Restoring -> return@LaunchedEffect

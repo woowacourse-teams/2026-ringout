@@ -1,5 +1,14 @@
 package com.joon.ringout.presentation.appbootstrap
 
+import com.joon.ringout.alarm.AlarmLogoutCleanup
+import com.joon.ringout.domain.auth.AuthRepository
+import com.joon.ringout.domain.auth.AuthSession
+import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.auth.AuthTerm
+import com.joon.ringout.domain.auth.SocialLoginOutcome
+import com.joon.ringout.domain.firstlaunch.EntryPolicyVersion
+import com.joon.ringout.domain.firstlaunch.migratedInstallationEntryState
+import com.joon.ringout.domain.preferences.InstallationEntryState
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.analytics.AnalyticsEventName
 import com.joon.ringout.analytics.AnalyticsParameterName
@@ -28,10 +37,10 @@ import kotlin.test.assertTrue
 
 class AppBootstrapViewModelTest {
     @Test
-    fun `서비스 소개를 완료하면 홈 진입과 알람 생성 가이드 상태가 함께 준비된다`() = withViewModel { viewModel, _, _ ->
+    fun `인증된 사용자가 서비스 소개를 완료하면 가이드로 진입한다`() = withViewModel { viewModel, _, _ ->
         viewModel.completeOnboarding()
 
-        assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+        assertEquals(AppEntryDestination.Guide, viewModel.uiState.destination)
         assertTrue(viewModel.uiState.isAlarmCreationGuidePending)
         assertFalse(viewModel.uiState.isSavingAlarmCreationGuide)
     }
@@ -109,12 +118,21 @@ class AppBootstrapViewModelTest {
             val vm = AppBootstrapViewModel(
                 repository = repository,
                 systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
+                authSession = authenticatedSession(),
+                authRepository = FakeAuthRepository(),
+                hasStoredAlarms = { false },
+                alarmLogoutCleanup = FakeAlarmLogoutCleanup(),
                 coroutineScope = scope,
                 onboardingAnalytics = analytics.recorder,
             )
             vm.completeOnboarding()
-            repository.emit(snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)))
-            assertEquals(AppEntryDestination.Home, vm.uiState.destination)
+            repository.emit(
+                snapshot(
+                    firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
+                    isAlarmCreationGuidePending = true,
+                ),
+            )
+            assertEquals(AppEntryDestination.Guide, vm.uiState.destination)
             assertTrue(analytics.events.isEmpty())
             assertTrue(vm.uiState.isSaving)
             vm.completeOnboarding(stepCount = 4)
@@ -138,6 +156,10 @@ class AppBootstrapViewModelTest {
             val vm = AppBootstrapViewModel(
                 repository = repository,
                 systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
+                authSession = authenticatedSession(),
+                authRepository = FakeAuthRepository(),
+                hasStoredAlarms = { false },
+                alarmLogoutCleanup = FakeAlarmLogoutCleanup(),
                 coroutineScope = scope,
                 onboardingAnalytics = analytics.recorder,
             )
@@ -154,12 +176,16 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun staysNotReadyUntilTheRepositoryEmitsItsFirstSnapshot() {
+    fun `첫 스냅샷을 받기 전에는 준비 상태가 되지 않는다`() {
         val scope = testScope()
         try {
             val viewModel = AppBootstrapViewModel(
                 repository = EmptyAppPreferencesRepository,
                 systemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
+                authSession = authenticatedSession(),
+                authRepository = FakeAuthRepository(),
+                hasStoredAlarms = { false },
+                alarmLogoutCleanup = FakeAlarmLogoutCleanup(),
                 coroutineScope = scope,
             )
 
@@ -172,7 +198,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun firstSnapshotMakesThemeAndDestinationReadyTogether() = withViewModel(
+    fun `첫 스냅샷에서 테마와 진입 목적지를 함께 준비한다`() = withViewModel(
         repository = FakeAppPreferencesRepository(
             initialSnapshot = snapshot(
                 themeMode = ThemeMode.Light,
@@ -238,7 +264,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun themeChangeWaitsForRepositoryEmission() = withViewModel { viewModel, repository, _ ->
+    fun `테마 변경은 저장소가 새 값을 발행한 뒤 반영한다`() = withViewModel { viewModel, repository, _ ->
         repository.emitThemeChanges = false
 
         viewModel.setThemeMode(ThemeMode.Light)
@@ -251,14 +277,14 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun unchangedThemeDoesNotWrite() = withViewModel { viewModel, repository, _ ->
+    fun `같은 테마를 다시 요청하면 저장하지 않는다`() = withViewModel { viewModel, repository, _ ->
         viewModel.setThemeMode(ThemeMode.Dark)
 
         assertTrue(repository.themeWrites.isEmpty())
     }
 
     @Test
-    fun consecutiveThemeChangesPersistTheLastRequest() {
+    fun `연속된 테마 변경은 마지막 요청까지 순서대로 저장한다`() {
         val firstWriteGate = CompletableDeferred<Unit>()
         withViewModel(
             repository = FakeAppPreferencesRepository(firstThemeWriteGate = firstWriteGate),
@@ -274,7 +300,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun failedThemeWriteCanBeRetried() = withViewModel(
+    fun `테마 저장에 실패하면 같은 값으로 재시도할 수 있다`() = withViewModel(
         repository = FakeAppPreferencesRepository(themeWriteFailuresRemaining = 1),
     ) { viewModel, repository, _ ->
         viewModel.setThemeMode(ThemeMode.Light)
@@ -285,7 +311,7 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
-    fun `온보딩 저장 요청 뒤 새 스냅샷을 받아야 홈과 가이드 상태로 전환한다`() =
+    fun `온보딩 저장 요청 뒤 새 스냅샷을 받아야 가이드로 전환한다`() =
         withViewModel { viewModel, repository, _ ->
             repository.emitOnboardingChanges = false
             viewModel.completeOnboarding()
@@ -301,7 +327,7 @@ class AppBootstrapViewModelTest {
                 ),
             )
 
-            assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+            assertEquals(AppEntryDestination.Guide, viewModel.uiState.destination)
             assertTrue(viewModel.uiState.isAlarmCreationGuidePending)
         }
 
@@ -319,12 +345,189 @@ class AppBootstrapViewModelTest {
         assertEquals(2, repository.onboardingSaveCount)
     }
 
+    @Test
+    fun `인증 복원이 끝나기 전에는 설치 정책을 초기화하지 않는다`() {
+        val session = AuthSession()
+        val gate = CompletableDeferred<Unit>()
+        val auth = FakeAuthRepository(session, gate, AuthSessionState.Unauthenticated)
+        withViewModel(
+            repository = FakeAppPreferencesRepository(snapshot().copy(installationEntryState = null)),
+            authSession = session,
+            authRepository = auth,
+            hasStoredAlarms = { true },
+        ) { viewModel, repository, _ ->
+            assertFalse(viewModel.uiState.isReady)
+            assertNull(viewModel.uiState.destination)
+            assertTrue(repository.migrationInputs.isEmpty())
+            gate.complete(Unit)
+            assertEquals(listOf(AuthSessionState.Unauthenticated to true), repository.migrationInputs)
+            assertTrue(viewModel.uiState.isReady)
+            assertEquals(AppEntryDestination.Onboarding, viewModel.uiState.destination)
+            assertTrue(viewModel.uiState.hasLegacyRuntimeExceptionPending)
+            assertEquals(1, auth.restoreCount)
+        }
+    }
+
+    @Test
+    fun `현재 설치 정책이 있으면 과거 알람을 검사하거나 다시 마이그레이션하지 않는다`() = withViewModel(
+        hasStoredAlarms = { error("현재 정책에서는 알람 조회가 필요하지 않다") },
+    ) { viewModel, repository, _ ->
+        assertTrue(viewModel.uiState.isReady)
+        assertTrue(repository.migrationInputs.isEmpty())
+    }
+
+    @Test
+    fun `미인증 사용자는 온보딩과 로그인 완료 인계를 거친 뒤 가이드로 진입한다`() {
+        val session = AuthSession()
+        val cleanup = FakeAlarmLogoutCleanup()
+        withViewModel(
+            authSession = session,
+            authRepository = FakeAuthRepository(session, restoredState = AuthSessionState.Unauthenticated),
+            alarmLogoutCleanup = cleanup,
+        ) { viewModel, _, _ ->
+            assertEquals(AppEntryDestination.Onboarding, viewModel.uiState.destination)
+            viewModel.completeOnboarding()
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+            val attemptId = viewModel.beginAuthFlow()
+            session.startNewSession()
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+            assertEquals(
+                AuthFlowEventResult.Accepted,
+                viewModel.handleAuthFlowEvent(
+                    AuthFlowEvent(attemptId, 1, AuthFlowEventType.LoginAuthenticated),
+                ),
+            )
+            assertEquals(AppEntryDestination.Guide, viewModel.uiState.destination)
+            assertFalse(viewModel.uiState.isAuthFlowInProgress)
+            assertEquals(1, cleanup.allowCount)
+            viewModel.completeAlarmCreationGuide()
+            assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+        }
+    }
+
+    @Test
+    fun `로그인 완료 저장에 실패하면 인증 화면을 유지하고 인계를 재시도한다`() {
+        val cleanup = FakeAlarmLogoutCleanup()
+        withViewModel(
+            repository = FakeAppPreferencesRepository(snapshot(
+                firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
+                isAlarmCreationGuidePending = true,
+            )),
+            alarmLogoutCleanup = cleanup,
+        ) { viewModel, repository, _ ->
+            val attemptId = viewModel.beginAuthFlow()
+            repository.failLegacyWrite = true
+            val completion = AuthFlowEvent(
+                attemptId,
+                1,
+                AuthFlowEventType.LoginAuthenticated,
+            )
+            assertEquals(AuthFlowEventResult.Accepted, viewModel.handleAuthFlowEvent(completion))
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+            assertTrue(viewModel.uiState.hasAuthFlowCompletionFailed)
+            assertEquals(0, cleanup.allowCount)
+            assertEquals(
+                AuthFlowEventResult.AlreadyHandled,
+                viewModel.handleAuthFlowEvent(completion),
+            )
+            assertEquals(
+                AuthFlowEventResult.Rejected,
+                viewModel.handleAuthFlowEvent(
+                    completion.copy(attemptId = attemptId - 1),
+                ),
+            )
+            repository.failLegacyWrite = false
+            viewModel.retryAuthFlowCompletion()
+            assertEquals(AppEntryDestination.Guide, viewModel.uiState.destination)
+            assertFalse(viewModel.uiState.hasAuthFlowCompletionFailed)
+            assertEquals(1, cleanup.allowCount)
+        }
+    }
+
+    @Test
+    fun `재시작 시 대기 중인 로그아웃 정리가 실패하면 정리 화면을 유지하고 재시도한다`() {
+        val session = authenticatedSession()
+        val auth = FakeAuthRepository(session)
+        val cleanup = FakeAlarmLogoutCleanup().apply { failCancellation = true }
+        val initial = snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true))
+        withViewModel(
+            repository = FakeAppPreferencesRepository(initial.copy(
+                installationEntryState = initial.installationEntryState!!.copy(
+                    isLogoutCleanupPending = true,
+                    hasLegacyRuntimeExceptionPending = true,
+                ),
+            )),
+            authSession = session,
+            authRepository = auth,
+            alarmLogoutCleanup = cleanup,
+        ) { viewModel, repository, _ ->
+            assertEquals(AppEntryDestination.LogoutCleaning, viewModel.uiState.destination)
+            assertTrue(viewModel.uiState.isLogoutCleanupPending)
+            assertTrue(viewModel.uiState.logoutCleanupErrorMessage != null)
+            assertEquals(0, auth.logoutCount)
+            assertTrue(repository.logoutPendingWrites.isEmpty())
+            cleanup.failCancellation = false
+            viewModel.retryLogoutCleanup()
+            assertEquals(2, cleanup.cancelCount)
+            assertEquals(1, auth.logoutCount)
+            assertEquals(listOf(false), repository.logoutPendingWrites)
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+            assertFalse(viewModel.uiState.isLogoutCleanupPending)
+            assertFalse(viewModel.uiState.hasLegacyRuntimeExceptionPending)
+            assertNull(viewModel.uiState.logoutCleanupErrorMessage)
+        }
+    }
+
+    @Test
+    fun `명시적 로그아웃은 정리 대기 상태를 저장한 다음 알람과 인증을 정리한다`() {
+        val session = authenticatedSession()
+        val auth = FakeAuthRepository(session)
+        val cleanup = FakeAlarmLogoutCleanup()
+        withViewModel(
+            repository = FakeAppPreferencesRepository(snapshot(
+                firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
+            )),
+            authSession = session,
+            authRepository = auth,
+            alarmLogoutCleanup = cleanup,
+        ) { viewModel, repository, _ ->
+            cleanup.onCancel = {
+                assertEquals(listOf(true), repository.logoutPendingWrites)
+                assertEquals(0, auth.logoutCount)
+            }
+            viewModel.requestExplicitLogout()
+            assertEquals(listOf(true, false), repository.logoutPendingWrites)
+            assertEquals(1, cleanup.cancelCount)
+            assertEquals(1, auth.logoutCount)
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+        }
+    }
+
+    @Test
+    fun `과거 온보딩 값이 달라도 현재 설치 정책으로 진입 목적지를 결정한다`() = withViewModel(
+        repository = FakeAppPreferencesRepository(snapshot().copy(
+            installationEntryState = InstallationEntryState(
+                policyVersion = EntryPolicyVersion,
+                isOnboardingCompleted = true,
+                isAlarmCreationGuideCompleted = true,
+            ),
+        )),
+    ) { viewModel, _, _ ->
+        assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+        assertTrue(viewModel.uiState.isOnboardingCompleted)
+    }
+
 }
 
-private inline fun withViewModel(
+private fun withViewModel(
     repository: FakeAppPreferencesRepository = FakeAppPreferencesRepository(),
     systemThemeModeReader: FakeSystemThemeModeReader = FakeSystemThemeModeReader(ThemeMode.Dark),
     themeInitializationRetryDelayMillis: Long = 0,
+    authSession: AuthSession = authenticatedSession(),
+    authRepository: AuthRepository = FakeAuthRepository(authSession),
+    alarmLogoutCleanup: FakeAlarmLogoutCleanup = FakeAlarmLogoutCleanup(),
+    hasStoredAlarms: suspend () -> Boolean = { false },
+    hasRuntimeEvidence: () -> Boolean = { false },
     block: (
         AppBootstrapViewModel,
         FakeAppPreferencesRepository,
@@ -335,6 +538,11 @@ private inline fun withViewModel(
     val viewModel = AppBootstrapViewModel(
         repository = repository,
         systemThemeModeReader = systemThemeModeReader,
+        authSession = authSession,
+        authRepository = authRepository,
+        hasStoredAlarms = hasStoredAlarms,
+        alarmLogoutCleanup = alarmLogoutCleanup,
+        hasRuntimeEvidence = hasRuntimeEvidence,
         coroutineScope = scope,
         themeInitializationRetryDelayMillis = themeInitializationRetryDelayMillis,
     )
@@ -402,6 +610,10 @@ private class FakeAppPreferencesRepository(
                 currentSnapshot.copy(
                     firstLaunchStatus = currentSnapshot.firstLaunchStatus.copy(isOnboardingCompleted = true),
                     isAlarmCreationGuidePending = true,
+                    installationEntryState = currentSnapshot.installationEntryState!!.copy(
+                        isOnboardingCompleted = true,
+                        isAlarmCreationGuideCompleted = false,
+                    ),
                 ),
             )
         }
@@ -411,7 +623,56 @@ private class FakeAppPreferencesRepository(
         guideSaveCount += 1
         guideWriteGate?.await()
         if (failGuideWrite) throw IOException("guide write failed")
-        emit(mutableBootstrapState.value.copy(isAlarmCreationGuidePending = false))
+        emit(
+            mutableBootstrapState.value.copy(
+                isAlarmCreationGuidePending = false,
+                installationEntryState = mutableBootstrapState.value.installationEntryState!!.copy(
+                    isAlarmCreationGuideCompleted = true,
+                ),
+            ),
+        )
+    }
+
+    val migrationInputs = mutableListOf<Pair<AuthSessionState, Boolean>>()
+    var failLegacyWrite = false
+    val logoutPendingWrites = mutableListOf<Boolean>()
+
+    override suspend fun initializeEntryPolicy(
+        authSessionState: AuthSessionState,
+        hasLegacyAlarmOrRuntimeEvidence: Boolean,
+    ) {
+        migrationInputs += authSessionState to hasLegacyAlarmOrRuntimeEvidence
+        emit(
+            mutableBootstrapState.value.copy(
+                installationEntryState = migratedInstallationEntryState(
+                    authSessionState,
+                    mutableBootstrapState.value.legacyEntryState,
+                    hasLegacyAlarmOrRuntimeEvidence,
+                ),
+            ),
+        )
+    }
+
+    override suspend fun setLogoutCleanupPending(pending: Boolean) {
+        logoutPendingWrites += pending
+        emit(
+            mutableBootstrapState.value.copy(
+                installationEntryState = mutableBootstrapState.value.installationEntryState!!.copy(
+                    isLogoutCleanupPending = pending,
+                ),
+            ),
+        )
+    }
+
+    override suspend fun setLegacyRuntimeExceptionPending(pending: Boolean) {
+        if (failLegacyWrite) throw IOException("legacy write failed")
+        emit(
+            mutableBootstrapState.value.copy(
+                installationEntryState = mutableBootstrapState.value.installationEntryState!!.copy(
+                    hasLegacyRuntimeExceptionPending = pending,
+                ),
+            ),
+        )
     }
 
     override suspend fun saveTermConsents(records: List<TermConsentRecord>) = Unit
@@ -422,6 +683,9 @@ private class FakeAppPreferencesRepository(
 }
 
 private object EmptyAppPreferencesRepository : AppPreferencesRepository {
+    override suspend fun initializeEntryPolicy(authSessionState: AuthSessionState, hasLegacyAlarmOrRuntimeEvidence: Boolean) = Unit
+    override suspend fun setLogoutCleanupPending(pending: Boolean) = Unit
+    override suspend fun setLegacyRuntimeExceptionPending(pending: Boolean) = Unit
     override val bootstrapState: Flow<AppBootstrapSnapshot> = emptyFlow()
     override suspend fun initializeThemeModeIfMissing(themeMode: ThemeMode) = Unit
     override suspend fun setThemeMode(themeMode: ThemeMode) = Unit
@@ -434,7 +698,14 @@ private fun snapshot(
     themeMode: ThemeMode? = ThemeMode.Dark,
     firstLaunchStatus: FirstLaunchStatus = FirstLaunchStatus(),
     isAlarmCreationGuidePending: Boolean = false,
-) = AppBootstrapSnapshot(themeMode, firstLaunchStatus, isAlarmCreationGuidePending)
+) = AppBootstrapSnapshot(
+    themeMode, firstLaunchStatus, isAlarmCreationGuidePending,
+    installationEntryState = InstallationEntryState(
+        policyVersion = EntryPolicyVersion,
+        isOnboardingCompleted = firstLaunchStatus.isOnboardingCompleted,
+        isAlarmCreationGuideCompleted = !isAlarmCreationGuidePending,
+    ),
+)
 
 private class FakeSystemThemeModeReader(
     private val themeMode: ThemeMode,
@@ -449,3 +720,45 @@ private class FakeSystemThemeModeReader(
 }
 
 private fun testScope() = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+
+private fun authenticatedSession() = AuthSession().apply { startNewSession() }
+
+private class FakeAuthRepository(
+    private val session: AuthSession = authenticatedSession(),
+    private val restoreGate: CompletableDeferred<Unit>? = null,
+    private val restoredState: AuthSessionState = AuthSessionState.Authenticated,
+) : AuthRepository {
+    var restoreCount = 0
+    var logoutCount = 0
+    override suspend fun restoreSession() {
+        restoreCount += 1
+        restoreGate?.await()
+        when (restoredState) {
+            AuthSessionState.Authenticated -> session.markAuthenticated()
+            AuthSessionState.Unauthenticated -> session.clear()
+            AuthSessionState.ReauthenticationRequired -> session.requireReauthentication()
+            AuthSessionState.Restoring -> Unit
+        }
+    }
+    override suspend fun logout() {
+        logoutCount += 1
+        session.clear()
+    }
+    override suspend fun loginWithApple(idToken: String): SocialLoginOutcome = error("unused")
+    override suspend fun loginWithGoogle(accessToken: String): SocialLoginOutcome = error("unused")
+    override suspend fun loginWithKakao(accessToken: String): SocialLoginOutcome = error("unused")
+    override suspend fun signup(signupToken: String, agreedTerms: Set<AuthTerm>, agreedAt: String) = Unit
+}
+
+private class FakeAlarmLogoutCleanup : AlarmLogoutCleanup {
+    var cancelCount = 0
+    var allowCount = 0
+    var failCancellation = false
+    var onCancel: () -> Unit = {}
+    override suspend fun cancelScheduledAlarms() {
+        cancelCount += 1
+        onCancel()
+        if (failCancellation) throw IOException("cancel failed")
+    }
+    override fun allowScheduling() { allowCount += 1 }
+}

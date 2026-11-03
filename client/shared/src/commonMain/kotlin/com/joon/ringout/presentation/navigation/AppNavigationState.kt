@@ -5,30 +5,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.saveable.rememberSerializable
 import androidx.navigation3.runtime.NavBackStack
-import androidx.navigation3.runtime.serialization.NavBackStackSerializer
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.push.RoomActivityPushTarget
 
 @Composable
-internal fun rememberAppNavigationState(): AppNavigationState {
-    val backStack = rememberSerializable(
-        serializer = NavBackStackSerializer(AppRoute.serializer()),
-    ) {
-        NavBackStack<AppRoute>(AppRoute.Home)
-    }
-    return remember(backStack) {
+internal fun rememberAppNavigationState(sessionIdentity: Any? = null): AppNavigationState =
+    remember(sessionIdentity) { AppNavigationState() }
+
+@Composable
+internal fun rememberAuthOnlyNavigationState(): AppNavigationState =
+    remember {
         AppNavigationState(
-            routes = backStack,
+            routes = NavBackStack(AppRoute.Login),
+            authenticationOnlyMode = true,
         )
     }
-}
 
 /** 화면 이동 요청과 표시 경로를 타입 안전한 Navigation 3 백스택으로 관리한다. */
 internal class AppNavigationState(
     private val routes: NavBackStack<AppRoute> = NavBackStack(AppRoute.Home),
     private val guestOnlyMode: Boolean = false,
+    private val authenticationOnlyMode: Boolean = false,
 ) {
     // Not saved: a restored stack must never replay an old back animation.
     private var lastBackTransition: Pair<AppRoute, AppRoute>? by mutableStateOf(null)
@@ -47,6 +45,15 @@ internal class AppNavigationState(
      * 경로의 식별자가 다르면 같은 화면 유형이어도 최상위 항목을 교체한다.
      */
     fun navigate(route: AppRoute) {
+        if (authenticationOnlyMode) {
+            val destinationStack = when (route) {
+                AppRoute.Login -> listOf(AppRoute.Login)
+                AppRoute.TermsAgreement -> listOf(AppRoute.Login, AppRoute.TermsAgreement)
+                else -> return
+            }
+            replaceBackStack(destinationStack)
+            return
+        }
         if (guestOnlyMode) {
             when (route) {
                 AppRoute.NicknameChange,

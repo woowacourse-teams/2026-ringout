@@ -11,8 +11,6 @@ import com.joon.ringout.analytics.StampMonthChangeDirection
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthTerm
 import com.joon.ringout.domain.auth.SocialLoginOutcome
-import com.joon.ringout.domain.destination.DestinationRepository
-import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.domain.terms.TermId
 import com.joon.ringout.presentation.signup.model.SignupUiState
 import kotlinx.coroutines.CompletableDeferred
@@ -21,8 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
@@ -36,12 +32,11 @@ class SignupViewModelTest {
     @Test
     fun `필수 약관 중 하나라도 동의하지 않으면 회원가입을 요청하지 않는다`() {
         listOf(emptySet(), setOf(TermId.Service), setOf(TermId.Privacy)).forEach { terms ->
-            withViewModel { viewModel, repository, destinations, _ ->
+            withViewModel { viewModel, repository, _ ->
                 viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
                 viewModel.signup(terms)
 
                 assertTrue(repository.signupRequests.isEmpty())
-                assertEquals(0, destinations.syncCount)
                 assertFalse(viewModel.uiState.isSaving)
                 assertEquals("필수 약관에 모두 동의해 주세요.", viewModel.uiState.errorMessage)
             }
@@ -50,7 +45,7 @@ class SignupViewModelTest {
 
     @Test
     fun `저장소를 정리하면 가입 정보를 버리고 추가 가입을 무시한다`() =
-        withViewModel { viewModel, repository, destinations, analytics ->
+        withViewModel { viewModel, repository, analytics ->
             viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
             viewModel.signup(setOf(TermId.Service, TermId.Privacy))
             assertNotNull(viewModel.uiState.completedEventId)
@@ -62,13 +57,12 @@ class SignupViewModelTest {
             assertEquals(SignupUiState(), viewModel.uiState)
             assertEquals(1, repository.signupRequests.size)
             assertEquals(listOf(AnalyticsAuthProvider.Google), analytics.signupProviders)
-            assertEquals(1, destinations.syncCount)
         }
 
     @Test
     fun `저장소를 정리하면 회원가입 작업만 취소한다`() {
         val parentScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        withViewModel(scope = parentScope) { viewModel, repository, destinations, analytics ->
+        withViewModel(scope = parentScope) { viewModel, repository, analytics ->
             val gate = CompletableDeferred<Unit>()
             var signupFinished = false
             repository.signupAction = {
@@ -89,7 +83,6 @@ class SignupViewModelTest {
             assertTrue(parentScope.isActive)
             assertEquals(SignupUiState(), viewModel.uiState)
             assertTrue(analytics.signupProviders.isEmpty())
-            assertEquals(0, destinations.syncCount)
         }
     }
 
@@ -100,7 +93,7 @@ class SignupViewModelTest {
             Result.failure<Unit>(IllegalStateException("late signup failure")),
         )
         outcomes.forEach { outcome ->
-            withViewModel { viewModel, repository, destinations, analytics ->
+            withViewModel { viewModel, repository, analytics ->
                 val gate = CompletableDeferred<Unit>()
                 var backendReturned = false
                 repository.signupAction = {
@@ -117,44 +110,13 @@ class SignupViewModelTest {
                 assertTrue(backendReturned)
                 assertEquals(SignupUiState(), viewModel.uiState)
                 assertTrue(analytics.signupProviders.isEmpty())
-                assertEquals(0, destinations.syncCount)
             }
         }
     }
 
     @Test
-    fun `저장소 정리 후 늦은 동기화 응답을 무시한다`() {
-        val outcomes = listOf(
-            Result.success(Unit),
-            Result.failure<Unit>(IllegalStateException("late sync failure")),
-        )
-        outcomes.forEach { outcome ->
-            withViewModel { viewModel, repository, destinations, analytics ->
-                val gate = CompletableDeferred<Unit>()
-                var syncReturned = false
-                destinations.syncAction = {
-                    withContext(NonCancellable) { gate.await() }
-                    syncReturned = true
-                    outcome.getOrThrow()
-                }
-                viewModel.startSignup("signup-token", AnalyticsAuthProvider.Kakao)
-                viewModel.signup(setOf(TermId.Service, TermId.Privacy))
-
-                clearViewModel(viewModel)
-                gate.complete(Unit)
-
-                assertTrue(syncReturned)
-                assertEquals(SignupUiState(), viewModel.uiState)
-                assertEquals(1, repository.signupRequests.size)
-                assertEquals(listOf(AnalyticsAuthProvider.Kakao), analytics.signupProviders)
-                assertEquals(1, destinations.syncCount)
-            }
-        }
-    }
-
-    @Test
-    fun `회원가입 성공 후 제공자를 기록하고 목적지를 동기화한다`() =
-        withViewModel { viewModel, authRepository, destinationRepository, analytics ->
+    fun `회원가입 성공 후 제공자를 기록하고 완료 이벤트를 발행한다`() =
+        withViewModel { viewModel, authRepository, analytics ->
             viewModel.startSignup(
                 signupToken = "signup-token",
                 provider = AnalyticsAuthProvider.Kakao,
@@ -164,7 +126,7 @@ class SignupViewModelTest {
             )
 
             assertEquals(
-                listOf("auth_signup", "analytics", "destination_sync"),
+                listOf("auth_signup", "analytics"),
                 analytics.order,
             )
             assertEquals(
@@ -178,7 +140,6 @@ class SignupViewModelTest {
                 authRepository.signupRequests,
             )
             assertEquals(listOf(AnalyticsAuthProvider.Kakao), analytics.signupProviders)
-            assertEquals(1, destinationRepository.syncCount)
             assertFalse(viewModel.uiState.isSaving)
             assertNull(viewModel.uiState.errorMessage)
             assertNotNull(viewModel.uiState.completedEventId)
@@ -186,38 +147,22 @@ class SignupViewModelTest {
         }
 
     @Test
-    fun `목적지 동기화 실패 후 재시도해도 회원가입과 분석을 중복하지 않는다`() =
-        withViewModel { viewModel, authRepository, destinationRepository, analytics ->
-            destinationRepository.syncFailuresRemaining = 1
-            viewModel.startSignup(
-                signupToken = "signup-token",
-                provider = AnalyticsAuthProvider.Google,
-            )
+    fun `완료 이벤트를 소비하기 전 다시 요청해도 회원가입과 분석을 중복하지 않는다`() =
+        withViewModel { viewModel, authRepository, analytics ->
+            viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
+            viewModel.signup(setOf(TermId.Service, TermId.Privacy))
+            assertNotNull(viewModel.uiState.completedEventId)
 
-            viewModel.signup(
-                agreedTermIds = setOf(TermId.Service, TermId.Privacy),
-            )
-
-            assertEquals(listOf(AnalyticsAuthProvider.Google), analytics.signupProviders)
-            assertEquals(1, authRepository.signupRequests.size)
-            assertEquals(1, destinationRepository.syncCount)
-            assertEquals("sync failed", viewModel.uiState.errorMessage)
-            assertNull(viewModel.uiState.completedEventId)
-
-            viewModel.signup(
-                agreedTermIds = setOf(TermId.Service, TermId.Privacy),
-            )
+            viewModel.signup(setOf(TermId.Service, TermId.Privacy))
 
             assertEquals(1, authRepository.signupRequests.size)
             assertEquals(listOf(AnalyticsAuthProvider.Google), analytics.signupProviders)
-            assertEquals(2, destinationRepository.syncCount)
-            assertNull(viewModel.uiState.errorMessage)
             assertNotNull(viewModel.uiState.completedEventId)
         }
 
     @Test
-    fun `회원가입 API가 실패하면 분석과 목적지 동기화를 실행하지 않는다`() =
-        withViewModel { viewModel, authRepository, destinationRepository, analytics ->
+    fun `회원가입 API가 실패하면 분석과 완료 처리를 실행하지 않는다`() =
+        withViewModel { viewModel, authRepository, analytics ->
             authRepository.signupFailure = IllegalStateException("signup failed")
             viewModel.startSignup(
                 signupToken = "signup-token",
@@ -229,15 +174,35 @@ class SignupViewModelTest {
             )
 
             assertTrue(analytics.signupProviders.isEmpty())
-            assertEquals(0, destinationRepository.syncCount)
             assertEquals("signup failed", viewModel.uiState.errorMessage)
             assertNull(viewModel.uiState.completedEventId)
             assertFalse(viewModel.uiState.isSaving)
         }
 
     @Test
-    fun `분석 기록이 실패해도 목적지 동기화와 완료 처리를 계속한다`() =
-        withViewModel { viewModel, _, destinationRepository, analytics ->
+    fun `회원가입 실패 후 재시도하면 같은 토큰으로 가입하고 완료를 알린다`() =
+        withViewModel { viewModel, authRepository, analytics ->
+            authRepository.signupFailure = IllegalStateException("signup failed")
+            viewModel.startSignup("signup-token", AnalyticsAuthProvider.Google)
+            viewModel.signup(setOf(TermId.Service, TermId.Privacy))
+            assertNull(viewModel.uiState.completedEventId)
+
+            authRepository.signupFailure = null
+            viewModel.signup(setOf(TermId.Service, TermId.Privacy))
+
+            assertEquals(
+                listOf("signup-token", "signup-token"),
+                authRepository.signupRequests.map { it.signupToken },
+            )
+            assertEquals(listOf(AnalyticsAuthProvider.Google), analytics.signupProviders)
+            assertNull(viewModel.uiState.errorMessage)
+            assertFalse(viewModel.uiState.isSaving)
+            assertNotNull(viewModel.uiState.completedEventId)
+        }
+
+    @Test
+    fun `분석 기록이 실패해도 완료 처리를 계속한다`() =
+        withViewModel { viewModel, _, analytics ->
             analytics.signupFailure = IllegalStateException("analytics failed")
             viewModel.startSignup(
                 signupToken = "signup-token",
@@ -249,17 +214,16 @@ class SignupViewModelTest {
             )
 
             assertEquals(
-                listOf("auth_signup", "analytics", "destination_sync"),
+                listOf("auth_signup", "analytics"),
                 analytics.order,
             )
-            assertEquals(1, destinationRepository.syncCount)
             assertNull(viewModel.uiState.errorMessage)
             assertNotNull(viewModel.uiState.completedEventId)
         }
 
     @Test
     fun `회원가입 요청이 진행 중이면 중복 요청을 무시한다`() =
-        withViewModel { viewModel, authRepository, destinationRepository, analytics ->
+        withViewModel { viewModel, authRepository, analytics ->
             val signupGate = CompletableDeferred<Unit>()
             authRepository.signupGate = signupGate
             viewModel.startSignup(
@@ -280,26 +244,24 @@ class SignupViewModelTest {
             signupGate.complete(Unit)
 
             assertEquals(listOf(AnalyticsAuthProvider.Google), analytics.signupProviders)
-            assertEquals(1, destinationRepository.syncCount)
             assertFalse(viewModel.uiState.isSaving)
             assertNotNull(viewModel.uiState.completedEventId)
         }
 
     @Test
     fun `회원가입 시작 정보가 없으면 회원가입 요청을 실행하지 않는다`() =
-        withViewModel { viewModel, authRepository, destinationRepository, analytics ->
+        withViewModel { viewModel, authRepository, analytics ->
             viewModel.signup(agreedTermIds = setOf(TermId.Service, TermId.Privacy))
 
             assertTrue(authRepository.signupRequests.isEmpty())
             assertTrue(analytics.signupProviders.isEmpty())
-            assertEquals(0, destinationRepository.syncCount)
             assertFalse(viewModel.uiState.isSaving)
             assertFalse(viewModel.uiState.hasPendingSignup)
         }
 
     @Test
     fun `회원가입 상태를 초기화하면 진행 중인 요청 결과를 반영하지 않는다`() =
-        withViewModel { viewModel, authRepository, destinationRepository, analytics ->
+        withViewModel { viewModel, authRepository, analytics ->
             val signupGate = CompletableDeferred<Unit>()
             authRepository.signupGate = signupGate
             viewModel.startSignup(
@@ -315,12 +277,11 @@ class SignupViewModelTest {
             assertFalse(viewModel.uiState.isSaving)
             assertNull(viewModel.uiState.completedEventId)
             assertTrue(analytics.signupProviders.isEmpty())
-            assertEquals(0, destinationRepository.syncCount)
         }
 
     @Test
     fun `완료 이벤트를 소비하면 회원가입 시작 정보를 제거한다`() =
-        withViewModel { viewModel, _, _, _ ->
+        withViewModel { viewModel, _, _ ->
             viewModel.startSignup(
                 signupToken = "signup-token",
                 provider = AnalyticsAuthProvider.Google,
@@ -340,23 +301,20 @@ private inline fun withViewModel(
     block: (
         SignupViewModel,
         FakeAuthRepository,
-        FakeDestinationRepository,
         RecordingProductAnalyticsRecorder,
     ) -> Unit,
 ) {
     val order = mutableListOf<String>()
     val authRepository = FakeAuthRepository(order)
-    val destinationRepository = FakeDestinationRepository(order)
     val analytics = RecordingProductAnalyticsRecorder(order)
     val viewModel = SignupViewModel(
         authRepository = authRepository,
-        destinationRepository = destinationRepository,
         productAnalyticsRecorder = analytics,
         currentDate = { "2026-08-19" },
         coroutineScope = scope,
     )
     try {
-        block(viewModel, authRepository, destinationRepository, analytics)
+        block(viewModel, authRepository, analytics)
     } finally {
         scope.cancel()
     }
@@ -406,35 +364,6 @@ private class FakeAuthRepository(
     }
 
     override suspend fun logout() = Unit
-}
-
-private class FakeDestinationRepository(
-    private val order: MutableList<String>,
-) : DestinationRepository {
-    private val destinations = MutableStateFlow(emptyList<SavedDestination>())
-
-    var syncCount = 0
-    var syncFailuresRemaining = 0
-    var syncAction: (suspend () -> Unit)? = null
-
-    override fun observeAll(): Flow<List<SavedDestination>> = destinations
-
-    override suspend fun fetchAll(): List<SavedDestination> = destinations.value
-
-    override suspend fun sync(): List<SavedDestination> {
-        syncCount++
-        order += "destination_sync"
-        syncAction?.invoke()
-        if (syncFailuresRemaining > 0) {
-            syncFailuresRemaining--
-            error("sync failed")
-        }
-        return destinations.value
-    }
-
-    override suspend fun save(destination: SavedDestination): SavedDestination = destination
-
-    override suspend fun delete(id: Long): Boolean = false
 }
 
 private class RecordingProductAnalyticsRecorder(

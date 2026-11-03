@@ -28,6 +28,7 @@ class TermsReagreementViewModel(
     networkMonitor: NetworkMonitor,
     private val currentDate: () -> String = ::currentAgreementDate,
     coroutineScope: CoroutineScope? = null,
+    private val explicitLogout: suspend () -> Unit = authRepository::logout,
 ) : ViewModel() {
     var uiState by mutableStateOf(TermsReagreementUiState())
         private set
@@ -142,7 +143,7 @@ class TermsReagreementViewModel(
         uiState = uiState.copy(isLoggingOut = true, isChecking = false, errorMessage = null)
         logoutJob = scope.launch {
             try {
-                authRepository.logout()
+                explicitLogout()
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {

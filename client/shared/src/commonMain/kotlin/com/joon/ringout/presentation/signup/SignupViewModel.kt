@@ -9,7 +9,6 @@ import com.joon.ringout.analytics.AnalyticsAuthProvider
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthTerm
-import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.terms.TermId
 import com.joon.ringout.presentation.signup.model.SignupUiState
 import kotlinx.coroutines.CancellationException
@@ -20,7 +19,6 @@ import kotlinx.coroutines.launch
 
 class SignupViewModel(
     private val authRepository: AuthRepository,
-    private val destinationRepository: DestinationRepository,
     private val productAnalyticsRecorder: ProductAnalyticsRecorder,
     private val currentDate: () -> String = ::currentAgreementDate,
     coroutineScope: CoroutineScope? = null,
@@ -39,6 +37,7 @@ class SignupViewModel(
     fun startSignup(
         signupToken: String,
         provider: AnalyticsAuthProvider,
+        authFlowAttemptId: Long = 0L,
     ) {
         if (isCleared) return
         signupSessionId++
@@ -47,9 +46,13 @@ class SignupViewModel(
         pendingSignup = PendingSignup(
             signupToken = signupToken,
             provider = provider,
+            authFlowAttemptId = authFlowAttemptId,
         )
         completedSignupToken = null
-        uiState = SignupUiState(hasPendingSignup = true)
+        uiState = SignupUiState(
+            hasPendingSignup = true,
+            authFlowAttemptId = authFlowAttemptId,
+        )
     }
 
     fun signup(agreedTermIds: Set<TermId>) {
@@ -84,11 +87,10 @@ class SignupViewModel(
                     }
                 }
                 if (isCleared || !isActive || sessionId != signupSessionId) return@launch
-                destinationRepository.sync()
-                if (isCleared || !isActive || sessionId != signupSessionId) return@launch
                 uiState = uiState.copy(
                     isSaving = false,
                     completedEventId = ++nextEventId,
+                    authFlowAttemptId = pending.authFlowAttemptId,
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -131,6 +133,7 @@ class SignupViewModel(
 private data class PendingSignup(
     val signupToken: String,
     val provider: AnalyticsAuthProvider,
+    val authFlowAttemptId: Long,
 )
 
 internal expect fun currentAgreementDate(): String

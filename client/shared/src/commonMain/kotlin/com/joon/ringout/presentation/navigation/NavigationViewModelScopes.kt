@@ -45,6 +45,9 @@ internal fun rememberNavigationViewModelScopes(
     appContainer: AppContainer,
     retainedRoutes: List<AppRoute>,
     destinationCurrentLocationCache: DestinationCurrentLocationCache,
+    scopeKey: String = "service",
+    sessionIdentity: Any? = null,
+    explicitLogout: suspend () -> Unit = appContainer.authRepository::logout,
 ): NavigationViewModelScopes {
     val parent = checkNotNull(LocalViewModelStoreOwner.current) {
         "CompositionLocal LocalViewModelStoreOwner not present"
@@ -53,7 +56,7 @@ internal fun rememberNavigationViewModelScopes(
     // 부모 owner가 바뀌면 새 생성 정보를 사용하고, 저장소 수명 관리는 기존 provider에 맡긴다.
     val creationExtras = remember(parent) { parent.defaultViewModelCreationExtras }
     val stores = rememberViewModelStoreProvider(
-        key = "ringout-navigation",
+        key = NavigationViewModelScopeKey(scopeKey, sessionIdentity),
         parent = parent,
         defaultCreationExtras = creationExtras,
     )
@@ -68,11 +71,16 @@ internal fun rememberNavigationViewModelScopes(
             )
         }
     }
-    val factory = remember(appContainer, destinationCurrentLocationCache) {
-        navigationViewModelFactory(appContainer, destinationCurrentLocationCache)
+    val factory = remember(appContainer, destinationCurrentLocationCache, explicitLogout) {
+        navigationViewModelFactory(appContainer, destinationCurrentLocationCache, explicitLogout)
     }
     return remember(stores, factory) { NavigationViewModelScopes(stores, factory) }
 }
+
+private data class NavigationViewModelScopeKey(
+    val scope: String,
+    val sessionIdentity: Any?,
+)
 
 internal class NavigationViewModelScopes(
     val storeProvider: ViewModelStoreProvider,
@@ -102,6 +110,7 @@ internal class NavigationViewModelScopes(
 private fun navigationViewModelFactory(
     container: AppContainer,
     destinationCurrentLocationCache: DestinationCurrentLocationCache,
+    explicitLogout: suspend () -> Unit,
 ): ViewModelProvider.Factory =
     viewModelFactory {
         initializer { HomeViewModel() }
@@ -186,6 +195,7 @@ private fun navigationViewModelFactory(
                 authRepository = container.authRepository,
                 productAnalyticsRecorder = container.productAnalyticsRecorder,
                 initialMonth = currentMissionYearMonth(),
+                performExplicitLogout = explicitLogout,
             )
         }
         initializer {
@@ -197,7 +207,6 @@ private fun navigationViewModelFactory(
         initializer {
             SignupViewModel(
                 authRepository = container.authRepository,
-                destinationRepository = container.destinationRepository,
                 productAnalyticsRecorder = container.productAnalyticsRecorder,
             )
         }

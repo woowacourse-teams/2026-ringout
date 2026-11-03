@@ -53,6 +53,13 @@ class ActiveMissionPushNavigationEffectTest {
             authSessionState = AuthSessionState.Authenticated
             drain()
 
+            assertEquals(missionRoute, navigationState.requestedRoute)
+            assertEquals(emptyList(), handledRequestIds)
+            assertEquals("click-a", pendingRequest?.requestId)
+
+            activeMissionOccurrenceId = null
+            drain()
+
             assertEquals(
                 listOf(
                     AppRoute.Home,

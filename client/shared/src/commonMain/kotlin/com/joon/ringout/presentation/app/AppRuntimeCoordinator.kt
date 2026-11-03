@@ -23,6 +23,7 @@ internal fun AppRuntimeCoordinator(
     navigationState: AppNavigationState,
     displayedRoute: AppRoute,
     pendingRoomActivityPush: RoomActivityPushRequest?,
+    canHandleRoomActivityPush: Boolean = true,
     onRoomActivityPushHandled: (requestId: String) -> Unit,
     themeMode: ThemeMode,
     activeMissionOccurrenceId: String?,
@@ -77,6 +78,7 @@ internal fun AppRuntimeCoordinator(
         authSessionState = authSessionState,
         pendingRoomActivityPush = pendingRoomActivityPush,
         isRingingAlarm = displayedRoute is AppRoute.AlarmRinging,
+        canHandleRoomActivityPush = canHandleRoomActivityPush,
         onRoomActivityPushHandled = onRoomActivityPushHandled,
     )
     AppMessageDialogHost(

@@ -12,10 +12,20 @@ internal fun EntryProviderScope<AppRoute>.authGraph(
         LoginRoute(
             viewModel = authNavigation.loginViewModel,
             isActive = authNavigation.isActive(AppRoute.Login, displayedRoute),
-            onAuthenticated = { authNavigation.onAuthenticated(displayedRoute) },
-            onSignupRequired = { token, provider ->
-                authNavigation.onSignupRequired(displayedRoute, token, provider)
+            onAuthenticated = { attemptId, eventId ->
+                authNavigation.onAuthenticated(displayedRoute, attemptId, eventId)
             },
+            onSignupRequired = { attemptId, eventId, token, provider ->
+                authNavigation.onSignupRequired(
+                    displayedRoute,
+                    attemptId,
+                    eventId,
+                    token,
+                    provider,
+                )
+            },
+            onLoginStarted = authNavigation::onLoginStarted,
+            onLoginAttemptRejected = authNavigation::onLoginAttemptRejected,
         )
     }
 
@@ -24,7 +34,9 @@ internal fun EntryProviderScope<AppRoute>.authGraph(
             signupViewModel = authNavigation.signupViewModel,
             isActive = authNavigation.isActive(AppRoute.TermsAgreement, displayedRoute),
             onMissingSignup = { authNavigation.onMissingSignup(displayedRoute) },
-            onSignupCompleted = { authNavigation.onSignupCompleted(displayedRoute) },
+            onSignupCompleted = { attemptId, eventId ->
+                authNavigation.onSignupCompleted(displayedRoute, attemptId, eventId)
+            },
         )
     }
 }

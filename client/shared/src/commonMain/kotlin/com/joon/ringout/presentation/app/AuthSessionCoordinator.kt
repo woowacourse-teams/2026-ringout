@@ -6,7 +6,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.joon.ringout.diagnostics.AuthDiagnosticLogger
-import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
@@ -22,7 +21,6 @@ import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 internal fun AuthSessionCoordinator(
-    authRepository: AuthRepository,
     authSession: AuthSession,
     authSessionState: AuthSessionState,
     pushTokenSource: PushTokenSource,
@@ -68,7 +66,6 @@ internal fun AuthSessionCoordinator(
         roomHomeViewModels = roomHomeViewModels,
         roomActivityViewModels = roomActivityViewModels,
     )
-    AuthSessionRestoreEffect(authRepository)
 }
 
 @Composable
@@ -116,13 +113,6 @@ private fun AuthSessionStateBinding(
     }
     LaunchedEffect(authSessionState, sessionIdentity, sessionStateHandler) {
         sessionStateHandler.onSessionStateChanged(authSessionState)
-    }
-}
-
-@Composable
-private fun AuthSessionRestoreEffect(authRepository: AuthRepository) {
-    LaunchedEffect(authRepository) {
-        authRepository.restoreSession()
     }
 }
 
