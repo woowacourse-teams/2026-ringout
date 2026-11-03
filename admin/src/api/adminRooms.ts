@@ -1,6 +1,9 @@
 import { apiResult } from './apiClient';
 
+export type RoomSort = 'id' | 'memberCount';
+
 export type RoomSummary = {
+  activeToday: boolean;
   id: number;
   name: string;
   imageUrl: string | null;
@@ -18,7 +21,7 @@ export type RoomPage = {
   totalPages: number;
 };
 
-export type RoomDetail = RoomSummary & {
+export type RoomDetail = Omit<RoomSummary, 'activeToday'> & {
   description: string | null;
   createdAt: string | null;
   latestActivityAt: string | null;
@@ -52,8 +55,11 @@ export type RoomRecords = {
   content: MemberRecord[];
 };
 
-export function getRooms(params: { search: string; page: number; size: number }, signal?: AbortSignal) {
+export function getRooms(params: { search: string; page: number; size: number; sortBy?: RoomSort; sortDirection?: 'asc' | 'desc'; activeToday?: boolean }, signal?: AbortSignal) {
   const query = new URLSearchParams({ search: params.search, page: String(params.page), size: String(params.size) });
+  if (params.sortBy) query.set('sortBy', params.sortBy);
+  if (params.sortDirection) query.set('sortDirection', params.sortDirection);
+  if (params.activeToday !== undefined) query.set('activeToday', String(params.activeToday));
   return apiResult<RoomPage>(`/rooms?${query}`, signal);
 }
 

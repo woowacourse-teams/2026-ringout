@@ -1,6 +1,9 @@
 import { apiResult } from './apiClient';
 
+export type UserSort = 'id' | 'joinedAt' | 'roomCount';
+
 export type UserSummary = {
+  activeToday: boolean;
   id: number;
   nickname: string;
   imageUrl: string | null;
@@ -15,7 +18,7 @@ export type UserPage = {
   totalElements: number;
   totalPages: number;
 };
-export type UserDetail = UserSummary & {
+export type UserDetail = Omit<UserSummary, 'activeToday'> & {
   maskedEmail: string | null;
   lastLoginAt: string | null;
   role: string;
@@ -40,8 +43,11 @@ export type JoinedRoom = {
   host: boolean;
 };
 
-export function getUsers(params: { search: string; page: number; size: number }, signal?: AbortSignal) {
+export function getUsers(params: { search: string; page: number; size: number; sortBy?: UserSort; sortDirection?: 'asc' | 'desc'; activeToday?: boolean }, signal?: AbortSignal) {
   const query = new URLSearchParams({ search: params.search, page: String(params.page), size: String(params.size) });
+  if (params.sortBy) query.set('sortBy', params.sortBy);
+  if (params.sortDirection) query.set('sortDirection', params.sortDirection);
+  if (params.activeToday !== undefined) query.set('activeToday', String(params.activeToday));
   return apiResult<UserPage>(`/users?${query}`, signal);
 }
 
