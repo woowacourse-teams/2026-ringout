@@ -142,20 +142,34 @@ class AnalyticsTokenStorageTest {
     }
 
     @Test
-    fun `잘못된 토큰으로 교체하면 이전 계정 ID를 남기지 않는다`() = runTest {
-        val fixture = Fixture()
-        fixture.storage.replaceAuthTokens(tokens(1), fixture.session)
-        fixture.storage.replaceAuthTokens(AuthTokens("invalid-token", "refresh"), fixture.session)
+    fun `응답 회원 ID가 없거나 유효하지 않으면 토큰 클레임 대신 이전 계정 ID를 해제한다`() = runTest {
+        for (userId in listOf(null, 0L, -1L)) {
+            val fixture = Fixture()
+            fixture.storage.replaceAuthTokens(tokens(1), fixture.session)
+            fixture.storage.replaceAuthTokens(tokens(2).copy(userId = userId), fixture.session)
 
-        assertEquals(listOf<String?>("1", null), fixture.ids)
+            assertEquals(listOf<String?>("1", null), fixture.ids)
+        }
     }
 
     @Test
-    fun `같은 회원의 토큰 갱신은 동일한 ID를 유지한다`() = runTest {
+    fun `회원 ID가 없는 기존 저장 토큰은 로그인 상태를 유지하고 Analytics ID만 비운다`() = runTest {
+        val fixture = Fixture(tokens(42).copy(userId = null))
+
+        fixture.storage.synchronizeUserId()
+        fixture.storage.restoreAuthSession(fixture.session)
+
+        assertEquals(listOf<String?>(null, null), fixture.ids)
+        assertEquals(AuthSessionState.Authenticated, fixture.session.state.value)
+        assertEquals(tokens(42).copy(userId = null), fixture.delegate.tokens)
+    }
+
+    @Test
+    fun `재발급 토큰의 클레임과 관계없이 저장된 응답 회원 ID를 유지한다`() = runTest {
         val fixture = Fixture()
         fixture.storage.replaceAuthTokens(tokens(1), fixture.session)
         val identity = fixture.session.identity.value
-        val renewed = tokens(1, "renewed")
+        val renewed = tokens(999, "renewed").copy(userId = 1L)
         var protectedRequests = 0
         val client = HttpClient(MockEngine { request ->
             if (request.url.encodedPath.endsWith("/reissue")) {
@@ -278,7 +292,7 @@ private class MemoryTokens(var tokens: AuthTokens? = null) : SecureTokenStorage 
 
 private fun tokens(id: Int, signature: String = "signature"): AuthTokens {
     val payload = Base64.UrlSafe.encode("""{"sub":"$id","userId":$id,"tokenType":"ACCESS"}""".encodeToByteArray()).trimEnd('=')
-    return AuthTokens("header.$payload.$signature", "refresh-$id")
+    return AuthTokens("header.$payload.$signature", "refresh-$id", userId = id.toLong())
 }
 
 private fun reissue(tokens: AuthTokens): String =

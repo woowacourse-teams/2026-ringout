@@ -155,6 +155,7 @@ internal class AuthenticatedRequestExecutor(
                         refreshedTokens = AuthTokens(
                             accessToken = result.accessToken,
                             refreshToken = result.refreshToken ?: attempt.rejectedTokens.refreshToken,
+                            userId = attempt.rejectedTokens.userId,
                         ),
                         originalFailure = originalFailure,
                     )

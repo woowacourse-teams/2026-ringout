@@ -1,6 +1,5 @@
 package com.joon.ringout.data.auth.local
 
-import com.joon.ringout.data.auth.accessTokenUserId
 import com.joon.ringout.domain.auth.AuthTokens
 import com.joon.ringout.domain.auth.SecureTokenStorage
 
@@ -43,7 +42,7 @@ internal class AnalyticsTokenStorage(
     }
 
     private fun updateUserId(tokens: AuthTokens?) {
-        val userId = tokens?.accessToken?.let(::accessTokenUserId)
+        val userId = tokens?.userId?.takeIf { it > 0 }?.toString()
         try {
             setUserId(userId)
         } catch (_: Exception) {

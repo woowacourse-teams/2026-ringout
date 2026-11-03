@@ -8,4 +8,5 @@ data class LoginResponse(
     val refreshToken: String? = null,
     val signupToken: String? = null,
     val isNewUser: Boolean,
+    val userId: Long? = null,
 )

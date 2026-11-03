@@ -1,10 +1,15 @@
 package com.joon.ringout.data.alarmoccurrence
 
-import com.joon.ringout.data.auth.accessTokenUserId
+import com.joon.ringout.data.network.ApiJson
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.SecureTokenStorage
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlin.io.encoding.Base64
 
 @ConsistentCopyVisibility
 data class AlarmOccurrenceAccount internal constructor(
@@ -35,4 +40,13 @@ internal fun AlarmOccurrenceAccount.checkToken(session: AuthSession, token: Stri
 }
 
 /** 서버가 검증할 JWT의 userId를 로컬 소유 계정 비교에만 사용한다. 인증 검증을 대체하지 않는다. */
-internal fun alarmOccurrenceTokenOwner(token: String): String? = accessTokenUserId(token)
+internal fun alarmOccurrenceTokenOwner(token: String): String? = runCatching {
+    val parts = token.split('.')
+    if (parts.size != 3) return null
+    val payload = parts[1].padEnd((parts[1].length + 3) / 4 * 4, '=')
+    val claims = ApiJson.parseToJsonElement(Base64.UrlSafe.decode(payload).decodeToString()).jsonObject
+    if (claims["tokenType"]?.jsonPrimitive?.contentOrNull != "ACCESS") return null
+    val userId = claims["userId"]?.jsonPrimitive?.longOrNull?.takeIf { it > 0 } ?: return null
+    if (claims["sub"]?.jsonPrimitive?.contentOrNull != userId.toString()) return null
+    userId.toString()
+}.getOrNull()

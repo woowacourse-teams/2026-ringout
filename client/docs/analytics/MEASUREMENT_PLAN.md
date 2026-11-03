@@ -83,12 +83,13 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 ### 3.1 회원 ID 연동
 
 - Android `FirebaseAnalytics.setUserId`와 iOS `Analytics.setUserID`에 동일한 서버 회원 ID의 문자열을 전달한다. 이벤트 파라미터나 사용자 속성으로 중복 전송하지 않는다.
-- 앱 시작 시 저장된 계정을 복원하고 로그인·회원가입·계정 전환·토큰 갱신이 저장소에 반영된 직후 ID를 갱신한다. 로그아웃·탈퇴 후 로그아웃·재인증 필요 상태로 전환될 때는 `null`로 해제한다. 백그라운드 알람 런타임도 같은 저장소를 사용한다.
-- 서버에서 받은 ACCESS 토큰의 양수 `userId`와 일치하는 `sub`만 식별에 사용한다. 토큰 파싱은 로컬 식별용이며 서버의 서명·만료 검증을 대체하지 않는다. 식별할 수 없으면 `null`로 설정한다.
+- 로그인 응답의 `userId`를 인증 토큰과 함께 보안 저장소에 저장하고 앱 시작·세션 복원 시 다시 사용한다. 로그인·계정 전환 시 새 응답의 ID로 교체하며, 토큰 재발급 시에는 저장된 ID를 유지한다. 로그아웃·탈퇴 후 로그아웃·재인증 필요 상태로 전환될 때는 `null`로 해제한다. 백그라운드 알람 런타임도 같은 저장소를 사용한다.
+- `/auth/{provider}/login` 응답의 양수 `userId`만 Analytics 식별에 사용한다. JWT 클레임에서 ID를 추출하거나 누락값을 보완하지 않는다. 응답에 ID가 없거나 유효하지 않으면 `null`로 설정해 이전 계정 ID가 남지 않게 한다.
+- 이전 앱 버전에 저장된 토큰에는 `userId`가 없어도 로그인 상태는 유지한다. Analytics ID는 다음 정상 로그인 응답을 받기 전까지 비워 둔다. 현재 `/signup` 응답에도 `userId`가 없으므로 회원가입 직후에는 비워 두며, 회원가입 필요 응답을 받을 때 이전 ID를 해제한다.
 - SDK 설정 이후 발생한 이벤트부터 BigQuery 최상위 `user_id`에 반영된다. 기존 데이터, 로그인 전 이벤트, 앱 시작 시 ID 복원이 끝나기 전에 SDK가 자동 수집한 이벤트에는 소급 적용되지 않는다. 비로그인 분석과 기존 설치 단위 리텐션 SQL은 계속 `user_pseudo_id`를 사용한다.
 - SDK 사용자 ID 설정 실패가 인증 처리를 실패시키지 않도록 격리한다. 실기기 검증에서는 ID 설정·해제가 실제로 반영되는지 별도로 확인한다.
 
-동작 기준: [Firebase 사용자 ID 설정](https://firebase.google.com/docs/analytics/userid).
+동작 기준: [Firebase 사용자 ID 설정](https://firebase.google.com/docs/analytics/userid), [서버 로그인 응답 계약 PR #625](https://github.com/woowacourse-teams/2026-ringout/pull/625).
 
 Android Manifest에서 Advertising ID 수집과 광고 개인화 신호를 기본 비활성화한다. 이 설정은 제품 사용 측정에는 영향을 주지 않으며, 향후 광고 기능이 필요해지더라도 개인정보 정책과 사용자 동의 흐름을 먼저 확정한 뒤 별도 변경한다.
 
@@ -176,7 +177,8 @@ Android Manifest에서 Advertising ID 수집과 광고 개인화 신호를 기�
 Android와 iOS 각각 다음 순서를 DebugView 및 배포 후 BigQuery export에서 확인한다. DebugView 트래픽은 BigQuery 일별 export 검증용으로 사용하지 않는다.
 
 1. 비로그인 상태의 이벤트: `user_id` 없음, `user_pseudo_id` 유지.
-2. 회원 A 로그인·회원가입 후 이벤트와 앱 재시작 후 이벤트: 서버 회원 ID A.
+2. 회원 A 로그인 후 이벤트와 앱 재시작 후 이벤트: `/login` 응답의 회원 ID A. JWT 내용과 달라도 응답 ID를 사용.
+   회원가입 직후와 ID 없는 구버전 저장 데이터 복원 시에는 ID가 없으며 다음 정상 로그인 후 설정됨.
 3. 같은 계정의 토큰 재발급 후 이벤트: A 유지.
 4. 로그아웃·탈퇴·인증 만료 후 이벤트: `user_id` 없음.
 5. 회원 B 로그인 후 이벤트: B이며 A가 남지 않음. A의 지연된 재발급 응답이 도착해도 B 유지.
