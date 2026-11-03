@@ -40,12 +40,15 @@ public class AdminRoomController {
     }
 
     @GetMapping
-    @Operation(summary = "관리자 모임 목록 조회", description = "모임 이름·ID·방장 닉네임 부분 검색. page는 0부터, size는 1~100. ID 내림차순. 삭제 모임 제외. 공개·숨김 상태는 미지원.")
+    @Operation(summary = "관리자 모임 목록 조회", description = "모임 이름·ID·방장 닉네임 부분 검색. page는 0부터, size는 1~100. sortBy=id|memberCount, sortDirection=asc|desc(기본 id desc). activeToday 생략 시 전체, true 오늘 활동, false 오늘 비활동. 오늘은 한국 시간 기준. 삭제 모임 제외. 공개·숨김 상태는 미지원.")
     public CustomResponse<RoomPage> getRooms(
             @RequestParam(defaultValue = "") @Size(max = 100) String search,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return CustomResponse.onSuccess(RoomSuccessStatus.ROOM_LIST_FOUND, service.getRooms(search, page, size));
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "id") @jakarta.validation.constraints.Pattern(regexp = "id|memberCount") String sortBy,
+            @RequestParam(defaultValue = "desc") @jakarta.validation.constraints.Pattern(regexp = "asc|desc") String sortDirection,
+            @RequestParam(required = false) Boolean activeToday) {
+        return CustomResponse.onSuccess(RoomSuccessStatus.ROOM_LIST_FOUND, service.getRooms(search, page, size, sortBy, sortDirection, activeToday));
     }
 
     @GetMapping("/stats")

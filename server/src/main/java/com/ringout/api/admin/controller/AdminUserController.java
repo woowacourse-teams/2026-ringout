@@ -30,12 +30,15 @@ public class AdminUserController {
     }
 
     @GetMapping
-    @Operation(summary = "관리자 회원 목록 조회", description = "닉네임·ID 부분 검색. page는 0부터, size는 1~100. ID 내림차순. 탈퇴 회원 제외. 이용 제한 필터는 미지원.")
+    @Operation(summary = "관리자 회원 목록 조회", description = "닉네임·ID 부분 검색. page는 0부터, size는 1~100. sortBy=id|joinedAt|roomCount, sortDirection=asc|desc(기본 id desc). activeToday 생략 시 전체, true 오늘 활동, false 오늘 비활동. 오늘은 한국 시간 기준. 탈퇴 회원 제외. 이용 제한 필터는 미지원.")
     public CustomResponse<UserPage> getUsers(
             @RequestParam(defaultValue = "") @Size(max = 100) String search,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return CustomResponse.onSuccess(UserSuccessStatus.USER_FOUND, service.getUsers(search, page, size));
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(defaultValue = "id") @jakarta.validation.constraints.Pattern(regexp = "id|joinedAt|roomCount") String sortBy,
+            @RequestParam(defaultValue = "desc") @jakarta.validation.constraints.Pattern(regexp = "asc|desc") String sortDirection,
+            @RequestParam(required = false) Boolean activeToday) {
+        return CustomResponse.onSuccess(UserSuccessStatus.USER_FOUND, service.getUsers(search, page, size, sortBy, sortDirection, activeToday));
     }
 
     @GetMapping("/stats")

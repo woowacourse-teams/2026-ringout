@@ -15,7 +15,7 @@ public final class AdminRoomResponses {
     public record Host(Long id, String nickname) {}
 
     public record RoomSummary(Long id, String name, String imageUrl, Host host,
-            long memberCount, List<ActivityDay> activityDays, LocalTime activityTime) {}
+            long memberCount, List<ActivityDay> activityDays, LocalTime activityTime, boolean activeToday) {}
 
     public record RoomPage(List<RoomSummary> content, int page, int size,
             long totalElements, int totalPages) {}

@@ -11,7 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
-public interface AdminRoomRepository extends Repository<Room, Long> {
+public interface AdminRoomRepository extends Repository<Room, Long>, AdminRoomSearchRepository {
     @EntityGraph(attributePaths = {"image", "hostUser"})
     @Query("""
         select r from Room r where r.deletedAt is null and

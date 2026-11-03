@@ -234,7 +234,7 @@ public class AuthService {
             user.getSocialProviderId(),
             user.getRole()
         );
-        return LoginResponse.loggedIn(accessToken, refreshToken);
+        return LoginResponse.loggedIn(user.getId(), accessToken, refreshToken);
     }
 
     private LoginResponse requireSignup(SocialUserInfo socialUserInfo) {
