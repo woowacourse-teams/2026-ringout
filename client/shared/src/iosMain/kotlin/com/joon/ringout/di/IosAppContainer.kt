@@ -22,6 +22,7 @@ import com.joon.ringout.data.push.KtorPushTokenRegistrar
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.IosSystemThemeModeReader
 import com.joon.ringout.data.preferences.getAppPreferencesDataStore
+import com.joon.ringout.data.preferences.getInstallationPreferencesDataStore
 import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.domain.push.PushPlatform
 import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
@@ -49,8 +50,13 @@ class IosAppContainer(
 
     override val appPreferencesRepository =
         DataStoreAppPreferencesRepository(
-            getAppPreferencesDataStore(),
+            dataStore = getAppPreferencesDataStore(),
+            installationDataStore = getInstallationPreferencesDataStore(),
         )
+
+    override val hasStoredAlarmsForEntryMigration: suspend () -> Boolean = {
+        database.alarmDao().getAll().isNotEmpty()
+    }
 
     override val systemThemeModeReader = IosSystemThemeModeReader()
 
