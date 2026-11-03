@@ -15,7 +15,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,9 +26,10 @@ public class AdminUserService {
     private final RoomUserRepository roomUsers;
     private final TermsService terms;
     private final ImageFileService images;
+    private final java.time.Clock clock;
 
     public UserStats getStats() {
-        var now = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
+        var now = java.time.ZonedDateTime.now(clock.withZone(java.time.ZoneId.of("Asia/Seoul")));
         var start = now.toLocalDate().atStartOfDay();
         var end = start.plusDays(1);
         return new UserStats(now.toLocalDate(), now.getZone().getId(), now.toLocalDateTime(),
@@ -38,15 +38,24 @@ public class AdminUserService {
     }
 
     public UserPage getUsers(String search, int page, int size) {
+        return getUsers(search, page, size, "id", "desc", null);
+    }
+
+    public UserPage getUsers(String search, int page, int size, String sortBy,
+            String sortDirection, Boolean activeToday) {
+        var start = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Asia/Seoul"))).atStartOfDay();
+        var end = start.plusDays(1);
         String keyword = search == null ? "" : search.trim();
         String pattern = "%" + keyword.replace("!", "!!").replace("%", "!%")
                 .replace("_", "!_") + "%";
-        var result = users.search(keyword, pattern,
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id")));
+        var result = users.searchFiltered(keyword, pattern, sortBy, sortDirection,
+                activeToday, start, end, PageRequest.of(page, size));
+        var activeIds = new java.util.HashSet<>(users.findActiveIds(
+                result.getContent().stream().map(User::getId).toList(), start, end));
         Map<Long, Long> counts = roomCounts(result.getContent().stream().map(User::getId).toList());
         var content = result.getContent().stream().map(user -> new UserSummary(
                 user.getId(), user.getNickname().getValue(), imageUrl(user.getImage()),
-                user.getSocialProvider(), user.getCreated_at(), counts.getOrDefault(user.getId(), 0L)))
+                user.getSocialProvider(), user.getCreated_at(), counts.getOrDefault(user.getId(), 0L), activeIds.contains(user.getId())))
                 .toList();
         return new UserPage(content, page, size, result.getTotalElements(), result.getTotalPages());
     }
