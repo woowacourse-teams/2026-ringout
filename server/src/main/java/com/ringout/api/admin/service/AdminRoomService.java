@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,15 +47,24 @@ public class AdminRoomService {
     }
 
     public RoomPage getRooms(String search, int page, int size) {
+        return getRooms(search, page, size, "id", "desc", null);
+    }
+
+    public RoomPage getRooms(String search, int page, int size, String sortBy,
+            String sortDirection, Boolean activeToday) {
+        var start = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Asia/Seoul"))).atStartOfDay();
+        var end = start.plusDays(1);
         String keyword = search == null ? "" : search.trim();
         String pattern = "%" + keyword.replace("!", "!!").replace("%", "!%")
                 .replace("_", "!_") + "%";
-        var result = rooms.search(keyword, pattern,
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id")));
+        var result = rooms.searchFiltered(keyword, pattern, sortBy, sortDirection,
+                activeToday, start, end, PageRequest.of(page, size));
+        var activeIds = new java.util.HashSet<>(rooms.findActiveIds(
+                result.getContent().stream().map(Room::getId).toList(), start, end));
         var counts = memberCounts(result.getContent().stream().map(Room::getId).toList());
         var content = result.getContent().stream().map(room -> new RoomSummary(
                 room.getId(), room.getName(), imageUrl(room.getImage()), host(room),
-                counts.getOrDefault(room.getId(), 0L), room.getActivityDays(), room.getActivityTime()))
+                counts.getOrDefault(room.getId(), 0L), room.getActivityDays(), room.getActivityTime(), activeIds.contains(room.getId())))
                 .toList();
         return new RoomPage(content, page, size, result.getTotalElements(), result.getTotalPages());
     }

@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
 
-public interface AdminUserRepository extends Repository<User, Long> {
+public interface AdminUserRepository extends Repository<User, Long>, AdminUserSearchRepository {
     @EntityGraph(attributePaths = "image")
     @Query("select u from User u where u.deletedAt is null and (:search = '' or u.nickname.value like :pattern escape '!' or str(u.id) like :pattern escape '!')")
     Page<User> search(@Param("search") String search, @Param("pattern") String pattern, Pageable pageable);
