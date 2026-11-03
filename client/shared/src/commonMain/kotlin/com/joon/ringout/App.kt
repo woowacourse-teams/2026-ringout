@@ -393,6 +393,12 @@ private fun RingoutAppContent(
         finishFailed = hasAlarmCreationGuideSaveFailed,
         onOpenEditor = onAddAlarm,
         onFinish = onAlarmCreationGuideFinished,
+        onBackFromEditor = {
+            if (!isSavingAlarmCreationGuide && forceEndState.phase == ForceEndPhase.Idle) {
+                alarmCreationGuideViewModel.interrupt()
+                navigationState.navigate(AppRoute.Home)
+            }
+        },
     ) {
         RingoutNavHost(
             navigationState = navigationState,

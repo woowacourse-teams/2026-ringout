@@ -71,4 +71,11 @@ internal class AlarmCreationGuideViewModel : ViewModel() {
         mutableUiState.value = state.copy(isFinishing = true)
         return true
     }
+
+    /** Leaving the guide is not completion; a later guide entry starts at the first step. */
+    fun interrupt() {
+        if (uiState.value.isFinishing) return
+        mutableUiState.value = AlarmCreationGuideUiState()
+        lastPresentedSurface = AlarmCreationGuideSurface.Other
+    }
 }

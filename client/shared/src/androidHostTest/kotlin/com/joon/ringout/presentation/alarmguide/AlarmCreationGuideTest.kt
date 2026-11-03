@@ -412,6 +412,10 @@ class AlarmCreationGuideTest {
                 finishFailed = fixture.finishFailed,
                 onOpenEditor = fixture::openEditor,
                 onFinish = fixture::finish,
+                onBackFromEditor = {
+                    fixture.viewModel.interrupt()
+                    fixture.surface = AlarmCreationGuideSurface.Home
+                },
             ) {
                 FixtureScreen(fixture)
             }
