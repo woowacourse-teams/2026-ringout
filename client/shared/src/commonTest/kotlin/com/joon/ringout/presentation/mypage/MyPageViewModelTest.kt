@@ -109,7 +109,7 @@ class MyPageViewModelTest {
         viewModel.onLoggedOut()
         pending.complete(MemberProfileImage("https://example.com/old.webp"))
         runCurrent()
-        assertEquals(MyPageAccountStatus.LoggedOut, viewModel.uiState.accountStatus)
+        assertEquals(MyPageAccountStatus.Loading, viewModel.uiState.accountStatus)
         assertNull(viewModel.uiState.profileImageUrl)
     }
 
@@ -459,7 +459,7 @@ class MyPageViewModelTest {
         )
         runCurrent()
 
-        assertEquals(MyPageAccountStatus.LoggedOut, viewModel.uiState.accountStatus)
+        assertEquals(MyPageAccountStatus.Loading, viewModel.uiState.accountStatus)
     }
 
     @Test

@@ -99,7 +99,7 @@ class MyPageViewModel(
     fun onLoggedOut() {
         cancelProfileLoad()
         cancelProfileImageLoad()
-        uiState = uiState.copy(accountStatus = MyPageAccountStatus.LoggedOut, profileImageUrl = null)
+        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading, profileImageUrl = null)
     }
 
     fun retryAccount() {

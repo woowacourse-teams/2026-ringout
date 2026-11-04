@@ -40,7 +40,6 @@ internal fun AppRuntimeCoordinator(
     val alarmSetupViewModel = alarmEditorNavigation?.alarmSetupViewModel
     val destinationViewModel = alarmEditorNavigation?.destinationViewModel
 
-    // TODO(RINGOUT_ACCOUNT): 계정 관리 UI 도입 시 MyPageAccountActionCompletionEffect를 연결한다.
     if (alarmEditorNavigation != null) {
         AlarmEditorNavigationBinding(
             navigation = alarmEditorNavigation,
