@@ -9,13 +9,18 @@ import com.joon.ringout.di.AndroidAppContainer
 import com.joon.ringout.di.AppContainer
 import com.joon.ringout.data.push.AndroidFcmTokenSource
 import com.joon.ringout.push.PushNotifications
+import com.joon.ringout.remoteconfig.RemoteConfigRepository
 
 class RingoutApplication : Application() {
+    internal lateinit var remoteConfigRepository: RemoteConfigRepository
+        private set
+
     lateinit var appContainer: AppContainer
         private set
 
     override fun onCreate() {
         super.onCreate()
+        remoteConfigRepository = RemoteConfigRepository.create()
         PushNotifications.createChannel(this)
         FirebaseMessaging.getInstance().token
             .addOnSuccessListener(AndroidFcmTokenSource::updateInitial)

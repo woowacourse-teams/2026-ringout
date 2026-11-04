@@ -5,22 +5,44 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavBackStack
+import com.joon.ringout.LocalAppNavigationStoreProviders
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.push.RoomActivityPushTarget
 
 @Composable
 internal fun rememberAppNavigationState(sessionIdentity: Any? = null): AppNavigationState =
-    remember(sessionIdentity) { AppNavigationState() }
+    rememberNavigationState("service", sessionIdentity, authenticationOnlyMode = false)
 
 @Composable
 internal fun rememberAuthOnlyNavigationState(): AppNavigationState =
-    remember {
+    rememberNavigationState("auth", sessionIdentity = null, authenticationOnlyMode = true)
+
+@Composable
+private fun rememberNavigationState(
+    scopeKey: String,
+    sessionIdentity: Any?,
+    authenticationOnlyMode: Boolean,
+): AppNavigationState {
+    val stores = LocalAppNavigationStoreProviders.current?.getValue(scopeKey)
+    val createState = {
         AppNavigationState(
-            routes = NavBackStack(AppRoute.Login),
-            authenticationOnlyMode = true,
+            routes = if (authenticationOnlyMode) NavBackStack(AppRoute.Login) else NavBackStack(AppRoute.Home),
+            authenticationOnlyMode = authenticationOnlyMode,
         )
     }
+    // 호스트가 있는 Android에서는 차단 중에도 백스택을 해당 화면 모델과 함께 유지한다.
+    return if (stores != null) {
+        val owner = stores.getOrCreateOwner("ringout-navigation-state")
+        viewModel(viewModelStoreOwner = owner) { NavigationStateViewModel(createState()) }.navigationState
+    } else {
+        remember(sessionIdentity) { createState() }
+    }
+}
+
+private class NavigationStateViewModel(val navigationState: AppNavigationState) : ViewModel()
 
 /** 화면 이동 요청과 표시 경로를 타입 안전한 Navigation 3 백스택으로 관리한다. */
 internal class AppNavigationState(

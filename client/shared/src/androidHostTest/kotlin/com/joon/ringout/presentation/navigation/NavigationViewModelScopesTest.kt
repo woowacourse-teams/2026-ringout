@@ -285,7 +285,7 @@ class NavigationViewModelScopesTest {
     }
 }
 
-private class HomeTestContainer : AppContainer {
+internal class HomeTestContainer : AppContainer {
     override val destinationRepository = HomeTestDestinationRepository()
     override val hasStoredAlarmsForEntryMigration: suspend () -> Boolean = { false }
     override val termsRepository: TermsRepository get() = error("Unused dependency")
@@ -304,7 +304,7 @@ private class HomeTestContainer : AppContainer {
     override val productAnalyticsRecorder: ProductAnalyticsRecorder get() = error("Unused dependency")
 }
 
-private class HomeTestDestinationRepository : DestinationRepository {
+internal class HomeTestDestinationRepository : DestinationRepository {
     var observations = 0
         private set
 

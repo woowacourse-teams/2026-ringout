@@ -1,6 +1,7 @@
 import FirebaseCore
 import FirebaseMessaging
 import OSLog
+import Shared
 import UIKit
 import UserNotifications
 
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         FirebaseApp.configure()
+        IosAnalyticsIdentityKt.initializeAnalyticsUserId(setter: FirebaseAnalyticsAdapter())
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
         FirebaseMessagingAdapter.shared.updateToken(Messaging.messaging().fcmToken)

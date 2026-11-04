@@ -14,6 +14,31 @@ import org.junit.Test
 @Config(sdk = [35])
 class RoomActivityPushClickViewModelTest {
     @Test
+    fun `업데이트 차단 중 알람에서 앱으로 돌아와도 대기 중인 알림 요청을 보존한다`() {
+        val savedState = SavedStateHandle()
+        val viewModel = RoomActivityPushClickViewModel(savedState)
+        viewModel.receive(
+            Intent()
+                .putExtra(RoomActivityPushTarget.RoomIdKey, "41")
+                .putExtra(RoomActivityPushTarget.ActivityDateKey, "2026-10-07")
+                .putExtra("google.message_id", "waiting-message"),
+            isNewIntent = true,
+            preservePendingRequest = true,
+        )
+        val pending = viewModel.pendingRequest
+
+        viewModel.receive(Intent(Intent.ACTION_MAIN), isNewIntent = true, preservePendingRequest = true)
+        val restored = RoomActivityPushClickViewModel(
+            SavedStateHandle(savedState.keys().associateWith { savedState.get<Any?>(it) }),
+        )
+
+        assertEquals("fcm:waiting-message", pending?.requestId)
+        assertEquals(pending, restored.pendingRequest)
+        restored.acknowledge(requireNotNull(pending).requestId)
+        assertNull(restored.pendingRequest)
+    }
+
+    @Test
     fun `FCM 시작 intent를 한 번 보관하고 저장 상태 복원 후 중복 수락하지 않는다`() {
         val intent = Intent()
             .putExtra(RoomActivityPushTarget.RoomIdKey, "41")
