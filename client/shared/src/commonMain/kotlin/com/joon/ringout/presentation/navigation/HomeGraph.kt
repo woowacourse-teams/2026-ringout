@@ -8,6 +8,7 @@ import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.compose.runtime.Composable
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.connectivity.NetworkMonitor
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.presentation.profilechange.ProfileChangeRoute
 import com.joon.ringout.ThemeMode
@@ -38,6 +39,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     viewModelScopes: NavigationViewModelScopes,
     sessionIdentity: Any?,
     myPageViewModel: MyPageViewModel?,
+    networkMonitor: NetworkMonitor,
     authSessionState: AuthSessionState,
     memberRepository: MemberRepository,
     themeMode: ThemeMode,
@@ -48,6 +50,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     onThemeModeChange: (ThemeMode) -> Unit,
     onAddAlarm: () -> Unit,
     onEditAlarm: (AlarmScheduleRequest) -> Unit,
+    onAuthenticationRequired: () -> Unit,
     onActiveAlarmMissionClick: () -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     onJoinRoom: (RoomMutationSource) -> Unit,
@@ -68,11 +71,11 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     entry<AppRoute.MyPage>(clazzContentKey = AppRoute::viewModelStoreKey) {
         MyPageRoute(
             viewModel = checkNotNull(myPageViewModel),
+            networkMonitor = networkMonitor,
             themeMode = themeMode,
             appVersion = appVersion,
             extraContent = myPageExtraContent,
             onThemeModeChange = onThemeModeChange,
-            onLoginClick = { navigationState.navigate(AppRoute.Login) },
             onEditProfileClick = { navigationState.navigate(AppRoute.NicknameChange) },
         )
     }
@@ -80,10 +83,11 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     entry<AppRoute.Social>(clazzContentKey = AppRoute::viewModelStoreKey) {
         RoomListRoute(
             viewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class),
+            networkMonitor = networkMonitor,
             authSessionState = authSessionState,
             sessionIdentity = sessionIdentity,
             onCreateRoom = { navigationState.navigate(AppRoute.RoomCreate) },
-            onLoginClick = { navigationState.navigate(AppRoute.Login) },
+            onLoginClick = onAuthenticationRequired,
             onRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomDetail(roomId)) },
             onJoinedRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomHome(roomId)) },
         )
@@ -116,7 +120,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             onMutationSourceVisible = roomListViewModel::onMutationSourceVisible,
             onMutationSourceHidden = roomListViewModel::onMutationSourceHidden,
             onBackClick = { navigationState.popBackStack(route) },
-            onLoginClick = { navigationState.navigate(AppRoute.Login) },
+            onLoginClick = onAuthenticationRequired,
             onJoinRoom = onJoinRoom,
             onDetailViewed = roomListViewModel::recordDetailViewed,
             onRetryRooms = roomListViewModel::onRetryRooms,

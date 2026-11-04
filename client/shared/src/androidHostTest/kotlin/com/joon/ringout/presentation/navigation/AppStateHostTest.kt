@@ -20,6 +20,7 @@ import androidx.navigationevent.NavigationEventDispatcherOwner
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import com.joon.ringout.AppStateHost
 import com.joon.ringout.RingoutTheme
+import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.destination.DestinationCurrentLocationCache
 import com.joon.ringout.presentation.home.HomeViewModel
@@ -49,6 +50,7 @@ class AppStateHostTest {
     fun reset() {
         RetainedAppStateTestActivity.isAppAllowed.value = true
         RetainedAppStateTestActivity.container = HomeTestContainer()
+        RetainedAppStateTestActivity.authSession = AuthSession().apply { startNewSession() }
     }
 
     @Test
@@ -121,7 +123,77 @@ class AppStateHostTest {
             compose.onNodeWithText("테스트 홈").assertDoesNotExist()
             compose.runOnIdle { RetainedAppStateTestActivity.isAppAllowed.value = true }
             compose.onNodeWithText("테스트 홈").assertIsDisplayed()
-            assertEquals(1, RetainedAppStateTestActivity.container.destinationRepository.observations)
+            assertEquals(0, RetainedAppStateTestActivity.container.destinationRepository.observations)
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `업데이트 차단 중 로그아웃하면 이전 세션 모델을 정리하고 재로그인 시 새 모델을 만든다`() {
+        val controller = Robolectric.buildActivity(RetainedAppStateTestActivity::class.java).setup()
+        try {
+            compose.runOnIdle { controller.get().navigation.navigate(AppRoute.AddAlarm) }
+            compose.onNodeWithText("편집").assertIsDisplayed()
+            val editor = controller.get().editor
+            val editorJob = checkNotNull(editor.viewModelScope.coroutineContext[Job])
+            compose.runOnIdle {
+                editor.startCreating("07:25")
+                RetainedAppStateTestActivity.isAppAllowed.value = false
+            }
+            compose.onNodeWithText("업데이트 차단").assertIsDisplayed()
+            assertFalse(editorJob.isCancelled)
+
+            compose.runOnIdle { RetainedAppStateTestActivity.authSession.clear() }
+            compose.runOnIdle { assertTrue(editorJob.isCancelled) }
+            compose.runOnIdle { RetainedAppStateTestActivity.authSession.startNewSession() }
+            compose.runOnIdle { RetainedAppStateTestActivity.isAppAllowed.value = true }
+
+            compose.onNodeWithText("테스트 홈").assertIsDisplayed()
+            assertEquals(AppRoute.Home, controller.get().navigation.requestedRoute)
+            compose.runOnIdle { controller.get().navigation.navigate(AppRoute.AddAlarm) }
+            compose.onNodeWithText("편집").assertIsDisplayed()
+            assertNotSame(editor, controller.get().editor)
+            compose.onNodeWithText("07:25").assertDoesNotExist()
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `로그인 성공 시 인증 모델을 유지하고 로그아웃 시 새 인증 모델을 만든다`() {
+        RetainedAppStateTestActivity.authSession.clear()
+        val controller = Robolectric.buildActivity(RetainedAppStateTestActivity::class.java).setup()
+        try {
+            compose.onNodeWithText("테스트 홈").assertIsDisplayed()
+            val authHome = controller.get().authHome
+            val authJob = checkNotNull(authHome.viewModelScope.coroutineContext[Job])
+            compose.runOnIdle { RetainedAppStateTestActivity.authSession.startNewSession() }
+            compose.runOnIdle {
+                assertSame(authHome, controller.get().authHome)
+                assertFalse(authJob.isCancelled)
+            }
+
+            compose.runOnIdle { RetainedAppStateTestActivity.isAppAllowed.value = false }
+            compose.onNodeWithText("업데이트 차단").assertIsDisplayed()
+            compose.runOnIdle { RetainedAppStateTestActivity.authSession.clear() }
+            compose.runOnIdle { assertTrue(authJob.isCancelled) }
+            compose.runOnIdle { RetainedAppStateTestActivity.isAppAllowed.value = true }
+            compose.onNodeWithText("테스트 홈").assertIsDisplayed()
+            assertNotSame(authHome, controller.get().authHome)
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `호스트가 있어도 같은 경로의 인증 화면 모델과 서비스 화면 모델을 분리한다`() {
+        val controller = Robolectric.buildActivity(RetainedAppStateTestActivity::class.java).setup()
+        try {
+            compose.onNodeWithText("테스트 홈").assertIsDisplayed()
+            compose.runOnIdle {
+                assertNotSame(controller.get().authHome, controller.get().serviceHome)
+            }
         } finally {
             controller.pause().stop().destroy()
         }
@@ -131,6 +203,8 @@ class AppStateHostTest {
 class RetainedAppStateTestActivity : ComponentActivity() {
     internal lateinit var navigation: AppNavigationState
     internal lateinit var editor: AlarmSetupViewModel
+    internal lateinit var authHome: HomeViewModel
+    internal lateinit var serviceHome: HomeViewModel
     private val locationCache = DestinationCurrentLocationCache()
     private val dispatcherOwner = object : NavigationEventDispatcherOwner {
         override val navigationEventDispatcher = NavigationEventDispatcher()
@@ -140,12 +214,13 @@ class RetainedAppStateTestActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val allowed by isAppAllowed.collectAsState()
+            val sessionIdentity by authSession.identity.collectAsState()
             val stateHolder = rememberSaveableStateHolder()
             RingoutTheme {
                 CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides dispatcherOwner) {
-                    AppStateHost {
+                    AppStateHost(sessionIdentity = sessionIdentity) {
                         if (allowed) {
-                            stateHolder.SaveableStateProvider("app") { NavigationContent() }
+                            stateHolder.SaveableStateProvider("app") { NavigationContent(sessionIdentity) }
                         } else {
                             Text("업데이트 차단")
                         }
@@ -156,14 +231,27 @@ class RetainedAppStateTestActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun NavigationContent() {
-        val state = rememberAppNavigationState()
+    private fun NavigationContent(sessionIdentity: Any?) {
+        val state = rememberAppNavigationState(sessionIdentity)
         SideEffect { navigation = state }
         val scopes = rememberNavigationViewModelScopes(
             appContainer = container,
             retainedRoutes = state.retainedRoutes(state.requestedRoute),
             destinationCurrentLocationCache = locationCache,
+            sessionIdentity = sessionIdentity,
+            explicitLogout = {},
         )
+        val authScopes = rememberNavigationViewModelScopes(
+            appContainer = container,
+            retainedRoutes = listOf(AppRoute.Home),
+            destinationCurrentLocationCache = locationCache,
+            scopeKey = "auth",
+            explicitLogout = {},
+        )
+        SideEffect {
+            authHome = authScopes.get(AppRoute.Home, HomeViewModel::class)
+            serviceHome = scopes.get(AppRoute.Home, HomeViewModel::class)
+        }
         RingoutNavHost(
             navigationState = state,
             displayedRoute = state.requestedRoute,
@@ -193,5 +281,6 @@ class RetainedAppStateTestActivity : ComponentActivity() {
     companion object {
         internal val isAppAllowed = MutableStateFlow(true)
         internal lateinit var container: HomeTestContainer
+        internal lateinit var authSession: AuthSession
     }
 }

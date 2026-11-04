@@ -5,8 +5,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -20,7 +22,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
-import com.joon.ringout.presentation.login.component.LoginHeader
 import com.joon.ringout.presentation.login.component.LoginHero
 import com.joon.ringout.presentation.login.component.LoginLoadingOverlay
 import com.joon.ringout.presentation.login.component.LoginStatus
@@ -37,7 +38,6 @@ enum class SocialLoginProvider {
 @Composable
 internal fun LoginScreen(
     uiState: LoginUiState,
-    onBackClick: () -> Unit,
     onSocialLoginClick: (SocialLoginProvider) -> Unit,
     modifier: Modifier = Modifier,
     providers: List<SocialLoginProvider> = PlatformSocialLoginProviders,
@@ -59,20 +59,19 @@ internal fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(
+                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
+                    ),
+                )
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(horizontal = dimensions.contentHorizontalPadding)
                 .then(backgroundSemantics),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalAlignment = Alignment.Start,
         ) {
-            LoginHeader(
-                onBackClick = {
-                    if (!shouldShowLoadingOverlay) onBackClick()
-                },
-            )
-            Spacer(Modifier.height(dimensions.headerContainerToImageSpacing))
+            Spacer(Modifier.height(dimensions.contentTopSpacing))
             LoginHero()
-            Spacer(Modifier.height(dimensions.textToSocialSpacing))
+            Spacer(Modifier.height(dimensions.heroToButtonsSpacing))
             SocialLoginButtons(
                 onSocialLoginClick = onSocialLoginClick,
                 providers = providers,
@@ -94,7 +93,6 @@ internal fun LoginScreen(
 private fun LoginScreenDarkPreview() {
     RingoutTheme(ThemeMode.Dark) {
         LoginScreen(
-            onBackClick = {},
             onSocialLoginClick = {},
             uiState = LoginUiState(),
         )
@@ -106,7 +104,6 @@ private fun LoginScreenDarkPreview() {
 private fun LoginScreenLightPreview() {
     RingoutTheme(ThemeMode.Light) {
         LoginScreen(
-            onBackClick = {},
             onSocialLoginClick = {},
             uiState = LoginUiState(
                 errorMessage = "로그인하지 못했어요. 다시 시도해 주세요.",
@@ -120,7 +117,6 @@ private fun LoginScreenLightPreview() {
 private fun LoginScreenLoadingLightPreview() {
     RingoutTheme(ThemeMode.Light) {
         LoginScreen(
-            onBackClick = {},
             onSocialLoginClick = {},
             uiState = LoginUiState(isLoading = true),
         )
@@ -132,15 +128,22 @@ private fun LoginScreenLoadingLightPreview() {
 private fun LoginScreenLoadingDarkPreview() {
     RingoutTheme(ThemeMode.Dark) {
         LoginScreen(
-            onBackClick = {},
             onSocialLoginClick = {},
             uiState = LoginUiState(isLoading = true),
         )
     }
 }
 
-internal val LoginUiState.shouldShowLoadingOverlay: Boolean
-    get() = isLoading || completion != null
+@Preview(name = "Login Small Screen", widthDp = 320, heightDp = 568)
+@Composable
+private fun LoginScreenSmallPreview() {
+    RingoutTheme(ThemeMode.Dark) {
+        LoginScreen(
+            onSocialLoginClick = {},
+            uiState = LoginUiState(),
+        )
+    }
+}
 
 @Preview(name = "Android Login", widthDp = 402, heightDp = 941)
 @Composable
@@ -148,7 +151,6 @@ private fun LoginScreenAndroidPreview() {
     RingoutTheme(ThemeMode.Dark) {
         LoginScreen(
             uiState = LoginUiState(),
-            onBackClick = {},
             onSocialLoginClick = {},
             providers = listOf(SocialLoginProvider.Google, SocialLoginProvider.Kakao),
         )
@@ -161,7 +163,6 @@ private fun LoginScreenIosPreview() {
     RingoutTheme(ThemeMode.Dark) {
         LoginScreen(
             uiState = LoginUiState(),
-            onBackClick = {},
             onSocialLoginClick = {},
             providers = listOf(
                 SocialLoginProvider.Apple,
@@ -171,3 +172,6 @@ private fun LoginScreenIosPreview() {
         )
     }
 }
+
+internal val LoginUiState.shouldShowLoadingOverlay: Boolean
+    get() = isLoading || completion != null

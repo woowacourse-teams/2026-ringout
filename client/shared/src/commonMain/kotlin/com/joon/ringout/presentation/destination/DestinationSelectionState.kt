@@ -1,7 +1,6 @@
 package com.joon.ringout.presentation.destination
 
 import com.joon.ringout.domain.destination.SavedDestination
-import com.joon.ringout.domain.destination.resolveDestinationDisplayName
 
 internal fun DestinationSelection.isConfiguredDestination(): Boolean =
     name.isNotBlank() &&
@@ -15,8 +14,9 @@ internal fun canConfirmDestination(
     isLocatingCurrentLocation: Boolean,
     mapError: String?,
     isSaveInProgress: Boolean = false,
+    isAddressAvailable: Boolean = true,
 ): Boolean =
-    !isCameraMoving && !isLocatingCurrentLocation && !isSaveInProgress && mapError == null
+    !isCameraMoving && !isLocatingCurrentLocation && !isSaveInProgress && mapError == null && isAddressAvailable
 
 internal fun destinationAtCameraPosition(
     cameraTarget: DestinationSelection?,
@@ -75,10 +75,11 @@ internal fun DestinationSelection.withNicknameForSave(nickname: String): Destina
     )
 
 internal fun DestinationSelection.withAddressAsName(): DestinationSelection {
-    val stableAddress = address.takeUnless { it.isBlank() || it == ResolvingDestinationAddress }
-        ?: UnavailableDestinationAddress
+    val stableAddress = address.trim()
+        .takeUnless { it.isBlank() || it == ResolvingDestinationAddress || it == UnavailableDestinationAddress }
+        ?: return this
     return copy(
-        name = resolveDestinationDisplayName(name, stableAddress, latitude, longitude, emptyList()),
+        name = stableAddress,
         address = stableAddress,
     )
 }
@@ -90,20 +91,10 @@ internal fun DestinationSelection.hasSameCoordinates(
     kotlin.math.abs(this.latitude - latitude) < DestinationCoordinateTolerance &&
         kotlin.math.abs(this.longitude - longitude) < DestinationCoordinateTolerance
 
-internal fun List<SavedDestination>.findAtLocation(
-    selection: DestinationSelection,
-): SavedDestination? =
-    firstOrNull { savedDestination ->
-        selection.hasSameCoordinates(
-            latitude = savedDestination.latitude,
-            longitude = savedDestination.longitude,
-        )
-    }
-
 internal fun SavedDestination.toDestinationSelection(): DestinationSelection =
     DestinationSelection(
-        name = name,
-        address = address,
+        name = label,
+        address = "",
         latitude = latitude,
         longitude = longitude,
     )
@@ -111,8 +102,7 @@ internal fun SavedDestination.toDestinationSelection(): DestinationSelection =
 internal fun DestinationSelection.toSavedDestination(id: Long = 0L): SavedDestination =
     SavedDestination(
         id = id,
-        name = name,
-        address = address,
+        label = name,
         latitude = latitude,
         longitude = longitude,
     )

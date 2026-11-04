@@ -291,7 +291,7 @@ private class Tokens(var userId: Long = 1) : SecureTokenStorage {
 
 private fun settings() = SavedAlarmSchedule(AlarmScheduleRequest(
     id = "alarm", time = "07:00", selectedDays = listOf("목"), repeatEnabled = true, limitMinutes = 5,
-    destinationName = "목적지", destinationAddress = "서울", destinationLatitude = 37.5, destinationLongitude = 127.0,
+    destinationLabel = "목적지", destinationLatitude = 37.5, destinationLongitude = 127.0,
     alarmSoundName = "기본", alarmSoundUri = null,
 ), enabled = true)
 

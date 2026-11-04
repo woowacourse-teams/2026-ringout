@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertTextEquals
@@ -123,6 +124,22 @@ class NavigationViewModelScopesTest {
         assertEquals(1, fixture.alarmCompletions)
     }
 
+    @Test
+    fun `인증 세션 identity가 바뀌면 서비스 화면 모델을 정리하고 새 스코프를 만든다`() {
+        val fixture = Fixture()
+        withActivity(fixture, withExtras = true) {
+            val previousHome = fixture.home
+            val previousJob = checkNotNull(previousHome.viewModelScope.coroutineContext[Job])
+
+            compose.runOnIdle { fixture.sessionIdentity.value = Any() }
+            advanceFrames()
+
+            assertNotSame(previousHome, fixture.home)
+            assertTrue(previousJob.isCancelled)
+            compose.runOnIdle { assertSame(fixture.home, fixture.displayedHome) }
+        }
+    }
+
     private fun verifyNavigationRoundTrips(withExtras: Boolean) {
         val fixture = Fixture()
         withActivity(fixture, withExtras) {
@@ -152,7 +169,7 @@ class NavigationViewModelScopesTest {
             assertSame(original, fixture.home)
             assertSame(original, fixture.displayedHome)
             assertFalse(original.uiState.isLoading)
-            assertEquals(1, fixture.container.destinationRepository.observations)
+            assertEquals(0, fixture.container.destinationRepository.observations)
             assertEquals(1, fixture.alarmSubscriptions)
             assertEquals(0, fixture.alarmCompletions)
         }
@@ -206,6 +223,8 @@ class NavigationViewModelScopesTest {
             appContainer = fixture.container,
             retainedRoutes = navigation.retainedRoutes(route),
             destinationCurrentLocationCache = fixture.locationCache,
+            sessionIdentity = fixture.sessionIdentity.value,
+            explicitLogout = {},
         )
         val home = scopes.get(AppRoute.Home, HomeViewModel::class)
         // 실제 App처럼 스코프를 얻는 부모 composition에서 홈 상태를 읽는다.
@@ -249,6 +268,7 @@ class NavigationViewModelScopesTest {
         val navigation = AppNavigationState()
         val container = HomeTestContainer()
         val locationCache = DestinationCurrentLocationCache()
+        val sessionIdentity = mutableStateOf<Any?>(Any())
         lateinit var home: HomeViewModel
         var displayedHome: HomeViewModel? = null
         var editor: AlarmSetupViewModel? = null
@@ -267,6 +287,7 @@ class NavigationViewModelScopesTest {
 
 internal class HomeTestContainer : AppContainer {
     override val destinationRepository = HomeTestDestinationRepository()
+    override val hasStoredAlarmsForEntryMigration: suspend () -> Boolean = { false }
     override val termsRepository: TermsRepository get() = error("Unused dependency")
     override val networkMonitor: NetworkMonitor get() = error("Unused dependency")
     override val appPreferencesRepository: AppPreferencesRepository get() = error("Unused dependency")
@@ -295,6 +316,5 @@ internal class HomeTestDestinationRepository : DestinationRepository {
     override suspend fun fetchAll(): List<SavedDestination> = error("Unused dependency")
     override suspend fun sync(): List<SavedDestination> = error("Unused dependency")
     override suspend fun save(destination: SavedDestination): SavedDestination = error("Unused dependency")
-    override suspend fun updateName(id: Long, name: String): Boolean = error("Unused dependency")
     override suspend fun delete(id: Long): Boolean = error("Unused dependency")
 }

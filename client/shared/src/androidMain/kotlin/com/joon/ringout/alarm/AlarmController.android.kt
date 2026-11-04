@@ -398,6 +398,7 @@ internal class AndroidAlarmScheduler(
     private val alarmGateway: AndroidAlarmGateway,
     private val ensureMigrated: suspend () -> Unit = {},
     private val analytics: AndroidAlarmCreationAnalytics? = null,
+    private val isSchedulingAllowed: () -> Boolean = { true },
 ) {
 
     constructor(
@@ -413,6 +414,7 @@ internal class AndroidAlarmScheduler(
         ensureMigrated = { legacyMigrator.ensureMigrated() },
         analytics = runCatching { AndroidAlarmAnalyticsAdapter(AlarmAnalytics(context)) }
             .getOrNull(),
+        isSchedulingAllowed = { !isAlarmSchedulingBlocked(context) },
     )
 
     suspend fun schedule(
@@ -420,6 +422,7 @@ internal class AndroidAlarmScheduler(
         analyticsContext: AlarmSettingsAnalyticsContext = AlarmSettingsAnalyticsContext(),
     ): Unit = AlarmSchedulerMutationMutex.withLock {
         ensureMigrated()
+        check(isSchedulingAllowed()) { "로그아웃 처리 중에는 알람을 예약할 수 없습니다." }
         request.validateForStorage()
         val previous = dataSource.getById(request.id)
         val versionedRequest = request.withScheduleVersion(previous?.request)
@@ -451,6 +454,7 @@ internal class AndroidAlarmScheduler(
         ensureMigrated()
         val storedAlarm = dataSource.getById(alarmId) ?: return@withLock
         if (enabled) {
+            check(isSchedulingAllowed()) { "로그아웃 처리 중에는 알람을 예약할 수 없습니다." }
             try {
                 scheduleNext(storedAlarm.request, afterMillis = alarmGateway.currentTimeMillis())
                 check(dataSource.setEnabled(alarmId, true)) {
@@ -488,16 +492,19 @@ internal class AndroidAlarmScheduler(
     suspend fun ringTriggeredIfCurrent(
         alarmId: String,
         expectedFingerprint: String?,
+        legacySnapshotMatches: (AlarmScheduleRequest) -> Boolean = { false },
         startRinging: suspend (AlarmScheduleRequest) -> Unit,
     ): Boolean = AlarmSchedulerMutationMutex.withLock {
         ensureMigrated()
+        if (!isSchedulingAllowed()) return@withLock false
         val storedAlarm = dataSource.getById(alarmId)
             ?.takeIf(SavedAlarmSchedule::enabled)
             ?: return@withLock false
         val request = storedAlarm.request
         if (
             expectedFingerprint != null &&
-            expectedFingerprint != request.scheduleFingerprint()
+            expectedFingerprint != request.scheduleFingerprint() &&
+            !(request.scheduleVersion == 1L && legacySnapshotMatches(request))
         ) {
             return@withLock false
         }
@@ -514,6 +521,7 @@ internal class AndroidAlarmScheduler(
 
     suspend fun rescheduleAll(): Unit = AlarmSchedulerMutationMutex.withLock {
         ensureMigrated()
+        if (!isSchedulingAllowed()) return@withLock
         var firstFailure: Exception? = null
         dataSource.getAll().forEach { stored ->
             coroutineContext.ensureActive()
@@ -537,6 +545,24 @@ internal class AndroidAlarmScheduler(
         firstFailure?.let { error ->
             throw IllegalStateException("일부 저장된 알람을 다시 예약하지 못했습니다.", error)
         }
+    }
+
+    suspend fun cancelAllForLogout(): Unit = AlarmSchedulerMutationMutex.withLock {
+        ensureMigrated()
+        val alarms = dataSource.getAll()
+        // One SQL update in Room. Never restore enabled snapshots after cancellation failures.
+        dataSource.disableAll()
+        var firstFailure: Exception? = null
+        alarms.forEach { alarm ->
+            try {
+                cancel(alarm.request.id)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                firstFailure?.addSuppressed(error) ?: run { firstFailure = error }
+            }
+        }
+        firstFailure?.let { throw it }
     }
 
     fun observeAll(): Flow<List<SavedAlarmSchedule>> = flow {

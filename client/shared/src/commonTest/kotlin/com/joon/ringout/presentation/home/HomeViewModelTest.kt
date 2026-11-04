@@ -2,10 +2,8 @@ package com.joon.ringout.presentation.home
 
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.SavedAlarmSchedule
-import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.home.model.HomeAlarm
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -21,48 +19,40 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
     @Test
-    fun `즐겨찾기 삭제는 같은 목적지를 사용하는 여러 알람의 표시만 주소로 바꾸고 예약 원본은 유지한다`() = runTest {
-        val favorite = SavedDestination(1, request.destinationName, request.destinationAddress,
-            request.destinationLatitude, request.destinationLongitude)
-        val other = favorite.copy(id = 2, name = "집", latitude = 37.56)
-        val favorites = MutableStateFlow(listOf(favorite, other))
-        val requests = listOf(request, request.copy(id = "alarm-2"), request.copy(id = "alarm-3",
-            destinationName = other.name, destinationLatitude = other.latitude))
+    fun `알람 목적지는 저장 목적지 목록과 독립적으로 복사한 라벨을 표시한다`() = runTest {
+        val requests = listOf(
+            request,
+            request.copy(id = "alarm-2"),
+            request.copy(id = "alarm-3", destinationLabel = "집", destinationLatitude = 37.56),
+        )
         val alarms = MutableStateFlow(requests.map { SavedAlarmSchedule(it, true) })
-        val vm = HomeViewModel(favorites)
+        val vm = HomeViewModel()
         backgroundScope.launch { vm.observeAlarms(alarms) }
         runCurrent()
         assertEquals(listOf("회사", "회사", "집"), vm.uiState.alarms.map { it.destinationDisplayName })
-        favorites.value = listOf(other)
-        runCurrent()
-        assertEquals(listOf(request.destinationAddress, request.destinationAddress, "집"), vm.uiState.alarms.map { it.destinationDisplayName })
         requests.forEach { assertEquals(it, vm.alarmScheduleRequest(it.id)) }
         assertEquals(requests.map { SavedAlarmSchedule(it, true) }, alarms.value)
         assertTrue(vm.uiState.alarms.all { it.isEnabled })
     }
 
     @Test
-    fun `삭제 후 새로운 홈 모델로 진입해도 주소를 표시하고 편집 요청에는 원래 목적지를 전달한다`() = runTest {
-        val vm = HomeViewModel(flowOf(emptyList()))
+    fun `새 홈 모델에서 저장된 알람 라벨을 표시하고 편집 요청에 그대로 전달한다`() = runTest {
+        val vm = HomeViewModel()
         vm.observeAlarms(flowOf(listOf(SavedAlarmSchedule(request, true))))
-        assertEquals(request.destinationAddress, vm.uiState.alarms.single().destinationDisplayName)
+        assertEquals(request.destinationLabel, vm.uiState.alarms.single().destinationDisplayName)
         assertEquals(request, vm.alarmScheduleRequest(request.id))
     }
 
     @Test
-    fun `즐겨찾기 조회가 끝날 때까지 알람 목록을 표시하며 별명을 유지한다`() = runTest {
-        val gate = CompletableDeferred<Unit>()
-        val vm = HomeViewModel(flow {
-            gate.await()
-            emit(emptyList())
-        })
-        backgroundScope.launch { vm.observeAlarms(flowOf(listOf(SavedAlarmSchedule(request, true)))) }
+    fun `알람 데이터가 갱신되면 복사된 목적지 라벨을 홈 카드에 반영한다`() = runTest {
+        val alarms = MutableStateFlow(listOf(SavedAlarmSchedule(request, true)))
+        val vm = HomeViewModel()
+        backgroundScope.launch { vm.observeAlarms(alarms) }
         runCurrent()
-        assertFalse(vm.uiState.isLoading)
-        assertEquals(request.destinationName, vm.uiState.alarms.single().destinationDisplayName)
-        gate.complete(Unit)
+        assertEquals("회사", vm.uiState.alarms.single().destinationDisplayName)
+        alarms.value = listOf(SavedAlarmSchedule(request.copy(destinationLabel = "서울역"), true))
         runCurrent()
-        assertEquals(request.destinationAddress, vm.uiState.alarms.single().destinationDisplayName)
+        assertEquals("서울역", vm.uiState.alarms.single().destinationDisplayName)
     }
 
     @Test
@@ -80,10 +70,10 @@ class HomeViewModelTest {
                     id = request.id,
                     time = request.time,
                     days = "평일",
-                    destination = request.destinationName,
+                    destination = request.destinationLabel,
+                    destinationDisplayName = request.destinationLabel,
                     timeLimitMinutes = request.limitMinutes,
                     isEnabled = true,
-                    targetAddress = request.destinationAddress,
                     targetLatitude = request.destinationLatitude,
                     targetLongitude = request.destinationLongitude,
                     targetDistanceKm = request.targetDistanceKm,
@@ -223,8 +213,7 @@ class HomeViewModelTest {
             selectedDays = listOf("화", "목"),
             repeatEnabled = true,
             limitMinutes = 20,
-            destinationName = "집",
-            destinationAddress = "서울특별시 중구 세종대로 110",
+            destinationLabel = "집",
             destinationLatitude = 37.5665,
             destinationLongitude = 126.978,
             targetDistanceKm = 1.5,
@@ -241,9 +230,9 @@ class HomeViewModelTest {
                 time = "08:40",
                 days = "화 목",
                 destination = "집",
+                destinationDisplayName = "집",
                 timeLimitMinutes = 20,
                 isEnabled = true,
-                targetAddress = edited.destinationAddress,
                 targetLatitude = edited.destinationLatitude,
                 targetLongitude = edited.destinationLongitude,
                 targetDistanceKm = 1.5,
@@ -263,8 +252,7 @@ class HomeViewModelTest {
             selectedDays = listOf("월", "화", "수", "목", "금"),
             repeatEnabled = true,
             limitMinutes = 13,
-            destinationName = "회사",
-            destinationAddress = "서울특별시 강남구 테헤란로 1",
+            destinationLabel = "회사",
             destinationLatitude = 37.4979,
             destinationLongitude = 127.0276,
             targetDistanceKm = 0.8,

@@ -43,6 +43,10 @@ interface IosAlarmMissionEventListener {
 }
 
 interface IosAlarmMissionEventInbox {
+    fun suppressFutureReservationsForLogout(callback: (IosAlarmOperationResult) -> Unit) {
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
+
     fun setEventListener(listener: IosAlarmMissionEventListener?)
 
     fun recordStopEvent(
@@ -1375,7 +1379,7 @@ private fun AlarmScheduleRequest.toActiveAlarmMission(
 ): ActiveAlarmMission =
     ActiveAlarmMission(
         alarmId = id,
-        destinationName = destinationName,
+        destinationName = destinationLabel,
         limitMinutes = limitMinutes,
         expiresAtEpochMillis = event.occurredAtEpochMillis + limitMinutes * MillisPerMinute,
         occurrenceId = event.occurrenceId,

@@ -29,6 +29,7 @@ class MyPageViewModel(
     private val productAnalyticsRecorder: ProductAnalyticsRecorder,
     initialMonth: MissionYearMonth,
     coroutineScope: CoroutineScope? = null,
+    private val performExplicitLogout: suspend () -> Unit = authRepository::logout,
 ) : ViewModel() {
     var uiState by mutableStateOf(
         MyPageUiState(
@@ -98,7 +99,7 @@ class MyPageViewModel(
     fun onLoggedOut() {
         cancelProfileLoad()
         cancelProfileImageLoad()
-        uiState = uiState.copy(accountStatus = MyPageAccountStatus.LoggedOut, profileImageUrl = null)
+        uiState = uiState.copy(accountStatus = MyPageAccountStatus.Loading, profileImageUrl = null)
     }
 
     fun retryAccount() {
@@ -127,7 +128,7 @@ class MyPageViewModel(
 
     fun logout() {
         performAccountAction(MyPageAccountAction.Logout) {
-            authRepository.logout()
+            performExplicitLogout()
         }
     }
 

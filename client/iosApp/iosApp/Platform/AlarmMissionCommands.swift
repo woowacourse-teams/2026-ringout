@@ -16,7 +16,7 @@ final class RingoutAlarmMissionCommands: @preconcurrency IosAlarmMissionCommands
                 chainId: request.chainId
             )
             let recovery = outcome.state?.toRecoveryResult() ?? IosAlarmRecoveryAttemptsResult(
-                attempts: [], terminals: [], code: .sdkError, message: outcome.message
+                attempts: [], terminals: [], code: outcome.disposition == .stopOnly ? .success : .sdkError, message: outcome.message
             )
             let disposition: IosAlarmDismissDisposition
             switch outcome.disposition {
@@ -24,9 +24,10 @@ final class RingoutAlarmMissionCommands: @preconcurrency IosAlarmMissionCommands
             case .fallback: disposition = .fallback
             case .preserved: disposition = .preserved
             case .failed: disposition = .failed
+            case .stopOnly: disposition = .stopOnly
             }
             let code: IosAlarmOperationCode
-            if outcome.disposition == .handled { code = .success }
+            if outcome.disposition == .handled || outcome.disposition == .stopOnly { code = .success }
             else if outcome.osStopCode == .notFound { code = .notFound }
             else if outcome.osStopCode == .invalidId { code = .invalidId }
             else { code = .sdkError }
@@ -34,6 +35,13 @@ final class RingoutAlarmMissionCommands: @preconcurrency IosAlarmMissionCommands
                 osStopCode: outcome.osStopCode.toDto(), disposition: disposition,
                 recovery: recovery, occurrenceId: outcome.occurrenceId, code: code, message: outcome.message
             ))
+        }
+    }
+
+    func stopRingingAlarmWithoutMission(request: IosAlarmDismissRequest, callback: @escaping (IosAlarmOperationResult) -> Void) {
+        Task {
+            let outcome = await AlarmRecoveryDriver.stopOnly(systemAlarmId: request.systemAlarmId)
+            callback(IosAlarmOperationResult(code: outcome.osStopCode.toDto(), message: outcome.message))
         }
     }
 

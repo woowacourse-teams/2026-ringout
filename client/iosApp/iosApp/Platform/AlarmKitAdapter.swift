@@ -67,6 +67,11 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
         request: IosAlarmScheduleDto,
         callback: @escaping (IosAlarmOperationResult) -> Void
     ) {
+        let logoutGeneration = UserDefaults.standard.integer(forKey: "ringout.alarm.logout_generation")
+        guard !UserDefaults.standard.bool(forKey: "ringout.alarm.explicit_logout_blocked") else {
+            callback(IosAlarmOperationResult(code: .denied, message: "로그아웃 처리 중에는 알람을 예약할 수 없습니다."))
+            return
+        }
         guard AlarmManager.shared.authorizationState == .authorized else {
             callback(IosAlarmOperationResult(code: .denied, message: nil))
             return
@@ -110,6 +115,12 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
                         id: alarmId,
                         configuration: configuration
                     )
+                    if UserDefaults.standard.bool(forKey: "ringout.alarm.explicit_logout_blocked") ||
+                        logoutGeneration != UserDefaults.standard.integer(forKey: "ringout.alarm.logout_generation") {
+                        try AlarmManager.shared.cancel(id: alarmId)
+                        throw NSError(domain: "RingoutAlarmScheduling", code: 1)
+                    }
+                    AlarmRecoveryDriver.allowNewSourceSchedule(alarmId)
                     completeOnMain {
                         callback(IosAlarmOperationResult(code: .success, message: nil))
                     }
@@ -140,6 +151,12 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
         request: IosAlarmRetryScheduleDto,
         callback: @escaping (IosAlarmOperationResult) -> Void
     ) {
+        let logoutGeneration = UserDefaults.standard.integer(forKey: "ringout.alarm.logout_generation")
+        guard !UserDefaults.standard.bool(forKey: "ringout.alarm.explicit_logout_blocked"),
+              !(UserDefaults.standard.stringArray(forKey: "ringout.alarm.logout_cancelled_reservation_ids") ?? []).contains(request.alarmKitId) else {
+            callback(IosAlarmOperationResult(code: .denied, message: "로그아웃 처리 중에는 알람을 예약할 수 없습니다."))
+            return
+        }
         guard AlarmManager.shared.authorizationState == .authorized else {
             callback(IosAlarmOperationResult(code: .denied, message: nil))
             return
@@ -176,6 +193,11 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
                     id: alarmKitId,
                     configuration: configuration
                 )
+                if UserDefaults.standard.bool(forKey: "ringout.alarm.explicit_logout_blocked") ||
+                    logoutGeneration != UserDefaults.standard.integer(forKey: "ringout.alarm.logout_generation") {
+                    try AlarmManager.shared.cancel(id: alarmKitId)
+                    throw NSError(domain: "RingoutAlarmScheduling", code: 1)
+                }
                 completeOnMain {
                     callback(IosAlarmOperationResult(code: .success, message: nil))
                 }
@@ -213,6 +235,25 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
         }
     }
 
+    func cancelFutureForLogout(
+        alarmId rawAlarmId: String,
+        callback: @escaping (IosAlarmOperationResult) -> Void
+    ) {
+        guard let alarmId = UUID(uuidString: rawAlarmId) else {
+            callback(IosAlarmOperationResult(code: .invalidId, message: nil))
+            return
+        }
+        do {
+            if try AlarmManager.shared.alarms.contains(where: { $0.id == alarmId && $0.state == .alerting }) {
+                callback(IosAlarmOperationResult(code: .success, message: nil))
+                return
+            }
+            cancel(alarmId: rawAlarmId, callback: callback)
+        } catch {
+            callback(IosAlarmOperationResult(code: .sdkError, message: error.localizedDescription))
+        }
+    }
+
     func stop(
         alarmId rawAlarmId: String,
         callback: @escaping (IosAlarmOperationResult) -> Void
@@ -227,10 +268,12 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
                 guard try AlarmManager.shared.alarms.contains(where: {
                     $0.id == alarmId && $0.state == .alerting
                 }) else {
+                    try AlarmRecoveryDriver.cancelFutureAfterStopIfNeeded(alarmId)
                     callback(IosAlarmOperationResult(code: .notFound, message: nil))
                     return
                 }
                 try AlarmManager.shared.stop(id: alarmId)
+                try AlarmRecoveryDriver.cancelFutureAfterStopIfNeeded(alarmId)
                 callback(IosAlarmOperationResult(code: .success, message: nil))
             } catch {
                 callback(

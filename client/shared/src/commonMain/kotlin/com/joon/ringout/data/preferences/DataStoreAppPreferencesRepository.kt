@@ -4,11 +4,17 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.FirstLaunchStatus
+import com.joon.ringout.domain.firstlaunch.EntryPolicyVersion
+import com.joon.ringout.domain.firstlaunch.migratedInstallationEntryState
 import com.joon.ringout.domain.preferences.AppBootstrapSnapshot
+import com.joon.ringout.domain.preferences.InstallationEntryState
+import com.joon.ringout.domain.preferences.LegacyEntryState
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
 import com.joon.ringout.domain.terms.TermConsentRecord
 import com.joon.ringout.domain.terms.TermDefinition
@@ -16,17 +22,27 @@ import com.joon.ringout.domain.terms.TermId
 import com.joon.ringout.domain.terms.TermType
 import com.joon.ringout.domain.terms.currentTerms
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 class DataStoreAppPreferencesRepository(
     private val dataStore: DataStore<Preferences>,
+    private val installationDataStore: DataStore<Preferences> = dataStore,
     private val terms: List<TermDefinition> = currentTerms,
 ) : AppPreferencesRepository {
-    override val bootstrapState: Flow<AppBootstrapSnapshot> = dataStore.data.map { preferences ->
+    override val bootstrapState: Flow<AppBootstrapSnapshot> = combine(
+        dataStore.data,
+        installationDataStore.data,
+    ) { preferences, installationPreferences ->
+        val installation = installationPreferences.toInstallationEntryState()
         AppBootstrapSnapshot(
             themeMode = ThemeMode.fromPersistedValue(preferences[ThemeModeKey]),
             firstLaunchStatus = preferences.toFirstLaunchStatus(),
-            isAlarmCreationGuidePending = preferences[AlarmCreationGuidePendingKey] ?: false,
+            isAlarmCreationGuidePending = installation.policyVersion == EntryPolicyVersion &&
+                !installation.isAlarmCreationGuideCompleted,
+            legacyEntryState = preferences.toLegacyEntryState(),
+            installationEntryState = installation,
         )
     }
 
@@ -45,17 +61,50 @@ class DataStoreAppPreferencesRepository(
     }
 
     override suspend fun markOnboardingCompleted() {
-        dataStore.edit { preferences ->
-            if (preferences[OnboardingCompletedKey] != true) {
-                preferences[AlarmCreationGuidePendingKey] = true
-            }
-            preferences[OnboardingCompletedKey] = true
+        installationDataStore.edit { preferences ->
+            preferences[InstallationOnboardingCompletedKey] = true
         }
     }
 
     override suspend fun completeAlarmCreationGuide() {
-        dataStore.edit { preferences ->
-            preferences[AlarmCreationGuidePendingKey] = false
+        installationDataStore.edit { preferences ->
+            preferences[InstallationAlarmGuideCompletedKey] = true
+        }
+    }
+
+    override suspend fun initializeEntryPolicy(
+        authSessionState: AuthSessionState,
+        hasLegacyAlarmOrRuntimeEvidence: Boolean,
+    ) {
+        val legacy = dataStore.data.map { preferences -> preferences.toLegacyEntryState() }.first()
+        installationDataStore.edit { preferences ->
+            if (preferences[EntryPolicyVersionKey] == EntryPolicyVersion) return@edit
+            val initial = migratedInstallationEntryState(
+                authSessionState = authSessionState,
+                legacy = legacy,
+                hasLegacyAlarmOrRuntimeEvidence = hasLegacyAlarmOrRuntimeEvidence,
+            )
+            preferences[EntryPolicyVersionKey] = EntryPolicyVersion
+            preferences[InstallationOnboardingCompletedKey] = initial.isOnboardingCompleted
+            preferences[InstallationAlarmGuideCompletedKey] =
+                initial.isAlarmCreationGuideCompleted
+            preferences[LegacyRuntimeExceptionPendingKey] =
+                initial.hasLegacyRuntimeExceptionPending
+            if (LogoutCleanupPendingKey !in preferences) {
+                preferences[LogoutCleanupPendingKey] = false
+            }
+        }
+    }
+
+    override suspend fun setLogoutCleanupPending(pending: Boolean) {
+        installationDataStore.edit { preferences ->
+            preferences[LogoutCleanupPendingKey] = pending
+        }
+    }
+
+    override suspend fun setLegacyRuntimeExceptionPending(pending: Boolean) {
+        installationDataStore.edit { preferences ->
+            preferences[LegacyRuntimeExceptionPendingKey] = pending
         }
     }
 
@@ -90,6 +139,22 @@ class DataStoreAppPreferencesRepository(
                 toTermConsentRecord(definition.id)?.let { record -> definition.id to record }
             }.toMap(),
         )
+
+    private fun Preferences.toLegacyEntryState(): LegacyEntryState = LegacyEntryState(
+        hasOnboardingKey = OnboardingCompletedKey in this,
+        isOnboardingCompleted = this[OnboardingCompletedKey],
+        hasAlarmGuidePendingKey = AlarmCreationGuidePendingKey in this,
+        isAlarmGuidePending = this[AlarmCreationGuidePendingKey],
+    )
+
+    private fun Preferences.toInstallationEntryState(): InstallationEntryState =
+        InstallationEntryState(
+            policyVersion = this[EntryPolicyVersionKey],
+            isOnboardingCompleted = this[InstallationOnboardingCompletedKey] ?: false,
+            isAlarmCreationGuideCompleted = this[InstallationAlarmGuideCompletedKey] ?: false,
+            hasLegacyRuntimeExceptionPending = this[LegacyRuntimeExceptionPendingKey] ?: false,
+            isLogoutCleanupPending = this[LogoutCleanupPendingKey] ?: false,
+        )
 }
 
 private fun Preferences.toTermConsentRecord(id: TermId): TermConsentRecord? {
@@ -110,6 +175,12 @@ private fun Preferences.toTermConsentRecord(id: TermId): TermConsentRecord? {
 internal val ThemeModeKey = stringPreferencesKey("theme.mode")
 private val OnboardingCompletedKey = booleanPreferencesKey("onboarding.completed")
 private val AlarmCreationGuidePendingKey = booleanPreferencesKey("onboarding.alarm_creation_guide_pending")
+
+private val EntryPolicyVersionKey = intPreferencesKey("entry_policy_version")
+private val InstallationOnboardingCompletedKey = booleanPreferencesKey("onboarding_completed")
+private val InstallationAlarmGuideCompletedKey = booleanPreferencesKey("alarm_guide_completed")
+private val LegacyRuntimeExceptionPendingKey = booleanPreferencesKey("legacy_runtime_exception_pending")
+private val LogoutCleanupPendingKey = booleanPreferencesKey("logout_cleanup_pending")
 
 private fun nameKey(id: TermId) = stringPreferencesKey("terms.${id.value}.name")
 private fun versionKey(id: TermId) = stringPreferencesKey("terms.${id.value}.version")

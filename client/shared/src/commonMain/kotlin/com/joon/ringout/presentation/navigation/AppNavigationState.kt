@@ -5,31 +5,59 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.saveable.rememberSerializable
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavBackStack
-import androidx.navigation3.runtime.serialization.NavBackStackSerializer
+import com.joon.ringout.LocalAppNavigationStoreProviders
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.push.RoomActivityPushTarget
 
 @Composable
-internal fun rememberAppNavigationState(): AppNavigationState {
-    val backStack = rememberSerializable(
-        serializer = NavBackStackSerializer(AppRoute.serializer()),
-    ) {
-        NavBackStack<AppRoute>(AppRoute.Home)
-    }
-    return remember(backStack) {
+internal fun rememberAppNavigationState(sessionIdentity: Any? = null): AppNavigationState =
+    rememberNavigationState("service", sessionIdentity, authenticationOnlyMode = false)
+
+@Composable
+internal fun rememberAuthOnlyNavigationState(): AppNavigationState =
+    rememberNavigationState("auth", sessionIdentity = null, authenticationOnlyMode = true)
+
+@Composable
+private fun rememberNavigationState(
+    scopeKey: String,
+    sessionIdentity: Any?,
+    authenticationOnlyMode: Boolean,
+): AppNavigationState {
+    val stores = LocalAppNavigationStoreProviders.current?.getValue(scopeKey)
+    val createState = {
         AppNavigationState(
-            routes = backStack,
+            routes = if (authenticationOnlyMode) NavBackStack(AppRoute.Login) else NavBackStack(AppRoute.Home),
+            authenticationOnlyMode = authenticationOnlyMode,
         )
     }
+    // 호스트가 있는 Android에서는 차단 중에도 백스택을 해당 화면 모델과 함께 유지한다.
+    return if (stores != null) {
+        val owner = stores.getOrCreateOwner("ringout-navigation-state")
+        viewModel(viewModelStoreOwner = owner) { NavigationStateViewModel(createState()) }.navigationState
+    } else {
+        remember(sessionIdentity) { createState() }
+    }
 }
+
+private class NavigationStateViewModel(val navigationState: AppNavigationState) : ViewModel()
 
 /** 화면 이동 요청과 표시 경로를 타입 안전한 Navigation 3 백스택으로 관리한다. */
 internal class AppNavigationState(
     private val routes: NavBackStack<AppRoute> = NavBackStack(AppRoute.Home),
     private val guestOnlyMode: Boolean = false,
+    private val authenticationOnlyMode: Boolean = false,
 ) {
+    init {
+        check(
+            authenticationOnlyMode || routes.none {
+                it == AppRoute.Login || it == AppRoute.TermsAgreement
+            },
+        ) { "Authentication routes must use the root authentication navigation state." }
+    }
+
     // Not saved: a restored stack must never replay an old back animation.
     private var lastBackTransition: Pair<AppRoute, AppRoute>? by mutableStateOf(null)
 
@@ -47,6 +75,18 @@ internal class AppNavigationState(
      * 경로의 식별자가 다르면 같은 화면 유형이어도 최상위 항목을 교체한다.
      */
     fun navigate(route: AppRoute) {
+        if (authenticationOnlyMode) {
+            val destinationStack = when (route) {
+                AppRoute.Login -> listOf(AppRoute.Login)
+                AppRoute.TermsAgreement -> listOf(AppRoute.Login, AppRoute.TermsAgreement)
+                else -> return
+            }
+            replaceBackStack(destinationStack)
+            return
+        }
+        check(route != AppRoute.Login && route != AppRoute.TermsAgreement) {
+            "Authentication routes must use the root authentication navigation state."
+        }
         if (guestOnlyMode) {
             when (route) {
                 AppRoute.NicknameChange,
@@ -84,16 +124,12 @@ internal class AppNavigationState(
             AppRoute.Records -> listOf(AppRoute.Home, AppRoute.Records)
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)
-            // 소셜에서 시작한 인증은 출처를 유지하고, 일반 로그인은 마이페이지로 돌아간다.
-            AppRoute.Login -> socialReturnStack()?.plus(AppRoute.Login)
-                ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
-            AppRoute.TermsAgreement -> socialReturnStack()?.let { socialStack ->
-                socialStack + AppRoute.Login + AppRoute.TermsAgreement
-            } ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
+            AppRoute.Login,
+            AppRoute.TermsAgreement,
+            -> error("Authentication routes must use the root authentication navigation state.")
             AppRoute.AddAlarm -> listOf(AppRoute.Home, AppRoute.AddAlarm)
             is AppRoute.EditAlarm -> listOf(AppRoute.Home, route)
             is AppRoute.Destination,
-            is AppRoute.DestinationManagement,
             AppRoute.AlarmSound,
             -> {
                 val parent = requireNotNull(editorRoute) { "An alarm picker requires an editor parent" }
@@ -109,11 +145,6 @@ internal class AppNavigationState(
         if (routes.toList() == destinationStack) return
 
         replaceBackStack(destinationStack)
-    }
-
-    /** 소셜에서 시작한 인증은 완료 후 기존 소셜 또는 모임 소개 화면으로 돌아간다. */
-    fun completeAuthenticationFlow() {
-        replaceBackStack(socialReturnStack() ?: listOf(AppRoute.Home))
     }
 
     /** 성공한 생성/가입 화면만 RoomHome으로 바꾸며, 이미 나간 화면의 완료는 무시한다. */
@@ -164,30 +195,6 @@ internal class AppNavigationState(
     }
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
-
-    private fun socialReturnStack(): List<AppRoute>? {
-        val currentRoute = routes.lastOrNull() ?: return null
-        if (currentRoute == AppRoute.Social) {
-            return routes.take(routes.lastIndex + 1)
-        }
-
-        val returnRouteIndex = when (currentRoute) {
-            is AppRoute.RoomDetail -> routes.lastIndex
-            AppRoute.Login -> routes.lastIndex - 1
-            AppRoute.TermsAgreement -> routes.indexOfLast { it == AppRoute.Login } - 1
-            else -> return null
-        }
-        if (returnRouteIndex < 1) return null
-
-        return when (val returnRoute = routes[returnRouteIndex]) {
-            AppRoute.Social -> routes.take(returnRouteIndex + 1)
-            is AppRoute.RoomDetail -> {
-                if (routes.getOrNull(returnRouteIndex - 1) != AppRoute.Social) return null
-                routes.take(returnRouteIndex + 1)
-            }
-            else -> null
-        }
-    }
 
     private fun replaceBackStack(destinationStack: List<AppRoute>) {
         lastBackTransition = null

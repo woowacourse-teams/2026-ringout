@@ -11,6 +11,7 @@ enum AlarmRecoveryDismissDisposition: Equatable {
     case fallback
     case preserved
     case failed
+    case stopOnly
 
     init(_ stop: AlarmRecoveryStopDisposition) {
         switch stop {
@@ -54,6 +55,7 @@ final class AlarmRecoveryCommand {
     private let contains: (String) async throws -> Bool
     private let cancel: (String) async throws -> Void
     private let observation: (String, Date) -> AlarmRecoveryStopObservation?
+    private let missionAccess: () async throws -> Bool
 
     init(
         journal: AlarmRecoveryJournal,
@@ -63,7 +65,8 @@ final class AlarmRecoveryCommand {
         schedule: @escaping (AlarmRecoveryAttempt) async throws -> Void,
         contains: @escaping (String) async throws -> Bool,
         cancel: @escaping (String) async throws -> Void,
-        observation: @escaping (String, Date) -> AlarmRecoveryStopObservation? = { _, _ in nil }
+        observation: @escaping (String, Date) -> AlarmRecoveryStopObservation? = { _, _ in nil },
+        missionAccess: @escaping () async throws -> Bool = { true }
     ) {
         self.journal = journal
         self.executionEpoch = executionEpoch
@@ -73,6 +76,7 @@ final class AlarmRecoveryCommand {
         self.contains = contains
         self.cancel = cancel
         self.observation = observation
+        self.missionAccess = missionAccess
     }
 
     func dismiss(
@@ -106,6 +110,10 @@ final class AlarmRecoveryCommand {
             if osStopCode == .failed || osStopCode == .invalidId {
                 return AlarmRecoveryDismissOutcome(osStopCode: osStopCode, disposition: .failed,
                     state: try journal.recoveryState(), occurrenceId: nil, message: "AlarmKit stop failed")
+            }
+            if try await missionAccess() == false {
+                return AlarmRecoveryDismissOutcome(osStopCode: osStopCode, disposition: .stopOnly,
+                    state: nil, occurrenceId: nil, message: nil)
             }
             let afterStopRoute = try journal.routeStop(occurrenceToken: occurrenceToken, retryAttempt: retryAttempt,
                                                       sourceKey: key, stopAt: now)
@@ -167,6 +175,20 @@ final class AlarmRecoveryCommand {
         }
     }
 
+    /// Authentication-required entry can silence the current alert without accepting a stop event.
+    /// No journal attempt, mission projection, cancellation or future reservation is created.
+    func stopOnly(systemAlarmId: String) async -> AlarmRecoveryDismissOutcome {
+        do {
+            let code = try await stopAlarm(systemAlarmId)
+            return AlarmRecoveryDismissOutcome(osStopCode: code,
+                disposition: code == .success || code == .notFound ? .stopOnly : .failed,
+                state: nil, occurrenceId: nil, message: nil)
+        } catch {
+            return AlarmRecoveryDismissOutcome(osStopCode: .failed, disposition: .failed,
+                state: nil, occurrenceId: nil, message: error.localizedDescription)
+        }
+    }
+
     private static func exactAttempt(
         in state: AlarmRecoveryState, token: String?, key: AlarmRecoverySourceKey
     ) -> AlarmRecoveryAttempt? {
@@ -185,6 +207,14 @@ final class AlarmRecoveryCommand {
         systemAlarmId: String,
         now: Date = Date()
     ) async throws -> AlarmRecoveryStopDisposition {
+        if try await missionAccess() == false {
+            let result = await stopOnly(systemAlarmId: systemAlarmId)
+            if result.disposition == .failed {
+                throw NSError(domain: "RingoutAlarmStop", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: result.message ?? "Alarm stop failed"])
+            }
+            return .preserved
+        }
         let state = try journal.recoveryState()
         let sourceKey = AlarmRecoverySourceKey(sourceAlarmId: alarmId, scheduleVersion: scheduleVersion)
         let route = try journal.routeStop(

@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val updateUiState by mandatoryUpdateViewModel.uiState.collectAsState()
             val ringingOccurrenceId by AlarmRingingRuntime.ringingOccurrenceId.collectAsState()
+            val authSessionIdentity by appContainer.authSession.identity.collectAsState()
             val appStateHolder = rememberSaveableStateHolder()
             val roomActivityPushViewModel: RoomActivityPushClickViewModel = viewModel {
                 RoomActivityPushClickViewModel(createSavedStateHandle())
@@ -107,7 +108,7 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-            AppStateHost {
+            AppStateHost(sessionIdentity = authSessionIdentity) {
                 if (updateUiState.access == AppUpdateAccess.Allowed) {
                     appStateHolder.SaveableStateProvider("app") {
                         PlatformAppHost(appContainer) { extraContent ->

@@ -99,8 +99,10 @@ internal fun decodeLegacyAlarm(raw: String): SavedAlarmSchedule {
             selectedDays = selectedDays,
             repeatEnabled = json.optBoolean(KEY_REPEAT_ENABLED, true),
             limitMinutes = json.optInt(KEY_LIMIT_MINUTES, DEFAULT_LIMIT_MINUTES),
-            destinationName = json.optString(KEY_DESTINATION_NAME),
-            destinationAddress = json.optString(KEY_DESTINATION_ADDRESS),
+            destinationLabel = json.optString(KEY_DESTINATION_NAME)
+                .takeIf(String::isNotBlank)
+                ?: json.optString(KEY_DESTINATION_ADDRESS).takeIf(String::isNotBlank)
+                ?: "주소 정보 없음",
             destinationLatitude = latitude,
             destinationLongitude = longitude,
             targetDistanceKm = targetDistanceKm,

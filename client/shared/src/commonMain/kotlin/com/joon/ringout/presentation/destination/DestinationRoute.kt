@@ -1,11 +1,15 @@
 package com.joon.ringout.presentation.destination
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.toAnalyticsLoginStateOrNull
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.connectivity.NetworkMonitor
+import com.joon.ringout.domain.connectivity.NetworkStatus
 import com.joon.ringout.domain.destination.SavedDestination
 
 @Composable
@@ -15,22 +19,24 @@ internal fun DestinationRoute(
     requestId: Long,
     authSessionState: AuthSessionState,
     productAnalyticsRecorder: ProductAnalyticsRecorder,
+    networkMonitor: NetworkMonitor,
     isActive: Boolean,
     onBackClick: () -> Unit,
-    onSavedDestinationConfirmClick: (SavedDestination) -> Unit,
     onConfirmWithoutSave: (DestinationSelection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState = viewModel.uiState
     val analyticsLoginState = authSessionState.toAnalyticsLoginStateOrNull()
-    // A new fix must not change the initial camera of an already displayed map.
+    val networkStatus by networkMonitor.status.collectAsStateWithLifecycle()
+    // An alarm's configured destination is the map's starting point. Use the cached
+    // current location only when the caller has no destination to restore.
     val entrySelection = remember(viewModel, requestId) {
-        viewModel.initialCurrentLocation() ?: initialSelection ?: DefaultDestinationSelection
+        initialSelection ?: viewModel.initialCurrentLocation() ?: DefaultDestinationSelection
     }
 
     DestinationMapScreen(
         initialSelection = entrySelection,
-        requestCurrentLocationOnStart = true,
+        requestCurrentLocationOnStart = initialSelection == null,
         onCurrentLocationResolved = viewModel::onCurrentLocationResolved,
         isAuthenticated = authSessionState == AuthSessionState.Authenticated,
         onEntered = { if (isActive) viewModel.onScreenEntered() },
@@ -40,24 +46,10 @@ internal fun DestinationRoute(
                 viewModel.save(destination, requestId, analyticsLoginState)
             }
         },
-        onSavedDestinationConfirmClick = { destination ->
-            if (isActive) onSavedDestinationConfirmClick(destination)
-        },
         onConfirmWithoutSave = { destination ->
             if (isActive) onConfirmWithoutSave(destination.withAddressAsName())
         },
-        savedDestinations = uiState.destinations,
-        onSavedDestinationRename = { id, nickname ->
-            if (isActive) viewModel.rename(id, nickname)
-        },
-        onSavedDestinationDeleteClick = { id ->
-            if (isActive) viewModel.delete(id)
-        },
-        onSavedDestinationSelected = { source ->
-            if (isActive && analyticsLoginState != null) {
-                productAnalyticsRecorder.recordDestinationSelected(source, analyticsLoginState)
-            }
-        },
+        isNetworkConnected = networkStatus != NetworkStatus.Offline,
         isSaveInProgress = uiState.isSaving,
         isDestinationActionEnabled = isActive && analyticsLoginState != null && uiState.hasLoadedDestinations,
         isBackHandlerEnabled = isActive,

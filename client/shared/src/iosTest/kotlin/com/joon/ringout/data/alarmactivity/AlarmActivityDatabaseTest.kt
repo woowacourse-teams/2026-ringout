@@ -202,8 +202,8 @@ class AlarmActivityDatabaseTest {
     private fun savedAlarm() = SavedAlarmSchedule(
         request = AlarmScheduleRequest(
             id = "alarm-1", time = "07:05", selectedDays = listOf("월", "금"),
-            repeatEnabled = true, limitMinutes = 12, destinationName = "회사",
-            destinationAddress = "서울", destinationLatitude = 37.5665, destinationLongitude = 126.978,
+            repeatEnabled = true, limitMinutes = 12, destinationLabel = "회사",
+            destinationLatitude = 37.5665, destinationLongitude = 126.978,
             targetDistanceKm = 1.2, alarmSoundName = "기본 알람음", alarmSoundUri = null,
         ),
         enabled = true,

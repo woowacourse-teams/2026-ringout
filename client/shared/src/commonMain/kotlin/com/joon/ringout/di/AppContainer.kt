@@ -30,4 +30,5 @@ interface AppContainer {
     val alarmActivityRepository: AlarmActivityRepository
     val missionHistoryRepository: MissionHistoryRepository
     val productAnalyticsRecorder: ProductAnalyticsRecorder
+    val hasStoredAlarmsForEntryMigration: suspend () -> Boolean
 }

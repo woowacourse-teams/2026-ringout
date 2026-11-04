@@ -8,6 +8,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.connectivity.NetworkMonitor
+import com.joon.ringout.domain.connectivity.NetworkStatus
 import com.joon.ringout.presentation.navigation.AppNavigationState
 import com.joon.ringout.presentation.navigation.AppRoute
 import com.joon.ringout.presentation.roomlist.model.RoomUiModel
@@ -15,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -109,6 +112,7 @@ class RoomListNavigationTest {
                 RingoutTheme {
                     RoomListRoute(
                         viewModel = fixture.viewModel,
+                        networkMonitor = fixture.networkMonitor,
                         authSessionState = AuthSessionState.Authenticated,
                         sessionIdentity = fixture.sessionIdentity,
                         onCreateRoom = {},
@@ -129,6 +133,9 @@ class RoomListNavigationTest {
     private class Fixture {
         val sessionIdentity = Any()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val networkMonitor = object : NetworkMonitor {
+            override val status = MutableStateFlow(NetworkStatus.Online)
+        }
         var rooms = listOf(JoinedRoom, UnjoinedRoom)
         val viewModel = RoomListViewModel(
             loadRooms = { Result.success(rooms) },

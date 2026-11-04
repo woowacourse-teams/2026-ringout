@@ -17,10 +17,8 @@ data class AlarmEntity(
     val repeatEnabled: Boolean,
     @ColumnInfo(name = "limit_minutes")
     val limitMinutes: Int,
-    @ColumnInfo(name = "destination_name")
-    val destinationName: String,
-    @ColumnInfo(name = "destination_address")
-    val destinationAddress: String,
+    @ColumnInfo(name = "destination_label")
+    val destinationLabel: String,
     @ColumnInfo(name = "destination_latitude")
     val destinationLatitude: Double,
     @ColumnInfo(name = "destination_longitude")

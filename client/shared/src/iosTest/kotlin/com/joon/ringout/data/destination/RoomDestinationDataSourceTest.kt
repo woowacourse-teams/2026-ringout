@@ -20,14 +20,14 @@ import kotlin.test.assertTrue
 
 class RoomDestinationDataSourceTest {
     @Test
-    fun insertsMultipleDestinationsObservesCreationOrderUpdatesAndDeletes() = runBlocking {
+    fun insertsMultipleDestinationsObservesCreationOrderAndDeletes() = runBlocking {
         withDatabase { database ->
             val repository = DefaultDestinationRepository(
                 RoomDestinationDataSource(database.destinationDao()),
             )
 
-            val first = repository.save(destination(name = "회사", address = ""))
-            val second = repository.save(destination(name = "집"))
+            val first = repository.save(destination(label = "회사"))
+            val second = repository.save(destination(label = "집"))
 
             assertNotEquals(0L, first.id)
             assertNotEquals(0L, second.id)
@@ -37,27 +37,14 @@ class RoomDestinationDataSourceTest {
                 repository.observeAll().first(),
             )
 
-            val updatedFirst = repository.save(
-                first.copy(
-                    name = "새 회사",
-                    latitude = 37.5700,
-                    longitude = 126.9800,
-                ),
-            )
-            assertEquals(first.id, updatedFirst.id)
-            assertEquals(
-                listOf(updatedFirst, second),
-                repository.observeAll().first(),
-            )
-
             assertTrue(repository.delete(second.id))
             assertFalse(repository.delete(second.id))
-            assertEquals(listOf(updatedFirst), repository.observeAll().first())
+            assertEquals(listOf(first), repository.observeAll().first())
         }
     }
 
     @Test
-    fun failsAnUpdateWhenTheStableIdDoesNotExist() = runBlocking {
+    fun rejectsExistingIdsForCreationAndInvalidDeleteIds() = runBlocking {
         withDatabase { database ->
             val repository = DefaultDestinationRepository(
                 RoomDestinationDataSource(database.destinationDao()),
@@ -73,48 +60,17 @@ class RoomDestinationDataSourceTest {
     }
 
     @Test
-    fun updatesOnlyTheNameAndReturnsWhetherTheDestinationExists() = runBlocking {
+    fun rejectsEditingAnExistingSavedDestination() = runBlocking {
         withDatabase { database ->
             val repository = DefaultDestinationRepository(
                 RoomDestinationDataSource(database.destinationDao()),
             )
             val destination = repository.save(destination())
 
-            assertTrue(repository.updateName(destination.id, "새 회사"))
-            assertEquals(
-                destination.copy(name = "새 회사"),
-                repository.observeAll().first().single(),
-            )
-            assertFalse(repository.updateName(999, "없는 목적지"))
-            assertEquals(
-                destination.copy(name = "새 회사"),
-                repository.observeAll().first().single(),
-            )
-        }
-    }
-
-    @Test
-    fun keepsFullDestinationUpdatesAndRejectsInvalidNameUpdateArguments() = runBlocking {
-        withDatabase { database ->
-            val repository = DefaultDestinationRepository(
-                RoomDestinationDataSource(database.destinationDao()),
-            )
-            val destination = repository.save(destination())
-            val fullyUpdated = destination.copy(
-                name = "새 회사",
-                address = "서울특별시 종로구 세종대로 1",
-                latitude = 37.5759,
-                longitude = 126.9768,
-            )
-
-            assertEquals(fullyUpdated, repository.save(fullyUpdated))
-            assertEquals(fullyUpdated, repository.observeAll().first().single())
-            assertFailsWith<IllegalArgumentException> {
-                repository.updateName(-1, "회사")
+            assertFailsWith<IllegalStateException> {
+                repository.save(destination.copy(label = "새 회사", latitude = 37.5759))
             }
-            assertFailsWith<IllegalArgumentException> {
-                repository.updateName(destination.id, "   ")
-            }
+            assertEquals(destination, repository.observeAll().first().single())
         }
     }
 
@@ -128,7 +84,7 @@ class RoomDestinationDataSourceTest {
                 try {
                     DefaultDestinationRepository(
                         RoomDestinationDataSource(database.destinationDao()),
-                    ).save(destination(name = "집"))
+                ).save(destination(label = "집"))
                 } finally {
                     database.close()
                 }
@@ -166,12 +122,10 @@ class RoomDestinationDataSourceTest {
 
     private fun destination(
         id: Long = 0,
-        name: String = "회사",
-        address: String = "서울특별시 중구 세종대로 110",
+        label: String = "회사",
     ) = SavedDestination(
         id = id,
-        name = name,
-        address = address,
+        label = label,
         latitude = 37.5665,
         longitude = 126.978,
     )

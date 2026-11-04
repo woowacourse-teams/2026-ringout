@@ -23,6 +23,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w402dp-h850dp")
@@ -31,42 +32,41 @@ class DestinationEntryTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
-    fun `마지막 목적지 삭제 후 복귀 요청이 남아 있어도 지도를 열지 않고 다음 직접 선택 때만 연다`() = withEntry(listOf(Destination)) { state ->
+    fun `제거 요청은 확인 전 API를 호출하지 않고 취소하면 목록을 유지한다`() = withEntry(listOf(Destination)) { state ->
         compose.onNodeWithText("목적지 설정").performClick()
-        compose.onNodeWithContentDescription("헬스장 관리").performClick()
-        compose.runOnIdle { state.active.value = false }
-        compose.waitForIdle()
+        compose.onNodeWithContentDescription("헬스장 제거").performClick()
+        compose.onNodeWithText("목적지 삭제").assertIsDisplayed()
         compose.runOnIdle {
-            state.ui.value = DestinationUiState(isLoading = false)
-            state.openRequest.value = 1L
-            state.active.value = true
+            assertEquals(listOf(Destination.id), state.deleteRequests)
+            assertEquals(0, state.deleteConfirmations)
+            assertNull(state.selected)
+            assertEquals(0, state.mapEntries)
         }
-        compose.waitForIdle()
-        compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
-        compose.runOnIdle { assertEquals(0, state.mapEntries) }
-        compose.onNodeWithText("목적지 설정").performClick()
-        compose.runOnIdle { assertEquals(1, state.mapEntries) }
+        compose.onNodeWithText("취소").performClick()
+        compose.runOnIdle {
+            assertEquals(0, state.deleteConfirmations)
+            assertEquals(1, state.deleteDismissals)
+        }
+        compose.onNodeWithText("저장된 목적지").assertIsDisplayed()
+        compose.onNodeWithText("헬스장").assertIsDisplayed()
     }
 
     @Test
-    fun `관리는 목적지를 선택하지 않고 관리 화면을 요청하고 복귀 시 목록을 다시 표시한다`() = withEntry(listOf(Destination)) { state ->
+    fun `마지막 목적지를 확인 삭제해도 목록 창을 유지하고 지도를 자동으로 열지 않는다`() = withEntry(listOf(Destination)) { state ->
         compose.onNodeWithText("목적지 설정").performClick()
-        compose.onNodeWithContentDescription("헬스장 관리").performClick()
-        compose.runOnIdle {
-            assertEquals(Destination, state.managed)
-            assertNull(state.selected)
-            assertEquals(0, state.mapEntries)
-            state.active.value = false
-        }
-        compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
-        compose.runOnIdle {
-            state.openRequest.value += 1L
-            state.active.value = true
-        }
-        compose.onNodeWithText("저장된 목적지").assertIsDisplayed()
-        compose.onNodeWithContentDescription("저장된 목적지 닫기").performClick()
+        compose.onNodeWithContentDescription("헬스장 제거").performClick()
+        compose.onNodeWithText("삭제").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("저장된 목적지").assertDoesNotExist()
+
+        compose.onNodeWithText("저장된 목적지").assertIsDisplayed()
+        compose.onNodeWithText("지도에서 찾기").assertIsDisplayed()
+        compose.onNodeWithText("헬스장").assertDoesNotExist()
+        compose.runOnIdle {
+            assertEquals(listOf(Destination.id), state.deleteRequests)
+            assertEquals(1, state.deleteConfirmations)
+            assertEquals(0, state.mapEntries)
+            assertTrue(state.ui.value.destinations.isEmpty())
+        }
     }
 
     @Test
@@ -165,7 +165,7 @@ class DestinationEntryTest {
 
     @Test
     fun `목적지가 많으면 목록을 아래위로 스크롤하고 하단 버튼은 고정된다`() = withEntry(
-        List(8) { Destination.copy(id = it + 1L, name = "목적지 ${it + 1}") },
+        List(8) { Destination.copy(id = it + 1L, label = "목적지 ${it + 1}") },
     ) {
         compose.onNodeWithText("목적지 설정").performClick()
         compose.onNodeWithText("목적지 1").assertIsDisplayed()
@@ -220,9 +220,24 @@ class DestinationEntryTest {
                             if (deactivateOnMap) state.active.value = false
                         },
                         onSelect = { state.selected = it },
-                        onManage = { state.managed = it },
                         openRequestId = state.openRequest.value,
                         onRetry = { state.retries++ },
+                        onDeleteRequest = { id ->
+                            state.deleteRequests += id
+                            state.ui.value = state.ui.value.copy(pendingDeleteDestinationId = id)
+                        },
+                        onDeleteConfirm = {
+                            state.deleteConfirmations++
+                            val id = state.ui.value.pendingDeleteDestinationId
+                            state.ui.value = state.ui.value.copy(
+                                destinations = state.ui.value.destinations.filterNot { it.id == id },
+                                pendingDeleteDestinationId = null,
+                            )
+                        },
+                        onDeleteDismiss = {
+                            state.deleteDismissals++
+                            state.ui.value = state.ui.value.copy(pendingDeleteDestinationId = null)
+                        },
                     ) { onClick -> TextButton(onClick = onClick) { Text("목적지 설정") } }
                 }
             }
@@ -235,12 +250,14 @@ class DestinationEntryTest {
     private class Fixture(initial: DestinationUiState) {
         val ui = mutableStateOf(initial)
         val openRequest = mutableStateOf(0L)
-        var managed: SavedDestination? = null
         val active = mutableStateOf(true)
         var retries = 0
         var mapEntries = 0
         var selected: SavedDestination? = null
+        val deleteRequests = mutableListOf<Long>()
+        var deleteConfirmations = 0
+        var deleteDismissals = 0
     }
 }
 
-private val Destination = SavedDestination(1, "헬스장", "대한민국 경기도 수원시 팔달구", 37.28, 127.01)
+private val Destination = SavedDestination(1, "헬스장", 37.28, 127.01)

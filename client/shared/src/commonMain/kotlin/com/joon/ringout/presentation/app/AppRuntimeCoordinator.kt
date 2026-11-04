@@ -23,6 +23,7 @@ internal fun AppRuntimeCoordinator(
     navigationState: AppNavigationState,
     displayedRoute: AppRoute,
     pendingRoomActivityPush: RoomActivityPushRequest?,
+    canHandleRoomActivityPush: Boolean = true,
     onRoomActivityPushHandled: (requestId: String) -> Unit,
     themeMode: ThemeMode,
     activeMissionOccurrenceId: String?,
@@ -39,7 +40,6 @@ internal fun AppRuntimeCoordinator(
     val alarmSetupViewModel = alarmEditorNavigation?.alarmSetupViewModel
     val destinationViewModel = alarmEditorNavigation?.destinationViewModel
 
-    // TODO(RINGOUT_ACCOUNT): 계정 관리 UI 도입 시 MyPageAccountActionCompletionEffect를 연결한다.
     if (alarmEditorNavigation != null) {
         AlarmEditorNavigationBinding(
             navigation = alarmEditorNavigation,
@@ -77,6 +77,7 @@ internal fun AppRuntimeCoordinator(
         authSessionState = authSessionState,
         pendingRoomActivityPush = pendingRoomActivityPush,
         isRingingAlarm = displayedRoute is AppRoute.AlarmRinging,
+        canHandleRoomActivityPush = canHandleRoomActivityPush,
         onRoomActivityPushHandled = onRoomActivityPushHandled,
     )
     AppMessageDialogHost(

@@ -35,7 +35,7 @@ class RoomIosMissionOutcomeRecorderTest {
         val alarms = RoomAlarmDataSource(database.alarmDao())
         val settings = SavedAlarmSchedule(AlarmScheduleRequest(
             id = "alarm", time = "07:00", selectedDays = listOf("월"), repeatEnabled = true, limitMinutes = 5,
-            destinationName = "회사", destinationAddress = "서울", destinationLatitude = 37.5, destinationLongitude = 127.0,
+            destinationLabel = "회사", destinationLatitude = 37.5, destinationLongitude = 127.0,
             alarmSoundName = "기본", alarmSoundUri = null,
         ), enabled = true)
         alarms.replace(settings)
@@ -222,7 +222,7 @@ class RoomIosMissionOutcomeRecorderTest {
         val alarms = RoomAlarmDataSource(database.alarmDao())
         alarms.replace(SavedAlarmSchedule(AlarmScheduleRequest(
             id = "alarm", time = "06:00", selectedDays = listOf("월"), repeatEnabled = true, limitMinutes = 30,
-            destinationName = "변경됨", destinationAddress = "서울", destinationLatitude = 37.1, destinationLongitude = 127.1,
+            destinationLabel = "변경됨", destinationLatitude = 37.1, destinationLongitude = 127.1,
             alarmSoundName = "기본", alarmSoundUri = null,
         ), enabled = true))
         val recorder = recorder(database)

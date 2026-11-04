@@ -110,6 +110,13 @@ interface IosAlarmScheduler {
         callback: (IosAlarmOperationResult) -> Unit,
     )
 
+    fun cancelFutureForLogout(
+        alarmId: String,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        cancel(alarmId, callback)
+    }
+
     fun stop(
         alarmId: String,
         callback: (IosAlarmOperationResult) -> Unit,
@@ -123,6 +130,9 @@ interface IosAlarmScheduler {
 internal suspend fun IosAlarmScheduler.scheduleRetryAwait(
     request: IosAlarmRetryScheduleDto,
 ) {
+    check(!isIosMissionReservationBlocked(request.alarmKitId)) {
+        "로그아웃으로 취소된 미션의 알람을 예약할 수 없습니다."
+    }
     val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
         scheduleRetry(request, callback)
     }
@@ -134,6 +144,7 @@ internal suspend fun IosAlarmScheduler.requestAuthorizationAwait():
     awaitSingleCallback { callback -> requestAuthorization(callback) }
 
 internal suspend fun IosAlarmScheduler.scheduleAwait(request: AlarmScheduleRequest) {
+    check(!isIosAlarmSchedulingBlocked()) { "로그아웃 처리 중에는 알람을 예약할 수 없습니다." }
     val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
         schedule(request.toIosAlarmScheduleDto(), callback)
     }
@@ -146,6 +157,14 @@ internal suspend fun IosAlarmScheduler.cancelAwait(alarmId: String) {
     }
     if (result.code == IosAlarmOperationCode.NOT_FOUND) return
     result.requireAlarmKitSuccess("AlarmKit 알람을 해제하지 못했습니다.")
+}
+
+internal suspend fun IosAlarmScheduler.cancelFutureForLogoutAwait(alarmId: String) {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        cancelFutureForLogout(alarmId, callback)
+    }
+    if (result.code == IosAlarmOperationCode.NOT_FOUND) return
+    result.requireAlarmKitSuccess("AlarmKit 예약 알람을 해제하지 못했습니다.")
 }
 
 internal suspend fun IosAlarmScheduler.stopAwait(alarmId: String): Boolean {
@@ -177,8 +196,8 @@ internal fun AlarmScheduleRequest.toIosAlarmScheduleDto(): IosAlarmScheduleDto {
             .distinct()
             .sorted(),
         repeats = repeatEnabled,
-        title = destinationName.ifBlank { "Ringout" },
-        destinationName = destinationName,
+        title = destinationLabel.ifBlank { "Ringout" },
+        destinationName = destinationLabel,
         destinationLatitude = destinationLatitude,
         destinationLongitude = destinationLongitude,
         arrivalRadiusMeters = DefaultArrivalRadiusMeters,

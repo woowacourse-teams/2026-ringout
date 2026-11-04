@@ -18,11 +18,7 @@ import com.joon.ringout.analytics.InMemoryProductAnalyticsUsageStore
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthTerm
 import com.joon.ringout.domain.auth.SocialLoginOutcome
-import com.joon.ringout.domain.destination.DestinationRepository
-import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.presentation.signup.SignupViewModel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,7 +41,6 @@ class TermsAgreementRouteTest {
         val authRepository = ExitAuthRepository()
         val signup = SignupViewModel(
             authRepository = authRepository,
-            destinationRepository = ExitDestinationRepository(),
             productAnalyticsRecorder = DefaultProductAnalyticsRecorder(
                 tracker = AnalyticsTracker {},
                 usageStore = InMemoryProductAnalyticsUsageStore(),
@@ -62,7 +57,7 @@ class TermsAgreementRouteTest {
                         signupViewModel = signup,
                         isActive = active,
                         onMissingSignup = { missingSignup++ },
-                        onSignupCompleted = { completedSignup++; true },
+                        onSignupCompleted = { _, _ -> completedSignup++; true },
                     )
                 }
             }
@@ -98,13 +93,4 @@ private class ExitAuthRepository : AuthRepository {
         signupRequests++
     }
     override suspend fun logout() = Unit
-}
-
-private class ExitDestinationRepository : DestinationRepository {
-    override fun observeAll(): Flow<List<SavedDestination>> = flowOf(emptyList())
-    override suspend fun fetchAll(): List<SavedDestination> = emptyList()
-    override suspend fun sync(): List<SavedDestination> = emptyList()
-    override suspend fun save(destination: SavedDestination): SavedDestination = destination
-    override suspend fun updateName(id: Long, name: String): Boolean = false
-    override suspend fun delete(id: Long): Boolean = false
 }

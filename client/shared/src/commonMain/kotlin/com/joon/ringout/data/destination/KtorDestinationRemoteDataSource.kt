@@ -12,7 +12,6 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
-import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -43,7 +42,6 @@ class KtorDestinationRemoteDataSource(
     }
 
     override suspend fun sync(destinations: List<SavedDestination>): List<SavedDestination> {
-        val destinationsByClientId = destinations.associateBy(SavedDestination::id)
         val response = authenticatedRequests.execute { accessToken ->
             httpClient.post(ApiConfig.url("/api/v1/destinations/sync")) {
                 bearerAuth(accessToken)
@@ -55,7 +53,7 @@ class KtorDestinationRemoteDataSource(
                             }
                             DestinationSyncItemRequest(
                                 clientDestinationId = destination.id,
-                                alias = destination.name,
+                                alias = destination.label,
                                 latitude = destination.latitude,
                                 longitude = destination.longitude,
                             )
@@ -70,8 +68,7 @@ class KtorDestinationRemoteDataSource(
         return result.destinations.map { synced ->
             SavedDestination(
                 id = synced.destinationId,
-                name = synced.alias,
-                address = destinationsByClientId[synced.clientDestinationId]?.address.orEmpty(),
+                label = synced.alias,
                 latitude = synced.latitude,
                 longitude = synced.longitude,
             )
@@ -84,7 +81,7 @@ class KtorDestinationRemoteDataSource(
                 bearerAuth(accessToken)
                 setBody(
                     DestinationCreateRequest(
-                        alias = destination.name,
+                        alias = destination.label,
                         latitude = destination.latitude,
                         longitude = destination.longitude,
                     ),
@@ -108,18 +105,6 @@ class KtorDestinationRemoteDataSource(
         return true
     }
 
-    override suspend fun updateName(id: Long, name: String): Boolean {
-        val response = authenticatedRequests.execute { accessToken ->
-            httpClient.patch(ApiConfig.url("/api/v1/destinations/$id")) {
-                bearerAuth(accessToken)
-                setBody(DestinationUpdateRequest(alias = name))
-            }
-        }
-        val body = response.decodeOrThrow<DestinationResponse>()
-        check(body.isSuccess) { body.message }
-        checkNotNull(body.result) { "목적지 수정 응답이 비어 있어요." }
-        return true
-    }
 }
 
 @Serializable
@@ -162,11 +147,6 @@ private data class DestinationCreateResponse(
 )
 
 @Serializable
-private data class DestinationUpdateRequest(
-    val alias: String,
-)
-
-@Serializable
 private data class DestinationResponse(
     val destinationId: Long,
     val alias: String,
@@ -176,8 +156,7 @@ private data class DestinationResponse(
 
 private fun DestinationResponse.toDomain(): SavedDestination = SavedDestination(
     id = destinationId,
-    name = alias,
-    address = "",
+    label = alias,
     latitude = latitude,
     longitude = longitude,
 )

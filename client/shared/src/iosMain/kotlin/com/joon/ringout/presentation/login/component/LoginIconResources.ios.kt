@@ -6,10 +6,10 @@ import ringout.shared.generated.resources.login_apple_logo
 import ringout.shared.generated.resources.login_google
 import ringout.shared.generated.resources.login_kakao
 import ringout.shared.generated.resources.login_naver
-import ringout.shared.generated.resources.mypage_arrow_left
+import ringout.shared.generated.resources.login_welcome_logo
 
-internal actual val LoginBackIconResource: DrawableResource =
-    Res.drawable.mypage_arrow_left
+internal actual val LoginWelcomeLogoResource: DrawableResource =
+    Res.drawable.login_welcome_logo
 internal actual val LoginAppleIconResource: DrawableResource =
     Res.drawable.login_apple_logo
 internal actual val LoginGoogleIconResource: DrawableResource =

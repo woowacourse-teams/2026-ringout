@@ -14,7 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -23,7 +23,10 @@ import androidx.navigationevent.NavigationEvent
 import androidx.navigationevent.NavigationEventDispatcher
 import androidx.navigationevent.NavigationEventDispatcherOwner
 import androidx.navigationevent.NavigationEventInput
+import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.joon.ringout.presentation.FontScaleTestContent
 import com.joon.ringout.presentation.launchWithFontScale
 import org.junit.Rule
@@ -41,7 +44,7 @@ class AlarmCreationGuideNavigationTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
-    fun `공통 뒤로가기 제스처는 작성 중인 알람을 닫지 않고 가이드만 종료한다`() {
+    fun `공통 뒤로가기 제스처는 작성 화면을 닫고 홈의 첫 안내로 돌아간다`() {
         val fixture = Fixture()
         launch(fixture).use {
             compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
@@ -54,13 +57,15 @@ class AlarmCreationGuideNavigationTest {
             }
             compose.runOnIdle { fixture.input.complete() }
 
-            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
-            compose.onNodeWithText("작성 중인 알람 07:20").assertIsDisplayed()
+            compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
             compose.runOnIdle {
-                assertEquals(listOf(Route.Home, Route.Editor), fixture.backStack.toList())
-                assertEquals(1, fixture.finishCalls)
-                assertEquals(0, fixture.editorDisposals)
+                assertEquals(listOf(Route.Home), fixture.backStack.toList())
+                assertEquals(0, fixture.finishCalls)
+                assertEquals(1, fixture.editorDisposals)
+                assertEquals(1, fixture.guideBackCalls)
                 assertEquals(0, fixture.navigationBackCalls)
+                assertTrue(fixture.isPending)
+                assertEquals(AlarmCreationGuideStep.AddAlarm, fixture.viewModel.uiState.value.step)
             }
         }
     }
@@ -100,8 +105,13 @@ class AlarmCreationGuideNavigationTest {
             }
 
             compose.runOnIdle { fixture.input.gesture() }
-            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
-            compose.runOnIdle { assertEquals(1, fixture.finishCalls) }
+            compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
+            compose.runOnIdle {
+                assertEquals(0, fixture.finishCalls)
+                assertEquals(1, fixture.guideBackCalls)
+                assertEquals(listOf(Route.Home), fixture.backStack.toList())
+                assertTrue(fixture.isPending)
+            }
         }
     }
 
@@ -110,6 +120,7 @@ class AlarmCreationGuideNavigationTest {
         val fixture = Fixture().apply { holdFinish = true }
         launch(fixture).use {
             compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
+            compose.onNodeWithTag("guide-skip").performClick()
             compose.runOnIdle { fixture.input.gesture() }
             compose.runOnIdle { fixture.input.gesture() }
 
@@ -125,26 +136,50 @@ class AlarmCreationGuideNavigationTest {
     }
 
     @Test
-    fun `목적지 안내 중 뒤로가기 제스처는 작성 화면을 유지하고 가이드만 종료한다`() =
-        assertBackEndsGuideWithoutNavigation(AlarmCreationGuideStep.Destination)
+    fun `목적지 안내 중 뒤로가기 제스처는 홈의 첫 안내로 돌아간다`() =
+        assertBackReturnsToFirstStep(AlarmCreationGuideStep.Destination)
 
     @Test
-    fun `알람음 안내 중 뒤로가기 제스처는 작성 화면을 유지하고 가이드만 종료한다`() =
-        assertBackEndsGuideWithoutNavigation(AlarmCreationGuideStep.Sound)
+    fun `알람음 안내 중 뒤로가기 제스처는 홈의 첫 안내로 돌아간다`() =
+        assertBackReturnsToFirstStep(AlarmCreationGuideStep.Sound)
 
-    private fun assertBackEndsGuideWithoutNavigation(step: AlarmCreationGuideStep) {
+    private fun assertBackReturnsToFirstStep(step: AlarmCreationGuideStep) {
         val fixture = Fixture(step)
         launch(fixture).use {
             compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
             compose.runOnIdle { fixture.input.gesture() }
 
-            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
-            compose.onNodeWithText("작성 중인 알람 07:20").assertIsDisplayed()
+            compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
             compose.runOnIdle {
-                assertEquals(listOf(Route.Home, Route.Editor), fixture.backStack.toList())
-                assertEquals(1, fixture.finishCalls)
+                assertEquals(listOf(Route.Home), fixture.backStack.toList())
+                assertEquals(0, fixture.finishCalls)
                 assertEquals(0, fixture.navigationBackCalls)
-                assertEquals(0, fixture.editorDisposals)
+                assertEquals(1, fixture.guideBackCalls)
+                assertEquals(1, fixture.editorDisposals)
+                assertTrue(fixture.isPending)
+                assertEquals(AlarmCreationGuideStep.AddAlarm, fixture.viewModel.uiState.value.step)
+            }
+        }
+    }
+
+    @Test
+    fun `홈 안내 중 뒤로가기는 완료하지 않고 다음 진입에서 첫 안내를 표시한다`() {
+        val fixture = Fixture(AlarmCreationGuideStep.AddAlarm)
+        launch(fixture).use {
+            compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
+            compose.runOnIdle { fixture.input.gesture() }
+
+            compose.onNodeWithTag("guide-overlay").assertDoesNotExist()
+            compose.runOnIdle {
+                assertEquals(0, fixture.finishCalls)
+                assertEquals(0, fixture.guideBackCalls)
+                assertEquals(1, fixture.navigationBackCalls)
+                assertTrue(fixture.isPending)
+                fixture.canPresent = true
+            }
+            compose.onNodeWithTag("guide-overlay").assertIsDisplayed()
+            compose.runOnIdle {
+                assertEquals(AlarmCreationGuideStep.AddAlarm, fixture.viewModel.uiState.value.step)
             }
         }
     }
@@ -164,13 +199,23 @@ class AlarmCreationGuideNavigationTest {
                 viewModel = fixture.viewModel,
                 isPending = fixture.isPending,
                 surface = surface,
-                canPresent = true,
+                canPresent = fixture.canPresent,
                 isAlarmSaving = fixture.isAlarmSaving,
                 isFinishing = guideState.isFinishing,
                 finishFailed = false,
                 onOpenEditor = { fixture.backStack.add(Route.Editor) },
                 onFinish = fixture::finish,
+                onBackFromEditor = fixture::backFromEditor,
             ) {
+                NavigationBackHandler(
+                    state = rememberNavigationEventState(NavigationEventInfo.None),
+                    isBackEnabled = fixture.backStack.size == 1 && fixture.canPresent,
+                    onBackCompleted = {
+                        fixture.navigationBackCalls++
+                        fixture.viewModel.interrupt()
+                        fixture.canPresent = false
+                    },
+                )
                 // NavDisplay registers the same common back handler used by the production host.
                 NavDisplay(
                     backStack = fixture.backStack,
@@ -202,10 +247,14 @@ class AlarmCreationGuideNavigationTest {
         NavigationEventDispatcherOwner {
         override val navigationEventDispatcher = NavigationEventDispatcher()
         val input = GestureInput()
-        val backStack = NavBackStack<Route>(Route.Home, Route.Editor)
+        val backStack = NavBackStack<Route>(Route.Home).apply {
+            if (initialStep != AlarmCreationGuideStep.AddAlarm) add(Route.Editor)
+        }
         val viewModel = AlarmCreationGuideViewModel()
         var isPending by mutableStateOf(true)
         var isAlarmSaving by mutableStateOf(false)
+        var canPresent by mutableStateOf(true)
+        var guideBackCalls = 0
         var holdFinish = false
         var finishCalls = 0
         var editorDisposals = 0
@@ -220,6 +269,12 @@ class AlarmCreationGuideNavigationTest {
                     viewModel.onContextChanged(true, AlarmCreationGuideSurface.Editor, true)
                 }
             }
+        }
+
+        fun backFromEditor() {
+            guideBackCalls++
+            viewModel.interrupt()
+            backStack.removeLastOrNull()
         }
 
         fun finish() {

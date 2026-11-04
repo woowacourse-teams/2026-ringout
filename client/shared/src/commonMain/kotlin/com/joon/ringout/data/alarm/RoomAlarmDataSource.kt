@@ -26,6 +26,10 @@ class RoomAlarmDataSource(
     override suspend fun setEnabled(id: String, enabled: Boolean): Boolean =
         alarmDao.setEnabled(id = id, enabled = enabled) == 1
 
+    override suspend fun disableAll() {
+        alarmDao.disableAll()
+    }
+
     override suspend fun delete(id: String): Boolean = alarmDao.delete(id) == 1
 
     override suspend fun migrateId(oldId: String, newId: String): Boolean =

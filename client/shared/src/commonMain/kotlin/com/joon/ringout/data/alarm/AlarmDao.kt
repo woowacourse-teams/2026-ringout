@@ -54,6 +54,9 @@ interface AlarmDao {
     @Query("UPDATE alarms SET enabled = :enabled WHERE id = :id")
     suspend fun setEnabled(id: String, enabled: Boolean): Int
 
+    @Query("UPDATE alarms SET enabled = 0")
+    suspend fun disableAll(): Int
+
     @Query("DELETE FROM alarms WHERE id = :id")
     suspend fun delete(id: String): Int
 

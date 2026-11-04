@@ -9,9 +9,10 @@ import com.joon.ringout.analytics.AnalyticsAuthProvider
 internal fun LoginRoute(
     viewModel: LoginViewModel,
     isActive: Boolean,
-    onBackClick: () -> Unit,
-    onAuthenticated: () -> Boolean,
-    onSignupRequired: (String, AnalyticsAuthProvider) -> Boolean,
+    onAuthenticated: (Long, Long) -> Boolean,
+    onSignupRequired: (Long, Long, String, AnalyticsAuthProvider) -> Boolean,
+    onLoginStarted: () -> Long = { 0L },
+    onLoginAttemptRejected: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uiState = viewModel.uiState
@@ -28,8 +29,13 @@ internal fun LoginRoute(
     LaunchedEffect(viewModel, completion, isActive) {
         if (!isActive) return@LaunchedEffect
         val handled = when (completion) {
-            is LoginCompletion.Authenticated -> onAuthenticated()
+            is LoginCompletion.Authenticated -> onAuthenticated(
+                completion.attemptId,
+                completion.eventId,
+            )
             is LoginCompletion.SignupRequired -> onSignupRequired(
+                completion.attemptId,
+                completion.eventId,
                 completion.signupToken,
                 completion.provider,
             )
@@ -40,20 +46,40 @@ internal fun LoginRoute(
 
     LoginScreen(
         uiState = uiState,
-        onBackClick = onBackClick,
         onSocialLoginClick = { provider ->
             if (isActive) {
                 when (provider) {
                     SocialLoginProvider.Apple -> {
-                        if (viewModel.beginAppleSignIn()) launchAppleSignIn()
+                        if (!viewModel.uiState.isLoading) {
+                            val attemptId = onLoginStarted()
+                            if (viewModel.beginAppleSignIn(attemptId)) {
+                                launchAppleSignIn()
+                            } else {
+                                onLoginAttemptRejected(attemptId)
+                            }
+                        }
                     }
 
                     SocialLoginProvider.Google -> {
-                        if (viewModel.beginGoogleSignIn()) launchGoogleSignIn()
+                        if (!viewModel.uiState.isLoading) {
+                            val attemptId = onLoginStarted()
+                            if (viewModel.beginGoogleSignIn(attemptId)) {
+                                launchGoogleSignIn()
+                            } else {
+                                onLoginAttemptRejected(attemptId)
+                            }
+                        }
                     }
 
                     SocialLoginProvider.Kakao -> {
-                        if (viewModel.beginKakaoSignIn()) launchKakaoSignIn()
+                        if (!viewModel.uiState.isLoading) {
+                            val attemptId = onLoginStarted()
+                            if (viewModel.beginKakaoSignIn(attemptId)) {
+                                launchKakaoSignIn()
+                            } else {
+                                onLoginAttemptRejected(attemptId)
+                            }
+                        }
                     }
                 }
             }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,7 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,12 +46,13 @@ internal fun DestinationSelectionDialog(
     destinations: List<SavedDestination>,
     onDismissRequest: () -> Unit,
     onSelect: (SavedDestination) -> Unit,
+    onDelete: (SavedDestination) -> Unit,
     onFindInMap: () -> Unit,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
     errorMessage: String? = null,
     onRetry: () -> Unit = {},
-    onManage: (SavedDestination) -> Unit = {},
+    isDeleteConfirmationOpen: Boolean = false,
 ) {
     Dialog(
         onDismissRequest = onDismissRequest,
@@ -60,12 +62,13 @@ internal fun DestinationSelectionDialog(
             destinations = destinations,
             onDismissRequest = onDismissRequest,
             onSelect = onSelect,
+            onDelete = onDelete,
             onFindInMap = onFindInMap,
             modifier = modifier.padding(horizontal = 21.dp),
             isLoading = isLoading,
             errorMessage = errorMessage,
             onRetry = onRetry,
-            onManage = onManage,
+            isDeleteConfirmationOpen = isDeleteConfirmationOpen,
         )
     }
 }
@@ -75,12 +78,13 @@ internal fun DestinationSelectionDialogContent(
     destinations: List<SavedDestination>,
     onDismissRequest: () -> Unit,
     onSelect: (SavedDestination) -> Unit,
+    onDelete: (SavedDestination) -> Unit,
     onFindInMap: () -> Unit,
     modifier: Modifier = Modifier,
     isLoading: Boolean = false,
     errorMessage: String? = null,
     onRetry: () -> Unit = {},
-    onManage: (SavedDestination) -> Unit = {},
+    isDeleteConfirmationOpen: Boolean = false,
 ) {
     val colors = DestinationManagementPalette
     val listState = rememberLazyListState()
@@ -128,10 +132,18 @@ internal fun DestinationSelectionDialogContent(
                             state = listState,
                             modifier = Modifier.fillMaxWidth().height(194.dp)
                                 .semantics { contentDescription = "저장된 목적지 목록" },
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(0.dp),
                         ) {
-                            items(destinations, key = SavedDestination::id) { destination ->
-                                DestinationSelectionRow(destination, onSelect = { onSelect(destination) }, onManage = { onManage(destination) })
+                            itemsIndexed(destinations, key = { _, destination -> destination.id }) { index, destination ->
+                                DestinationSelectionRow(
+                                    destination = destination,
+                                    onSelect = { onSelect(destination) },
+                                    onDelete = { onDelete(destination) },
+                                    isEnabled = !isDeleteConfirmationOpen,
+                                )
+                                if (index != destinations.lastIndex) {
+                                    Spacer(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
+                                }
                             }
                         }
                         if (showScrollbar) {
@@ -165,45 +177,32 @@ internal fun DestinationSelectionDialogContent(
 private fun DestinationSelectionRow(
     destination: SavedDestination,
     onSelect: () -> Unit,
-    onManage: () -> Unit = {},
+    onDelete: () -> Unit,
+    isEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val colors = DestinationManagementPalette
     Row(
-        modifier = modifier.fillMaxWidth().height(58.dp).padding(horizontal = 10.dp),
+        modifier = modifier.fillMaxWidth().height(58.dp).padding(horizontal = 10.dp)
+            .semantics { contentDescription = "${destination.label} 선택" }
+            .clickable(enabled = isEnabled, role = Role.Button, onClick = onSelect),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 10.dp)) {
-            Text(
-                text = destination.name,
-                color = colors.itemText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
-            )
-            Text(
-                text = destination.address.removePrefix("대한민국 ").trimStart(),
-                color = colors.secondaryAction,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium),
-            )
-        }
+        Text(
+            text = destination.label,
+            modifier = Modifier.weight(1f).padding(start = 10.dp, end = 8.dp),
+            color = colors.itemText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
+        )
         Box(
-            modifier = Modifier.size(48.dp)
-                .semantics { contentDescription = "${destination.name} 관리" }
-                .clickable(role = Role.Button, onClick = onManage),
+            modifier = Modifier.size(width = 52.dp, height = 48.dp)
+                .semantics { contentDescription = "${destination.label} 제거" }
+                .clickable(enabled = isEnabled, role = Role.Button, onClick = onDelete),
             contentAlignment = Alignment.Center,
         ) {
-            Text("관리", color = colors.secondaryAction, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-        }
-        Box(
-            modifier = Modifier.size(48.dp)
-                .semantics { contentDescription = "${destination.name} 선택" }
-                .clickable(role = Role.Button, onClick = onSelect),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("선택", color = colors.primaryAction, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text("제거", color = colors.primaryAction, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -214,9 +213,9 @@ private fun DestinationSelectionDialogContentPreview() {
     RingoutTheme {
         DestinationSelectionDialogContent(
             destinations = listOf("370-41", "헬스장", "러닝").mapIndexed { index, name ->
-                SavedDestination(index.toLong() + 1, name, "대한민국 경기도 수원시 팔달구", 37.28, 127.01)
+                SavedDestination(index.toLong() + 1, name, 37.28, 127.01)
             },
-            onDismissRequest = {}, onSelect = {}, onFindInMap = {},
+            onDismissRequest = {}, onSelect = {}, onDelete = {}, onFindInMap = {},
         )
     }
 }
@@ -225,7 +224,7 @@ private fun DestinationSelectionDialogContentPreview() {
 @Composable
 private fun DestinationSelectionDialogPreview() {
     RingoutTheme {
-        DestinationSelectionDialog(emptyList(), {}, {}, {}, isLoading = true)
+        DestinationSelectionDialog(emptyList(), {}, {}, {}, {}, isLoading = true)
     }
 }
 
@@ -234,8 +233,10 @@ private fun DestinationSelectionDialogPreview() {
 private fun DestinationSelectionRowPreview() {
     RingoutTheme {
         DestinationSelectionRow(
-            destination = SavedDestination(1, "헬스장", "대한민국 경기도 수원시", 37.28, 127.01),
+            destination = SavedDestination(1, "헬스장", 37.28, 127.01),
             onSelect = {},
+            onDelete = {},
+            isEnabled = true,
         )
     }
 }
@@ -244,6 +245,6 @@ private fun DestinationSelectionRowPreview() {
 @Composable
 private fun DestinationSelectionDialogErrorPreview() {
     RingoutTheme {
-        DestinationSelectionDialogContent(emptyList(), {}, {}, {}, errorMessage = "조회 실패")
+        DestinationSelectionDialogContent(emptyList(), {}, {}, {}, {}, errorMessage = "조회 실패")
     }
 }

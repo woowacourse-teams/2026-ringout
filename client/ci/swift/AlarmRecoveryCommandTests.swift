@@ -18,7 +18,39 @@ struct AlarmRecoveryCommandTests {
         try await `compact된_실행은_중지와_미발견_모두_terminal_ID를_반환한다`()
         try await `OS_중지_대기중_compact되어도_최신_terminal_ID를_반환한다`()
         try await `수락뒤_중단된_PENDING은_직접_재시도에서_한번만_예약한다`()
-        print("14 alarm recovery command tests passed")
+        try await `미인증_종료는_현재_울림만_중지하고_미션과_미래예약을_변경하지_않는다`()
+        try await `OS_중지_대기중_세션이_끝나면_미션이나_재울림을_만들지_않는다`()
+        print("16 alarm recovery command tests passed")
+    }
+
+    static func `미인증_종료는_현재_울림만_중지하고_미션과_미래예약을_변경하지_않는다`() async throws {
+        try await fixture { journal, os in
+            let before = try journal.recoveryState()
+            let result = await os.command(journal).stopOnly(systemAlarmId: "current-ring")
+            assert(result.disposition == .stopOnly)
+            assert(result.osStopCode == .success)
+            assert(os.stopped == ["current-ring"])
+            assert(os.scheduled.isEmpty)
+            assert(os.cancelled.isEmpty)
+            let after = try journal.recoveryState()
+            assert(after.chains.isEmpty)
+            assert(before.sources == after.sources)
+            assert(before.snapshots == after.snapshots)
+        }
+    }
+
+    static func `OS_중지_대기중_세션이_끝나면_미션이나_재울림을_만들지_않는다`() async throws {
+        try await fixture { journal, os in
+            os.onStop = { os.missionAllowed = false }
+            let result = await os.command(journal).dismiss(alarmId: "source", occurrenceToken: "root",
+                retryAttempt: 0, scheduleVersion: 1, systemAlarmId: "current-ring",
+                now: Date(timeIntervalSince1970: 1_000))
+            assert(result.disposition == .stopOnly)
+            assert(result.osStopCode == .success)
+            assert(os.scheduled.isEmpty)
+            let state = try journal.recoveryState()
+            assert(state.chains.isEmpty)
+        }
     }
 
     final class OS {
@@ -29,6 +61,7 @@ struct AlarmRecoveryCommandTests {
         var scheduleFailure = false
         var onSchedule: (() throws -> Void)?
         var onStop: (() throws -> Void)?
+        var missionAllowed = true
         var directory: URL!
         func command(_ journal: AlarmRecoveryJournal) -> AlarmRecoveryCommand {
             AlarmRecoveryCommand(
@@ -41,7 +74,8 @@ struct AlarmRecoveryCommandTests {
                     if self.scheduleFailure { throw NSError(domain: "fake-schedule", code: 42) }
                 },
                 contains: { id in self.scheduled.contains { $0.nextReservationUUID == id } && !self.cancelled.contains(id) },
-                cancel: { self.cancelled.append($0) }
+                cancel: { self.cancelled.append($0) },
+                missionAccess: { self.missionAllowed }
             )
         }
     }

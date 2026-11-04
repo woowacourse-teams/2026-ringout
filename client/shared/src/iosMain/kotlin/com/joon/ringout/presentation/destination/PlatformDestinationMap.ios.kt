@@ -41,6 +41,9 @@ actual fun PlatformDestinationMap(
     cameraTarget: DestinationSelection?,
     currentLocationRequestId: Int,
     currentLocationCancellationId: Int,
+    addressResolutionRequestId: Int,
+    addressResolutionLatitude: Double,
+    addressResolutionLongitude: Double,
     onCameraMoveStarted: () -> Unit,
     onCameraSettled: (
         latitude: Double,
@@ -163,6 +166,17 @@ actual fun PlatformDestinationMap(
             longitude = target.longitude,
             commandId = cameraCommandId,
         )
+    }
+
+    LaunchedEffect(addressResolutionRequestId) {
+        if (addressResolutionRequestId > 0) {
+            cameraCommandId += 1
+            mapController.moveCamera(
+                latitude = addressResolutionLatitude,
+                longitude = addressResolutionLongitude,
+                commandId = cameraCommandId,
+            )
+        }
     }
 
     LaunchedEffect(currentLocationRequestId) {

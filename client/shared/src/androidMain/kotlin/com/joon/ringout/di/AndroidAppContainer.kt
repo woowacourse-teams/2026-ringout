@@ -24,6 +24,7 @@ import com.joon.ringout.data.network.getRingoutHttpClient
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.AndroidSystemThemeModeReader
 import com.joon.ringout.data.preferences.getAppPreferencesDataStore
+import com.joon.ringout.data.preferences.getInstallationPreferencesDataStore
 import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.data.push.AndroidFcmTokenSource
 import com.joon.ringout.data.push.KtorPushTokenRegistrar
@@ -52,8 +53,13 @@ class AndroidAppContainer(
 
     override val appPreferencesRepository =
         DataStoreAppPreferencesRepository(
-            getAppPreferencesDataStore(context)
+            dataStore = getAppPreferencesDataStore(context),
+            installationDataStore = getInstallationPreferencesDataStore(context),
         )
+
+    override val hasStoredAlarmsForEntryMigration: suspend () -> Boolean = {
+        database.alarmDao().getAll().isNotEmpty()
+    }
 
     override val systemThemeModeReader = AndroidSystemThemeModeReader(context)
 

@@ -28,7 +28,6 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.mypage.component.MyPageAccountLoadError
 import com.joon.ringout.presentation.mypage.component.MyPageLoggedInAccountStatus
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus as AccountStatus
-import com.joon.ringout.presentation.mypage.component.MyPageAccountStatus
 import com.joon.ringout.presentation.mypage.component.MyPageAppVersionRow
 import com.joon.ringout.presentation.mypage.component.MyPagePolicySection
 import com.joon.ringout.presentation.mypage.component.MyPageThemeCard
@@ -41,10 +40,9 @@ internal fun MyPageScreen(
     policies: List<PolicyInfo>,
     onThemeModeChange: (ThemeMode) -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
+    accountStatus: AccountStatus,
     modifier: Modifier = Modifier,
     extraContent: (@Composable (ThemeMode) -> Unit)? = null,
-    onLoginClick: () -> Unit = {},
-    accountStatus: AccountStatus = AccountStatus.LoggedOut,
     profileImageUrl: String? = null,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
@@ -58,7 +56,6 @@ internal fun MyPageScreen(
         policies = policies,
         onThemeModeChange = onThemeModeChange,
         onPolicyClick = onPolicyClick,
-        onLoginClick = onLoginClick,
         accountStatus = accountStatus,
         profileImageUrl = profileImageUrl,
         onAccountRetry = onAccountRetry,
@@ -76,10 +73,9 @@ fun MyPageScreenContent(
     policies: List<PolicyInfo>,
     onThemeModeChange: (ThemeMode) -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
+    accountStatus: AccountStatus,
     modifier: Modifier = Modifier,
     extraContent: (@Composable (ThemeMode) -> Unit)? = null,
-    onLoginClick: () -> Unit = {},
-    accountStatus: AccountStatus = AccountStatus.LoggedOut,
     profileImageUrl: String? = null,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
@@ -106,7 +102,6 @@ fun MyPageScreenContent(
                     color = colors.secondaryText,
                     modifier = Modifier.padding(vertical = 20.dp),
                 )
-                AccountStatus.LoggedOut -> MyPageAccountStatus(onClick = onLoginClick)
                 AccountStatus.Error -> MyPageAccountLoadError(onRetry = onAccountRetry)
                 is AccountStatus.LoggedIn -> MyPageLoggedInAccountStatus(
                     nickname = accountStatus.nickname,
@@ -183,7 +178,10 @@ private fun MyPageSmallPreview() = MyPagePreview(ThemeMode.Dark)
 @Composable
 private fun MyPagePreview(
     themeMode: ThemeMode,
-    accountStatus: AccountStatus = AccountStatus.LoggedOut,
+    accountStatus: AccountStatus = AccountStatus.LoggedIn(
+        nickname = "링아웃",
+        email = "ringout@example.com",
+    ),
 ) {
     RingoutTheme(themeMode) {
         MyPageScreenContent(
