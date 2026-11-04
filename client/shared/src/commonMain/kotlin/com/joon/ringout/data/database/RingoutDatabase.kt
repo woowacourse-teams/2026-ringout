@@ -5,6 +5,7 @@ import androidx.room3.ConstructedBy
 import androidx.room3.Database
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
+import androidx.sqlite.SQLiteDriver
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.joon.ringout.data.alarmactivity.AlarmOccurrenceTimesEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityDao
@@ -65,8 +66,13 @@ expect object RingoutDatabaseConstructor : RoomDatabaseConstructor<RingoutDataba
 
 fun buildRingoutDatabase(
     builder: RoomDatabase.Builder<RingoutDatabase>,
+): RingoutDatabase = buildRingoutDatabase(builder, BundledSQLiteDriver())
+
+internal fun buildRingoutDatabase(
+    builder: RoomDatabase.Builder<RingoutDatabase>,
+    driver: SQLiteDriver,
 ): RingoutDatabase = builder
-    .setDriver(BundledSQLiteDriver())
+    .setDriver(driver)
     .addMigrations(
         RingoutMigration1To2,
         RingoutMigration2To3,
