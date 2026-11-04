@@ -28,6 +28,14 @@ internal class AppNavigationState(
     private val guestOnlyMode: Boolean = false,
     private val authenticationOnlyMode: Boolean = false,
 ) {
+    init {
+        check(
+            authenticationOnlyMode || routes.none {
+                it == AppRoute.Login || it == AppRoute.TermsAgreement
+            },
+        ) { "Authentication routes must use the root authentication navigation state." }
+    }
+
     // Not saved: a restored stack must never replay an old back animation.
     private var lastBackTransition: Pair<AppRoute, AppRoute>? by mutableStateOf(null)
 
@@ -53,6 +61,9 @@ internal class AppNavigationState(
             }
             replaceBackStack(destinationStack)
             return
+        }
+        check(route != AppRoute.Login && route != AppRoute.TermsAgreement) {
+            "Authentication routes must use the root authentication navigation state."
         }
         if (guestOnlyMode) {
             when (route) {
@@ -91,12 +102,9 @@ internal class AppNavigationState(
             AppRoute.Records -> listOf(AppRoute.Home, AppRoute.Records)
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)
-            // 소셜에서 시작한 인증은 출처를 유지하고, 일반 로그인은 마이페이지로 돌아간다.
-            AppRoute.Login -> socialReturnStack()?.plus(AppRoute.Login)
-                ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
-            AppRoute.TermsAgreement -> socialReturnStack()?.let { socialStack ->
-                socialStack + AppRoute.Login + AppRoute.TermsAgreement
-            } ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
+            AppRoute.Login,
+            AppRoute.TermsAgreement,
+            -> error("Authentication routes must use the root authentication navigation state.")
             AppRoute.AddAlarm -> listOf(AppRoute.Home, AppRoute.AddAlarm)
             is AppRoute.EditAlarm -> listOf(AppRoute.Home, route)
             is AppRoute.Destination,
@@ -115,11 +123,6 @@ internal class AppNavigationState(
         if (routes.toList() == destinationStack) return
 
         replaceBackStack(destinationStack)
-    }
-
-    /** 소셜에서 시작한 인증은 완료 후 기존 소셜 또는 모임 소개 화면으로 돌아간다. */
-    fun completeAuthenticationFlow() {
-        replaceBackStack(socialReturnStack() ?: listOf(AppRoute.Home))
     }
 
     /** 성공한 생성/가입 화면만 RoomHome으로 바꾸며, 이미 나간 화면의 완료는 무시한다. */
@@ -170,30 +173,6 @@ internal class AppNavigationState(
     }
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
-
-    private fun socialReturnStack(): List<AppRoute>? {
-        val currentRoute = routes.lastOrNull() ?: return null
-        if (currentRoute == AppRoute.Social) {
-            return routes.take(routes.lastIndex + 1)
-        }
-
-        val returnRouteIndex = when (currentRoute) {
-            is AppRoute.RoomDetail -> routes.lastIndex
-            AppRoute.Login -> routes.lastIndex - 1
-            AppRoute.TermsAgreement -> routes.indexOfLast { it == AppRoute.Login } - 1
-            else -> return null
-        }
-        if (returnRouteIndex < 1) return null
-
-        return when (val returnRoute = routes[returnRouteIndex]) {
-            AppRoute.Social -> routes.take(returnRouteIndex + 1)
-            is AppRoute.RoomDetail -> {
-                if (routes.getOrNull(returnRouteIndex - 1) != AppRoute.Social) return null
-                routes.take(returnRouteIndex + 1)
-            }
-            else -> null
-        }
-    }
 
     private fun replaceBackStack(destinationStack: List<AppRoute>) {
         lastBackTransition = null

@@ -21,7 +21,6 @@ internal fun MyPageRoute(
     themeMode: ThemeMode,
     appVersion: String,
     onThemeModeChange: (ThemeMode) -> Unit,
-    onLoginClick: () -> Unit,
     modifier: Modifier = Modifier,
     extraContent: (@Composable (ThemeMode) -> Unit)? = null,
     onEditProfileClick: () -> Unit = {},
@@ -54,7 +53,6 @@ internal fun MyPageRoute(
             extraContent = extraContent,
             policies = DefaultMyPagePolicies,
             onThemeModeChange = onThemeModeChange,
-            onLoginClick = onLoginClick,
             onEditProfileClick = onEditProfileClick,
             onPolicyClick = { policyId ->
                 findPolicyUrl(policyId)?.let { url ->

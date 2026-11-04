@@ -115,6 +115,26 @@ class AppBootstrapViewModel(
         startBootstrap()
     }
 
+    /** Switches entry routing to the auth root before a provider attempt is started. */
+    fun requestAuthentication() {
+        if (
+            uiState.authSessionState == AuthSessionState.Authenticated ||
+            uiState.authSessionState == AuthSessionState.Restoring ||
+            uiState.isAuthFlowInProgress
+        ) return
+
+        activeAuthFlowAttemptId = null
+        acceptedAuthFlowEvents.clear()
+        acceptedAuthFlowCompletion = null
+        authFlowCompletionJob?.cancel()
+        uiState = uiState.copy(
+            isAuthFlowInProgress = true,
+            hasAuthFlowCompletionFailed = false,
+            entryErrorMessage = null,
+        )
+        publishDestination()
+    }
+
     fun beginAuthFlow(): Long {
         val attemptId = ++nextAuthFlowAttemptId
         activeAuthFlowAttemptId = attemptId

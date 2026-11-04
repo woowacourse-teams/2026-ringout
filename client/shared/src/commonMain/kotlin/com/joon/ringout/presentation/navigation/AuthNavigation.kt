@@ -57,7 +57,8 @@ internal class AuthNavigation(
     @Suppress("UNUSED_PARAMETER")
     fun isBackBlocked(displayedRoute: AppRoute, authSessionState: AuthSessionState): Boolean =
         when (displayedRoute) {
-            AppRoute.Login -> true
+            // Login is the root of the auth stack; NavDisplay leaves system Back unhandled there.
+            AppRoute.Login -> false
             AppRoute.TermsAgreement ->
                 signupViewModel.uiState.isSaving || signupViewModel.uiState.completedEventId != null
             else -> false

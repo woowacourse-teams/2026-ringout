@@ -71,19 +71,6 @@ class NavigationBackTransitionTest {
     }
 
     @Test
-    fun `인증 완료로 백스택을 정리할 때는 뒤로가기 전환을 적용하지 않는다`() {
-        val state = AppNavigationState().apply {
-            navigate(AppRoute.Login)
-            navigate(AppRoute.TermsAgreement)
-        }
-
-        state.completeAuthenticationFlow()
-
-        assertEquals(listOf(AppRoute.Home), state.backStack.toList())
-        assertFalse(state.isBackTransition(AppRoute.TermsAgreement, AppRoute.Home))
-    }
-
-    @Test
     fun `알람 실행 화면은 미리보기와 복귀 전환 대상에서 제외한다`() {
         val state = AppNavigationState()
         val tracking = AppRoute.ActiveAlarmTracking("mission-1")

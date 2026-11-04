@@ -29,6 +29,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreProvider
+import androidx.navigation3.runtime.NavBackStack
 import androidx.navigationevent.NavigationEvent
 import androidx.navigationevent.NavigationEventDispatcher
 import androidx.navigationevent.NavigationEventDispatcherOwner
@@ -53,6 +54,26 @@ import kotlin.test.assertTrue
 @Config(sdk = [35], qualifiers = "w402dp-h941dp")
 class RingoutNavHostTest {
     @get:Rule val compose = createEmptyComposeRule()
+
+    @Test
+    fun `인증 루트에서 시스템 뒤로 제스처는 앱 내 경로를 제거하지 않는다`() {
+        val fixture = Fixture(AppRoute.Login, authenticationOnlyMode = true)
+        launch(fixture).use {
+            withManualClock {
+                compose.runOnIdle { fixture.input.start() }
+                advanceTransition(32)
+                compose.runOnIdle { fixture.input.progress(1f) }
+                advanceTransition(32)
+                compose.runOnIdle { fixture.input.complete() }
+                advanceTransition(64)
+
+                compose.runOnIdle {
+                    assertEquals(listOf(AppRoute.Login), fixture.navigation.backStack)
+                    assertEquals(0, fixture.navigationBackCalls)
+                }
+            }
+        }
+    }
 
     @Test
     fun `뒤로가기 버튼을 누르면 퇴장 화면을 이동 중 유지하고 애니메이션이 끝나면 제거한다`() {
@@ -336,6 +357,7 @@ class RingoutNavHostTest {
                 backTransitions = if (fixture.usePlatformDefaults) platformNavigationBackTransitions() else fixture.transitions,
                 graph = {
                     entry(AppRoute.Home) { TestEntry(AppRoute.Home, fixture) }
+                    entry(AppRoute.Login) { TestEntry(AppRoute.Login, fixture) }
                     entry(AppRoute.Social) { TestEntry(AppRoute.Social, fixture) }
                     entry(AppRoute.AddAlarm) { TestEntry(AppRoute.AddAlarm, fixture) }
                     entry<AppRoute.Destination> { TestEntry(it, fixture) }
@@ -401,12 +423,25 @@ class RingoutNavHostTest {
         }
     }
 
-    private class Fixture(initialRoute: AppRoute, val usePlatformDefaults: Boolean = false) : NavigationEventDispatcherOwner {
+    private class Fixture(
+        initialRoute: AppRoute,
+        val usePlatformDefaults: Boolean = false,
+        authenticationOnlyMode: Boolean = false,
+    ) : NavigationEventDispatcherOwner {
         override val navigationEventDispatcher = NavigationEventDispatcher()
         val input = GestureInput()
-        val navigation = AppNavigationState().apply {
-            if (initialRoute is AppRoute.Destination || initialRoute == AppRoute.AlarmSound) navigate(AppRoute.AddAlarm)
-            navigate(initialRoute)
+        val navigation = if (authenticationOnlyMode) {
+            AppNavigationState(
+                routes = NavBackStack(initialRoute),
+                authenticationOnlyMode = true,
+            )
+        } else {
+            AppNavigationState().apply {
+                if (initialRoute is AppRoute.Destination || initialRoute == AppRoute.AlarmSound) {
+                    navigate(AppRoute.AddAlarm)
+                }
+                navigate(initialRoute)
+            }
         }
         var isBackBlocked by mutableStateOf(false)
         var isEntrySaving by mutableStateOf(false)

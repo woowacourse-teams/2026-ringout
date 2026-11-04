@@ -406,6 +406,31 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
+    fun `인증 요청은 공급자 시도 전 루트 인증 화면으로 진입한다`() {
+        val session = AuthSession()
+        withViewModel(
+            repository = FakeAppPreferencesRepository(
+                initialSnapshot = snapshot(
+                    firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
+                ),
+            ),
+            authSession = session,
+            authRepository = FakeAuthRepository(
+                session = session,
+                restoredState = AuthSessionState.Unauthenticated,
+            ),
+        ) { viewModel, _, _ ->
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+            assertFalse(viewModel.uiState.isAuthFlowInProgress)
+
+            viewModel.requestAuthentication()
+
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+            assertTrue(viewModel.uiState.isAuthFlowInProgress)
+        }
+    }
+
+    @Test
     fun `로그인 완료 저장에 실패하면 인증 화면을 유지하고 인계를 재시도한다`() {
         val cleanup = FakeAlarmLogoutCleanup()
         withViewModel(

@@ -148,24 +148,24 @@ class AuthNavigationTest {
     }
 
     @Test
-    fun `로그인 SDK 응답을 기다리거나 취소한 뒤에도 로그인 뒤로 가기를 막는다`() = runTest {
+    fun `로그인 SDK 응답을 기다리거나 취소한 뒤에도 로그인 루트 뒤로가기를 막지 않는다`() = runTest {
         val fixture = AuthNavigationFixture(backgroundScope)
         fixture.state.navigate(AppRoute.Login)
         val attemptId = fixture.navigation.onLoginStarted()
         fixture.login.beginGoogleSignIn(attemptId)
 
-        assertTrue(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Unauthenticated))
+        assertFalse(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Unauthenticated))
         fixture.navigation.onBack(AppRoute.Login, AppRoute.Login, AuthSessionState.Unauthenticated)
 
         assertEquals(AppRoute.Login, fixture.state.requestedRoute)
         fixture.login.handleGoogleAccessTokenResult(GoogleAccessTokenResult.Cancelled)
-        assertTrue(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Unauthenticated))
+        assertFalse(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Unauthenticated))
         fixture.navigation.onBack(AppRoute.Login, AppRoute.Login, AuthSessionState.Unauthenticated)
         assertEquals(AppRoute.Login, fixture.state.requestedRoute)
     }
 
     @Test
-    fun `로그인 응답이 끝나도 완료 이벤트 처리 전에는 뒤로 갈 수 없다`() = runTest {
+    fun `로그인 완료 이벤트 처리 중에도 로그인 루트 뒤로가기를 막지 않는다`() = runTest {
         val fixture = AuthNavigationFixture(backgroundScope)
         fixture.state.navigate(AppRoute.Login)
         val attemptId = fixture.navigation.onLoginStarted()
@@ -175,7 +175,7 @@ class AuthNavigationTest {
         assertFalse(fixture.login.uiState.isLoading)
         val completion = assertNotNull(fixture.login.uiState.completion)
 
-        assertTrue(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Authenticated))
+        assertFalse(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Authenticated))
         fixture.navigation.onBack(AppRoute.Login, AppRoute.Login, AuthSessionState.Authenticated)
 
         assertEquals(AppRoute.Login, fixture.state.requestedRoute)
@@ -221,12 +221,12 @@ class AuthNavigationTest {
     }
 
     @Test
-    fun `재인증으로 강제 표시하는 로그인에서는 이전 화면으로 돌아가지 않는다`() = runTest {
+    fun `재인증으로 표시한 로그인에서도 루트 뒤로가기를 차단하지 않는다`() = runTest {
         val fixture = AuthNavigationFixture(backgroundScope)
         val previousStack = fixture.state.backStack.toList()
 
         assertTrue(fixture.navigation.isActive(AppRoute.Login, AppRoute.Login))
-        assertTrue(
+        assertFalse(
             fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.ReauthenticationRequired),
         )
         fixture.navigation.onBack(
@@ -245,7 +245,7 @@ class AuthNavigationTest {
         )
         assertEquals(AppRoute.Login, fixture.state.requestedRoute)
 
-        assertTrue(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Unauthenticated))
+        assertFalse(fixture.navigation.isBackBlocked(AppRoute.Login, AuthSessionState.Unauthenticated))
         fixture.navigation.onBack(AppRoute.Login, AppRoute.Login, AuthSessionState.Unauthenticated)
         assertEquals(AppRoute.Login, fixture.state.requestedRoute)
     }

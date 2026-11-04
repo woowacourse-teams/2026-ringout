@@ -225,6 +225,7 @@ fun App(
                     hasAlarmCreationGuideSaveFailed = appBootstrapUiState.hasAlarmCreationGuideSaveFailed,
                     onAlarmCreationGuideFinished = appBootstrapViewModel::completeAlarmCreationGuide,
                     onExplicitLogout = appBootstrapViewModel::requestExplicitLogout,
+                    onAuthenticationRequired = appBootstrapViewModel::requestAuthentication,
                     appVersion = appVersion,
                     myPageExtraContent = myPageExtraContent,
                     useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
@@ -430,6 +431,7 @@ private fun RingoutAppContent(
     hasAlarmCreationGuideSaveFailed: Boolean,
     onAlarmCreationGuideFinished: () -> Unit,
     onExplicitLogout: () -> Unit,
+    onAuthenticationRequired: () -> Unit,
     appVersion: String,
     myPageExtraContent: (@Composable (ThemeMode) -> Unit)?,
     useSystemLocationPermissionUiOnly: Boolean,
@@ -696,6 +698,7 @@ private fun RingoutAppContent(
                             AppRoute.EditAlarm(request.id),
                         ).startEditing(request)
                     },
+                    onAuthenticationRequired = onAuthenticationRequired,
                     onActiveAlarmMissionClick = {
                         activeAlarmMission?.occurrenceId?.let { occurrenceId ->
                             navigationState.navigate(AppRoute.ActiveAlarmTracking(occurrenceId))
