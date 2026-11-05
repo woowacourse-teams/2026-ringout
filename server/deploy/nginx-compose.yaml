@@ -1,0 +1,14 @@
+name: ringout-edge
+
+services:
+  nginx:
+    image: nginx:stable-alpine
+    container_name: ringout-nginx
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      NGINX_DOMAIN: ${NGINX_DOMAIN:?NGINX_DOMAIN is required}
+      NGINX_APP_PORT: ${NGINX_APP_PORT:?NGINX_APP_PORT is required}
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro

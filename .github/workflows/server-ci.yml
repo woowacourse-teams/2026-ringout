@@ -146,6 +146,8 @@ jobs:
             --network ringout-smoke \
             --publish 127.0.0.1:8080:8080 \
             --env-file .env \
+            --env JAVA_TOOL_OPTIONS=-javaagent:/otel/opentelemetry-javaagent.jar \
+            --env OTEL_SDK_DISABLED=true \
             ringout-server:${{ github.sha }}
 
       - name: Smoke test
