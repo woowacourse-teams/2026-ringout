@@ -11,8 +11,10 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -30,15 +32,16 @@ public class AdminUserController {
     }
 
     @GetMapping
-    @Operation(summary = "관리자 회원 목록 조회", description = "닉네임·ID 부분 검색. page는 0부터, size는 1~100. sortBy=id|joinedAt|roomCount, sortDirection=asc|desc(기본 id desc). activeToday 생략 시 전체, true 오늘 활동, false 오늘 비활동. 오늘은 한국 시간 기준. 탈퇴 회원 제외. 이용 제한 필터는 미지원.")
+    @Operation(summary = "관리자 회원 목록 조회", description = "닉네임·ID 부분 검색. page는 0부터, size는 1~100. sortBy=id|joinedAt|roomCount, sortDirection=asc|desc(기본 id desc). activeToday 생략 시 전체, true 오늘 활동, false 오늘 비활동. 오늘은 한국 시간 기준. activityDate 지정 시 activeOnDate에 해당 날짜 시작된 개인 알람 기록 존재 여부 제공(로그인·전날 시작된 알람 제외), 생략 시 오늘. activeToday는 항상 오늘 기준. 탈퇴 회원 제외. 이용 제한 필터는 미지원.")
     public CustomResponse<UserPage> getUsers(
             @RequestParam(defaultValue = "") @Size(max = 100) String search,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(defaultValue = "id") @jakarta.validation.constraints.Pattern(regexp = "id|joinedAt|roomCount") String sortBy,
             @RequestParam(defaultValue = "desc") @jakarta.validation.constraints.Pattern(regexp = "asc|desc") String sortDirection,
-            @RequestParam(required = false) Boolean activeToday) {
-        return CustomResponse.onSuccess(UserSuccessStatus.USER_FOUND, service.getUsers(search, page, size, sortBy, sortDirection, activeToday));
+            @RequestParam(required = false) Boolean activeToday,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate activityDate) {
+        return CustomResponse.onSuccess(UserSuccessStatus.USER_FOUND, service.getUsers(search, page, size, sortBy, sortDirection, activeToday, activityDate));
     }
 
     @GetMapping("/stats")
