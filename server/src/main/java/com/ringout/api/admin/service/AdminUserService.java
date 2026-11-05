@@ -43,7 +43,13 @@ public class AdminUserService {
 
     public UserPage getUsers(String search, int page, int size, String sortBy,
             String sortDirection, Boolean activeToday) {
-        var start = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Asia/Seoul"))).atStartOfDay();
+        return getUsers(search, page, size, sortBy, sortDirection, activeToday, null);
+    }
+
+    public UserPage getUsers(String search, int page, int size, String sortBy,
+            String sortDirection, Boolean activeToday, java.time.LocalDate activityDate) {
+        var today = java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Asia/Seoul")));
+        var start = today.atStartOfDay();
         var end = start.plusDays(1);
         String keyword = search == null ? "" : search.trim();
         String pattern = "%" + keyword.replace("!", "!!").replace("%", "!%")
@@ -52,10 +58,13 @@ public class AdminUserService {
                 activeToday, start, end, PageRequest.of(page, size));
         var activeIds = new java.util.HashSet<>(users.findActiveIds(
                 result.getContent().stream().map(User::getId).toList(), start, end));
+        var selectedStart = (activityDate == null ? today : activityDate).atStartOfDay();
+        var selectedActiveIds = activityDate == null ? activeIds : new java.util.HashSet<>(users.findIdsWithAlarmRecords(
+                result.getContent().stream().map(User::getId).toList(), selectedStart, selectedStart.plusDays(1)));
         Map<Long, Long> counts = roomCounts(result.getContent().stream().map(User::getId).toList());
         var content = result.getContent().stream().map(user -> new UserSummary(
                 user.getId(), user.getNickname().getValue(), imageUrl(user.getImage()),
-                user.getSocialProvider(), user.getCreated_at(), counts.getOrDefault(user.getId(), 0L), activeIds.contains(user.getId())))
+                user.getSocialProvider(), user.getCreated_at(), counts.getOrDefault(user.getId(), 0L), activeIds.contains(user.getId()), selectedActiveIds.contains(user.getId())))
                 .toList();
         return new UserPage(content, page, size, result.getTotalElements(), result.getTotalPages());
     }

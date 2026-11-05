@@ -15,7 +15,12 @@ public final class AdminUserResponses {
             long totalUsers, long joinedToday, long activeToday) {}
 
     public record UserSummary(Long id, String nickname, String imageUrl,
-            SocialProvider provider, LocalDateTime joinedAt, long roomCount, boolean activeToday) {}
+            SocialProvider provider, LocalDateTime joinedAt, long roomCount, boolean activeToday, boolean activeOnDate) {
+        public UserSummary(Long id, String nickname, String imageUrl, SocialProvider provider,
+                LocalDateTime joinedAt, long roomCount, boolean activeToday) {
+            this(id, nickname, imageUrl, provider, joinedAt, roomCount, activeToday, activeToday);
+        }
+    }
 
     public record UserPage(List<UserSummary> content, int page, int size,
             long totalElements, int totalPages) {}
