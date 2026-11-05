@@ -1,0 +1,49 @@
+.alarm-filters { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); align-items: start; gap: 22px; margin-bottom: 24px; }
+.alarm-calendar, .alarm-members { padding: 22px; }
+.alarm-filter-heading, .alarm-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.alarm-filter-heading h2, .alarm-history-heading h2 { font-size: 16px; margin: 0; }
+.alarm-filter-heading > span { color: #777; font-size: 12px; overflow-wrap: anywhere; }
+.alarm-month { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 12px; }
+.alarm-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; }
+.alarm-calendar-grid button { border: 0; background: transparent; border-radius: 10px; height: 34px; color: #555; cursor: pointer; }
+.alarm-calendar-grid button:hover { background: #fff1e9; }
+.alarm-calendar-grid button.today { font-weight: 800; box-shadow: inset 0 0 0 1px #efb89b; }
+.alarm-calendar-grid button.selected { background: #f47c50; color: white; font-weight: 700; }
+.alarm-weekday { color: #999; font-size: 11px; padding: 6px 0; }
+.alarm-date-note, .alarm-history-note { font-size: 11px; color: #888; line-height: 1.7; }
+.alarm-date-note { margin: 18px 0 0; }
+.alarm-members > .search-input { max-width: none; margin-top: 18px; width: 100%; }
+.alarm-member { display: flex; align-items: center; gap: 10px; border: 1px solid #eee8e3; background: white; border-radius: 10px; text-align: left; cursor: pointer; color: inherit; min-width: 0; padding: 9px 11px; }
+.alarm-member strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.alarm-member small, .alarm-record-member small { display: block; color: #999; font-size: 11px; margin-top: 3px; }
+.alarm-inline-state { padding: 20px 0; color: #888; font-size: 12px; text-align: center; }
+.alarm-history-heading { padding: 22px 24px 8px; }
+.alarm-history-heading p { margin: 8px 0; font-size: 12px; color: #888; }
+.alarm-history-heading .secondary-button { display: flex; align-items: center; gap: 7px; }
+.alarm-history-results { min-height: 200px; }
+.alarm-history-table { min-width: 850px; }
+.alarm-history-table td { white-space: nowrap; }
+.alarm-record-member { background: transparent; border: 0; padding: 0; color: inherit; text-align: left; cursor: pointer; }
+.alarm-record-member:hover strong { color: #e67849; }
+.alarm-history-note { margin: 0; padding: 16px 24px; border-top: 1px solid #f0ede9; }
+@media (max-width: 900px) { .alarm-filters { grid-template-columns: 1fr; } .alarm-calendar { max-width: none; } .alarm-calendar-grid button { height: 40px; } }
+
+.alarm-history-panel { padding: 0; }
+.alarm-history-panel .records-toolbar, .alarm-history-panel .list-count, .alarm-history-panel .pagination { margin-left: 24px; margin-right: 24px; }
+@media (max-width: 520px) { .alarm-history-panel .records-toolbar { flex-wrap: wrap; margin-left: 16px; margin-right: 16px; } }
+
+.alarm-member-results { height: 230px; min-height: 230px; overflow-y: auto; overscroll-behavior: contain; margin-top: 14px; scrollbar-gutter: stable; }
+.alarm-member-list { display: flex; flex-direction: column; gap: 6px; }
+.alarm-member-list .alarm-member { width: 100%; flex-shrink: 0; }
+.alarm-member-name { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; }
+.alarm-member-name strong { min-width: 0; }
+.alarm-member-name .activity-badge { flex-shrink: 0; }
+.alarm-member-list .alarm-member small { margin: 0; }
+.alarm-member-count { margin: 12px 0 0; font-size: 11px; color: #888; }
+.alarm-load-more { display: block; margin: 10px auto; }
+.alarm-member.selected { background: #fff4ed; border-color: #f5aa85; }
+@media (max-width: 520px) { .alarm-calendar, .alarm-members { padding: 16px; } .alarm-history-heading { padding: 18px 16px 6px; align-items: flex-start; } .alarm-history-heading > button { white-space: nowrap; } }
+
+.alarm-members { min-width: 0; }
+.alarm-member-list .alarm-member { min-height: 42px; padding: 6px 9px; gap: 8px; }
+.alarm-member-list .avatar { width: 26px; height: 26px; flex-shrink: 0; font-size: 11px; }

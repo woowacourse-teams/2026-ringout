@@ -36,7 +36,7 @@ export const navigation = [{
   icon: UsersRound
 }, {
   id: 'alarms' as Page,
-  inDevelopment: true,
+  inDevelopment: false,
   label: '알람 실행 기록',
   icon: BellRing
 }, {
@@ -171,7 +171,8 @@ export default function AdminLayout({
       <div className="guide-list">
         <p><strong>01 · 검색과 상세</strong>회원·모임 메뉴에서 검색, 필터, 상세 조회를 사용할 수 있어요.</p>
         <p><strong>02 · 모임 기록</strong>모임 상세에서 사진·소개·일정과 멤버 오늘 기록을 확인하세요. 모임 숨김·공개 변경은 1차 범위에 포함하지 않습니다.</p>
-        <p><strong>03 · 준비 중인 화면</strong>대시보드·알람 실행 기록·변경 이력은 개발 중으로 안내만 표시합니다.</p>
+        <p><strong>03 · 개인 알람 기록</strong>날짜·회원·상태를 선택해 실행 기록을 시간순으로 조회하세요.</p>
+        <p><strong>04 · 준비 중인 화면</strong>대시보드·변경 이력은 개발 중으로 안내만 표시합니다.</p>
       </div>
       <p className="dialog-description">로그인은 구글 관리자 세션을 사용하며 회원·모임 정보와 모임별 기록은 서버 API에서 조회합니다.</p>
       <button className="primary-button full-width" onClick={() => setHelp(false)}>둘러보기 시작</button>

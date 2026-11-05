@@ -4,6 +4,7 @@ import AdminLayout, { navigation } from './layouts/AdminLayout';
 import UsersPage from './pages/users/UsersPage';
 import DeploymentsPage from './pages/deployments/DeploymentsPage';
 import RoomsPage from './pages/rooms/RoomsPage';
+import AlarmHistoriesPage from './pages/alarms/AlarmHistoriesPage';
 import useAdminAuth from './hooks/useAdminAuth';
 import type { Admin } from './api/adminAuth';
 import ApprovalPendingPage from './pages/login/ApprovalPendingPage';
@@ -49,6 +50,9 @@ function AdminWorkspace({ admin, onLogout, loggingOut, authError }: {
       break;
     case 'users':
       content = <UsersPage />;
+      break;
+    case 'alarms':
+      content = <AlarmHistoriesPage />;
       break;
     case 'rooms':
       content = <RoomsPage />;
