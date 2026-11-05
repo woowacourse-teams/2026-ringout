@@ -12,3 +12,4 @@ services:
     volumes:
       - ./nginx:/etc/nginx/conf.d:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/ringout-acme:/var/www/ringout-acme:ro

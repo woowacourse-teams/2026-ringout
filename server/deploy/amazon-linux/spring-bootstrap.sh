@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+case "${1:-}" in
+  ''|--setup-runner) ;;
+  *) printf '사용법: bash spring-bootstrap.sh [--setup-runner]\n' >&2; exit 1 ;;
+esac
+
 # 실행 환경 확인
 source /etc/os-release
 if [[ "${ID:-}" != amzn || "${VERSION_ID:-}" != 2023 || "$(id -un)" != ec2-user ]]; then
@@ -46,29 +51,15 @@ setup_swap() (
   sudo swapon --show
 )
 
-# Git 버전과 서버에 준비한 .env·인증서 경로 입력
-read -r -p '가져올 Git 브랜치 또는 커밋 SHA [develop]: ' git_ref
-git_ref="${git_ref:-develop}"
+# 직접 준비해야 하는 .env가 없으면 경로를 안내하고 중단한다.
+git_ref="${BOOTSTRAP_GIT_REF:-develop}"
 env_file="$app_dir/.env"
 if [[ ! -s "$env_file" || ! -r "$env_file" ]]; then
-  read -r -e -p "직접 준비한 .env 경로 [$env_file]: " input
-  env_file="${input:-$env_file}"
-fi
-if [[ ! -s "$env_file" || ! -r "$env_file" ]]; then
-  printf '%s에 .env를 직접 작성한 뒤 다시 실행하세요.\n' "$env_file" >&2
+  printf '[수동 작업 필요] %s 파일이 없거나 읽을 수 없습니다.\n' "$env_file" >&2
+  printf 'ec2-user 계정으로 .env를 작성한 뒤 다시 실행하세요.\n' >&2
   exit 1
 fi
-
-cert_archive=
-if ! sudo test -d /etc/letsencrypt; then
-  default_archive=/home/ec2-user/letsencrypt.tar.gz
-  read -r -e -p "인증서 압축 파일 경로 [$default_archive]: " cert_archive
-  cert_archive="${cert_archive:-$default_archive}"
-  if [[ ! -s "$cert_archive" || ! -r "$cert_archive" ]]; then
-    printf '읽을 수 있는 인증서 압축 파일을 먼저 준비하세요.\n' >&2
-    exit 1
-  fi
-fi
+skip '기존 .env를 사용합니다.'
 
 # Git에서 선택한 버전의 배포 파일 가져오기
 command -v git >/dev/null || sudo dnf install -y git
@@ -87,19 +78,12 @@ deploy_dir="$server_dir/deploy"
 scripts="$deploy_dir/amazon-linux"
 for file in "$server_dir/docker-compose.yaml" "$deploy_dir/deployment.py" \
   "$deploy_dir/nginx.conf" "$deploy_dir/nginx-compose.yaml" "$scripts/deploy.sh" \
-  "$scripts/docker-setting.sh" "$scripts/docker-login.sh" "$scripts/nginx-container.sh"; do
+  "$scripts/docker-setting.sh" "$scripts/nginx-container.sh"; do
   if [[ ! -r "$file" ]]; then
     printf '선택한 Git 버전에 필요한 파일이 없습니다: %s\n' "$file" >&2
     exit 1
   fi
 done
-
-# 직접 준비한 .env 배치
-if [[ ! "$env_file" -ef "$app_dir/.env" ]]; then
-  install -m 0600 "$env_file" "$app_dir/.env"
-else
-  skip '기존 .env를 사용합니다.'
-fi
 
 setup_swap
 
@@ -119,18 +103,8 @@ fi
 sudo -H -u ec2-user -- docker compose --project-directory "$app_dir" \
   --env-file "$app_dir/.env" -f "$server_dir/docker-compose.yaml" config --quiet
 
-# HTTPS 인증서 복원 및 Nginx 컨테이너 시작
-if [[ -n "$cert_archive" ]]; then
-  sudo tar -xzf "$cert_archive" -C /etc
-else
-  skip '기존 인증서를 사용합니다.'
-fi
-if [[ -f "$app_dir/nginx/ringout-api.conf" ]] &&
-   "${docker_as_deployer[@]}" exec ringout-nginx nginx -t >/dev/null 2>&1; then
-  skip 'Nginx 컨테이너가 실행 중입니다.'
-else
-  sudo -H -u ec2-user -- bash "$scripts/nginx-container.sh"
-fi
+# Nginx 설정과 HTTPS 인증서 발급·갱신을 준비한다.
+sudo -H -u ec2-user -- bash "$scripts/nginx-container.sh"
 
 # Spring 배포 파일 배치
 install_if_changed() {
@@ -145,23 +119,36 @@ install_if_changed 0644 "$server_dir/docker-compose.yaml" "$app_dir/docker-compo
 install_if_changed 0755 "$scripts/deploy.sh" "$app_dir/deploy.sh"
 install_if_changed 0755 "$deploy_dir/deployment.py" "$app_dir/deployment.py"
 
-# Docker Hub 로그인 설정이 이미 있으면 토큰 입력을 생략한다.
+# Docker Hub 로그인 정보를 확인하고, 필요한 경우에만 입력받는다.
 if python3 - <<'PY_AUTH'
 import json
 from pathlib import Path
 
+path = Path.home() / '.docker/config.json'
 try:
-    config = json.loads((Path.home() / '.docker/config.json').read_text())
+    config = json.loads(path.read_text()) if path.exists() else {}
 except (OSError, ValueError):
-    raise SystemExit(1)
+    raise SystemExit(2)
 auth = config.get('auths') or {}
 entries = (auth.get(host) or {} for host in ('https://index.docker.io/v1/', 'docker.io'))
+if config.get('credsStore') == 'ecr-login':
+    del config['credsStore']
+    path.chmod(0o600)
+    path.write_text(json.dumps(config, indent=2) + '\n')
 raise SystemExit(0 if any(entry.get('auth') or entry.get('identitytoken') for entry in entries) else 1)
 PY_AUTH
 then
   skip 'Docker Hub 로그인 정보가 이미 있습니다.'
 else
-  sudo -H -u ec2-user -- bash "$scripts/docker-login.sh"
+  auth_status=$?
+  if [[ "$auth_status" != 1 ]]; then
+    printf '[수동 작업 필요] ~/.docker/config.json을 확인한 뒤 다시 실행하세요.\n' >&2
+    exit 1
+  fi
+  read -r -p 'Docker Hub ID: ' dockerhub_id
+  : "${dockerhub_id:?Docker Hub ID를 입력하세요.}"
+  printf 'Password 프롬프트에 Docker Hub 읽기 전용 토큰을 입력하세요.\n'
+  "${docker_as_deployer[@]}" login --username "$dockerhub_id"
 fi
 
 # GitHub Actions runner 설치·등록 및 서비스 시작
@@ -222,11 +209,23 @@ runner_service=/home/ec2-user/actions-runner/.service
 if [[ -s "$runner_service" ]] && systemctl is-active --quiet "$(cat "$runner_service")"; then
   skip 'GitHub Actions runner 서비스가 실행 중입니다.'
 else
-  read -r -p 'GitHub Actions runner를 설치하고 시작할까요? [y/N]: ' setup_runner_answer
-  if [[ "$setup_runner_answer" == [yY] ]]; then
-    setup_runner
-    printf 'GitHub에서 새 runner가 Idle인지 확인하세요. 환경 라벨은 전환 시 추가하세요.\n'
+  setup_runner_answer=y
+  if [[ "${1:-}" != --setup-runner ]]; then
+    if [[ ! -f /home/ec2-user/actions-runner/.runner ]]; then
+      printf '[수동 작업 필요] GitHub Actions runner가 등록되어 있지 않습니다.\n'
+      printf 'GitHub Settings → Actions → Runners → New self-hosted runner에서 등록 토큰을 준비하세요.\n'
+    else
+      printf '[수동 작업 필요] GitHub Actions runner 서비스가 실행 중이지 않습니다.\n'
+    fi
+    read -r -p '지금 runner 설정을 진행할까요? [y/N]: ' setup_runner_answer
   fi
+  if [[ "$setup_runner_answer" != [yY] ]]; then
+    printf '준비가 끝나면 아래 명령으로 계속하세요.\n' >&2
+    printf '  BOOTSTRAP_GIT_REF=%q bash %q --setup-runner\n' "$git_ref" "$0" >&2
+    exit 1
+  fi
+  setup_runner
+  printf 'GitHub에서 새 runner가 Idle인지 확인하세요. 환경 라벨은 전환 시 추가하세요.\n'
 fi
 
 printf '\n초기 설정 완료. SSH에 다시 접속한 뒤 첫 배포를 진행하세요.\n'
