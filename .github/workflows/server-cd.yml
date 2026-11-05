@@ -48,7 +48,13 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      - name: Deploy Spring using EC2 environment
+      - name: Deploy Spring and install deployment tools using EC2 environment
         env:
           DEPLOY_COMMIT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-        run: bash server/deploy/deploy.sh
+        run: |
+          source /etc/os-release
+          if [[ "$ID" == amzn && "$VERSION_ID" == 2023 ]]; then
+            bash server/deploy/amazon-linux/deploy.sh
+          else
+            bash server/deploy/deploy.sh
+          fi
