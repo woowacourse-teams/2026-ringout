@@ -56,6 +56,15 @@ public interface AdminUserRepository extends Repository<User, Long>, AdminUserSe
     long countActiveBetween(@Param("start") java.time.LocalDateTime start,
             @Param("end") java.time.LocalDateTime end);
 
+    @Query("""
+        select distinct o.user.id from AlarmOccurrence o
+        where o.user.id in :ids and o.deletedAt is null and o.user.deletedAt is null
+          and o.startedAt >= :start and o.startedAt < :end
+        """)
+    List<Long> findIdsWithAlarmRecords(@Param("ids") List<Long> ids,
+            @Param("start") java.time.LocalDateTime start,
+            @Param("end") java.time.LocalDateTime end);
+
     interface RoomCount {
         Long getUserId();
         long getRoomCount();
