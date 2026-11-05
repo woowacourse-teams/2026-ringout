@@ -145,6 +145,22 @@ if ! grep -Eq 'proxy_pass http://127\.0\.0\.1:(8081|8082);' "$NGINX_BACKUP"; the
   exit 1
 fi
 
+# 기존 컨테이너를 살려 둔 채 새 컨테이너 한도와 호스트 여유분을 확보할 수 있는지 확인한다.
+if [[ -n "$ACTIVE_PORT" ]]; then
+  limit_bytes=$("${compose[@]}" config --format json | python3 -c '
+import json, sys
+print(int(json.load(sys.stdin)["services"]["server"]["mem_limit"]))
+')
+  available_kib=$(awk '$1 == "MemAvailable:" {print $2}' /proc/meminfo)
+  : "${available_kib:?Could not read available host memory}"
+  required_kib=$(( (limit_bytes + 1023) / 1024 + 128 * 1024 ))
+  if (( available_kib < required_kib )); then
+    log DEPLOY_FAILED "reason=insufficient_host_memory available_kib=$available_kib required_kib=$required_kib"
+    printf 'Not enough available memory to start a second Spring container.\n' >&2
+    exit 1
+  fi
+fi
+
 # 4. Spring 갱신 및 헬스체크. 실패하면 상태와 로그를 출력하고 종료
 if "${compose[@]}" up -d --pull never --no-build --no-deps server; then
   for attempt in {1..30}; do
@@ -181,6 +197,17 @@ if "${compose[@]}" up -d --pull never --no-build --no-deps server; then
       export DEPLOY_SUCCESS=true
       log DEPLOY_SUCCEEDED "port=$SERVER_PORT"
       exit 0
+    fi
+    if ! read -r container_status oom_killed container_exit < <(
+      docker inspect --format '{{.State.Status}} {{.State.OOMKilled}} {{.State.ExitCode}}' "$SERVER_CONTAINER_NAME"
+    ); then
+      log DEPLOY_FAILED "reason=new_container_missing port=$SERVER_PORT"
+      break
+    fi
+    if [[ "$oom_killed" == true || "$container_status" == exited ||
+          "$container_status" == dead || "$container_status" == restarting ]]; then
+      log DEPLOY_FAILED "reason=new_container_stopped status=$container_status oom=$oom_killed exit_code=$container_exit"
+      break
     fi
     echo "Waiting for server... ($attempt/30)"
     if [[ "$attempt" -lt 30 ]]; then sleep 5; fi
