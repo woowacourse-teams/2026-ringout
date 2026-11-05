@@ -60,16 +60,6 @@ set +a
 # All CI and administrator deployments on this host share this lock.
 exec 9>"$APP_DIR/deployment.lock"
 flock -w 600 9 || { log DEPLOY_FAILED "reason=deployment_lock_timeout"; exit 1; }
-# 수동 복구는 잠금 획득 후 현재 DB와 대상 이미지의 기록을 다시 비교한다.
-if [[ -n "${ROLLBACK_IMAGE_DIGEST:-}" ]]; then
-  metadata="$(python3 "$RECORDER" prepare "$ROLLBACK_IMAGE_DIGEST")"
-  eval "$metadata" # deployment.py prepare emits only fixed names with shlex-quoted values.
-  export SERVER_IMAGE="$ROLLBACK_IMAGE_DIGEST"
-  export SPRING_FLYWAY_ENABLED=false DDL_AUTO=validate
-  unset DEPLOY_COMMIT_SHA
-elif [[ -n "${ROLLBACK_IMAGE_ID:-}" ]]; then
-  log DEPLOY_FAILED "reason=rollback_requires_digest"; exit 1
-fi
 if [[ -n "${DEPLOY_COMMIT_SHA:-}" ]]; then
   [[ "$DEPLOY_COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid commit SHA" >&2; exit 1; }
   IMAGE_REPOSITORY="${SERVER_IMAGE%%@*}"
@@ -88,39 +78,18 @@ fi
 if [[ ! "$SCRIPT_DIR/deploy.sh" -ef "$APP_DIR/deploy.sh" ]]; then
   install -m 755 "$SCRIPT_DIR/deploy.sh" "$APP_DIR/deploy.sh"
   install -m 755 "$RECORDER" "$APP_DIR/deployment.py"
-  if [[ -f "$DEPLOY_TOOLS_DIR/rollback.sh" ]]; then
-    install -m 755 "$DEPLOY_TOOLS_DIR/rollback.sh" "$APP_DIR/rollback.sh"
-  fi
-  # Replaced by deployment.py; remove only known obsolete helper copies.
-  rm -f "$APP_DIR/choose-rollback.py" "$APP_DIR/prepare-rollback.py" "$APP_DIR/record-deployment.py"
+
 fi
 
-# 복구는 가변 태그를 다시 pull하지 않는다. 불변 digest로 받고, 기록된 이미지 ID와 일치하는지 확인한다.
+# Pull the requested deployment image before collecting its immutable references.
 log IMAGE_PULL_STARTED
-if [[ -n "${ROLLBACK_IMAGE_ID:-}" && -n "${ROLLBACK_IMAGE_DIGEST:-}" ]]; then
-  if docker image inspect "$ROLLBACK_IMAGE_DIGEST" >/dev/null 2>&1; then
-    log ROLLBACK_IMAGE_LOCAL "digest=$ROLLBACK_IMAGE_DIGEST"
-  else
-    log ROLLBACK_IMAGE_PULL "digest=$ROLLBACK_IMAGE_DIGEST"
-    docker pull "$ROLLBACK_IMAGE_DIGEST" || { log DEPLOY_FAILED "reason=rollback_image_pull_failed"; exit 1; }
-  fi
-  PULLED_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$ROLLBACK_IMAGE_DIGEST")"
-  if [[ "$PULLED_IMAGE_ID" != "$ROLLBACK_IMAGE_ID" ]]; then
-    log DEPLOY_FAILED "reason=rollback_image_mismatch image_id=$PULLED_IMAGE_ID"; exit 1
-  fi
-  export SERVER_IMAGE="$ROLLBACK_IMAGE_DIGEST"
-elif [[ -n "${ROLLBACK_IMAGE_ID:-}" ]]; then
-  # digest가 없던 과거 기록은 EC2에 남은 로컬 이미지로만 복구할 수 있다.
-  docker image inspect "$SERVER_IMAGE" >/dev/null || { log DEPLOY_FAILED "reason=rollback_image_missing"; exit 1; }
-else
-  if ! "${compose[@]}" pull server; then
-    echo "Image pull failed. Existing container was not replaced." >&2
-    exit 1
-  fi
+if ! "${compose[@]}" pull server; then
+  echo "Image pull failed. Existing container was not replaced." >&2
+  exit 1
 fi
 
 export DEPLOY_IMAGE_ID="$(docker image inspect --format '{{.Id}}' "$SERVER_IMAGE")"
-export DEPLOY_IMAGE_DIGEST="$(repo_digest "$SERVER_IMAGE" "$(image_repository "${ROLLBACK_TARGET_IMAGE:-$SERVER_IMAGE}")")"
+export DEPLOY_IMAGE_DIGEST="$(repo_digest "$SERVER_IMAGE" "$(image_repository "$SERVER_IMAGE")")"
 log IMAGE_PULL_FINISHED
 docker image inspect --format 'image_id={{.Id}} repo_digests={{json .RepoDigests}}' "$SERVER_IMAGE"
 
@@ -148,17 +117,27 @@ if [[ -n "$ACTIVE_PORT" ]]; then
   docker inspect --format 'previous_image={{.Config.Image}} previous_image_id={{.Image}}' "ringout-server-$ACTIVE_PORT"
 fi
 
-if [[ -n "${ROLLBACK_IMAGE_DIGEST:-}" && -z "$ACTIVE_PORT" ]]; then
-  log DEPLOY_FAILED "reason=no_healthy_current_server"; exit 1
-fi
-
 SERVER_PORT=8081
 if [[ "$ACTIVE_PORT" == 8081 ]]; then SERVER_PORT=8082; fi
 export SERVER_PORT
 export SERVER_CONTAINER_NAME="ringout-server-$SERVER_PORT"
 compose+=(-p "ringout-$SERVER_PORT")
 HEALTH_URL="http://127.0.0.1:$SERVER_PORT/actuator/health"
-NGINX_CONFIG="${RINGOUT_NGINX_CONFIG:-/etc/nginx/conf.d/ringout-api.conf}"
+container_nginx_config="$APP_DIR/nginx/ringout-api.conf"
+if [[ -f "$container_nginx_config" ]]; then
+  NGINX_CONFIG="$container_nginx_config"
+  docker exec ringout-nginx nginx -t
+else
+  NGINX_CONFIG="${RINGOUT_NGINX_CONFIG:-/etc/nginx/conf.d/ringout-api.conf}"
+fi
+
+reload_nginx() {
+  if [[ "$NGINX_CONFIG" == "$container_nginx_config" ]]; then
+    docker exec ringout-nginx nginx -t && docker exec ringout-nginx nginx -s reload
+  else
+    sudo nginx -t && sudo systemctl reload nginx
+  fi
+}
 NGINX_BACKUP="$(mktemp)"
 sudo cat "$NGINX_CONFIG" > "$NGINX_BACKUP"
 if ! grep -Eq 'proxy_pass http://127\.0\.0\.1:(8081|8082);' "$NGINX_BACKUP"; then
@@ -174,11 +153,11 @@ if "${compose[@]}" up -d --pull never --no-build --no-deps server; then
       # 새 서버가 정상일 때만 nginx 전환. 설정 검사/리로드 실패 시 복구
       sed -E "s@proxy_pass http://127\.0\.0\.1:(8081|8082);@proxy_pass http://127.0.0.1:$SERVER_PORT;@g" \
         "$NGINX_BACKUP" | sudo tee "$NGINX_CONFIG" > /dev/null
-      if ! sudo nginx -t || ! sudo systemctl reload nginx; then
+      if ! reload_nginx; then
         log DEPLOY_FAILED "reason=nginx_switch_failed"
         log ROLLBACK_STARTED "scope=nginx_configuration previous_port=${ACTIVE_PORT:-none}"
         if ! { sudo tee "$NGINX_CONFIG" < "$NGINX_BACKUP" > /dev/null &&
-               sudo nginx -t && sudo systemctl reload nginx; }; then
+               reload_nginx; }; then
           log ROLLBACK_FAILED "reason=nginx_restore_failed"
           "${compose[@]}" stop server || true
           exit 1
