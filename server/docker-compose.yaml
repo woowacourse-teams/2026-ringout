@@ -5,6 +5,7 @@ services:
     image: ${SERVER_IMAGE:?SERVER_IMAGE is required}
     container_name: ${SERVER_CONTAINER_NAME:-ringout-server}
     restart: unless-stopped
+    mem_limit: ${SERVER_MEMORY_LIMIT:-640m}
     stop_grace_period: 40s
     environment:
       DB_URL: ${DB_URL:?DB_URL is required}
@@ -38,20 +39,13 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       APP_ENV: ${APP_ENV:-production}
       JAVA_TOOL_OPTIONS: >-
-        -XX:MaxRAMPercentage=70
+        -Xmx${JAVA_MAX_HEAP:-384m}
         -Duser.timezone=Asia/Seoul
         -javaagent:/otel/opentelemetry-javaagent.jar
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:?OTEL_SERVICE_NAME is required}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT is required}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:?OTEL_EXPORTER_OTLP_PROTOCOL is required}
       OTEL_METRICS_EXPORTER: none
-    volumes:
-      - type: bind
-        source: ${OTEL_AGENT_PATH:-/opt/opentelemetry/opentelemetry-javaagent.jar}
-        target: /otel/opentelemetry-javaagent.jar
-        read_only: true
-        bind:
-          create_host_path: false
     ports:
       - "${SERVER_BIND_ADDRESS:-127.0.0.1}:${SERVER_PORT:-8080}:8080"
     logging:
