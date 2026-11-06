@@ -111,7 +111,8 @@ HTTP
 else
   # 만료된 인증서도 먼저 HTTPS 설정을 올려 HTTP 검증 경로를 사용할 수 있게 한다.
   if [[ ! -f "$config" ]] || ! grep -Fq "ssl_certificate $cert_dir/fullchain.pem;" "$config" ||
-     ! grep -Fq 'location ^~ /.well-known/acme-challenge/' "$config"; then
+     ! grep -Fq 'location ^~ /.well-known/acme-challenge/' "$config" ||
+     ! grep -Fq 'client_max_body_size 10m;' "$config"; then
     render_https
   else
     printf '[건너뜀] HTTPS Nginx 설정이 이미 있습니다.\n'
