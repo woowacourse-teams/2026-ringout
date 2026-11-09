@@ -19,18 +19,22 @@ internal data class ArrivalShareUiState(
     val time: String? = null,
     val showTime: Boolean = true,
     val showDate: Boolean = true,
+    val photoPath: String? = null,
+    val busy: Boolean = false,
+    val message: String? = null,
 )
 
 internal expect fun arrivalShareLocalLabels(epochMillis: Long): Pair<String, String>
 
 internal class ArrivalShareViewModel(
-    private val occurrenceId: String,
+    val occurrenceId: String,
     private val repository: ArrivalResultRepository,
     private val savedState: SavedStateHandle = SavedStateHandle(),
     private val scope: CoroutineScope? = null,
     private val format: (Long) -> Pair<String, String> = ::arrivalShareLocalLabels,
 ) : ViewModel() {
     private val state = MutableStateFlow(ArrivalShareUiState(
+        photoPath = savedState["photoPath"],
         showTime = savedState["showTime"] ?: true,
         showDate = savedState["showDate"] ?: true,
     ))
@@ -61,12 +65,43 @@ internal class ArrivalShareViewModel(
         }
     }
     fun setShowTime(value: Boolean) {
-        if (state.value.time == null) return
+        if (state.value.busy || state.value.time == null) return
         savedState["showTime"] = value
         state.update { it.copy(showTime = value) }
     }
     fun setShowDate(value: Boolean) {
+        if (state.value.busy) return
         savedState["showDate"] = value
         state.update { it.copy(showDate = value) }
     }
+    private var draftRestored = false
+    fun restoreDraft(draft: ArrivalDraft?) {
+        if (draftRestored) return
+        draftRestored = true
+        if (draft == null) return
+        savedState["photoPath"] = draft.photoPath
+        savedState["showTime"] = draft.showTime
+        savedState["showDate"] = draft.showDate
+        if (draft.date.isNotEmpty()) savedState["date"] = draft.date
+        if (draft.time != null) savedState["time"] = draft.time
+        state.update { it.copy(photoPath = draft.photoPath, showTime = draft.showTime, showDate = draft.showDate,
+            date = draft.date.ifEmpty { it.date }, time = draft.time ?: it.time) }
+    }
+    fun beginMedia(): Boolean {
+        val current = state.value
+        if (current.busy || current.isLoading || current.error != null) return false
+        state.update { it.copy(busy = true, message = null) }
+        return true
+    }
+    fun finishMedia(result: ArrivalMediaResult) {
+        when (result) {
+            is ArrivalMediaResult.Photo -> {
+                savedState["photoPath"] = result.path
+                state.update { it.copy(photoPath = result.path, busy = false, message = null) }
+            }
+            is ArrivalMediaResult.Done -> state.update { it.copy(busy = false, message = result.message) }
+            is ArrivalMediaResult.Failed -> state.update { it.copy(busy = false, message = result.message) }
+        }
+    }
+
 }

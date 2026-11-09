@@ -19,9 +19,10 @@ import org.jetbrains.compose.resources.painterResource
 import ringout.shared.generated.resources.*
 
 @Composable
-internal fun ArrivalShareCard(state: ArrivalShareUiState, modifier: Modifier = Modifier) {
+internal fun ArrivalShareCard(state: ArrivalShareUiState, modifier: Modifier = Modifier, photo: androidx.compose.ui.graphics.ImageBitmap? = null) {
     Box(modifier.aspectRatio(1f)) {
-        Image(painterResource(Res.drawable.arrival_editor_photo), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        if (photo != null) Image(photo, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        else Image(painterResource(Res.drawable.arrival_editor_photo), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         Text("RINGOUT", Modifier.align(Alignment.TopStart).padding(22.dp), color = MaterialTheme.ringoutColors.primaryActionContent,
             style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
         Column(Modifier.align(Alignment.BottomStart).padding(18.dp)) {
