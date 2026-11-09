@@ -64,8 +64,7 @@ class DeviceTokenRepositoryTest {
         saveRoomUser(leftMember, room1).softDelete();
         roomUserRepository.flush();
 
-        Device hostIos = saveDevice(host, Platform.IOS);
-        Device hostAndroid = saveDevice(host, Platform.ANDROID);
+        Device hostDevice = saveDevice(host, Platform.IOS);
         Device memberDevice = saveDevice(member, Platform.ANDROID);
         saveDevice(leftMember, Platform.IOS);
 
@@ -77,10 +76,31 @@ class DeviceTokenRepositoryTest {
         assertThat(result)
             .extracting(RoomMemberDevice::roomId, roomMemberDevice -> roomMemberDevice.device().getId())
             .containsExactlyInAnyOrder(
-                tuple(room1.getId(), hostIos.getId()),
-                tuple(room1.getId(), hostAndroid.getId()),
+                tuple(room1.getId(), hostDevice.getId()),
                 tuple(room1.getId(), memberDevice.getId())
             );
+    }
+
+    @Test
+    void 토큰이_비어있는_디바이스는_조회하지_않는다() {
+        // given
+        User host = saveUser();
+        User loggedOutMember = saveUser();
+        Room room = saveRoom(host);
+        saveRoomUser(loggedOutMember, room);
+
+        Device hostDevice = saveDevice(host, Platform.IOS);
+        saveDevice(loggedOutMember, Platform.ANDROID).clearToken();
+        deviceTokenRepository.flush();
+
+        // when
+        List<RoomMemberDevice> result = deviceTokenRepository.findActiveRoomMemberDevices(
+            List.of(room.getId()));
+
+        // then
+        assertThat(result)
+            .extracting(roomMemberDevice -> roomMemberDevice.device().getId())
+            .containsExactly(hostDevice.getId());
     }
 
     @Test
