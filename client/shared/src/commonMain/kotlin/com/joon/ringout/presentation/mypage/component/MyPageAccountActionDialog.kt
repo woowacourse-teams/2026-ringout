@@ -202,7 +202,7 @@ private val MyPageAccountAction.dialogContent: MyPageAccountActionDialogContent
     get() = when (this) {
         MyPageAccountAction.Logout -> MyPageAccountActionDialogContent(
             title = "로그아웃",
-                description = "이 기기의 저장 알람, 목적지, 알람·미션 기록이 삭제됩니다.\n정말 로그아웃 하시겠습니까?",
+                description = "정말 로그아웃 하시겠습니까?",
             confirmLabel = "로그아웃",
         )
 
