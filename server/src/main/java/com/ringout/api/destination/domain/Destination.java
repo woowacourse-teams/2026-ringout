@@ -4,6 +4,7 @@ import com.ringout.api.common.BaseEntity;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.destination.status.DestinationErrorStatus;
 import com.ringout.api.user.domain.User;
+import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -13,6 +14,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -20,75 +22,90 @@ import lombok.NoArgsConstructor;
 @Getter
 @Entity
 @Table(
-    name = "destination"
+    name = "destination",
+    uniqueConstraints = @UniqueConstraint(
+        name = "uk_destination_user_destination_id",
+        columnNames = {"user_id", "destination_id"}
+    )
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Destination extends BaseEntity {
 
-  @Id
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
-  private Long id;
+    private static final int MAX_DESTINATION_ID_LENGTH = 36;
 
-  @Embedded
-  private DestinationAlias alias;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-  @Embedded
-  private Coordinate coordinate;
+    @Column(name = "destination_id", nullable = false, length = MAX_DESTINATION_ID_LENGTH)
+    private String destinationId;
 
-  @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "user_id", nullable = false)
-  private User user;
+    @Embedded
+    private DestinationAlias alias;
 
-  private Destination(User user, DestinationAlias alias, Coordinate coordinate) {
-    this.user = user;
-    this.alias = alias;
-    this.coordinate = coordinate;
-  }
+    @Embedded
+    private Coordinate coordinate;
 
-  public static Destination create(User user, DestinationAlias alias, Coordinate coordinate) {
-    return new Destination(user, alias, coordinate);
-  }
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
-  public void update(String alias, Double latitude, Double longitude) {
-    updateAlias(alias);
-    updateCoordinate(latitude, longitude);
-  }
-
-  public boolean isOwnedBy(Long userId) {
-    return this.user.getId().equals(userId);
-  }
-
-  private void updateAlias(String alias) {
-    if (alias == null) {
-      return;
+    private Destination(User user, String destinationId, DestinationAlias alias, Coordinate coordinate) {
+        this.user = user;
+        this.destinationId = destinationId;
+        this.alias = alias;
+        this.coordinate = coordinate;
     }
 
-    try {
-      this.alias = DestinationAlias.from(alias);
-    } catch (GeneralException exception) {
-      throw new GeneralException(DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID);
-    }
-  }
+    public static Destination create(User user, String destinationId, DestinationAlias alias, Coordinate coordinate) {
+        if (!isValidDestinationId(destinationId)) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_ID_INVALID);
+        }
 
-  private void updateCoordinate(Double latitude, Double longitude) {
-    if (latitude == null && longitude == null) {
-      return;
+        return new Destination(user, destinationId, alias, coordinate);
     }
 
-    Double updatedLatitude = this.coordinate.getLatitude();
-    if (latitude != null) {
-      updatedLatitude = latitude;
+    public static boolean isValidDestinationId(String destinationId) {
+        return destinationId != null && !destinationId.isBlank() && !destinationId.contains(" ")
+            && destinationId.length() <= MAX_DESTINATION_ID_LENGTH;
     }
 
-    Double updatedLongitude = this.coordinate.getLongitude();
-    if (longitude != null) {
-      updatedLongitude = longitude;
+    public void update(String alias, Double latitude, Double longitude) {
+        updateAlias(alias);
+        updateCoordinate(latitude, longitude);
     }
 
-    try {
-      this.coordinate = Coordinate.of(updatedLatitude, updatedLongitude);
-    } catch (GeneralException exception) {
-      throw new GeneralException(DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID);
+    private void updateAlias(String alias) {
+        if (alias == null) {
+            return;
+        }
+
+        try {
+            this.alias = DestinationAlias.from(alias);
+        } catch (GeneralException exception) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID);
+        }
     }
-  }
+
+    private void updateCoordinate(Double latitude, Double longitude) {
+        if (latitude == null && longitude == null) {
+            return;
+        }
+
+        Double updatedLatitude = this.coordinate.getLatitude();
+        if (latitude != null) {
+            updatedLatitude = latitude;
+        }
+
+        Double updatedLongitude = this.coordinate.getLongitude();
+        if (longitude != null) {
+            updatedLongitude = longitude;
+        }
+
+        try {
+            this.coordinate = Coordinate.of(updatedLatitude, updatedLongitude);
+        } catch (GeneralException exception) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID);
+        }
+    }
 }

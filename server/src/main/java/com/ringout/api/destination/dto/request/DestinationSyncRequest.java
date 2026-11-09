@@ -18,6 +18,13 @@ public record DestinationSyncRequest(
     public record DestinationSyncItemRequest(
         @Schema(description = "기기에서 생성한 목적지 고유 ID", example = "2", requiredMode = Schema.RequiredMode.REQUIRED)
         Long clientDestinationId,
+        @Schema(
+            description = "클라이언트가 생성한 목적지 ID. 사용자 안에서 중복될 수 없습니다.",
+            example = "dest-2",
+            maxLength = 36,
+            requiredMode = Schema.RequiredMode.REQUIRED
+        )
+        String destinationId,
 
         @Schema(description = "목적지 별칭", example = "집", maxLength = 12, requiredMode = Schema.RequiredMode.REQUIRED)
         String alias,
