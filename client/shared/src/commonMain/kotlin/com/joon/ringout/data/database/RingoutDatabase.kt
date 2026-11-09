@@ -57,6 +57,8 @@ abstract class RingoutDatabase : RoomDatabase() {
     abstract fun destinationDao(): SavedDestinationDao
 
     abstract fun alarmOccurrenceSyncDao(): AlarmOccurrenceSyncDao
+
+    abstract fun localUserDataCleanupDao(): LocalUserDataCleanupDao
 }
 
 @Suppress("KotlinNoActualForExpect")
@@ -88,5 +90,6 @@ internal fun buildRingoutDatabase(
         RingoutMigration12To13,
     )
     .build()
+
 
 internal const val RingoutDatabaseName = "ringout.db"

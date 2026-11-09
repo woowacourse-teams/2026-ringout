@@ -35,6 +35,7 @@ import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.MissionHistoryRepository
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
+import com.joon.ringout.data.database.LocalUserDataCleanup
 import com.joon.ringout.domain.preferences.SystemThemeModeReader
 import com.joon.ringout.domain.push.PushTokenRegistrar
 import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
@@ -301,6 +302,7 @@ internal class HomeTestContainer : AppContainer {
     override val roomRepository: RoomRepository get() = error("Unused dependency")
     override val alarmActivityRepository: AlarmActivityRepository get() = error("Unused dependency")
     override val missionHistoryRepository: MissionHistoryRepository get() = error("Unused dependency")
+    override val localUserDataCleanup: LocalUserDataCleanup get() = error("Unused dependency")
     override val productAnalyticsRecorder: ProductAnalyticsRecorder get() = error("Unused dependency")
 }
 
