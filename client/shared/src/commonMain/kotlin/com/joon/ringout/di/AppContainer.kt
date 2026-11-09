@@ -30,6 +30,7 @@ interface AppContainer {
     val alarmActivityRepository: AlarmActivityRepository
     val missionHistoryRepository: MissionHistoryRepository
     val arrivalResultRepository: com.joon.ringout.domain.arrival.ArrivalResultRepository
+    val forestRepository: com.joon.ringout.domain.forest.ForestRepository
     val productAnalyticsRecorder: ProductAnalyticsRecorder
     val hasStoredAlarmsForEntryMigration: suspend () -> Boolean
 }

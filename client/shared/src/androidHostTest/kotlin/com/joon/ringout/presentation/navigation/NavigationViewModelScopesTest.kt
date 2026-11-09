@@ -303,6 +303,8 @@ internal class HomeTestContainer : AppContainer {
     override val missionHistoryRepository: MissionHistoryRepository get() = error("Unused dependency")
     override val arrivalResultRepository: com.joon.ringout.domain.arrival.ArrivalResultRepository
         get() = error("Unused dependency")
+    override val forestRepository: com.joon.ringout.domain.forest.ForestRepository
+        get() = error("Unused dependency")
     override val productAnalyticsRecorder: ProductAnalyticsRecorder get() = error("Unused dependency")
 }
 

@@ -110,6 +110,9 @@ class AndroidAppContainer(
     override val arrivalResultRepository =
         com.joon.ringout.data.arrival.RoomArrivalResultRepository(database.arrivalResultDao())
 
+    override val forestRepository =
+        com.joon.ringout.data.forest.RoomForestRepository(database.forestDao())
+
     override val productAnalyticsRecorder =
         createProductAnalyticsRecorder(context)
 }
