@@ -4,8 +4,8 @@ import com.ringout.api.destination.domain.Destination;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 public record DestinationResponse(
-    @Schema(description = "목적지 ID", example = "1")
-    Long destinationId,
+    @Schema(description = "목적지 ID", example = "dest-1")
+    String destinationId,
 
     @Schema(description = "목적지 별칭", example = "런닝 장소")
     String alias,
@@ -19,7 +19,7 @@ public record DestinationResponse(
 
     public static DestinationResponse from(Destination destination) {
         return new DestinationResponse(
-            destination.getId(),
+            destination.getDestinationId(),
             destination.getAlias().getValue(),
             destination.getCoordinate().getLatitude(),
             destination.getCoordinate().getLongitude()
