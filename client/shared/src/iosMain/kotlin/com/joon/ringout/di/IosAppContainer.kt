@@ -108,6 +108,9 @@ class IosAppContainer(
     override val localUserDataCleanup = RoomLocalUserDataCleanup(database.localUserDataCleanupDao())
     // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 KtorMissionHistoryRemoteDataSource를 다시 주입한다.
 
+    override val arrivalResultRepository =
+        com.joon.ringout.data.arrival.RoomArrivalResultRepository(database.arrivalResultDao())
+
     override val productAnalyticsRecorder =
         createProductAnalyticsRecorder(
             nativeServices.analyticsTracker(),

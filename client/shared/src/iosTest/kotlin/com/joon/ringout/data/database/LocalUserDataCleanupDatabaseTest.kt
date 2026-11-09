@@ -13,6 +13,8 @@ import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordState
+import com.joon.ringout.data.arrival.ArrivalGrowthActivationEntity
+import com.joon.ringout.data.arrival.ArrivalResultEntity
 import com.joon.ringout.data.destination.SavedDestinationEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 import kotlinx.coroutines.flow.first
@@ -34,6 +36,20 @@ class LocalUserDataCleanupDatabaseTest {
             val activityDao = database.alarmActivityDao()
             val occurrenceDao = database.alarmOccurrenceSyncDao()
             val missionHistoryDao = database.missionHistoryDao()
+            val arrivalDao = database.arrivalResultDao()
+            arrivalDao.initializeArrivalGrowth(ArrivalGrowthActivationEntity(activatedAtEpochMillis = 1_000))
+            val growthActivation = arrivalDao.getGrowthActivation()
+            arrivalDao.insertArrivalResult(
+                ArrivalResultEntity(
+                    occurrenceId = "execution-1",
+                    completedLocalDate = "2026-11-09",
+                    completedAtEpochMillis = 1_300,
+                    alarmDismissedAtEpochMillis = 1_200,
+                    successfulDayCountAtArrival = 1,
+                    grewOnThisArrival = true,
+                ),
+            )
+            assertEquals(1, arrivalDao.getSuccessfulDayCount())
 
             alarmDao.insertAlarm(sampleAlarm())
             alarmDao.insertRepeatDays(listOf(AlarmRepeatDayEntity("alarm-1", 1)))
@@ -99,6 +115,9 @@ class LocalUserDataCleanupDatabaseTest {
             assertNull(activityDao.getOccurrenceTimes("execution-1"))
             assertTrue(activityDao.getObservations().isEmpty())
             assertTrue(missionHistoryDao.getHistory("2026-11-01", "2026-11-30").isEmpty())
+            assertNull(arrivalDao.getResult("execution-1"))
+            assertEquals(0, arrivalDao.getSuccessfulDayCount())
+            assertEquals(growthActivation, arrivalDao.getGrowthActivation())
             assertTrue(occurrenceDao.getEvents("account-1", "execution-1").isEmpty())
             assertTrue(occurrenceDao.getMovements("account-1", "execution-1").isEmpty())
             assertNull(occurrenceDao.getExecution("account-1", "execution-1"))

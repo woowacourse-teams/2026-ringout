@@ -137,6 +137,8 @@ internal class AppNavigationState(
             }
             is AppRoute.ActiveAlarmTracking ->
                 routes.filterNot { it is AppRoute.ActiveAlarmTracking } + route
+            is AppRoute.Arrival -> listOf(AppRoute.Home, route)
+            is AppRoute.ArrivalShare -> listOf(AppRoute.Home, AppRoute.Arrival(route.occurrenceId), route)
             AppRoute.Onboarding -> error("온보딩은 앱 내비게이션 진입 전에 관리한다: $route")
             is AppRoute.AlarmRinging ->
                 error("알람 울림 경로는 플랫폼 상태에서만 표시한다: $route")

@@ -27,6 +27,9 @@ interface LocalUserDataCleanupDao {
     @Query("DELETE FROM mission_history")
     suspend fun deleteMissionHistory()
 
+    @Query("DELETE FROM arrival_results")
+    suspend fun deleteArrivalResults()
+
     @Query("DELETE FROM alarm_activity_events")
     suspend fun deleteAlarmActivityEvents()
 
@@ -44,7 +47,8 @@ interface LocalUserDataCleanupDao {
 
     /**
      * Clears only account-owned data. Keep storage_migrations so a later launch cannot
-     * import legacy alarm preferences back into this installation.
+     * import legacy alarm preferences back into this installation. Keep the installation's
+     * arrival growth activation timestamp as well.
      */
     @Transaction
     suspend fun clear() {
@@ -54,6 +58,7 @@ interface LocalUserDataCleanupDao {
         deleteAlarmOccurrenceSync()
         deleteIosAlarmOccurrenceRecording()
         deleteAlarmRingingObservations()
+        deleteArrivalResults()
         deleteMissionHistory()
         deleteAlarmActivityEvents()
         deleteAlarmActivityTracking()

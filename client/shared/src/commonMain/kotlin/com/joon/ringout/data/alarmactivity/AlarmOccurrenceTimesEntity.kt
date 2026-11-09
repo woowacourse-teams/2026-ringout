@@ -45,6 +45,18 @@ interface AlarmOccurrenceTimesAccess {
     @Query("SELECT * FROM alarm_occurrence_times WHERE occurrence_id = :occurrenceId")
     suspend fun getOccurrenceTimes(occurrenceId: String): AlarmOccurrenceTimesEntity?
 
+    @Query("""
+        UPDATE arrival_results SET alarm_dismissed_at_epoch_millis = (
+            SELECT ringing_stopped_at FROM alarm_occurrence_times WHERE occurrence_id = :occurrenceId
+        )
+        WHERE occurrence_id = :occurrenceId AND alarm_dismissed_at_epoch_millis IS NULL
+            AND EXISTS (
+                SELECT 1 FROM alarm_occurrence_times
+                WHERE occurrence_id = :occurrenceId AND ringing_stopped_at IS NOT NULL
+            )
+    """)
+    suspend fun fillMissingArrivalDismissalTime(occurrenceId: String)
+
     @Transaction
     suspend fun mergeOccurrenceTimes(times: AlarmOccurrenceTimesEntity) {
         require(times.occurrenceId.isNotBlank())
@@ -57,5 +69,6 @@ interface AlarmOccurrenceTimesAccess {
             times.isRingingStartObserved,
             times.ringingScheduledAtEpochMillis,
         )
+        fillMissingArrivalDismissalTime(times.occurrenceId)
     }
 }

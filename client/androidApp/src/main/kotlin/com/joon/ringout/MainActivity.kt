@@ -28,6 +28,7 @@ import com.joon.ringout.alarm.AlarmMissionCoordinator
 import com.joon.ringout.alarm.AlarmRingingRuntime
 import com.joon.ringout.domain.update.AppUpdateAccess
 import com.joon.ringout.presentation.activemission.AlarmCompletionRoute
+import com.joon.ringout.presentation.arrival.RestrictedArrivalHost
 import com.joon.ringout.presentation.update.AppUpdateDialog
 import com.joon.ringout.presentation.update.MandatoryUpdateScreen
 import com.joon.ringout.presentation.update.MandatoryUpdateViewModel
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var alarmMissionCoordinator: AlarmMissionCoordinator
     private var activeAlarmMission by mutableStateOf<ActiveAlarmMission?>(null)
     private var activeAlarmMissionLocation by mutableStateOf<ActiveAlarmMissionLocation?>(null)
+    private var hasPendingAlarmMission by mutableStateOf(false)
     private var isUpdateDialogVisible by mutableStateOf(false)
     private lateinit var playStoreUpdateChecker: PlayStoreUpdateChecker
     private val mandatoryUpdateViewModel: MandatoryUpdateViewModel by viewModels {
@@ -116,6 +118,8 @@ class MainActivity : ComponentActivity() {
                                 appContainer = appContainer,
                                 appVersion = BuildConfig.VERSION_NAME,
                                 myPageExtraContent = extraContent,
+                                hasExternalRingingAlarm = ringingOccurrenceId != null ||
+                                    (hasPendingAlarmMission && activeAlarmMission == null),
                                 activeAlarmMission = activeAlarmMission,
                                 activeAlarmMissionLocation = activeAlarmMissionLocation,
                                 onActiveAlarmMissionExpired = ::handleActiveAlarmMissionExpired,
@@ -160,12 +164,17 @@ class MainActivity : ComponentActivity() {
                                 null
                             },
                         ) {
-                            MandatoryUpdateScreen(
-                                uiState = updateUiState,
-                                onUpdateClick = {
-                                    mandatoryUpdateViewModel.onStoreOpenResult(playStoreUpdateChecker.openStore())
-                                },
-                            )
+                            RestrictedArrivalHost(
+                                repository = appContainer.arrivalResultRepository,
+                                hasActiveRuntime = hasPendingAlarmMission || ringingOccurrenceId != null,
+                            ) {
+                                MandatoryUpdateScreen(
+                                    uiState = updateUiState,
+                                    onUpdateClick = {
+                                        mandatoryUpdateViewModel.onStoreOpenResult(playStoreUpdateChecker.openStore())
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -209,11 +218,12 @@ class MainActivity : ComponentActivity() {
     private fun refreshActiveAlarmMission() {
         val mission = activeAlarmMissionStore.read()
         activeAlarmMission = mission
+        hasPendingAlarmMission = activeAlarmMissionStore.hasPendingMission()
         activeAlarmMissionLocation = mission?.let { activeMission ->
             activeAlarmMissionStore.readLastLocation(activeMission.occurrenceId)
         }
         mandatoryUpdateViewModel.setAlarmInProgress(
-            activeAlarmMissionStore.hasPendingMission() || AlarmRingingRuntime.ringingOccurrenceId.value != null,
+            hasPendingAlarmMission || AlarmRingingRuntime.ringingOccurrenceId.value != null,
         )
     }
 }

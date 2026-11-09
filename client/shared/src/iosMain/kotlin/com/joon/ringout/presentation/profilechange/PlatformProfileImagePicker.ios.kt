@@ -188,7 +188,7 @@ private fun profileImageFileSize(fileUrl: NSURL): Long? {
 }
 
 @OptIn(BetaInteropApi::class, ExperimentalForeignApi::class)
-private fun decodePreviewImage(fileUrl: NSURL): ImageBitmap {
+internal fun decodePreviewImage(fileUrl: NSURL, maxDimension: Int = MaxPreviewDimension): ImageBitmap {
     val urlReference = memScoped {
         val path = fileUrl.path ?: error("The selected image could not be opened")
         val cfPath = CFStringCreateWithCString(null, path, kCFStringEncodingUTF8)
@@ -215,7 +215,7 @@ private fun decodePreviewImage(fileUrl: NSURL): ImageBitmap {
         ) ?: error("The selected image options could not be prepared")
         val maxDimensionNumber = memScoped {
             val value = alloc<IntVar>()
-            value.value = MaxPreviewDimension
+            value.value = maxDimension
             CFNumberCreate(null, kCFNumberIntType, value.ptr)
         } ?: error("The selected image options could not be prepared")
         CFDictionarySetValue(options, kCGImageSourceCreateThumbnailFromImageAlways, kCFBooleanTrue)
