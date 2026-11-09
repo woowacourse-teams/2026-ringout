@@ -22,6 +22,10 @@ internal sealed interface AppRoute : NavKey {
     data object Home : AppRoute
 
     @Serializable
+    @SerialName("forest")
+    data object Forest : AppRoute
+
+    @Serializable
     @SerialName("social")
     data object Social : AppRoute
 

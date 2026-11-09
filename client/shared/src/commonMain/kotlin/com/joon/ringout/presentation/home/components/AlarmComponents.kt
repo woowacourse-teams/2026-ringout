@@ -56,6 +56,7 @@ import kotlin.time.Clock
 internal fun AlarmListHeader(
     nextAlarmDescription: String,
     modifier: Modifier = Modifier,
+    onForestClick: () -> Unit = {},
 ) {
     val colors = homeAlarmColors()
 
@@ -65,6 +66,7 @@ internal fun AlarmListHeader(
         titleColor = colors.primaryText,
         descriptionColor = colors.secondaryText,
         modifier = modifier,
+        action = { HomeForestButton(onClick = onForestClick) },
     )
 }
 

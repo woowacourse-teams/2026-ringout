@@ -45,6 +45,26 @@ val generateApiConfig = tasks.register<GenerateApiConfig>("generateApiConfig") {
     outputDirectory.set(layout.buildDirectory.dir("generated/apiConfig/commonMain/kotlin"))
 }
 
+// A deployment can be supplied by CI or the local shell; no production URL is guessed.
+abstract class GenerateForestConfig : DefaultTask() {
+    @get:Input abstract val webUrl: Property<String>
+    @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
+    @TaskAction fun generate() {
+        val url = webUrl.get().trim()
+        require(url.isEmpty() || (url.matches(Regex("[A-Za-z0-9:/._~%-]+")) && URI(url).let {
+            it.scheme in listOf("https", "http") && !it.host.isNullOrBlank() && it.rawUserInfo == null
+        })) { "RINGOUT_FOREST_WEB_URL must be an HTTP(S) URL without credentials, query or fragment" }
+        val file = outputDirectory.file("com/joon/ringout/presentation/forest/ForestBuildConfig.kt").get().asFile
+        file.parentFile.mkdirs()
+        file.writeText("package com.joon.ringout.presentation.forest\ninternal object ForestBuildConfig { const val WEB_URL = \"$url\" }\n")
+    }
+}
+val generateForestConfig = tasks.register<GenerateForestConfig>("generateForestConfig") {
+    webUrl.set(providers.gradleProperty("ringoutForestWebUrl")
+        .orElse(providers.environmentVariable("RINGOUT_FOREST_WEB_URL")).orElse(""))
+    outputDirectory.set(layout.buildDirectory.dir("generated/forestConfig/commonMain/kotlin"))
+}
+
 kotlin {
     listOf(
         iosArm64(),
@@ -75,8 +95,10 @@ kotlin {
     sourceSets {
         commonMain {
             kotlin.srcDir(generateApiConfig.flatMap { it.outputDirectory })
+            kotlin.srcDir(generateForestConfig.flatMap { it.outputDirectory })
         }
         androidMain.dependencies {
+            implementation(libs.androidx.webkit)
             implementation(libs.androidx.exifinterface)
             implementation(libs.androidx.work.runtime)
             implementation(libs.androidx.activity.compose)

@@ -27,6 +27,7 @@ fun HomeScreen(
     onActiveAlarmMissionExpired: () -> Unit = {},
     onAlarmDeleteDismiss: () -> Unit = {},
     onAlarmDeleteConfirm: () -> Unit = {},
+    onForestClick: () -> Unit = {},
 ) {
     if (uiState.pendingDeleteAlarmId != null) {
         AlarmDeleteDialog(
@@ -37,12 +38,13 @@ fun HomeScreen(
 
     val alarms = uiState.alarms
     if (uiState.isLoading && activeAlarmMission == null) {
-        HomeLoadingState(modifier = modifier)
+        HomeLoadingState(modifier = modifier, onForestClick = onForestClick)
         return
     }
 
     if (alarms.isEmpty() && activeAlarmMission == null) {
         HomeEmptyState(
+            onForestClick = onForestClick,
             onAddAlarm = onAddAlarm,
             modifier = modifier,
         )
@@ -53,6 +55,7 @@ fun HomeScreen(
         enabledAlarmsFirst(alarms)
     }
     HomeAlarmListState(
+        onForestClick = onForestClick,
         alarms = orderedAlarms,
         nextAlarmDescription = rememberNextAlarmDescription(alarms),
         onAddAlarm = onAddAlarm,

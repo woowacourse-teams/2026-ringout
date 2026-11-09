@@ -1,4 +1,4 @@
-/** Protocol draft for stage 4. This prototype never accesses native data or persists progress. */
+/** Room bridge protocol. Development fixtures never participate in the native entry point. */
 export const FOREST_PROTOCOL_VERSION = 1 as const;
 export type TreeKind = "pine" | "oak" | "big_tree";
 
@@ -37,8 +37,9 @@ export type WebToAppMessage = Envelope &
   );
 export type AppToWebMessage = Envelope &
   (
-    | { type: "forest.snapshot"; payload: ForestSnapshot }
-    | { type: "forest.result"; success: true }
+    | { type: "forest.snapshot"; revision: number; payload: ForestSnapshot }
+    | { type: "forest.result"; success: true; revision: number; payload: ForestSnapshot }
+    | { type: "forest.navigateBack" }
     | {
         type: "forest.result";
         success: false;

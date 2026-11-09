@@ -6,6 +6,10 @@ class ForestDatabaseTest {
     private val suite = ForestDatabaseTestSuite()
 
     @Test
+    fun `웹 브리지로 확인한 숲이 데이터베이스 재시작 후에도 유지된다`() =
+        suite.`웹 브리지로 확인한 숲이 데이터베이스 재시작 후에도 유지된다`()
+
+    @Test
     fun `숲을 열지 않아도 다섯째 날 자동으로 심고 여든한째 날에는 도착 기록만 늘어난다`() =
         suite.`숲을 열지 않아도 다섯째 날 자동으로 심고 여든한째 날에는 도착 기록만 늘어난다`()
 

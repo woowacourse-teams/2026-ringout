@@ -1,5 +1,8 @@
 package com.joon.ringout.data.forest
 
+import com.joon.ringout.presentation.forest.ForestConnection
+import com.joon.ringout.presentation.forest.ForestProtocol
+import kotlinx.serialization.json.*
 import androidx.room3.Room
 import androidx.sqlite.execSQL
 import com.joon.ringout.data.arrival.RoomArrivalResultRepository
@@ -34,6 +37,35 @@ import kotlin.test.assertTrue
 
 /** Shared contract executed against both Android SQLite and iOS bundled SQLite. */
 class ForestDatabaseTestSuite {
+    fun `웹 브리지로 확인한 숲이 데이터베이스 재시작 후에도 유지된다`() = runBlocking {
+        withDatabase {
+            (1..5).forEach { recordDay(it) }
+            val tree = forest.getForest().trees.single()
+            coroutineScope {
+                val responses = Channel<JsonObject>(Channel.UNLIMITED)
+                val bridge = ForestConnection(forest, this, { 20_000 },
+                    { responses.trySend(Json.parseToJsonElement(it).jsonObject) }, {}, {}, { error("Bridge failure") })
+                suspend fun request(type: String, id: String) {
+                    bridge.receive(ForestProtocol.message(type, id) { if (type == "forest.acknowledgeTree") put("growthCycle", 1) })
+                    withTimeout(5_000) {
+                        do { val response = responses.receive() }
+                        while (response["requestId"]!!.jsonPrimitive.content != id)
+                    }
+                }
+                try {
+                    request("forest.ready", "ready")
+                    request("forest.completeOnboarding", "onboarding")
+                    request("forest.acknowledgeTree", "tree")
+                } finally { bridge.close(); responses.close() }
+            }
+            reopen()
+            val restored = forest.getForest()
+            assertEquals(20_000L, restored.onboardingCompletedAtEpochMillis)
+            assertEquals(tree.copy(acknowledgedAtEpochMillis = 20_000), restored.trees.single())
+            assertEquals(5, restored.growth.successfulDayCount)
+        }
+    }
+
     fun `숲을 열지 않아도 다섯째 날 자동으로 심고 여든한째 날에는 도착 기록만 늘어난다`() = runBlocking {
         withDatabase {
             val initial = forest.getForest()

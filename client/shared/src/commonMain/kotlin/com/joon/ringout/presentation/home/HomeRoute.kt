@@ -16,9 +16,11 @@ internal fun HomeRoute(
     onActiveAlarmMissionClick: () -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     modifier: Modifier = Modifier,
+    onForestClick: () -> Unit = {},
 ) {
     HomeScreen(
         uiState = viewModel.uiState,
+        onForestClick = onForestClick,
         activeAlarmMission = activeAlarmMission,
         onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
         onAddAlarm = onAddAlarm,

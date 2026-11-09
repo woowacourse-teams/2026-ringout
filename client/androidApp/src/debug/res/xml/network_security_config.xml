@@ -3,5 +3,7 @@
     <base-config cleartextTrafficPermitted="false" />
     <domain-config cleartextTrafficPermitted="true">
         <domain>3.36.50.38</domain>
+        <domain>localhost</domain>
+        <domain>127.0.0.1</domain>
     </domain-config>
 </network-security-config>
