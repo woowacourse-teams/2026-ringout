@@ -48,6 +48,9 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     alarmController: AlarmController,
     activeAlarmMission: ActiveAlarmMission?,
     onThemeModeChange: (ThemeMode) -> Unit,
+    canOpenLogoutConfirmation: () -> Boolean = { true },
+    logoutBlockedMessage: String? = null,
+    onDismissLogoutBlocked: () -> Unit = {},
     onAddAlarm: () -> Unit,
     onEditAlarm: (AlarmScheduleRequest) -> Unit,
     onAuthenticationRequired: () -> Unit,
@@ -76,6 +79,9 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             appVersion = appVersion,
             extraContent = myPageExtraContent,
             onThemeModeChange = onThemeModeChange,
+            canOpenLogoutConfirmation = canOpenLogoutConfirmation,
+            logoutBlockedMessage = logoutBlockedMessage,
+            onDismissLogoutBlocked = onDismissLogoutBlocked,
             onEditProfileClick = { navigationState.navigate(AppRoute.NicknameChange) },
         )
     }

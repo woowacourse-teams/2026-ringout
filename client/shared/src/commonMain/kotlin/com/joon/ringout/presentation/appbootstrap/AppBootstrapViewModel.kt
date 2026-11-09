@@ -235,6 +235,13 @@ class AppBootstrapViewModel(
         }
     }
 
+    fun canOpenExplicitLogoutConfirmation(): Boolean {
+        if (uiState.isLogoutCleanupPending || logoutCleanupJob?.isActive == true) return false
+        if (hasRuntimeEvidence()) return false
+        uiState = uiState.copy(logoutCleanupErrorMessage = null)
+        return true
+    }
+
     fun requestExplicitLogout() {
         if (uiState.isLogoutCleanupPending || logoutCleanupJob?.isActive == true) return
         if (hasRuntimeEvidence()) {

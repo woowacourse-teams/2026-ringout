@@ -8,9 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -138,6 +136,7 @@ fun App(
             session = appContainer.authSession,
             networkMonitor = appContainer.networkMonitor,
             explicitLogout = appBootstrapViewModel::requestExplicitLogout,
+            canStartExplicitLogout = appBootstrapViewModel::canOpenExplicitLogoutConfirmation,
         )
     }
 
@@ -248,6 +247,11 @@ fun App(
                     hasAlarmCreationGuideSaveFailed = appBootstrapUiState.hasAlarmCreationGuideSaveFailed,
                     onAlarmCreationGuideFinished = appBootstrapViewModel::completeAlarmCreationGuide,
                     onExplicitLogout = appBootstrapViewModel::requestExplicitLogout,
+                    canOpenLogoutConfirmation =
+                        appBootstrapViewModel::canOpenExplicitLogoutConfirmation,
+                    logoutBlockedMessage = appBootstrapUiState.logoutCleanupErrorMessage
+                        .takeUnless { appBootstrapUiState.isLogoutCleanupPending },
+                    onDismissLogoutBlocked = appBootstrapViewModel::dismissLogoutCleanupError,
                     onAuthenticationRequired = appBootstrapViewModel::requestAuthentication,
                     appVersion = appVersion,
                     myPageExtraContent = myPageExtraContent,
@@ -275,22 +279,6 @@ fun App(
                 )
 
             else -> Unit
-        }
-
-        if (
-            appBootstrapUiState.logoutCleanupErrorMessage != null &&
-            !appBootstrapUiState.isLogoutCleanupPending
-        ) {
-            AlertDialog(
-                onDismissRequest = appBootstrapViewModel::dismissLogoutCleanupError,
-                title = { Text("로그아웃할 수 없어요") },
-                text = { Text(appBootstrapUiState.logoutCleanupErrorMessage) },
-                confirmButton = {
-                    TextButton(onClick = appBootstrapViewModel::dismissLogoutCleanupError) {
-                        Text("확인")
-                    }
-                },
-            )
         }
     }
 }
@@ -470,6 +458,9 @@ private fun RingoutAppContent(
     hasAlarmCreationGuideSaveFailed: Boolean,
     onAlarmCreationGuideFinished: () -> Unit,
     onExplicitLogout: () -> Unit,
+    canOpenLogoutConfirmation: () -> Boolean,
+    logoutBlockedMessage: String?,
+    onDismissLogoutBlocked: () -> Unit,
     onAuthenticationRequired: () -> Unit,
     appVersion: String,
     myPageExtraContent: (@Composable (ThemeMode) -> Unit)?,
@@ -730,6 +721,9 @@ private fun RingoutAppContent(
                     alarmController = alarmController,
                     activeAlarmMission = activeAlarmMission,
                     onThemeModeChange = onThemeModeChange,
+                    canOpenLogoutConfirmation = canOpenLogoutConfirmation,
+                    logoutBlockedMessage = logoutBlockedMessage,
+                    onDismissLogoutBlocked = onDismissLogoutBlocked,
                     onAddAlarm = onAddAlarm,
                     onEditAlarm = { request ->
                         viewModelScopes.createAlarmEditorNavigation(
