@@ -13,8 +13,8 @@ public record DestinationSyncResponse(
         @Schema(description = "기기에서 생성한 목적지 고유 ID", example = "2")
         Long clientDestinationId,
 
-        @Schema(description = "서버에 저장된 목적지 ID", example = "1")
-        Long destinationId,
+        @Schema(description = "서버에 저장된 목적지 ID", example = "dest-2")
+        String destinationId,
 
         @Schema(description = "목적지 별칭", example = "집")
         String alias,
@@ -29,7 +29,7 @@ public record DestinationSyncResponse(
         public static DestinationSyncItemResponse of(Long clientDestinationId, Destination destination) {
             return new DestinationSyncItemResponse(
                 clientDestinationId,
-                destination.getId(),
+                destination.getDestinationId(),
                 destination.getAlias().getValue(),
                 destination.getCoordinate().getLatitude(),
                 destination.getCoordinate().getLongitude()

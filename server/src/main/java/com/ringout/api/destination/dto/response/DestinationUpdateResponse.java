@@ -3,8 +3,8 @@ package com.ringout.api.destination.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 public record DestinationUpdateResponse(
-    @Schema(description = "수정된 목적지 ID", example = "1")
-    Long destinationId,
+    @Schema(description = "수정된 목적지 ID", example = "dest-1")
+    String destinationId,
 
     @Schema(description = "수정된 목적지 별칭", example = "회사")
     String alias,

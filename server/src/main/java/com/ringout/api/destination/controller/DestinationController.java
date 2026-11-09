@@ -63,7 +63,7 @@ public class DestinationController implements DestinationControllerApi {
         @Valid @RequestBody DestinationCreateRequest request
     ) {
         DestinationCreateResponse response = destinationService.createDestination(customUserDetails.getUserId(),
-            request.alias(), request.latitude(), request.longitude());
+            request.destinationId(), request.alias(), request.latitude(), request.longitude());
 
         return ResponseEntity.status(DestinationSuccessStatus.DESTINATION_CREATED.getHttpStatus())
             .body(CustomResponse.onSuccess(DestinationSuccessStatus.DESTINATION_CREATED, response));
@@ -73,7 +73,7 @@ public class DestinationController implements DestinationControllerApi {
     @PatchMapping("/{destinationId}")
     public ResponseEntity<CustomResponse<DestinationUpdateResponse>> updateDestination(
         @AuthenticationPrincipal CustomUserDetails customUserDetails,
-        @PathVariable Long destinationId,
+        @PathVariable String destinationId,
         @RequestBody(required = false) DestinationUpdateRequest request
     ) {
         DestinationUpdateResponse response = destinationService.updateDestination(customUserDetails.getUserId(),
@@ -87,7 +87,7 @@ public class DestinationController implements DestinationControllerApi {
     @DeleteMapping("/{destinationId}")
     public ResponseEntity<CustomResponse<Void>> deleteDestination(
         @AuthenticationPrincipal CustomUserDetails customUserDetails,
-        @PathVariable Long destinationId
+        @PathVariable String destinationId
     ) {
         destinationService.deleteDestination(customUserDetails.getUserId(), destinationId);
 

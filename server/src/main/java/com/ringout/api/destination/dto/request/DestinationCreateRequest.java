@@ -9,6 +9,15 @@ import jakarta.validation.constraints.Size;
 
 public record DestinationCreateRequest(
     @Schema(
+        description = "클라이언트가 생성한 목적지 ID. 사용자 안에서 중복될 수 없습니다.",
+        example = "dest-1",
+        maxLength = 36,
+        requiredMode = Schema.RequiredMode.REQUIRED
+    )
+    @NotBlank(message = "목적지 아이디는 1자 이상 36자 이하로 입력해야 합니다.")
+    @Size(max = 36, message = "목적지 아이디는 1자 이상 36자 이하로 입력해야 합니다.")
+    String destinationId,
+    @Schema(
         description = "목적지 별칭. 최대 12자까지 저장할 수 있습니다.",
         example = "헬스장",
         maxLength = 12,

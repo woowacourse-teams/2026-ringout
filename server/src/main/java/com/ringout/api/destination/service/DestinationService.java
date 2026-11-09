@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,14 +33,15 @@ public class DestinationService {
     private final UserRepository userRepository;
 
     @Transactional
-    public DestinationCreateResponse createDestination(Long userId, String alias, Double latitude, Double longitude) {
+    public DestinationCreateResponse createDestination(Long userId, String destinationId, String alias,
+        Double latitude, Double longitude) {
         validateAuthenticatedUserExists(userId);
 
         User user = userRepository.getReferenceById(userId);
-        Destination destination = Destination.create(user, DestinationAlias.from(alias),
+        Destination destination = Destination.create(user, destinationId, DestinationAlias.from(alias),
             Coordinate.of(latitude, longitude));
 
-        return new DestinationCreateResponse(destinationRepository.save(destination).getId());
+        return new DestinationCreateResponse(saveDestination(destination).getDestinationId());
     }
 
     @Transactional(readOnly = true)
@@ -55,13 +57,13 @@ public class DestinationService {
     public DestinationSyncResponse syncDestinations(Long userId, DestinationSyncRequest request) {
         validateAuthenticatedUserExists(userId);
         validateDestinationSyncRequestBodyExists(request);
-        validateSyncRequestClientDestinationIdsAreUsable(request.destinations());
+        validateSyncRequestDestinationIdsAreUsable(request.destinations());
 
         User user = userRepository.getReferenceById(userId);
         List<DestinationSyncItemResponse> syncedDestinations = new ArrayList<>();
         for (DestinationSyncItemRequest item : request.destinations()) {
             Destination destination = createDestinationForSync(user, item);
-            Destination savedDestination = destinationRepository.save(destination);
+            Destination savedDestination = saveDestination(destination);
             syncedDestinations.add(DestinationSyncItemResponse.of(item.clientDestinationId(), savedDestination));
         }
 
@@ -69,26 +71,25 @@ public class DestinationService {
     }
 
     @Transactional
-    public DestinationUpdateResponse updateDestination(Long userId, Long destinationId,
+    public DestinationUpdateResponse updateDestination(Long userId, String destinationId,
         DestinationUpdateRequest request) {
         validateAuthenticatedUserExists(userId);
-        validateDestinationIdIsPositive(destinationId);
+        validateDestinationIdIsUsable(destinationId);
         validateDestinationUpdateRequestBodyExists(request);
 
-        Destination destination = findDestinationByIdAndValidateOwner(userId, destinationId);
+        Destination destination = findOwnedDestination(userId, destinationId);
         destination.update(request.alias(), request.latitude(), request.longitude());
 
-        return new DestinationUpdateResponse(destination.getId(), destination.getAlias().getValue(),
+        return new DestinationUpdateResponse(destination.getDestinationId(), destination.getAlias().getValue(),
             destination.getCoordinate().getLatitude(), destination.getCoordinate().getLongitude());
     }
 
     @Transactional
-    public void deleteDestination(Long userId, Long destinationId) {
+    public void deleteDestination(Long userId, String destinationId) {
         validateAuthenticatedUserExists(userId);
-        validateDestinationIdIsPositive(destinationId);
+        validateDestinationIdToDeleteIsUsable(destinationId);
 
-        Destination destination = findDestinationByIdAndValidateOwner(userId, destinationId);
-        destinationRepository.delete(destination);
+        destinationRepository.deleteOwnedDestination(userId, destinationId);
     }
 
     private void validateAuthenticatedUserExists(Long userId) {
@@ -97,9 +98,15 @@ public class DestinationService {
         }
     }
 
-    private void validateDestinationIdIsPositive(Long destinationId) {
-        if (destinationId == null || destinationId <= 0) {
+    private void validateDestinationIdIsUsable(String destinationId) {
+        if (!Destination.isValidDestinationId(destinationId)) {
             throw new GeneralException(DestinationErrorStatus.DESTINATION_ID_INVALID);
+        }
+    }
+
+    private void validateDestinationIdToDeleteIsUsable(String destinationId) {
+        if (!Destination.isValidDestinationId(destinationId)) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_DELETE_ID_INVALID);
         }
     }
 
@@ -115,12 +122,14 @@ public class DestinationService {
         }
     }
 
-    private void validateSyncRequestClientDestinationIdsAreUsable(List<DestinationSyncItemRequest> destinations) {
+    private void validateSyncRequestDestinationIdsAreUsable(List<DestinationSyncItemRequest> destinations) {
         Set<Long> clientDestinationIds = new HashSet<>();
+        Set<String> destinationIds = new HashSet<>();
         for (DestinationSyncItemRequest destination : destinations) {
             validateDestinationSyncItemExists(destination);
             validateClientDestinationIdIsPositive(destination.clientDestinationId());
             validateClientDestinationIdIsUnique(clientDestinationIds, destination.clientDestinationId());
+            validateDestinationIdIsUniqueInSyncRequest(destinationIds, destination.destinationId());
         }
     }
 
@@ -142,9 +151,23 @@ public class DestinationService {
         }
     }
 
+    private void validateDestinationIdIsUniqueInSyncRequest(Set<String> destinationIds, String destinationId) {
+        if (!destinationIds.add(destinationId)) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID);
+        }
+    }
+
+    private Destination saveDestination(Destination destination) {
+        try {
+            return destinationRepository.save(destination);
+        } catch (DataIntegrityViolationException exception) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_ID_DUPLICATED);
+        }
+    }
+
     private Destination createDestinationForSync(User user, DestinationSyncItemRequest request) {
         try {
-            return Destination.create(user, DestinationAlias.from(request.alias()),
+            return Destination.create(user, request.destinationId(), DestinationAlias.from(request.alias()),
                 Coordinate.of(request.latitude(), request.longitude()));
         } catch (GeneralException exception) {
             throw convertToDestinationSyncException(exception);
@@ -159,16 +182,8 @@ public class DestinationService {
         return new GeneralException(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID);
     }
 
-    private Destination findDestinationByIdAndValidateOwner(Long userId, Long destinationId) {
-        Destination destination = destinationRepository.findById(destinationId)
+    private Destination findOwnedDestination(Long userId, String destinationId) {
+        return destinationRepository.findOwnedDestination(userId, destinationId)
             .orElseThrow(() -> new GeneralException(DestinationErrorStatus.DESTINATION_NOT_FOUND));
-        validateDestinationBelongsToUser(destination, userId);
-        return destination;
-    }
-
-    private void validateDestinationBelongsToUser(Destination destination, Long userId) {
-        if (!destination.isOwnedBy(userId)) {
-            throw new GeneralException(DestinationErrorStatus.DESTINATION_FORBIDDEN);
-        }
     }
 }
