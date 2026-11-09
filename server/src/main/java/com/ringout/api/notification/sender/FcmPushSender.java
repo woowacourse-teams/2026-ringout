@@ -1,10 +1,17 @@
 package com.ringout.api.notification.sender;
 
+import com.google.firebase.messaging.AndroidConfig;
+import com.google.firebase.messaging.AndroidConfig.Priority;
+import com.google.firebase.messaging.ApnsConfig;
+import com.google.firebase.messaging.Aps;
 import com.google.firebase.messaging.BatchResponse;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
 import com.google.firebase.messaging.SendResponse;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -20,8 +27,10 @@ import org.springframework.stereotype.Component;
 public class FcmPushSender implements PushSender {
 
     private static final int MAX_BATCH_SIZE = 500;
+    private static final Duration TTL = Duration.ofMinutes(10);
 
     private final FirebaseMessaging firebaseMessaging;
+    private final Clock clock;
 
     @Override
     public List<Boolean> send(List<PushMessage> messages) {
@@ -61,10 +70,26 @@ public class FcmPushSender implements PushSender {
             .setNotification(com.google.firebase.messaging.Notification.builder()
                 .setTitle(message.title())
                 .setBody(message.body())
+                .build())
+            .setAndroidConfig(AndroidConfig.builder()
+                .setPriority(Priority.HIGH)
+                .setTtl(TTL.toMillis())
+                .build())
+            .setApnsConfig(ApnsConfig.builder()
+                .putHeader("apns-priority", "10")
+                .putHeader("apns-push-type", "alert")
+                .putHeader("apns-expiration", apnsExpiration())
+                .setAps(Aps.builder()
+                    .putCustomData("interruption-level", "time-sensitive")
+                    .build())
                 .build());
         if (message.data() != null) {
             builder.putAllData(message.data());
         }
         return builder.build();
+    }
+
+    private String apnsExpiration() {
+        return String.valueOf(Instant.now(clock).plus(TTL).getEpochSecond());
     }
 }
