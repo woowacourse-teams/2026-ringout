@@ -57,6 +57,7 @@ import com.joon.ringout.presentation.navigation.authGraph
 import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.navigation.rememberAuthOnlyNavigationState
 import com.joon.ringout.presentation.mypage.MyPageViewModel
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
 import com.joon.ringout.presentation.roomedit.RoomEditViewModel
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
@@ -247,8 +248,13 @@ fun App(
                     hasAlarmCreationGuideSaveFailed = appBootstrapUiState.hasAlarmCreationGuideSaveFailed,
                     onAlarmCreationGuideFinished = appBootstrapViewModel::completeAlarmCreationGuide,
                     onExplicitLogout = appBootstrapViewModel::requestExplicitLogout,
-                    canOpenLogoutConfirmation =
-                        appBootstrapViewModel::canOpenExplicitLogoutConfirmation,
+                    canPerformAccountAction = { action ->
+                        when (action) {
+                            MyPageAccountAction.Logout ->
+                                appBootstrapViewModel.canOpenExplicitLogoutConfirmation()
+                            MyPageAccountAction.Withdraw -> !currentRuntimeEvidence.value
+                        }
+                    },
                     logoutBlockedMessage = appBootstrapUiState.logoutCleanupErrorMessage
                         .takeUnless { appBootstrapUiState.isLogoutCleanupPending },
                     onDismissLogoutBlocked = appBootstrapViewModel::dismissLogoutCleanupError,
@@ -458,7 +464,7 @@ private fun RingoutAppContent(
     hasAlarmCreationGuideSaveFailed: Boolean,
     onAlarmCreationGuideFinished: () -> Unit,
     onExplicitLogout: () -> Unit,
-    canOpenLogoutConfirmation: () -> Boolean,
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean,
     logoutBlockedMessage: String?,
     onDismissLogoutBlocked: () -> Unit,
     onAuthenticationRequired: () -> Unit,
@@ -721,7 +727,7 @@ private fun RingoutAppContent(
                     alarmController = alarmController,
                     activeAlarmMission = activeAlarmMission,
                     onThemeModeChange = onThemeModeChange,
-                    canOpenLogoutConfirmation = canOpenLogoutConfirmation,
+                    canPerformAccountAction = canPerformAccountAction,
                     logoutBlockedMessage = logoutBlockedMessage,
                     onDismissLogoutBlocked = onDismissLogoutBlocked,
                     onAddAlarm = onAddAlarm,

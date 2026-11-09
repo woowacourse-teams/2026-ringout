@@ -24,7 +24,7 @@ internal fun MyPageRoute(
     modifier: Modifier = Modifier,
     extraContent: (@Composable (ThemeMode) -> Unit)? = null,
     onEditProfileClick: () -> Unit = {},
-    canOpenLogoutConfirmation: () -> Boolean = { true },
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean = { true },
     logoutBlockedMessage: String? = null,
     onDismissLogoutBlocked: () -> Unit = {},
 ) {
@@ -44,7 +44,7 @@ internal fun MyPageRoute(
             accountStatus = viewModel.uiState.accountStatus,
             profileImageUrl = viewModel.uiState.profileImageUrl,
             onAccountRetry = viewModel::retryAccount,
-            canOpenLogoutConfirmation = canOpenLogoutConfirmation,
+            canPerformAccountAction = canPerformAccountAction,
             logoutBlockedMessage = logoutBlockedMessage,
             onDismissLogoutBlocked = onDismissLogoutBlocked,
             isAccountActionInProgress = accountAction is MyPageAccountActionState.InProgress,

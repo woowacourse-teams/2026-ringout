@@ -19,7 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.joon.ringout.presentation.mypage.component.MyPageAccountActionDialog
 import com.joon.ringout.presentation.mypage.component.MyPageAccountManagementSection
-import com.joon.ringout.presentation.mypage.component.MyPageLogoutBlockedDialog
+import com.joon.ringout.presentation.mypage.component.MyPageAccountActionBlockedDialog
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -47,7 +47,7 @@ internal fun MyPageScreen(
     profileImageUrl: String? = null,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
-    canOpenLogoutConfirmation: () -> Boolean = { true },
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean = { true },
     logoutBlockedMessage: String? = null,
     onDismissLogoutBlocked: () -> Unit = {},
     isAccountActionInProgress: Boolean = false,
@@ -64,7 +64,7 @@ internal fun MyPageScreen(
         profileImageUrl = profileImageUrl,
         onAccountRetry = onAccountRetry,
         onEditProfileClick = onEditProfileClick,
-        canOpenLogoutConfirmation = canOpenLogoutConfirmation,
+        canPerformAccountAction = canPerformAccountAction,
         logoutBlockedMessage = logoutBlockedMessage,
         onDismissLogoutBlocked = onDismissLogoutBlocked,
         isAccountActionInProgress = isAccountActionInProgress,
@@ -86,7 +86,7 @@ fun MyPageScreenContent(
     profileImageUrl: String? = null,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
-    canOpenLogoutConfirmation: () -> Boolean = { true },
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean = { true },
     logoutBlockedMessage: String? = null,
     onDismissLogoutBlocked: () -> Unit = {},
     isAccountActionInProgress: Boolean = false,
@@ -96,8 +96,8 @@ fun MyPageScreenContent(
     var pendingActionName by rememberSaveable(accountStatus is AccountStatus.LoggedIn) {
         mutableStateOf<String?>(null)
     }
-    var isLogoutBlockedDialogVisible by rememberSaveable(accountStatus is AccountStatus.LoggedIn) {
-        mutableStateOf(false)
+    var blockedActionName by rememberSaveable(accountStatus is AccountStatus.LoggedIn) {
+        mutableStateOf<String?>(null)
     }
 
     LazyColumn(
@@ -146,13 +146,19 @@ fun MyPageScreenContent(
                 MyPageAccountManagementSection(
                     enabled = !isAccountActionInProgress,
                     onLogoutClick = {
-                        if (canOpenLogoutConfirmation()) {
+                        if (canPerformAccountAction(MyPageAccountAction.Logout)) {
                             pendingActionName = MyPageAccountAction.Logout.name
                         } else {
-                            isLogoutBlockedDialogVisible = true
+                            blockedActionName = MyPageAccountAction.Logout.name
                         }
                     },
-                    onWithdrawClick = { pendingActionName = MyPageAccountAction.Withdraw.name },
+                    onWithdrawClick = {
+                        if (canPerformAccountAction(MyPageAccountAction.Withdraw)) {
+                            pendingActionName = MyPageAccountAction.Withdraw.name
+                        } else {
+                            blockedActionName = MyPageAccountAction.Withdraw.name
+                        }
+                    },
                 )
             }
         }
@@ -174,11 +180,8 @@ fun MyPageScreenContent(
                 onConfirm = {
                     if (pendingActionName == action.name) {
                         pendingActionName = null
-                        if (
-                            action == MyPageAccountAction.Logout &&
-                            !canOpenLogoutConfirmation()
-                        ) {
-                            isLogoutBlockedDialogVisible = true
+                        if (!canPerformAccountAction(action)) {
+                            blockedActionName = action.name
                         } else {
                             onConfirmAccountAction(action)
                         }
@@ -187,10 +190,14 @@ fun MyPageScreenContent(
             )
         }
     }
-    if (isLogoutBlockedDialogVisible || logoutBlockedMessage != null) {
-        MyPageLogoutBlockedDialog(
+    if (blockedActionName != null || logoutBlockedMessage != null) {
+        val blockedAction = MyPageAccountAction.entries.firstOrNull {
+            it.name == blockedActionName
+        } ?: MyPageAccountAction.Logout
+        MyPageAccountActionBlockedDialog(
+            action = blockedAction,
             onConfirm = {
-                isLogoutBlockedDialogVisible = false
+                blockedActionName = null
                 onDismissLogoutBlocked()
             },
         )
