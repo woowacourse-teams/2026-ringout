@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -126,6 +127,29 @@ class ArrivalNavigationIntegrationTest {
         }
     }
 
+    @Test
+    fun `공유 편집 왕복과 새 미션 이후에도 편집을 유지하고 결과는 확인 처리하지 않는다`() {
+        val repository = ArrivalIntegrationRepository().apply { publish(arrival("arrival-a", 4)) }
+        val fixture = Fixture(repository)
+        launch(fixture).use {
+            compose.onNodeWithText("공유하기").performClick()
+            compose.onNodeWithText("RINGOUT").assertIsDisplayed()
+            compose.onNodeWithText("날짜").performClick()
+            compose.runOnIdle { fixture.input.start() }
+            compose.waitForIdle()
+            compose.runOnIdle { fixture.input.complete() }
+            compose.onNodeWithText("목적지에 도착했어요!").assertIsDisplayed()
+            compose.onNodeWithText("공유하기").performClick()
+            compose.onNodeWithText("날짜").assertIsOff()
+            compose.runOnIdle { fixture.activeOccurrenceId = "next-mission" }
+            compose.onNodeWithTag("arrival-test-active").assertIsDisplayed()
+            compose.runOnIdle { fixture.activeOccurrenceId = null }
+            compose.onNodeWithText("RINGOUT").assertIsDisplayed()
+            compose.onNodeWithText("날짜").assertIsOff()
+            compose.runOnIdle { assertEquals(emptyList(), repository.confirmationIds) }
+        }
+    }
+
     private fun launch(fixture: Fixture): FontScaleTestContent = launchWithFontScale(1f) {
         CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides fixture) {
             DisposableEffect(fixture) {
@@ -140,10 +164,11 @@ class ArrivalNavigationIntegrationTest {
                 pendingArrivalOccurrenceId = pending.result?.occurrenceId,
                 isArrivalStateLoaded = pending.isLoaded,
             )
+            val stores = rememberViewModelStoreProvider()
             RingoutNavHost(
                 navigationState = fixture.navigation,
                 displayedRoute = fixture.navigation.requestedRoute,
-                viewModelStoreProvider = rememberViewModelStoreProvider(),
+                viewModelStoreProvider = stores,
                 backTransitions = NavigationBackTransitions(
                     enabled = false,
                     pop = { noNavigationTransition() },
@@ -159,6 +184,7 @@ class ArrivalNavigationIntegrationTest {
                         Text("진행 중인 미션", Modifier.testTag("arrival-test-active"))
                     }
                     arrivalGraph(
+                        storeProvider = stores,
                         navigationState = fixture.navigation,
                         repository = fixture.repository,
                         pendingArrival = pending,

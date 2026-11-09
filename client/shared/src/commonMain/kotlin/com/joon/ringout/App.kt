@@ -650,7 +650,7 @@ private fun RingoutAppContent(
         isPending = isAlarmCreationGuidePending,
         surface = guideSurface,
         canPresent = !termsViewModel.uiState.blocksService &&
-            displayedRoute !is AppRoute.Arrival &&
+            displayedRoute !is AppRoute.ArrivalShare && displayedRoute !is AppRoute.Arrival &&
             pendingArrival.isLoaded && pendingArrival.result == null &&
             forceEndState.phase == ForceEndPhase.Idle &&
             authSessionState != AuthSessionState.Restoring &&
@@ -758,6 +758,7 @@ private fun RingoutAppContent(
                         onActiveAlarmMissionForceEndHoldCompleted,
                 )
                 arrivalGraph(
+                    storeProvider = viewModelScopes.storeProvider,
                     navigationState = navigationState,
                     repository = appContainer.arrivalResultRepository,
                     pendingArrival = pendingArrival,
@@ -778,7 +779,7 @@ private fun RingoutAppContent(
     // 알람 울림과 진행 중 미션의 필수 조작은 기존 우선순위를 유지한다.
     if (forceEndState.phase == ForceEndPhase.Idle &&
         displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking &&
-        displayedRoute !is AppRoute.Arrival
+        displayedRoute !is AppRoute.ArrivalShare && displayedRoute !is AppRoute.Arrival
     ) {
         TermsReagreementRoute(termsViewModel)
     }

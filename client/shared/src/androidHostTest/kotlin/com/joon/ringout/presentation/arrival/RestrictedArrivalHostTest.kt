@@ -40,7 +40,7 @@ class RestrictedArrivalHostTest {
             compose.runOnIdle { repository.publish(4) }
             compose.onNodeWithText("4번째").assertIsDisplayed()
             compose.onNodeWithText("업데이트가 필요해요").assertDoesNotExist()
-            compose.onNodeWithText("공유하기").assertDoesNotExist()
+            compose.onNodeWithText("공유하기").assertIsDisplayed()
             compose.onNodeWithText("오늘 하루 시작하기!").performClick()
             compose.onNodeWithText("업데이트가 필요해요").assertIsDisplayed()
             assertEquals(listOf("arrival-4"), repository.confirmed)

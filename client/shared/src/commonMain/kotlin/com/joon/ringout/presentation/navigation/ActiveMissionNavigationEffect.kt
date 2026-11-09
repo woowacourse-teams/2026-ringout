@@ -36,12 +36,12 @@ internal fun ActiveMissionNavigationEffect(
         canHandleRoomActivityPush,
         pendingArrivalOccurrenceId,
         isArrivalStateLoaded,
-        navigationState.requestedRoute as? AppRoute.Arrival,
+        navigationState.requestedRoute.let { if (it is AppRoute.Arrival || it is AppRoute.ArrivalShare) it else null },
     ) {
         if (isRingingAlarm) return@LaunchedEffect
         if (activeMissionOccurrenceId != null) {
             if (handledOccurrenceId != activeMissionOccurrenceId ||
-                navigationState.requestedRoute is AppRoute.Arrival
+                (navigationState.requestedRoute is AppRoute.Arrival || navigationState.requestedRoute is AppRoute.ArrivalShare)
             ) {
                 handledOccurrenceId = activeMissionOccurrenceId
                 navigationState.navigate(AppRoute.ActiveAlarmTracking(activeMissionOccurrenceId))
@@ -51,16 +51,21 @@ internal fun ActiveMissionNavigationEffect(
 
         handledOccurrenceId = null
         if (navigationState.requestedRoute is AppRoute.ActiveAlarmTracking) {
-            navigationState.navigate(AppRoute.Home)
+            if (navigationState.backStack.any { it is AppRoute.ArrivalShare }) {
+                navigationState.popBackStack()
+            } else navigationState.navigate(AppRoute.Home)
         }
         // 초기 null은 조회 결과가 아니다. 복원된 도착 화면과 미처리 푸시를 유지한다.
         if (!isArrivalStateLoaded) return@LaunchedEffect
         if (pendingArrivalOccurrenceId != null) {
-            navigationState.navigate(AppRoute.Arrival(pendingArrivalOccurrenceId))
+            val editor = navigationState.requestedRoute as? AppRoute.ArrivalShare
+            if (editor?.occurrenceId != pendingArrivalOccurrenceId) {
+                navigationState.navigate(AppRoute.Arrival(pendingArrivalOccurrenceId))
+            }
             return@LaunchedEffect
         }
         // 확인 저장의 DB 알림이 화면의 완료 콜백보다 먼저 도착해도 홈으로 정리한다.
-        if (navigationState.requestedRoute is AppRoute.Arrival) {
+        if (navigationState.requestedRoute is AppRoute.Arrival || navigationState.requestedRoute is AppRoute.ArrivalShare) {
             navigationState.navigate(AppRoute.Home)
             return@LaunchedEffect
         }

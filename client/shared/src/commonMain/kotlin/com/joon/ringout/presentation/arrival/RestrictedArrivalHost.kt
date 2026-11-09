@@ -5,6 +5,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.joon.ringout.presentation.arrivalshare.ArrivalShareRoute
+import com.joon.ringout.presentation.arrivalshare.ArrivalShareViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -27,7 +31,7 @@ fun RestrictedArrivalHost(
     val pendingViewModel = viewModel { PendingArrivalViewModel(repository) }
     val pending by pendingViewModel.uiState.collectAsStateWithLifecycle()
     val result = pending.result
-    if (pending.isLoaded && result != null && !hasActiveRuntime) {
+    if (pending.isLoaded && result != null) {
         key(result.occurrenceId) {
             val owner = remember {
                 object : ViewModelStoreOwner {
@@ -40,8 +44,13 @@ fun RestrictedArrivalHost(
             val arrivalViewModel = viewModel(viewModelStoreOwner = owner) {
                 ArrivalViewModel(result.occurrenceId, repository)
             }
-            ArrivalRoute(
+            var editing by remember { mutableStateOf(false) }
+            val editor = viewModel(viewModelStoreOwner = owner) { ArrivalShareViewModel(result.occurrenceId, repository) }
+            if (hasActiveRuntime) content()
+            else if (editing) ArrivalShareRoute(editor, onBack = { editing = false })
+            else ArrivalRoute(
                 viewModel = arrivalViewModel,
+                onShare = { editing = true },
                 // Acknowledgement invalidates the receipt query and reveals the original gate.
                 onConfirmed = {},
             )

@@ -1,6 +1,11 @@
 package com.joon.ringout.presentation.navigation
 
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewmodel.ViewModelStoreProvider
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import com.joon.ringout.presentation.arrivalshare.ArrivalShareRoute
+import com.joon.ringout.presentation.arrivalshare.ArrivalShareViewModel
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.domain.arrival.ArrivalResultRepository
 import com.joon.ringout.presentation.arrival.ArrivalRoute
@@ -12,11 +17,19 @@ internal fun EntryProviderScope<AppRoute>.arrivalGraph(
     repository: ArrivalResultRepository,
     pendingArrival: PendingArrivalUiState,
     hasActiveRuntime: Boolean,
+    storeProvider: ViewModelStoreProvider? = null,
 ) {
+    entry<AppRoute.ArrivalShare>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        val owner = storeProvider?.getOrCreateOwner(AppRoute.Arrival(route.occurrenceId).viewModelStoreKey())
+            ?: checkNotNull(LocalViewModelStoreOwner.current)
+        val editor = viewModel(viewModelStoreOwner = owner) { ArrivalShareViewModel(route.occurrenceId, repository, SavedStateHandle()) }
+        ArrivalShareRoute(editor, onBack = { navigationState.popBackStack(route) })
+    }
     entry<AppRoute.Arrival>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
         val arrivalViewModel = viewModel { ArrivalViewModel(route.occurrenceId, repository) }
         ArrivalRoute(
             viewModel = arrivalViewModel,
+            onShare = { navigationState.navigate(AppRoute.ArrivalShare(route.occurrenceId)) },
             onConfirmed = {
                 completeArrivalNavigation(
                     navigationState = navigationState,
