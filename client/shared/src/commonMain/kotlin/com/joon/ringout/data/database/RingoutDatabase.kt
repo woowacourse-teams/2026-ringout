@@ -25,6 +25,10 @@ import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceRingingLinkEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
+import com.joon.ringout.data.arrival.ArrivalGrowthActivationEntity
+import com.joon.ringout.data.arrival.ArrivalResultDao
+import com.joon.ringout.data.arrival.ArrivalResultEntity
+import kotlin.time.Clock
 
 @Database(
     entities = [
@@ -42,8 +46,10 @@ import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
         AlarmOccurrenceOutboxEntity::class,
         IosAlarmOccurrenceRecordEntity::class,
         AlarmMovementOutboxEntity::class,
+        ArrivalResultEntity::class,
+        ArrivalGrowthActivationEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -57,6 +63,8 @@ abstract class RingoutDatabase : RoomDatabase() {
     abstract fun destinationDao(): SavedDestinationDao
 
     abstract fun alarmOccurrenceSyncDao(): AlarmOccurrenceSyncDao
+
+    abstract fun arrivalResultDao(): ArrivalResultDao
 }
 
 @Suppress("KotlinNoActualForExpect")
@@ -71,8 +79,11 @@ fun buildRingoutDatabase(
 internal fun buildRingoutDatabase(
     builder: RoomDatabase.Builder<RingoutDatabase>,
     driver: SQLiteDriver,
+    // Room opens lazily. Capture activation before a first completion can trigger that opening.
+    arrivalGrowthActivatedAtEpochMillis: Long = Clock.System.now().toEpochMilliseconds(),
 ): RingoutDatabase = builder
     .setDriver(driver)
+    .addCallback(ArrivalGrowthDatabaseCallback(arrivalGrowthActivatedAtEpochMillis))
     .addMigrations(
         RingoutMigration1To2,
         RingoutMigration2To3,
@@ -86,6 +97,7 @@ internal fun buildRingoutDatabase(
         RingoutMigration10To11,
         RingoutMigration11To12,
         RingoutMigration12To13,
+        createRingoutMigration13To14(arrivalGrowthActivatedAtEpochMillis),
     )
     .build()
 

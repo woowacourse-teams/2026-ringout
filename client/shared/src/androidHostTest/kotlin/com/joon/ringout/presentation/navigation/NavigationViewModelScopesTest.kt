@@ -301,6 +301,8 @@ internal class HomeTestContainer : AppContainer {
     override val roomRepository: RoomRepository get() = error("Unused dependency")
     override val alarmActivityRepository: AlarmActivityRepository get() = error("Unused dependency")
     override val missionHistoryRepository: MissionHistoryRepository get() = error("Unused dependency")
+    override val arrivalResultRepository: com.joon.ringout.domain.arrival.ArrivalResultRepository
+        get() = error("Unused dependency")
     override val productAnalyticsRecorder: ProductAnalyticsRecorder get() = error("Unused dependency")
 }
 

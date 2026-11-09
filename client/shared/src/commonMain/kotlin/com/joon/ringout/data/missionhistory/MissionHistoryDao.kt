@@ -8,9 +8,14 @@ import androidx.room3.Transaction
 import com.joon.ringout.data.alarmactivity.AlarmOccurrenceTimesAccess
 import com.joon.ringout.data.alarmactivity.AlarmOccurrenceTimesEntity
 import androidx.room3.Query
+import com.joon.ringout.data.arrival.ArrivalGrowthActivationEntity
+import com.joon.ringout.data.arrival.ArrivalResultEntity
+import com.joon.ringout.data.arrival.ArrivalResultWriteAccess
+import com.joon.ringout.domain.missionhistory.MissionResult
+import kotlin.time.Clock
 
 @Dao
-interface MissionHistoryDao : AlarmOccurrenceTimesAccess {
+interface MissionHistoryDao : AlarmOccurrenceTimesAccess, ArrivalResultWriteAccess {
     @Query(ALARM_USAGE_RECORDS_QUERY)
     suspend fun getRecords(startInclusive: String, endInclusive: String): List<AlarmUsageRecordRow>
 
@@ -39,8 +44,30 @@ interface MissionHistoryDao : AlarmOccurrenceTimesAccess {
 
     @Transaction
     suspend fun insertWithTimes(history: MissionHistoryEntity, times: AlarmOccurrenceTimesEntity): Boolean {
+        require(!history.occurrenceId.isNullOrBlank() && history.occurrenceId == times.occurrenceId)
+        // Production initializes this during creation/migration. Keep standalone DAO databases safe too.
+        initializeArrivalGrowth(ArrivalGrowthActivationEntity(activatedAtEpochMillis = Clock.System.now().toEpochMilliseconds()))
         val inserted = insert(history)
         mergeOccurrenceTimes(times)
+        if (inserted && history.result == MissionResult.SUCCESS.persistedValue) {
+            val recordedTimes = getOccurrenceTimes(times.occurrenceId)
+            val completedAt = recordedTimes?.missionCompletedAtEpochMillis
+            val activatedAt = checkNotNull(getGrowthActivation())
+            if (completedAt != null && completedAt >= activatedAt) {
+                val grew = !hasSuccessfulDate(history.completedAt)
+                val successfulDays = getSuccessfulDayCount() + if (grew) 1 else 0
+                insertArrivalResult(
+                    ArrivalResultEntity(
+                        occurrenceId = times.occurrenceId,
+                        completedLocalDate = history.completedAt,
+                        completedAtEpochMillis = completedAt,
+                        alarmDismissedAtEpochMillis = recordedTimes.ringingStoppedAtEpochMillis,
+                        successfulDayCountAtArrival = successfulDays,
+                        grewOnThisArrival = grew,
+                    ),
+                )
+            }
+        }
         return inserted
     }
 
