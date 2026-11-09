@@ -6,6 +6,18 @@ class RingoutDatabaseMigrationTest {
     private val suite = RingoutDatabaseMigrationTestSuite()
 
     @Test
+    fun `버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`() =
+        suite.`버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`()
+
+    @Test
+    fun `마이그레이션으로 저장한 성장 활성화 기준은 재실행해도 바뀌지 않는다`() =
+        suite.`마이그레이션으로 저장한 성장 활성화 기준은 재실행해도 바뀌지 않는다`()
+
+    @Test
+    fun `마이그레이션 이전 도착을 복구해도 성장하지 않고 활성화 시각부터 도착을 집계한다`() =
+        suite.`마이그레이션 이전 도착을 복구해도 성장하지 않고 활성화 시각부터 도착을 집계한다`()
+
+    @Test
     fun `버전 십이에서 label을 보정하고 알람과 연관 저장 데이터를 보존한다`() =
         suite.`버전 십이에서 label을 보정하고 알람과 연관 저장 데이터를 보존한다`()
 
@@ -39,13 +51,13 @@ class RingoutDatabaseMigrationTest {
 
     @Test
     fun `버전 일에서 미션 기록을 보존하며 현재 버전으로 마이그레이션한다`() =
-        suite.migratesVersionOneToCurrentWithoutLosingMissionHistory()
+        suite.`버전 일에서 미션 기록을 보존하며 현재 버전으로 마이그레이션한다`()
 
     @Test
     fun `버전 이에서 기존 테이블을 보존하고 저장 목적지를 추가한다`() =
-        suite.migratesVersionTwoWithoutLosingExistingTablesAndCreatesSavedDestinations()
+        suite.`버전 이에서 기존 테이블을 보존하고 저장 목적지를 추가한다`()
 
     @Test
     fun `버전 삼에서 기존 행을 보존하고 발생 ID 중복을 막는다`() =
-        suite.migratesVersionThreeByKeepingLegacyRowsAndAddingOccurrenceUniqueness()
+        suite.`버전 삼에서 기존 행을 보존하고 발생 ID 중복을 막는다`()
 }

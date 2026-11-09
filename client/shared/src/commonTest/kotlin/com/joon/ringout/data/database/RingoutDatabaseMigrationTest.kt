@@ -5,19 +5,104 @@ import androidx.sqlite.execSQL
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.SavedAlarmSchedule
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
+import com.joon.ringout.data.arrival.RoomArrivalResultRepository
 import com.joon.ringout.data.destination.DefaultDestinationRepository
 import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordState
+import com.joon.ringout.data.missionhistory.MissionHistoryDto
+import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
 import com.joon.ringout.domain.destination.SavedDestination
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTestSuite {
+    fun `버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        createVersionThirteenDatabase(path)
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val arrivals = RoomArrivalResultRepository(database.arrivalResultDao())
+            val history = database.missionHistoryDao().getHistoryWithTimes("2026-11-01", "2026-11-30")
+
+            assertEquals(listOf("SUCCESS", "FAILURE"), history.map { it.history.result })
+            assertEquals(listOf("legacy-success", "legacy-failure"), history.map { it.history.occurrenceId })
+            assertEquals(listOf(1_000L, 2_000L), history.map { it.missionCompletedAtEpochMillis })
+            assertEquals(0, arrivals.getGrowth().successfulDayCount)
+            assertNull(arrivals.getResult("legacy-success"))
+            assertNull(arrivals.observeLatestUnacknowledgedResult().first())
+            assertTrue(growthActivationAt(path) > 0)
+            assertDatabaseVersion(path, expectedVersion = 14)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `마이그레이션으로 저장한 성장 활성화 기준은 재실행해도 바뀌지 않는다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        createVersionThirteenDatabase(path)
+        var database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            RoomArrivalResultRepository(database.arrivalResultDao()).getGrowth()
+            assertTrue(growthActivationAt(path) > 0)
+            database.close()
+            // A fixed past marker makes this check independent of clock resolution or execution speed.
+            createMigrationTestSQLiteDriver().open(path).use { connection ->
+                connection.execSQL("UPDATE arrival_growth_activation SET activated_at_epoch_millis = 123456")
+            }
+
+            database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+            assertEquals(0, RoomArrivalResultRepository(database.arrivalResultDao()).getGrowth().successfulDayCount)
+            assertEquals(123_456L, growthActivationAt(path))
+            assertDatabaseVersion(path, expectedVersion = 14)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `마이그레이션 이전 도착을 복구해도 성장하지 않고 활성화 시각부터 도착을 집계한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        createVersionThirteenDatabase(path)
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val arrivals = RoomArrivalResultRepository(database.arrivalResultDao())
+            val history = RoomMissionHistoryDataSource(database.missionHistoryDao())
+            assertEquals(0, arrivals.getGrowth().successfulDayCount)
+            val activatedAt = growthActivationAt(path)
+
+            assertTrue(history.record(MissionHistoryDto(
+                result = "SUCCESS",
+                completedAt = "2026-11-09",
+                occurrenceId = "recovered-before-activation",
+                missionCompletedAtEpochMillis = activatedAt - 1,
+            )))
+            assertNull(arrivals.getResult("recovered-before-activation"))
+            assertEquals(0, arrivals.getGrowth().successfulDayCount)
+
+            assertTrue(history.record(MissionHistoryDto(
+                result = "SUCCESS",
+                completedAt = "2026-11-09",
+                occurrenceId = "arrival-at-activation",
+                missionCompletedAtEpochMillis = activatedAt,
+            )))
+            val result = assertNotNull(arrivals.getResult("arrival-at-activation"))
+            assertEquals(1, result.successfulDayCountAtArrival)
+            assertTrue(result.grewOnThisArrival)
+            assertEquals(1, arrivals.getGrowth().successfulDayCount)
+            assertEquals(4, database.missionHistoryDao().getHistory("2026-11-01", "2026-11-30").size)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
     fun `버전 십이에서 label을 보정하고 알람과 연관 저장 데이터를 보존한다`() = runBlocking {
         val path = temporaryDatabasePath()
         var database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
@@ -147,7 +232,7 @@ class RingoutDatabaseMigrationTestSuite {
             ))
             assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY, dao.getIosRecordDecision("local-chain")?.state)
             assertTrue(dao.getPendingIosRecordDecisions().isEmpty())
-            assertDatabaseVersion(path, expectedVersion = 13)
+            assertDatabaseVersion(path, expectedVersion = 14)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -164,7 +249,7 @@ class RingoutDatabaseMigrationTestSuite {
             ))
             sync.recordDismissal("1", "existing", 2_000)
             database.close()
-            // v13에서 v12의 열 구조와 v10에 없던 테이블을 되돌려 실제 v10 저장 파일을 구성한다.
+            // 현재 버전에서 v12의 열 구조와 v10에 없던 테이블을 되돌려 실제 v10 저장 파일을 구성한다.
             createMigrationTestSQLiteDriver().open(path).use { connection ->
                 downgradeCurrentSchemaColumnsToVersion12(connection)
                 connection.execSQL("DROP TABLE ios_alarm_occurrence_recording")
@@ -179,7 +264,7 @@ class RingoutDatabaseMigrationTestSuite {
             migrated.recordTerminal("1", "existing", com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
             assertEquals(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.ARRIVE,
                 migrated.getUnsentMovements("1").single().action)
-            assertDatabaseVersion(path, expectedVersion = 13)
+            assertDatabaseVersion(path, expectedVersion = 14)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -335,7 +420,7 @@ class RingoutDatabaseMigrationTestSuite {
         }
     }
 
-    fun migratesVersionOneToCurrentWithoutLosingMissionHistory() = runBlocking {
+    fun `버전 일에서 미션 기록을 보존하며 현재 버전으로 마이그레이션한다`() = runBlocking {
         val databasePath = temporaryDatabasePath()
         createVersionOneDatabase(databasePath)
 
@@ -367,7 +452,7 @@ class RingoutDatabaseMigrationTestSuite {
         }
     }
 
-    fun migratesVersionTwoWithoutLosingExistingTablesAndCreatesSavedDestinations() = runBlocking {
+    fun `버전 이에서 기존 테이블을 보존하고 저장 목적지를 추가한다`() = runBlocking {
         val databasePath = temporaryDatabasePath()
         createVersionTwoDatabase(databasePath)
 
@@ -400,7 +485,7 @@ class RingoutDatabaseMigrationTestSuite {
         }
     }
 
-    fun migratesVersionThreeByKeepingLegacyRowsAndAddingOccurrenceUniqueness() = runBlocking {
+    fun `버전 삼에서 기존 행을 보존하고 발생 ID 중복을 막는다`() = runBlocking {
         val databasePath = temporaryDatabasePath()
         createVersionThreeDatabase(databasePath)
 
@@ -437,6 +522,42 @@ class RingoutDatabaseMigrationTestSuite {
             deleteDatabaseFiles(databasePath)
         }
     }
+
+    private suspend fun createVersionThirteenDatabase(databasePath: String) {
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = databasePath))
+        try {
+            val history = RoomMissionHistoryDataSource(database.missionHistoryDao())
+            history.record(MissionHistoryDto(
+                result = "SUCCESS",
+                completedAt = "2026-11-01",
+                occurrenceId = "legacy-success",
+                missionCompletedAtEpochMillis = 1_000,
+            ))
+            history.record(MissionHistoryDto(
+                result = "FAILURE",
+                completedAt = "2026-11-02",
+                occurrenceId = "legacy-failure",
+                missionCompletedAtEpochMillis = 2_000,
+            ))
+        } finally {
+            database.close()
+        }
+        createMigrationTestSQLiteDriver().open(databasePath).use { connection ->
+            removeArrivalTables(connection)
+            // Identity hash from the committed Room schema 13.json.
+            setDatabaseVersion(connection, 13, "311bb99f2c095756c5ded6fc1066d941")
+        }
+    }
+
+    private fun growthActivationAt(databasePath: String): Long =
+        createMigrationTestSQLiteDriver().open(databasePath).use { connection ->
+            connection.prepare("SELECT activated_at_epoch_millis FROM arrival_growth_activation").use { statement ->
+                assertTrue(statement.step())
+                val activatedAt = statement.getLong(0)
+                assertFalse(statement.step())
+                activatedAt
+            }
+        }
 
     private fun createVersionFiveDatabase(databasePath: String) {
         createVersionThreeDatabase(databasePath)
@@ -693,10 +814,16 @@ class RingoutDatabaseMigrationTestSuite {
     private fun downgradeCurrentSchemaColumnsToVersion12(
         connection: androidx.sqlite.SQLiteConnection,
     ) {
+        removeArrivalTables(connection)
         connection.execSQL("ALTER TABLE saved_destinations ADD COLUMN address TEXT NOT NULL DEFAULT ''")
         connection.execSQL("ALTER TABLE saved_destinations RENAME COLUMN label TO name")
         connection.execSQL("ALTER TABLE alarms ADD COLUMN destination_address TEXT NOT NULL DEFAULT ''")
         connection.execSQL("ALTER TABLE alarms RENAME COLUMN destination_label TO destination_name")
+    }
+
+    private fun removeArrivalTables(connection: androidx.sqlite.SQLiteConnection) {
+        connection.execSQL("DROP TABLE arrival_results")
+        connection.execSQL("DROP TABLE arrival_growth_activation")
     }
 
     private fun setDatabaseVersion(

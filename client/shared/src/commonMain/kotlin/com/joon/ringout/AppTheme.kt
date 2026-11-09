@@ -41,6 +41,7 @@ data class RingoutExtendedColors(
     val profileIconLoggedInBackground: Color,
     val profileIconLoggedOutBackground: Color,
     val roomCardBackground: Color,
+    val shareCardBlackText: Color = Color.Black,
 )
 
 @Immutable

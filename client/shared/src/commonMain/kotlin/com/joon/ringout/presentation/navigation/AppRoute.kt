@@ -95,4 +95,12 @@ internal sealed interface AppRoute : NavKey {
     @Serializable
     @SerialName("active_alarm_tracking")
     data class ActiveAlarmTracking(val occurrenceId: String) : AppRoute
+
+    @Serializable
+    @SerialName("arrival_share")
+    data class ArrivalShare(val occurrenceId: String) : AppRoute
+
+    @Serializable
+    @SerialName("arrival")
+    data class Arrival(val occurrenceId: String) : AppRoute
 }

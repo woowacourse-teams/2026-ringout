@@ -258,3 +258,27 @@ internal val RingoutMigration12To13 = Migration(12, 13) { connection ->
     connection.executeSQL("ALTER TABLE alarms RENAME COLUMN destination_name TO destination_label")
     connection.executeSQL("ALTER TABLE alarms DROP COLUMN destination_address")
 }
+
+/** Start growth from new completions; existing mission history is deliberately not backfilled. */
+internal fun createRingoutMigration13To14(activatedAtEpochMillis: Long): Migration = Migration(13, 14) { connection ->
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS arrival_results (
+            occurrence_id TEXT NOT NULL PRIMARY KEY,
+            completed_local_date TEXT NOT NULL,
+            completed_at_epoch_millis INTEGER NOT NULL,
+            alarm_dismissed_at_epoch_millis INTEGER,
+            successful_day_count_at_arrival INTEGER NOT NULL,
+            grew_on_this_arrival INTEGER NOT NULL,
+            acknowledged_at_epoch_millis INTEGER
+        )
+    """.trimIndent())
+    connection.executeSQL("CREATE INDEX IF NOT EXISTS index_arrival_results_completed_local_date ON arrival_results (completed_local_date)")
+    connection.executeSQL("CREATE INDEX IF NOT EXISTS index_arrival_results_acknowledged_at_epoch_millis_completed_at_epoch_millis ON arrival_results (acknowledged_at_epoch_millis, completed_at_epoch_millis)")
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS arrival_growth_activation (
+            id INTEGER NOT NULL PRIMARY KEY,
+            activated_at_epoch_millis INTEGER NOT NULL
+        )
+    """.trimIndent())
+    initializeArrivalGrowth(connection, activatedAtEpochMillis)
+}
