@@ -30,11 +30,15 @@ internal fun ArrivalShareScreen(state: ArrivalShareUiState, onBack: () -> Unit, 
                 else -> {
                     ArrivalShareCard(state, Modifier.fillMaxWidth().then(cardModifier), photo)
                     ArrivalShareControls(state, onTime, onDate, Modifier.fillMaxWidth(), onCamera, onGallery)
-                    state.message?.let { Text(it, Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.onSurface) }
-                    if (state.busy) CircularProgressIndicator(Modifier.padding(12.dp))
                 }
             }
         }
+        state.message?.let {
+            Text(it, Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+        if (state.busy) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(12.dp))
         Row(Modifier.align(Alignment.CenterHorizontally).padding(20.dp).width(166.dp).height(58.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onSave, enabled = mediaReady && !state.busy && !state.isLoading && state.error == null) { Icon(painterResource(EditorDownloadIcon), "이미지 저장", Modifier.size(22.dp), tint = MaterialTheme.ringoutColors.primaryActionContent) }
             VerticalDivider(Modifier.height(22.dp), color = MaterialTheme.ringoutColors.primaryActionContent)

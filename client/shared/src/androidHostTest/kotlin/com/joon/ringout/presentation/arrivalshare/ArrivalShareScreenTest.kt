@@ -18,6 +18,19 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ArrivalShareScreenTest {
     @get:Rule val compose = createEmptyComposeRule()
+    @Test @Config(qualifiers = "w360dp-h640dp")
+    fun `작은 화면에서 저장 성공과 실패 안내가 스크롤 없이 보인다`() {
+        var state by mutableStateOf(ArrivalShareUiState(false, date = "2026.11.09", time = "06:30"))
+        launchWithFontScale(1.3f) {
+            ArrivalShareScreen(state, {}, {}, {}, {})
+        }.use {
+            compose.runOnIdle { state = state.copy(message = "사진을 저장했어요.") }
+            compose.onNodeWithText("사진을 저장했어요.").assertIsDisplayed()
+            compose.runOnIdle { state = state.copy(message = "사진 저장 권한이 필요해요. 설정에서 권한을 허용한 뒤 다시 시도해 주세요.") }
+            compose.onNodeWithText("사진 저장 권한이 필요해요. 설정에서 권한을 허용한 뒤 다시 시도해 주세요.").assertIsDisplayed()
+            compose.onNodeWithContentDescription("이미지 저장").assertIsDisplayed()
+        }
+    }
     @Test fun `토글 네 조합에서 선택한 문구만 표시하고 로고는 항상 표시한다`() {
         var state by mutableStateOf(ArrivalShareUiState(false, date = "2026.11.03", time = "06:30"))
         launchWithFontScale(1f) {
