@@ -18,6 +18,9 @@ public interface DeviceTokenRepository extends JpaRepository<Device, Long> {
         join Device device on device.user = roomUser.user
         where roomUser.room.id in :roomIds
           and roomUser.deletedAt is null
+          and device.fcmToken is not null
         """)
     List<RoomMemberDevice> findActiveRoomMemberDevices(@Param("roomIds") List<Long> roomIds);
+
+    Optional<Device> findByUserId(Long userId);
 }
