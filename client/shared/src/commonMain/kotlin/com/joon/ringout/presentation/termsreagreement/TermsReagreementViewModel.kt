@@ -144,6 +144,9 @@ class TermsReagreementViewModel(
         logoutJob = scope.launch {
             try {
                 explicitLogout()
+                if (key === session.identity.value) {
+                    uiState = uiState.copy(isLoggingOut = false)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {

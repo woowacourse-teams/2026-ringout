@@ -19,6 +19,7 @@ import com.joon.ringout.domain.firstlaunch.FirstLaunchStatus
 import com.joon.ringout.domain.preferences.AppBootstrapSnapshot
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
 import com.joon.ringout.domain.preferences.SystemThemeModeReader
+import com.joon.ringout.data.database.LocalUserDataCleanup
 import com.joon.ringout.domain.terms.TermConsentRecord
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -122,6 +123,7 @@ class AppBootstrapViewModelTest {
                 authRepository = FakeAuthRepository(),
                 hasStoredAlarms = { false },
                 alarmLogoutCleanup = FakeAlarmLogoutCleanup(),
+                localUserDataCleanup = FakeLocalUserDataCleanup(),
                 coroutineScope = scope,
                 onboardingAnalytics = analytics.recorder,
             )
@@ -160,6 +162,7 @@ class AppBootstrapViewModelTest {
                 authRepository = FakeAuthRepository(),
                 hasStoredAlarms = { false },
                 alarmLogoutCleanup = FakeAlarmLogoutCleanup(),
+                localUserDataCleanup = FakeLocalUserDataCleanup(),
                 coroutineScope = scope,
                 onboardingAnalytics = analytics.recorder,
             )
@@ -186,6 +189,7 @@ class AppBootstrapViewModelTest {
                 authRepository = FakeAuthRepository(),
                 hasStoredAlarms = { false },
                 alarmLogoutCleanup = FakeAlarmLogoutCleanup(),
+                localUserDataCleanup = FakeLocalUserDataCleanup(),
                 coroutineScope = scope,
             )
 
@@ -474,6 +478,7 @@ class AppBootstrapViewModelTest {
         val session = authenticatedSession()
         val auth = FakeAuthRepository(session)
         val cleanup = FakeAlarmLogoutCleanup().apply { failCancellation = true }
+        val localCleanup = FakeLocalUserDataCleanup()
         val initial = snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true))
         withViewModel(
             repository = FakeAppPreferencesRepository(initial.copy(
@@ -485,17 +490,19 @@ class AppBootstrapViewModelTest {
             authSession = session,
             authRepository = auth,
             alarmLogoutCleanup = cleanup,
+            localUserDataCleanup = localCleanup,
         ) { viewModel, repository, _ ->
             assertEquals(AppEntryDestination.LogoutCleaning, viewModel.uiState.destination)
             assertTrue(viewModel.uiState.isLogoutCleanupPending)
             assertTrue(viewModel.uiState.logoutCleanupErrorMessage != null)
             assertEquals(0, auth.logoutCount)
-            assertTrue(repository.logoutPendingWrites.isEmpty())
+            assertEquals(listOf(true), repository.logoutPendingWrites)
             cleanup.failCancellation = false
             viewModel.retryLogoutCleanup()
             assertEquals(2, cleanup.cancelCount)
             assertEquals(1, auth.logoutCount)
-            assertEquals(listOf(false), repository.logoutPendingWrites)
+            assertEquals(1, localCleanup.clearCount)
+            assertEquals(listOf(true, true, false), repository.logoutPendingWrites)
             assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
             assertFalse(viewModel.uiState.isLogoutCleanupPending)
             assertFalse(viewModel.uiState.hasLegacyRuntimeExceptionPending)
@@ -508,6 +515,7 @@ class AppBootstrapViewModelTest {
         val session = authenticatedSession()
         val auth = FakeAuthRepository(session)
         val cleanup = FakeAlarmLogoutCleanup()
+        val localCleanup = FakeLocalUserDataCleanup()
         withViewModel(
             repository = FakeAppPreferencesRepository(snapshot(
                 firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
@@ -515,15 +523,145 @@ class AppBootstrapViewModelTest {
             authSession = session,
             authRepository = auth,
             alarmLogoutCleanup = cleanup,
+            localUserDataCleanup = localCleanup,
         ) { viewModel, repository, _ ->
             cleanup.onCancel = {
                 assertEquals(listOf(true), repository.logoutPendingWrites)
                 assertEquals(0, auth.logoutCount)
             }
+            localCleanup.onClear = {
+                assertEquals(1, cleanup.cancelCount)
+                assertEquals(0, auth.logoutCount)
+                assertEquals(listOf(true), repository.logoutPendingWrites)
+            }
             viewModel.requestExplicitLogout()
             assertEquals(listOf(true, false), repository.logoutPendingWrites)
             assertEquals(1, cleanup.cancelCount)
+            assertEquals(1, localCleanup.clearCount)
             assertEquals(1, auth.logoutCount)
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+        }
+    }
+
+    @Test
+    fun `로컬 데이터 삭제에 실패하면 토큰을 유지하고 정리 재시도를 표시한다`() {
+        val session = authenticatedSession()
+        val auth = FakeAuthRepository(session)
+        val localCleanup = FakeLocalUserDataCleanup().apply { failClear = true }
+        val repository = FakeAppPreferencesRepository(snapshot(
+            firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
+        ))
+        withViewModel(
+            repository = repository,
+            authSession = session,
+            authRepository = auth,
+            localUserDataCleanup = localCleanup,
+        ) { viewModel, repository, _ ->
+            viewModel.requestExplicitLogout()
+
+            assertEquals(1, localCleanup.clearCount)
+            assertEquals(0, auth.logoutCount)
+            assertEquals(listOf(true), repository.logoutPendingWrites)
+            assertTrue(viewModel.uiState.isLogoutCleanupPending)
+            assertTrue(viewModel.uiState.logoutCleanupErrorMessage != null)
+            assertEquals(AppEntryDestination.LogoutCleaning, viewModel.uiState.destination)
+
+            localCleanup.failClear = false
+            viewModel.retryLogoutCleanup()
+
+            assertEquals(2, localCleanup.clearCount)
+            assertEquals(1, auth.logoutCount)
+            assertEquals(listOf(true, true, false), repository.logoutPendingWrites)
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+        }
+    }
+
+    @Test
+    fun `정리 대기 상태 저장 실패 후 재시도도 영속화부터 다시 시작한다`() {
+        val session = authenticatedSession()
+        val auth = FakeAuthRepository(session)
+        val alarmCleanup = FakeAlarmLogoutCleanup()
+        val localCleanup = FakeLocalUserDataCleanup()
+        val repository = FakeAppPreferencesRepository(snapshot(
+            firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
+        )).apply { failLogoutPendingWrite = true }
+
+        withViewModel(
+            repository = repository,
+            authSession = session,
+            authRepository = auth,
+            alarmLogoutCleanup = alarmCleanup,
+            localUserDataCleanup = localCleanup,
+        ) { viewModel, _, _ ->
+            viewModel.requestExplicitLogout()
+
+            assertTrue(viewModel.uiState.isLogoutCleanupPending)
+            assertTrue(viewModel.uiState.logoutCleanupErrorMessage != null)
+            assertTrue(repository.logoutPendingWrites.isEmpty())
+            assertEquals(0, alarmCleanup.cancelCount)
+            assertEquals(0, localCleanup.clearCount)
+            assertEquals(0, auth.logoutCount)
+
+            repository.failLogoutPendingWrite = false
+            viewModel.retryLogoutCleanup()
+
+            assertEquals(listOf(true, false), repository.logoutPendingWrites)
+            assertEquals(1, alarmCleanup.cancelCount)
+            assertEquals(1, localCleanup.clearCount)
+            assertEquals(1, auth.logoutCount)
+            assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
+        }
+    }
+
+    @Test
+    fun `울림이나 미션이 진행 중이면 로그아웃 정리를 시작하지 않는다`() {
+        val session = authenticatedSession()
+        val auth = FakeAuthRepository(session)
+        val alarmCleanup = FakeAlarmLogoutCleanup()
+        val localCleanup = FakeLocalUserDataCleanup()
+        withViewModel(
+            authSession = session,
+            authRepository = auth,
+            alarmLogoutCleanup = alarmCleanup,
+            localUserDataCleanup = localCleanup,
+            hasRuntimeEvidence = { true },
+        ) { viewModel, repository, _ ->
+            viewModel.requestExplicitLogout()
+
+            assertFalse(viewModel.uiState.isLogoutCleanupPending)
+            assertTrue(viewModel.uiState.logoutCleanupErrorMessage != null)
+            assertTrue(repository.logoutPendingWrites.isEmpty())
+            assertEquals(0, alarmCleanup.cancelCount)
+            assertEquals(0, localCleanup.clearCount)
+            assertEquals(0, auth.logoutCount)
+        }
+    }
+
+    @Test
+    fun `토큰 제거 실패 뒤 재시도하면 로컬 삭제를 멱등적으로 다시 실행한다`() {
+        val session = authenticatedSession()
+        val auth = FakeAuthRepository(session).apply { failLogout = true }
+        val localCleanup = FakeLocalUserDataCleanup()
+        val repository = FakeAppPreferencesRepository(snapshot(
+            firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true),
+        ))
+        withViewModel(
+            repository = repository,
+            authSession = session,
+            authRepository = auth,
+            localUserDataCleanup = localCleanup,
+        ) { viewModel, _, _ ->
+            viewModel.requestExplicitLogout()
+            assertEquals(1, localCleanup.clearCount)
+            assertTrue(viewModel.uiState.isLogoutCleanupPending)
+            assertEquals(listOf(true), repository.logoutPendingWrites)
+
+            auth.failLogout = false
+            viewModel.retryLogoutCleanup()
+
+            assertEquals(2, localCleanup.clearCount)
+            assertEquals(2, auth.logoutCount)
+            assertEquals(listOf(true, true, false), repository.logoutPendingWrites)
             assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
         }
     }
@@ -551,6 +689,7 @@ private fun withViewModel(
     authSession: AuthSession = authenticatedSession(),
     authRepository: AuthRepository = FakeAuthRepository(authSession),
     alarmLogoutCleanup: FakeAlarmLogoutCleanup = FakeAlarmLogoutCleanup(),
+    localUserDataCleanup: FakeLocalUserDataCleanup = FakeLocalUserDataCleanup(),
     hasStoredAlarms: suspend () -> Boolean = { false },
     hasRuntimeEvidence: () -> Boolean = { false },
     block: (
@@ -567,6 +706,7 @@ private fun withViewModel(
         authRepository = authRepository,
         hasStoredAlarms = hasStoredAlarms,
         alarmLogoutCleanup = alarmLogoutCleanup,
+        localUserDataCleanup = localUserDataCleanup,
         hasRuntimeEvidence = hasRuntimeEvidence,
         coroutineScope = scope,
         themeInitializationRetryDelayMillis = themeInitializationRetryDelayMillis,
@@ -660,6 +800,7 @@ private class FakeAppPreferencesRepository(
 
     val migrationInputs = mutableListOf<Pair<AuthSessionState, Boolean>>()
     var failLegacyWrite = false
+    var failLogoutPendingWrite = false
     val logoutPendingWrites = mutableListOf<Boolean>()
 
     override suspend fun initializeEntryPolicy(
@@ -679,6 +820,7 @@ private class FakeAppPreferencesRepository(
     }
 
     override suspend fun setLogoutCleanupPending(pending: Boolean) {
+        if (pending && failLogoutPendingWrite) throw IOException("logout pending write failed")
         logoutPendingWrites += pending
         emit(
             mutableBootstrapState.value.copy(
@@ -755,6 +897,7 @@ private class FakeAuthRepository(
 ) : AuthRepository {
     var restoreCount = 0
     var logoutCount = 0
+    var failLogout = false
     override suspend fun restoreSession() {
         restoreCount += 1
         restoreGate?.await()
@@ -767,6 +910,7 @@ private class FakeAuthRepository(
     }
     override suspend fun logout() {
         logoutCount += 1
+        if (failLogout) throw IOException("logout failed")
         session.clear()
     }
     override suspend fun loginWithApple(idToken: String): SocialLoginOutcome = error("unused")
@@ -786,4 +930,16 @@ private class FakeAlarmLogoutCleanup : AlarmLogoutCleanup {
         if (failCancellation) throw IOException("cancel failed")
     }
     override fun allowScheduling() { allowCount += 1 }
+}
+
+private class FakeLocalUserDataCleanup : LocalUserDataCleanup {
+    var clearCount = 0
+    var failClear = false
+    var onClear: () -> Unit = {}
+
+    override suspend fun clear() {
+        clearCount += 1
+        onClear()
+        if (failClear) throw IOException("local cleanup failed")
+    }
 }

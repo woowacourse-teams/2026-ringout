@@ -6,6 +6,7 @@ import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.data.auth.restoreAuthSession
 import com.joon.ringout.data.connectivity.AndroidNetworkMonitor
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.alarm.isAlarmSchedulingBlocked
 import com.joon.ringout.data.network.getRingoutHttpClient
 import com.joon.ringout.domain.auth.getAuthSession
 import kotlinx.coroutines.CancellationException
@@ -38,7 +39,8 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
         // UI를 열지 않고 알람/Worker로 프로세스가 시작되어도 저장된 인증을 복원한다.
         tokenStorage.restoreAuthSession(authSession)
         AlarmOccurrenceSyncCoordinator(syncer, dao, authSession, AndroidNetworkMonitor(context),
-            onStorageFailure = { Log.e(Tag, "알람 전송 대기열 조회 실패", it) }).start(scope)
+            onStorageFailure = { Log.e(Tag, "알람 전송 대기열 조회 실패", it) },
+            flush = { flushAccountOutbox() }).start(scope)
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             authSession.identity.drop(1).collect { identity ->
                 if (identity != null) AlarmOccurrenceSyncWorker.enqueue(context)
@@ -91,8 +93,14 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
     suspend fun flush(): Long? {
         initialize()
         journal.drain(recorder::record)
+        if (isAlarmSchedulingBlocked(context)) return null
         return syncer.flush()
     }
+
+    suspend fun clearPendingForLogout() = journal.clear()
+
+    private suspend fun flushAccountOutbox(): Long? =
+        if (isAlarmSchedulingBlocked(context)) null else syncer.flush()
 
     companion object {
         private const val Tag = "AlarmOccurrence"

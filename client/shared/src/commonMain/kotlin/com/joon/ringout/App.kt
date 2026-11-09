@@ -8,11 +8,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -106,6 +109,7 @@ fun App(
     onRoomActivityPushHandled: (requestId: String) -> Unit = {},
 ) {
     val alarmLogoutCleanup = rememberAlarmLogoutCleanup()
+    val currentRuntimeEvidence = rememberUpdatedState(ringingAlarm != null || activeAlarmMission != null)
     val appBootstrapViewModel = viewModel {
         AppBootstrapViewModel(
             repository = appContainer.appPreferencesRepository,
@@ -114,8 +118,9 @@ fun App(
             authRepository = appContainer.authRepository,
             authSession = appContainer.authSession,
             hasStoredAlarms = appContainer.hasStoredAlarmsForEntryMigration,
-            hasRuntimeEvidence = { ringingAlarm != null || activeAlarmMission != null },
+            hasRuntimeEvidence = { currentRuntimeEvidence.value },
             alarmLogoutCleanup = alarmLogoutCleanup,
+            localUserDataCleanup = appContainer.localUserDataCleanup,
         )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState
@@ -153,6 +158,24 @@ fun App(
                 errorMessage = appBootstrapUiState.entryErrorMessage,
                 onRetry = appBootstrapViewModel::retryInitialization,
             )
+
+            appBootstrapUiState.destination == AppEntryDestination.LogoutCleaning &&
+                (ringingAlarm != null || activeAlarmMission != null) ->
+                LimitedRuntimeContent(
+                    ringingAlarm = ringingAlarm,
+                    activeAlarmMission = activeAlarmMission,
+                    activeAlarmMissionLocation = activeAlarmMissionLocation,
+                    missionLocationState = missionLocationState,
+                    onRingingAlarmDismiss = onRingingAlarmDismiss,
+                    onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+                    onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
+                    onActiveAlarmMissionForceEndHoldStarted =
+                        onActiveAlarmMissionForceEndHoldStarted,
+                    onActiveAlarmMissionForceEndHoldCancelled =
+                        onActiveAlarmMissionForceEndHoldCancelled,
+                    onActiveAlarmMissionForceEndHoldCompleted =
+                        onActiveAlarmMissionForceEndHoldCompleted,
+                )
 
             appBootstrapUiState.destination == AppEntryDestination.LogoutCleaning ->
                 LogoutCleanupSurface(
@@ -252,6 +275,22 @@ fun App(
                 )
 
             else -> Unit
+        }
+
+        if (
+            appBootstrapUiState.logoutCleanupErrorMessage != null &&
+            !appBootstrapUiState.isLogoutCleanupPending
+        ) {
+            AlertDialog(
+                onDismissRequest = appBootstrapViewModel::dismissLogoutCleanupError,
+                title = { Text("로그아웃할 수 없어요") },
+                text = { Text(appBootstrapUiState.logoutCleanupErrorMessage) },
+                confirmButton = {
+                    TextButton(onClick = appBootstrapViewModel::dismissLogoutCleanupError) {
+                        Text("확인")
+                    }
+                },
+            )
         }
     }
 }

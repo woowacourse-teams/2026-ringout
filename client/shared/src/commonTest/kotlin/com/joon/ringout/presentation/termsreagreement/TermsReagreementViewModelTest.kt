@@ -250,13 +250,38 @@ class TermsReagreementViewModelTest {
         assertTrue(f.vm.uiState.selected.isEmpty())
         assertEquals(AuthSessionState.Unauthenticated, f.session.state.value)
     }
+
+    @Test
+    fun `로그아웃 요청이 거절되면 같은 화면에서 다시 시도할 수 있다`() = runTest {
+        var allowLogout = false
+        lateinit var session: AuthSession
+        val f = Fixture(this, explicitLogout = {
+            if (allowLogout) session.clear()
+        })
+        session = f.session
+        runCurrent()
+
+        f.vm.logout()
+        runCurrent()
+        assertFalse(f.vm.uiState.isLoggingOut)
+
+        allowLogout = true
+        f.vm.logout()
+        runCurrent()
+        assertEquals(AuthSessionState.Unauthenticated, f.session.state.value)
+    }
 }
 
 private fun terms(current: Boolean = false, version: String = "2026-09-30") = RequiredTermsStatus(listOf(
     RequiredTermStatus(RequiredTermType.SERVICE, 3, version, if (current) version else null, !current),
     RequiredTermStatus(RequiredTermType.PRIVACY, 2, "2026-08-13", "2026-08-13", false),
 ))
-private class Fixture(scope: TestScope, loggedIn: Boolean = true, connection: NetworkStatus = NetworkStatus.Online) {
+private class Fixture(
+    scope: TestScope,
+    loggedIn: Boolean = true,
+    connection: NetworkStatus = NetworkStatus.Online,
+    explicitLogout: (suspend () -> Unit)? = null,
+) {
     val session = AuthSession().apply { if (loggedIn) markAuthenticated() else clear() }
     val network = FakeNetworkMonitor(connection)
     val repo = FakeTermsRepository()
@@ -268,7 +293,10 @@ private class Fixture(scope: TestScope, loggedIn: Boolean = true, connection: Ne
         override suspend fun signup(signupToken: String, agreedTerms: Set<AuthTerm>, agreedAt: String) = Unit
         override suspend fun logout() = session.clear()
     }
-    val vm = TermsReagreementViewModel(repo, auth, session, network, { "2026-09-30" }, scope.backgroundScope)
+    val vm = TermsReagreementViewModel(
+        repo, auth, session, network, { "2026-09-30" }, scope.backgroundScope,
+        explicitLogout = explicitLogout ?: auth::logout,
+    )
 }
 private class FakeTermsRepository : TermsRepository {
     var status = terms()

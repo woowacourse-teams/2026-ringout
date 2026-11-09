@@ -555,6 +555,22 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         }
     }
 
+    func clearPendingDataForLogout(callback: @escaping (IosAlarmOperationResult) -> Void) {
+        do {
+            try withInboxFileLock {
+                try writeStateUnlocked(.empty)
+                try AlarmRecoveryDriver.journal.clearForLogout()
+            }
+            try AlarmRingingOccurrenceStore.shared.clearForLogout()
+            callback(IosAlarmOperationResult(code: .success, message: nil))
+        } catch {
+            callback(IosAlarmOperationResult(
+                code: .sdkError,
+                message: "iOS 알람 복구 기록을 정리하지 못했습니다."
+            ))
+        }
+    }
+
     func recoveryState(callback: @escaping (IosAlarmRecoveryAttemptsResult) -> Void) {
         do {
             try importLegacyProjection()

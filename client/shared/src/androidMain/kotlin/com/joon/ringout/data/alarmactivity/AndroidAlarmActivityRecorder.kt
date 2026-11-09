@@ -69,6 +69,16 @@ internal class AndroidAlarmActivityRecorder private constructor(context: Context
         }
     }
 
+    suspend fun clearPendingForLogout() {
+        flushMutex.withLock {
+            synchronized(pending) {
+                check(pending.edit().clear().commit()) {
+                    "로그아웃 대기 중인 알람 기록을 정리하지 못했습니다."
+                }
+            }
+        }
+    }
+
     companion object {
         @Volatile private var instance: AndroidAlarmActivityRecorder? = null
 
