@@ -29,12 +29,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.common.component.DialogWithoutRipple
 
 @Composable
-internal fun MyPageLogoutBlockedDialog(
+internal fun MyPageAccountActionBlockedDialog(
+    action: MyPageAccountAction,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -70,7 +72,7 @@ internal fun MyPageLogoutBlockedDialog(
                         .clip(shape)
                         .background(colors.surface)
                         .padding(24.dp)
-                        .semantics { paneTitle = "로그아웃 차단 안내" },
+                        .semantics { paneTitle = "${action.blockedTitle} 안내" },
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -79,7 +81,7 @@ internal fun MyPageLogoutBlockedDialog(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Text(
-                            text = "로그아웃할 수 없어요",
+                            text = action.blockedTitle,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .semantics { heading() },
@@ -93,7 +95,7 @@ internal fun MyPageLogoutBlockedDialog(
                             ),
                         )
                         Text(
-                            text = "진행중인 미션을 종료한 뒤 시도해주세요.",
+                            text = "진행 중인 미션을 종료한 뒤 시도해 주세요.",
                             modifier = Modifier.fillMaxWidth(),
                             color = colors.description,
                             textAlign = TextAlign.Center,
@@ -109,10 +111,15 @@ internal fun MyPageLogoutBlockedDialog(
                             .fillMaxWidth()
                             .height(48.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(colors.logout)
+                            .background(
+                                when (action) {
+                                    MyPageAccountAction.Logout -> colors.logout
+                                    MyPageAccountAction.Withdraw -> colors.withdraw
+                                },
+                            )
                             .clickable(
                                 role = Role.Button,
-                                onClickLabel = "로그아웃 차단 안내 확인",
+                                onClickLabel = "${action.blockedTitle} 안내 확인",
                                 onClick = onConfirm,
                             ),
                         contentAlignment = Alignment.Center,
@@ -134,12 +141,19 @@ internal fun MyPageLogoutBlockedDialog(
     }
 }
 
-@Preview(name = "My Page logout blocked", widthDp = 402, heightDp = 941)
+@Preview(name = "My Page account action blocked", widthDp = 402, heightDp = 941)
 @Composable
-private fun MyPageLogoutBlockedDialogPreview() {
+private fun MyPageAccountActionBlockedDialogPreview() {
     RingoutTheme(ThemeMode.Dark) {
-        MyPageLogoutBlockedDialog(
+        MyPageAccountActionBlockedDialog(
+            action = MyPageAccountAction.Logout,
             onConfirm = {},
         )
     }
 }
+
+private val MyPageAccountAction.blockedTitle: String
+    get() = when (this) {
+        MyPageAccountAction.Logout -> "로그아웃할 수 없어요"
+        MyPageAccountAction.Withdraw -> "회원탈퇴를 할 수 없어요"
+    }
