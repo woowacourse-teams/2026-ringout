@@ -30,8 +30,10 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 internal fun ArrivalActions(
     onStartDay: () -> Unit,
-    onShare: () -> Unit,
+    onShare: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    isConfirming: Boolean = false,
+    confirmationErrorMessage: String? = null,
 ) {
     Column(
         modifier = modifier
@@ -40,8 +42,18 @@ internal fun ArrivalActions(
             .padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        confirmationErrorMessage?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Button(
             onClick = onStartDay,
+            enabled = !isConfirming,
             modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
             shape = RoundedCornerShape(12.dp),
             contentPadding = PaddingValues(horizontal = 15.dp, vertical = 15.dp),
@@ -51,7 +63,7 @@ internal fun ArrivalActions(
             ),
         ) {
             Text(
-                text = "오늘 하루 시작하기!",
+                text = if (isConfirming) "확인 중…" else "오늘 하루 시작하기!",
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontSize = 18.sp,
                     lineHeight = 24.sp,
@@ -60,8 +72,9 @@ internal fun ArrivalActions(
                 textAlign = TextAlign.Center,
             )
         }
-        Button(
+        if (onShare != null) Button(
             onClick = onShare,
+            enabled = !isConfirming,
             modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
             shape = RoundedCornerShape(12.dp),
             contentPadding = PaddingValues(horizontal = 15.dp, vertical = 15.dp),

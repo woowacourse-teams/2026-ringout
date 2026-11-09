@@ -132,6 +132,132 @@ class ArrivalViewModelTest {
         assertFalse(viewModel.uiState.value.isLoading)
         assertNull(viewModel.uiState.value.errorMessage)
     }
+
+    @Test
+    fun `도착 확인 저장이 끝나야 화면 이동을 허용하고 중복 확인을 무시한다`() = runTest {
+        val pendingConfirmation = CompletableDeferred<Unit>()
+        val repository = ArrivalReadRepository { SavedArrival }.apply {
+            acknowledge = { _, _ -> pendingConfirmation.await() }
+        }
+        val viewModel = ArrivalViewModel("arrival-4", repository, backgroundScope) { 2_000 }
+        runCurrent()
+
+        viewModel.confirm()
+        viewModel.confirm()
+        assertTrue(viewModel.uiState.value.isConfirming)
+        assertFalse(viewModel.uiState.value.isAcknowledged)
+        runCurrent()
+        assertEquals(listOf("arrival-4" to 2_000L), repository.confirmedRequests)
+
+        pendingConfirmation.complete(Unit)
+        runCurrent()
+        assertFalse(viewModel.uiState.value.isConfirming)
+        assertTrue(viewModel.uiState.value.isAcknowledged)
+        viewModel.confirm()
+        viewModel.retry()
+        runCurrent()
+        assertEquals(1, repository.confirmedRequests.size)
+        assertEquals(1, repository.requestedIds.size)
+    }
+
+    @Test
+    fun `도착 확인 저장 실패는 결과를 유지하고 다시 확인하면 이동할 수 있다`() = runTest {
+        val repository = ArrivalReadRepository { SavedArrival }.apply {
+            acknowledge = { _, _ -> error("확인 저장 실패") }
+        }
+        val viewModel = ArrivalViewModel("arrival-4", repository, backgroundScope)
+        runCurrent()
+        viewModel.confirm()
+        runCurrent()
+
+        assertEquals(SavedArrival, viewModel.uiState.value.result)
+        assertFalse(viewModel.uiState.value.isAcknowledged)
+        assertFalse(viewModel.uiState.value.isConfirming)
+        assertNotNull(viewModel.uiState.value.confirmationErrorMessage)
+
+        repository.acknowledge = { _, _ -> }
+        viewModel.confirm()
+        assertNull(viewModel.uiState.value.confirmationErrorMessage)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isAcknowledged)
+        assertEquals(2, repository.confirmedRequests.size)
+    }
+
+    @Test
+    fun `조회 중 뒤로 가기로 확인한 뒤 늦게 도착한 조회는 확인 완료 상태를 보존한다`() = runTest {
+        val pendingResult = CompletableDeferred<ArrivalResult?>()
+        val repository = ArrivalReadRepository { pendingResult.await() }.apply { acknowledge = { _, _ -> } }
+        val viewModel = ArrivalViewModel("arrival-4", repository, backgroundScope)
+        runCurrent()
+        viewModel.confirm()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isAcknowledged)
+        assertTrue(viewModel.uiState.value.isLoading)
+
+        pendingResult.complete(SavedArrival)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isAcknowledged)
+        assertFalse(viewModel.uiState.value.isLoading)
+    }
+
+    @Test
+    fun `조회가 실패해도 뒤로 가기 확인 저장을 완료할 수 있다`() = runTest {
+        val repository = ArrivalReadRepository { error("조회 실패") }.apply { acknowledge = { _, _ -> } }
+        val viewModel = ArrivalViewModel("arrival-4", repository, backgroundScope)
+        runCurrent()
+        assertNotNull(viewModel.uiState.value.errorMessage)
+        viewModel.confirm()
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isAcknowledged)
+    }
+
+    @Test
+    fun `조회 재시도 응답은 동시에 진행 중인 확인 실패 안내를 지우지 않는다`() = runTest {
+        val pendingResult = CompletableDeferred<ArrivalResult?>()
+        val repository = ArrivalReadRepository { error("조회 실패") }.apply {
+            acknowledge = { _, _ -> error("확인 저장 실패") }
+        }
+        val viewModel = ArrivalViewModel("arrival-4", repository, backgroundScope)
+        runCurrent()
+        repository.readResult = { pendingResult.await() }
+        viewModel.retry()
+        viewModel.confirm()
+        runCurrent()
+        val error = viewModel.uiState.value.confirmationErrorMessage
+        assertNotNull(error)
+        pendingResult.complete(SavedArrival)
+        runCurrent()
+        assertEquals(error, viewModel.uiState.value.confirmationErrorMessage)
+        assertEquals(SavedArrival, viewModel.uiState.value.result)
+    }
+
+    @Test
+    fun `취소된 확인이 늦게 완료되어도 새 확인 요청의 저장 중 상태를 지우지 않는다`() = runTest {
+        val cancelledConfirmation = CompletableDeferred<Unit>()
+        val currentConfirmation = CompletableDeferred<Unit>()
+        val repository = ArrivalReadRepository { SavedArrival }.apply {
+            acknowledge = { _, _ -> withContext(NonCancellable) { cancelledConfirmation.await() } }
+        }
+        val viewModel = ArrivalViewModel("arrival-4", repository, backgroundScope)
+        runCurrent()
+        viewModel.confirm()
+        runCurrent()
+        repository.confirmationJobs.single().cancel()
+        repository.acknowledge = { _, _ -> currentConfirmation.await() }
+        viewModel.confirm()
+        runCurrent()
+
+        cancelledConfirmation.complete(Unit)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isConfirming)
+        assertFalse(viewModel.uiState.value.isAcknowledged)
+        assertNull(viewModel.uiState.value.confirmationErrorMessage)
+
+        currentConfirmation.complete(Unit)
+        runCurrent()
+        assertTrue(viewModel.uiState.value.isAcknowledged)
+        assertFalse(viewModel.uiState.value.isConfirming)
+    }
 }
 
 private val SavedArrival = ArrivalResult(
@@ -149,6 +275,11 @@ private class ArrivalReadRepository(
 ) : ArrivalResultRepository {
     val requestedIds = mutableListOf<String>()
     val readJobs = mutableListOf<Job>()
+    var acknowledge: suspend (String, Long) -> Unit = { _, _ ->
+        error("결과 조회 중 확인 상태를 변경하면 안 됩니다.")
+    }
+    val confirmedRequests = mutableListOf<Pair<String, Long>>()
+    val confirmationJobs = mutableListOf<Job>()
 
     override suspend fun getResult(occurrenceId: String): ArrivalResult? {
         requestedIds += occurrenceId
@@ -159,8 +290,11 @@ private class ArrivalReadRepository(
     override fun observeLatestUnacknowledgedResult(): Flow<ArrivalResult?> =
         error("지정된 회차만 조회해야 합니다.")
 
-    override suspend fun acknowledgeThrough(occurrenceId: String, acknowledgedAtEpochMillis: Long): Unit =
-        error("결과 조회 중 확인 상태를 변경하면 안 됩니다.")
+    override suspend fun acknowledgeThrough(occurrenceId: String, acknowledgedAtEpochMillis: Long) {
+        confirmedRequests += occurrenceId to acknowledgedAtEpochMillis
+        confirmationJobs += assertNotNull(currentCoroutineContext()[Job])
+        acknowledge(occurrenceId, acknowledgedAtEpochMillis)
+    }
 
     override suspend fun getGrowth(): ArrivalGrowth = error("저장된 결과의 성장 상태를 사용해야 합니다.")
 

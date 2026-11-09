@@ -37,7 +37,7 @@ import com.joon.ringout.ringoutColors
 internal fun ArrivalScreen(
     uiState: ArrivalUiState,
     onStartDay: () -> Unit,
-    onShare: () -> Unit,
+    onShare: (() -> Unit)?,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -50,10 +50,7 @@ internal fun ArrivalScreen(
         contentAlignment = Alignment.Center,
     ) {
         when {
-            uiState.isLoading -> CircularProgressIndicator(
-                Modifier.testTag("arrival-loading").semantics { contentDescription = "도착 기록을 불러오는 중" },
-            )
-            uiState.result != null -> Column(
+            uiState.result != null && !uiState.isLoading -> Column(
                 modifier = Modifier.widthIn(max = 480.dp).fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -61,20 +58,44 @@ internal fun ArrivalScreen(
                     growth = uiState.result.growth,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )
-                ArrivalActions(onStartDay = onStartDay, onShare = onShare)
+                ArrivalActions(
+                    onStartDay = onStartDay,
+                    onShare = onShare,
+                    isConfirming = uiState.isConfirming || uiState.isAcknowledged,
+                    confirmationErrorMessage = uiState.confirmationErrorMessage,
+                )
             }
             else -> Column(
                 modifier = Modifier.widthIn(max = 480.dp).verticalScroll(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(
-                    text = uiState.errorMessage ?: "도착 기록을 찾을 수 없어요.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center,
-                )
-                TextButton(onClick = onRetry) { Text("다시 시도") }
+                if (uiState.isLoading) {
+                    CircularProgressIndicator(
+                        Modifier.testTag("arrival-loading")
+                            .semantics { contentDescription = "도착 기록을 불러오는 중" },
+                    )
+                } else {
+                    Text(
+                        text = uiState.errorMessage ?: "도착 기록을 찾을 수 없어요.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                    )
+                    TextButton(onClick = onRetry, enabled = !uiState.isConfirming) { Text("다시 시도") }
+                }
+                uiState.confirmationErrorMessage?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    )
+                    TextButton(onClick = onStartDay, enabled = !uiState.isConfirming) { Text("확인 다시 시도") }
+                }
+                if (uiState.isConfirming) {
+                    Text("확인 중…", color = MaterialTheme.colorScheme.onSurface)
+                }
             }
         }
     }
@@ -136,6 +157,25 @@ private fun ArrivalErrorScreenPreview() {
         ArrivalScreen(
             ArrivalUiState(isLoading = false, errorMessage = "도착 기록을 불러오지 못했어요. 다시 시도해 주세요."),
             onStartDay = {}, onShare = {}, onRetry = {},
+        )
+    }
+}
+
+@Preview(name = "도착 확인 저장 중", widthDp = 402, heightDp = 941)
+@Composable
+private fun ArrivalConfirmingScreenPreview() {
+    RingoutTheme {
+        ArrivalScreen(previewArrivalState(4).copy(isConfirming = true), onStartDay = {}, onShare = null, onRetry = {})
+    }
+}
+
+@Preview(name = "도착 확인 저장 실패", widthDp = 402, heightDp = 941)
+@Composable
+private fun ArrivalConfirmationErrorScreenPreview() {
+    RingoutTheme {
+        ArrivalScreen(
+            previewArrivalState(4).copy(confirmationErrorMessage = "도착 확인을 저장하지 못했어요. 다시 시도해 주세요."),
+            onStartDay = {}, onShare = null, onRetry = {},
         )
     }
 }

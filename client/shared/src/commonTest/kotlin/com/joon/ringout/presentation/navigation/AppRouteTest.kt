@@ -29,6 +29,7 @@ class AppRouteTest {
             AppRoute.TermsAgreement,
             AppRoute.AlarmRinging(alarmId = "system-alarm-1"),
             AppRoute.ActiveAlarmTracking(occurrenceId = "alarm-1:retry-2"),
+            AppRoute.Arrival(occurrenceId = "alarm-1:retry-2"),
             AppRoute.Home,
             AppRoute.EditAlarm(alarmId = "alarm-2"),
         )
@@ -49,6 +50,7 @@ class AppRouteTest {
             AppRoute.Destination.serializer(),
             AppRoute.AlarmRinging.serializer(),
             AppRoute.ActiveAlarmTracking.serializer(),
+            AppRoute.Arrival.serializer(),
         )
 
         serializers.forEach { serializer ->

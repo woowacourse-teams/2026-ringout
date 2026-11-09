@@ -14,6 +14,26 @@ import kotlin.test.assertTrue
 
 class AppNavigationStateTest {
     @Test
+    fun `도착 화면은 이전 편집 스택을 정리하고 같은 결과를 중복 추가하지 않는다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.AddAlarm)
+        state.navigate(AppRoute.Destination(4))
+
+        val first = AppRoute.Arrival("arrival-1")
+        state.navigate(first)
+        state.navigate(first.copy())
+        assertEquals(listOf(AppRoute.Home, first), state.backStack.toList())
+        assertSame(first, state.requestedRoute)
+        assertEquals(listOf(AppRoute.Home, first), state.routesForDisplayedRoute(first))
+
+        val latest = AppRoute.Arrival("arrival-2")
+        state.navigate(latest)
+        assertEquals(listOf(AppRoute.Home, latest), state.backStack.toList())
+        state.navigate(AppRoute.Home)
+        assertEquals(listOf(AppRoute.Home), state.backStack.toList())
+    }
+
+    @Test
     fun `메인 백스택은 인증 경로를 직접 열지 않는다`() {
         val state = AppNavigationState()
 

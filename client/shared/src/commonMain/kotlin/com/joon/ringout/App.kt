@@ -42,6 +42,10 @@ import com.joon.ringout.presentation.alarmsetup.AlarmSetupViewModel
 import com.joon.ringout.presentation.app.AuthSessionCoordinator
 import com.joon.ringout.presentation.app.AppLocationCacheViewModel
 import com.joon.ringout.presentation.app.AppRuntimeCoordinator
+import com.joon.ringout.presentation.arrival.PendingArrivalUiState
+import com.joon.ringout.presentation.arrival.PendingArrivalViewModel
+import com.joon.ringout.presentation.arrival.RestrictedArrivalHost
+import com.joon.ringout.presentation.arrival.shouldEnableRestrictedArrival
 import com.joon.ringout.presentation.app.HomeNotificationPermissionEffect
 import com.joon.ringout.presentation.app.rememberAppAlarmController
 import com.joon.ringout.presentation.appbootstrap.AppBootstrapViewModel
@@ -69,6 +73,7 @@ import com.joon.ringout.presentation.ringing.AlarmRingingRoute
 import com.joon.ringout.presentation.navigation.AppRoute
 import com.joon.ringout.presentation.navigation.RingoutNavHost
 import com.joon.ringout.presentation.navigation.alarmRuntimeGraph
+import com.joon.ringout.presentation.navigation.arrivalGraph
 import com.joon.ringout.presentation.navigation.alarmEditorGraph
 import com.joon.ringout.presentation.navigation.rememberAlarmEditorNavigation
 import com.joon.ringout.presentation.navigation.homeGraph
@@ -87,6 +92,7 @@ fun App(
     myPageExtraContent: (@Composable (ThemeMode) -> Unit)? = null,
     useSystemLocationPermissionUiOnly: Boolean = false,
     ringingAlarm: AlarmRingingUiState? = null,
+    hasExternalRingingAlarm: Boolean = false,
     activeAlarmMission: ActiveAlarmMission? = null,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation? = null,
     missionLocationState: MissionLocationState = DefaultMissionLocationState,
@@ -120,6 +126,8 @@ fun App(
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState
     val authSessionState = appBootstrapUiState.authSessionState
+    val pendingArrivalViewModel = viewModel { PendingArrivalViewModel(appContainer.arrivalResultRepository) }
+    val pendingArrival by pendingArrivalViewModel.uiState.collectAsStateWithLifecycle()
     val authSessionIdentity by appContainer.authSession.identity.collectAsStateWithLifecycle()
     val latestFcmToken by appContainer.pushTokenSource.latestFcmToken.collectAsStateWithLifecycle()
     LaunchedEffect(authSessionState, latestFcmToken, appContainer.pushTokenRegistrationReadiness) {
@@ -147,111 +155,123 @@ fun App(
     }
 
     RingoutTheme(themeMode = appBootstrapUiState.themeMode) {
-        when {
-            !appBootstrapUiState.isReady -> AppBootstrapSurface(
-                isLoading = appBootstrapUiState.isBootstrapping,
-                errorMessage = appBootstrapUiState.entryErrorMessage,
-                onRetry = appBootstrapViewModel::retryInitialization,
-            )
-
-            appBootstrapUiState.destination == AppEntryDestination.LogoutCleaning ->
-                LogoutCleanupSurface(
-                    errorMessage = appBootstrapUiState.logoutCleanupErrorMessage,
-                    onRetry = appBootstrapViewModel::retryLogoutCleanup,
+        RestrictedArrivalHost(
+            repository = appContainer.arrivalResultRepository,
+            hasActiveRuntime = hasExternalRingingAlarm || ringingAlarm != null || activeAlarmMission != null,
+            isEnabled = shouldEnableRestrictedArrival(
+                isAppReady = appBootstrapUiState.isReady,
+                entryDestination = appBootstrapUiState.destination,
+                areGuideTermsAllowed = termsViewModel.uiState.phase == TermsGatePhase.Allowed,
+            ),
+        ) {
+            when {
+                !appBootstrapUiState.isReady -> AppBootstrapSurface(
+                    isLoading = appBootstrapUiState.isBootstrapping,
+                    errorMessage = appBootstrapUiState.entryErrorMessage,
+                    onRetry = appBootstrapViewModel::retryInitialization,
                 )
 
-            shouldShowLimitedRuntimeControls(
-                installation = checkNotNull(appBootstrapUiState.installationEntryState),
-                authSessionState = authSessionState,
-                hasActiveRuntime = ringingAlarm != null || activeAlarmMission != null,
-            ) ->
-                LimitedRuntimeContent(
-                    ringingAlarm = ringingAlarm,
-                    activeAlarmMission = activeAlarmMission,
-                    activeAlarmMissionLocation = activeAlarmMissionLocation,
-                    missionLocationState = missionLocationState,
-                    onRingingAlarmDismiss = onRingingAlarmDismiss,
-                    onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
-                    onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
-                    onActiveAlarmMissionForceEndHoldStarted =
-                        onActiveAlarmMissionForceEndHoldStarted,
-                    onActiveAlarmMissionForceEndHoldCancelled =
-                        onActiveAlarmMissionForceEndHoldCancelled,
-                    onActiveAlarmMissionForceEndHoldCompleted =
-                        onActiveAlarmMissionForceEndHoldCompleted,
-                )
+                appBootstrapUiState.destination == AppEntryDestination.LogoutCleaning ->
+                    LogoutCleanupSurface(
+                        errorMessage = appBootstrapUiState.logoutCleanupErrorMessage,
+                        onRetry = appBootstrapViewModel::retryLogoutCleanup,
+                    )
 
-            appBootstrapUiState.destination == AppEntryDestination.Onboarding ->
-                OnboardingRoute(
-                    analytics = appContainer.productAnalyticsRecorder,
-                    onComplete = appBootstrapViewModel::completeOnboarding,
-                    completionEnabled = !appBootstrapUiState.isSaving,
-                    completionRetryToken = appBootstrapUiState.onboardingRetryToken,
-                )
-
-            appBootstrapUiState.destination == AppEntryDestination.Login ->
-                AuthEntryContent(
-                    appContainer = appContainer,
+                shouldShowLimitedRuntimeControls(
+                    installation = checkNotNull(appBootstrapUiState.installationEntryState),
                     authSessionState = authSessionState,
-                    onLoginStarted = appBootstrapViewModel::beginAuthFlow,
-                    onAuthFlowEvent = appBootstrapViewModel::handleAuthFlowEvent,
-                    onAuthFlowCancelled = appBootstrapViewModel::cancelAuthFlow,
-                    authCompletionError = appBootstrapUiState.entryErrorMessage.takeIf {
-                        appBootstrapUiState.hasAuthFlowCompletionFailed
-                    },
-                    onRetryAuthCompletion = appBootstrapViewModel::retryAuthFlowCompletion,
-                )
+                    hasActiveRuntime = ringingAlarm != null || activeAlarmMission != null,
+                ) ->
+                    LimitedRuntimeContent(
+                        ringingAlarm = ringingAlarm,
+                        activeAlarmMission = activeAlarmMission,
+                        activeAlarmMissionLocation = activeAlarmMissionLocation,
+                        missionLocationState = missionLocationState,
+                        onRingingAlarmDismiss = onRingingAlarmDismiss,
+                        onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+                        onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
+                        onActiveAlarmMissionForceEndHoldStarted =
+                            onActiveAlarmMissionForceEndHoldStarted,
+                        onActiveAlarmMissionForceEndHoldCancelled =
+                            onActiveAlarmMissionForceEndHoldCancelled,
+                        onActiveAlarmMissionForceEndHoldCompleted =
+                            onActiveAlarmMissionForceEndHoldCompleted,
+                    )
 
-            appBootstrapUiState.destination == AppEntryDestination.Guide &&
-                termsViewModel.uiState.phase != TermsGatePhase.Allowed ->
-                GuideTermsPreparationSurface(
-                    phase = termsViewModel.uiState.phase,
-                    onRetry = termsViewModel::retry,
-                    termsViewModel = termsViewModel,
-                )
+                appBootstrapUiState.destination == AppEntryDestination.Onboarding ->
+                    OnboardingRoute(
+                        analytics = appContainer.productAnalyticsRecorder,
+                        onComplete = appBootstrapViewModel::completeOnboarding,
+                        completionEnabled = !appBootstrapUiState.isSaving,
+                        completionRetryToken = appBootstrapUiState.onboardingRetryToken,
+                    )
 
-            appBootstrapUiState.destination == AppEntryDestination.Home ||
-                appBootstrapUiState.destination == AppEntryDestination.Guide ->
-                RingoutAppContent(
-                    appContainer = appContainer,
-                    destinationCurrentLocationCache = checkNotNull(destinationCurrentLocationCache),
-                    termsViewModel = termsViewModel,
-                    authSessionState = authSessionState,
-                    authSessionIdentity = authSessionIdentity,
-                    themeMode = appBootstrapUiState.themeMode,
-                    isAlarmCreationGuidePending =
-                        appBootstrapUiState.destination == AppEntryDestination.Guide,
-                    isSavingAlarmCreationGuide = appBootstrapUiState.isSavingAlarmCreationGuide,
-                    hasAlarmCreationGuideSaveFailed = appBootstrapUiState.hasAlarmCreationGuideSaveFailed,
-                    onAlarmCreationGuideFinished = appBootstrapViewModel::completeAlarmCreationGuide,
-                    onExplicitLogout = appBootstrapViewModel::requestExplicitLogout,
-                    onAuthenticationRequired = appBootstrapViewModel::requestAuthentication,
-                    appVersion = appVersion,
-                    myPageExtraContent = myPageExtraContent,
-                    useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
-                    ringingAlarm = ringingAlarm,
-                    activeAlarmMission = activeAlarmMission,
-                    activeAlarmMissionLocation = activeAlarmMissionLocation,
-                    missionLocationState = missionLocationState,
-                    onRequestWhenInUseLocation = onRequestWhenInUseLocation,
-                    onRequestAlwaysLocation = onRequestAlwaysLocation,
-                    onConfirmAlwaysLocationResult = onConfirmAlwaysLocationResult,
-                    onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
-                    onRingingAlarmDismiss = onRingingAlarmDismiss,
-                    onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
-                    onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
-                    onActiveAlarmMissionForceEndHoldStarted =
-                        onActiveAlarmMissionForceEndHoldStarted,
-                    onActiveAlarmMissionForceEndHoldCancelled =
-                        onActiveAlarmMissionForceEndHoldCancelled,
-                    onActiveAlarmMissionForceEndHoldCompleted =
-                        onActiveAlarmMissionForceEndHoldCompleted,
-                    pendingRoomActivityPush = pendingRoomActivityPush,
-                    onRoomActivityPushHandled = onRoomActivityPushHandled,
-                    onThemeModeChange = appBootstrapViewModel::setThemeMode,
-                )
+                appBootstrapUiState.destination == AppEntryDestination.Login ->
+                    AuthEntryContent(
+                        appContainer = appContainer,
+                        authSessionState = authSessionState,
+                        onLoginStarted = appBootstrapViewModel::beginAuthFlow,
+                        onAuthFlowEvent = appBootstrapViewModel::handleAuthFlowEvent,
+                        onAuthFlowCancelled = appBootstrapViewModel::cancelAuthFlow,
+                        authCompletionError = appBootstrapUiState.entryErrorMessage.takeIf {
+                            appBootstrapUiState.hasAuthFlowCompletionFailed
+                        },
+                        onRetryAuthCompletion = appBootstrapViewModel::retryAuthFlowCompletion,
+                    )
 
-            else -> Unit
+                appBootstrapUiState.destination == AppEntryDestination.Guide &&
+                    termsViewModel.uiState.phase != TermsGatePhase.Allowed ->
+                    GuideTermsPreparationSurface(
+                        phase = termsViewModel.uiState.phase,
+                        onRetry = termsViewModel::retry,
+                        termsViewModel = termsViewModel,
+                    )
+
+                appBootstrapUiState.destination == AppEntryDestination.Home ||
+                    appBootstrapUiState.destination == AppEntryDestination.Guide ->
+                    RingoutAppContent(
+                        appContainer = appContainer,
+                        destinationCurrentLocationCache = checkNotNull(destinationCurrentLocationCache),
+                        termsViewModel = termsViewModel,
+                        authSessionState = authSessionState,
+                        authSessionIdentity = authSessionIdentity,
+                        themeMode = appBootstrapUiState.themeMode,
+                        isAlarmCreationGuidePending =
+                            appBootstrapUiState.destination == AppEntryDestination.Guide,
+                        isSavingAlarmCreationGuide = appBootstrapUiState.isSavingAlarmCreationGuide,
+                        hasAlarmCreationGuideSaveFailed = appBootstrapUiState.hasAlarmCreationGuideSaveFailed,
+                        onAlarmCreationGuideFinished = appBootstrapViewModel::completeAlarmCreationGuide,
+                        onExplicitLogout = appBootstrapViewModel::requestExplicitLogout,
+                        onAuthenticationRequired = appBootstrapViewModel::requestAuthentication,
+                        appVersion = appVersion,
+                        myPageExtraContent = myPageExtraContent,
+                        useSystemLocationPermissionUiOnly = useSystemLocationPermissionUiOnly,
+                        ringingAlarm = ringingAlarm,
+                        hasExternalRingingAlarm = hasExternalRingingAlarm,
+                        pendingArrival = pendingArrival,
+                        activeAlarmMission = activeAlarmMission,
+                        activeAlarmMissionLocation = activeAlarmMissionLocation,
+                        missionLocationState = missionLocationState,
+                        onRequestWhenInUseLocation = onRequestWhenInUseLocation,
+                        onRequestAlwaysLocation = onRequestAlwaysLocation,
+                        onConfirmAlwaysLocationResult = onConfirmAlwaysLocationResult,
+                        onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
+                        onRingingAlarmDismiss = onRingingAlarmDismiss,
+                        onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+                        onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
+                        onActiveAlarmMissionForceEndHoldStarted =
+                            onActiveAlarmMissionForceEndHoldStarted,
+                        onActiveAlarmMissionForceEndHoldCancelled =
+                            onActiveAlarmMissionForceEndHoldCancelled,
+                        onActiveAlarmMissionForceEndHoldCompleted =
+                            onActiveAlarmMissionForceEndHoldCompleted,
+                        pendingRoomActivityPush = pendingRoomActivityPush,
+                        onRoomActivityPushHandled = onRoomActivityPushHandled,
+                        onThemeModeChange = appBootstrapViewModel::setThemeMode,
+                    )
+
+                else -> Unit
+            }
         }
     }
 }
@@ -436,6 +456,8 @@ private fun RingoutAppContent(
     myPageExtraContent: (@Composable (ThemeMode) -> Unit)?,
     useSystemLocationPermissionUiOnly: Boolean,
     ringingAlarm: AlarmRingingUiState?,
+    hasExternalRingingAlarm: Boolean,
+    pendingArrival: PendingArrivalUiState,
     activeAlarmMission: ActiveAlarmMission?,
     activeAlarmMissionLocation: ActiveAlarmMissionLocation?,
     missionLocationState: MissionLocationState,
@@ -471,7 +493,8 @@ private fun RingoutAppContent(
         authSessionState = authSessionState,
         displayedRoute = displayedRoute,
         isAlarmCreationGuidePending = isAlarmCreationGuidePending,
-        isServiceBlocked = termsViewModel.uiState.blocksService || forceEndState.phase != ForceEndPhase.Idle,
+        isServiceBlocked = termsViewModel.uiState.blocksService || forceEndState.phase != ForceEndPhase.Idle ||
+            !pendingArrival.isLoaded || pendingArrival.result != null,
     )
     val retainedRoutes = navigationState.retainedRoutes(displayedRoute)
     val viewModelScopes = rememberNavigationViewModelScopes(
@@ -580,6 +603,9 @@ private fun RingoutAppContent(
         authSessionState = authSessionState,
         navigationState = navigationState,
         displayedRoute = displayedRoute,
+        pendingArrivalOccurrenceId = pendingArrival.result?.occurrenceId,
+        isArrivalStateLoaded = pendingArrival.isLoaded,
+        hasExternalRingingAlarm = hasExternalRingingAlarm,
         pendingRoomActivityPush = pendingRoomActivityPush,
         canHandleRoomActivityPush = !isAlarmCreationGuidePending &&
             !termsViewModel.uiState.blocksService &&
@@ -624,6 +650,8 @@ private fun RingoutAppContent(
         isPending = isAlarmCreationGuidePending,
         surface = guideSurface,
         canPresent = !termsViewModel.uiState.blocksService &&
+            displayedRoute !is AppRoute.Arrival &&
+            pendingArrival.isLoaded && pendingArrival.result == null &&
             forceEndState.phase == ForceEndPhase.Idle &&
             authSessionState != AuthSessionState.Restoring &&
             authSessionState != AuthSessionState.ReauthenticationRequired &&
@@ -672,6 +700,8 @@ private fun RingoutAppContent(
                     }
                     is AppRoute.ActiveAlarmTracking -> navigationState.navigate(AppRoute.Home)
                     is AppRoute.AlarmRinging -> Unit
+                    // The registered ArrivalRoute back action persists acknowledgement first.
+                    is AppRoute.Arrival -> Unit
                     else -> navigationState.popBackStack(route)
                 }
             },
@@ -727,6 +757,12 @@ private fun RingoutAppContent(
                     onActiveAlarmMissionForceEndHoldCompleted =
                         onActiveAlarmMissionForceEndHoldCompleted,
                 )
+                arrivalGraph(
+                    navigationState = navigationState,
+                    repository = appContainer.arrivalResultRepository,
+                    pendingArrival = pendingArrival,
+                    hasActiveRuntime = hasExternalRingingAlarm || ringingAlarm != null || activeAlarmMission != null,
+                )
                 if (alarmEditorNavigation != null) {
                     alarmEditorGraph(
                         navigation = alarmEditorNavigation,
@@ -741,7 +777,8 @@ private fun RingoutAppContent(
     }
     // 알람 울림과 진행 중 미션의 필수 조작은 기존 우선순위를 유지한다.
     if (forceEndState.phase == ForceEndPhase.Idle &&
-        displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking
+        displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking &&
+        displayedRoute !is AppRoute.Arrival
     ) {
         TermsReagreementRoute(termsViewModel)
     }
