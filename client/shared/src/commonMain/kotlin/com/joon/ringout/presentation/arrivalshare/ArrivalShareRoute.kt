@@ -26,9 +26,9 @@ import kotlinx.serialization.encodeToString
         viewModel.restoreDraft(draft)
         draftLoaded = true
     }
-    LaunchedEffect(draftLoaded, state.photoPath, state.showDate, state.showTime, state.date, state.time) {
+    LaunchedEffect(draftLoaded, state.photoPath, state.showDate, state.showTime, state.date, state.time, state.useBlackText) {
         if (draftLoaded && !state.isLoading && state.error == null) {
-            runCatching { store.write(viewModel.occurrenceId, Json.encodeToString(ArrivalDraft(state.photoPath, state.showTime, state.showDate, state.date, state.time))) }
+            runCatching { store.write(viewModel.occurrenceId, Json.encodeToString(ArrivalDraft(state.photoPath, state.showTime, state.showDate, state.date, state.time, state.useBlackText))) }
                 .onFailure { viewModel.finishMedia(ArrivalMediaResult.Failed("편집 내용을 보관하지 못했어요.")) }
         }
     }
@@ -66,7 +66,7 @@ import kotlinx.serialization.encodeToString
         }
     }
     ArrivalShareScreen(state, back, viewModel::setShowTime, viewModel::setShowDate, viewModel::retry,
-        photo = photo, mediaReady = ready,
+        photo = photo, mediaReady = ready, onToggleTextColor = viewModel::toggleTextColor,
         cardModifier = Modifier.drawWithContent {
             val factor = 1080f / size.width
             layer.record(size = IntSize(1080, 1080)) {

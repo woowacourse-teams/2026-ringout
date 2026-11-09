@@ -13,3 +13,5 @@
 - 자동 검증: PNG 실제 크기·카드 영역, 사진 회전·축소, 토글·취소·실패·중복 실행·초안 복원. 실제 기기에서 카메라 촬영, OS 권한 설정, 사진 보관함 확인 및 외부 앱 수신은 별도 기기 검증 대상이다.
 
 참고: [Compose GraphicsLayer](https://developer.android.com/reference/kotlin/androidx/compose/ui/graphics/layer/GraphicsLayer), [PhotoKit](https://developer.apple.com/documentation/photos/phphotolibrary).
+
+- 카드 영역을 누르면 로고·날짜·시간을 검정색(#000000)과 흰색(#FFFFFF)으로 왕복 전환한다. 선택 색상은 초안과 내보낸 PNG에 반영하고, 내보내기 중에는 변경을 막는다. 기존 초안은 흰색으로 복원한다.

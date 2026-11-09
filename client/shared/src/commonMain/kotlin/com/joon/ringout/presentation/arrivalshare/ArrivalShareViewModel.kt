@@ -22,6 +22,7 @@ internal data class ArrivalShareUiState(
     val photoPath: String? = null,
     val busy: Boolean = false,
     val message: String? = null,
+    val useBlackText: Boolean = false,
 )
 
 internal expect fun arrivalShareLocalLabels(epochMillis: Long): Pair<String, String>
@@ -34,6 +35,7 @@ internal class ArrivalShareViewModel(
     private val format: (Long) -> Pair<String, String> = ::arrivalShareLocalLabels,
 ) : ViewModel() {
     private val state = MutableStateFlow(ArrivalShareUiState(
+        useBlackText = savedState["useBlackText"] ?: false,
         photoPath = savedState["photoPath"],
         showTime = savedState["showTime"] ?: true,
         showDate = savedState["showDate"] ?: true,
@@ -74,17 +76,24 @@ internal class ArrivalShareViewModel(
         savedState["showDate"] = value
         state.update { it.copy(showDate = value) }
     }
+    fun toggleTextColor() {
+        if (state.value.busy) return
+        val useBlackText = !state.value.useBlackText
+        savedState["useBlackText"] = useBlackText
+        state.update { it.copy(useBlackText = useBlackText) }
+    }
     private var draftRestored = false
     fun restoreDraft(draft: ArrivalDraft?) {
         if (draftRestored) return
         draftRestored = true
         if (draft == null) return
+        savedState["useBlackText"] = draft.useBlackText
         savedState["photoPath"] = draft.photoPath
         savedState["showTime"] = draft.showTime
         savedState["showDate"] = draft.showDate
         if (draft.date.isNotEmpty()) savedState["date"] = draft.date
         if (draft.time != null) savedState["time"] = draft.time
-        state.update { it.copy(photoPath = draft.photoPath, showTime = draft.showTime, showDate = draft.showDate,
+        state.update { it.copy(useBlackText = draft.useBlackText, photoPath = draft.photoPath, showTime = draft.showTime, showDate = draft.showDate,
             date = draft.date.ifEmpty { it.date }, time = draft.time ?: it.time) }
     }
     fun beginMedia(): Boolean {

@@ -26,6 +26,35 @@ import kotlin.test.*
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ArrivalMediaTest {
     @get:Rule val compose = createEmptyComposeRule()
+    @Test fun `이미지를 누르면 검정 글자를 내보내고 다시 누르면 원래 흰색 이미지로 돌아온다`() {
+        val vm = ArrivalShareViewModel("color-export-test", MediaRepository(), format = { "2026.11.09" to "06:30" })
+        var png: ByteArray? = null
+        val media = ArrivalMediaActions({}, {}, { png = it; vm.finishMedia(ArrivalMediaResult.Done()) }, {})
+        launchWithFontScale(1f) { ArrivalShareRoute(vm, {}, media) }.use { content ->
+            compose.onNodeWithText("RINGOUT").assertIsDisplayed()
+            fun export(name: String): Bitmap {
+                compose.runOnIdle { png = null; content.captureLayout(name) }
+                compose.onNodeWithContentDescription("이미지 저장").performClick()
+                compose.waitUntil(15_000) { png != null || vm.uiState.value.message != null }
+                assertNotNull(png, vm.uiState.value.message)
+                return BitmapFactory.decodeByteArray(png!!, 0, png!!.size)
+            }
+            val white = export("arrival-white-text")
+            compose.onNodeWithTag("arrival-share-card").performClick()
+            val black = export("arrival-black-text")
+            fun count(image: Bitmap, color: Int): Int {
+                var count = 0
+                for (y in 40 until 180) for (x in 40 until 650) if (image.getPixel(x, y) == color) count++
+                return count
+            }
+            assertTrue(count(black, Color.BLACK) > count(white, Color.BLACK) + 200)
+            assertTrue(count(white, Color.WHITE) > count(black, Color.WHITE) + 200)
+            compose.onNodeWithTag("arrival-share-card").performClick()
+            val restored = export("arrival-restored-white-text")
+            assertTrue(white.sameAs(restored))
+            white.recycle(); black.recycle(); restored.recycle()
+        }
+    }
     @Test fun `카드만 고해상도 PNG로 내보내고 편집 상태와 도착 확인을 유지한다`() {
         val repository = MediaRepository()
         val vm = ArrivalShareViewModel("media-export-test", repository, format = { "2026.11.09" to "06:30" })

@@ -9,6 +9,23 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ArrivalShareViewModelTest {
+    @Test fun `글자 색상을 왕복 전환하고 저장 중에는 고정하며 복원 후에도 유지한다`() = runTest {
+        val saved = SavedStateHandle()
+        val vm = ArrivalShareViewModel("A", EditorRepository(), saved, backgroundScope) { "2026.11.09" to "06:30" }
+        runCurrent()
+        assertFalse(vm.uiState.value.useBlackText)
+        vm.toggleTextColor(); assertTrue(vm.uiState.value.useBlackText)
+        assertTrue(vm.beginMedia())
+        vm.toggleTextColor(); assertTrue(vm.uiState.value.useBlackText)
+        vm.finishMedia(ArrivalMediaResult.Done())
+        val restored = ArrivalShareViewModel("A", EditorRepository(), saved, backgroundScope)
+        runCurrent(); assertTrue(restored.uiState.value.useBlackText)
+        vm.toggleTextColor(); assertFalse(vm.uiState.value.useBlackText)
+        val legacy = kotlinx.serialization.json.Json.decodeFromString<ArrivalDraft>("{}")
+        assertFalse(legacy.useBlackText)
+        restored.restoreDraft(legacy.copy(useBlackText = true))
+        assertTrue(restored.uiState.value.useBlackText)
+    }
     @Test fun `사진 취소와 실패는 기존 편집을 유지하고 중복 실행과 작업 중 토글을 막는다`() = runTest {
         val vm = ArrivalShareViewModel("A", EditorRepository(), scope = backgroundScope) { "2026.11.09" to "06:30" }
         runCurrent()

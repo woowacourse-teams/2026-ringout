@@ -17,7 +17,7 @@ import com.joon.ringout.presentation.arrivalshare.component.*
 import org.jetbrains.compose.resources.painterResource
 
 @Composable
-internal fun ArrivalShareScreen(state: ArrivalShareUiState, onBack: () -> Unit, onTime: (Boolean) -> Unit, onDate: (Boolean) -> Unit, onRetry: () -> Unit, modifier: Modifier = Modifier, photo: androidx.compose.ui.graphics.ImageBitmap? = null, cardModifier: Modifier = Modifier, onCamera: () -> Unit = {}, onGallery: () -> Unit = {}, onSave: () -> Unit = {}, onShare: () -> Unit = {}, mediaReady: Boolean = true) {
+internal fun ArrivalShareScreen(state: ArrivalShareUiState, onBack: () -> Unit, onTime: (Boolean) -> Unit, onDate: (Boolean) -> Unit, onRetry: () -> Unit, modifier: Modifier = Modifier, photo: androidx.compose.ui.graphics.ImageBitmap? = null, cardModifier: Modifier = Modifier, onCamera: () -> Unit = {}, onGallery: () -> Unit = {}, onSave: () -> Unit = {}, onShare: () -> Unit = {}, mediaReady: Boolean = true, onToggleTextColor: () -> Unit = {}) {
     Column(modifier.fillMaxSize().background(MaterialTheme.ringoutColors.mainScreenBackground).safeDrawingPadding()) {
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(painterResource(EditorBackIcon), "뒤로가기", Modifier.size(44.dp), tint = MaterialTheme.colorScheme.onSurface) }
@@ -28,7 +28,7 @@ internal fun ArrivalShareScreen(state: ArrivalShareUiState, onBack: () -> Unit, 
                 state.isLoading -> CircularProgressIndicator(Modifier.padding(32.dp))
                 state.error != null -> { Text(state.error, Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurface); TextButton(onClick = onRetry) { Text("다시 시도") } }
                 else -> {
-                    ArrivalShareCard(state, Modifier.fillMaxWidth().then(cardModifier), photo)
+                    ArrivalShareCard(state, Modifier.fillMaxWidth().then(cardModifier), photo, onToggleTextColor)
                     ArrivalShareControls(state, onTime, onDate, Modifier.fillMaxWidth(), onCamera, onGallery)
                 }
             }
