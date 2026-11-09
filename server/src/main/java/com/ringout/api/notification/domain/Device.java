@@ -13,13 +13,17 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "device")
+@Table(name = "device", uniqueConstraints = {
+    @UniqueConstraint(name = "uk_device_user", columnNames = "user_id"),
+    @UniqueConstraint(name = "uk_device_fcm_token", columnNames = "fcm_token")
+})
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Device extends BaseEntity {
 
@@ -31,7 +35,7 @@ public class Device extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "fcm_token", nullable = false, length = 255)
+    @Column(name = "fcm_token", length = 255)
     private String fcmToken;
 
     @Enumerated(EnumType.STRING)
@@ -48,12 +52,16 @@ public class Device extends BaseEntity {
         return new Device(user, fcmToken, platform);
     }
 
-    public void changeOwner(User user, Platform platform) {
-        this.user = user;
+    public boolean isOwnedBy(Long userId) {
+        return this.user.getId().equals(userId);
+    }
+
+    public void changeToken(String fcmToken, Platform platform) {
+        this.fcmToken = fcmToken;
         this.platform = platform;
     }
 
-    public boolean isOwnedBy(Long userId) {
-        return this.user.getId().equals(userId);
+    public void clearToken() {
+        this.fcmToken = null;
     }
 }

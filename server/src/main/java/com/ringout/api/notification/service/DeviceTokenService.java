@@ -25,9 +25,10 @@ public class DeviceTokenService {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new GeneralException(UserErrorStatus.USER_NOT_FOUND));
 
-        deviceTokenRepository.findByFcmToken(request.fcmToken())
+        releaseTokenFromOtherUser(userId, request.fcmToken());
+        deviceTokenRepository.findByUserId(userId)
             .ifPresentOrElse(
-                device -> device.changeOwner(user, request.platform()),
+                device -> device.changeToken(request.fcmToken(), request.platform()),
                 () -> deviceTokenRepository.save(
                     Device.of(user, request.fcmToken(), request.platform())
                 )
@@ -38,6 +39,15 @@ public class DeviceTokenService {
     public void unregister(Long userId, DeviceTokenDeleteRequest request) {
         deviceTokenRepository.findByFcmToken(request.fcmToken())
             .filter(device -> device.isOwnedBy(userId))
-            .ifPresent(deviceTokenRepository::delete);
+            .ifPresent(Device::clearToken);
+    }
+
+    private void releaseTokenFromOtherUser(Long userId, String fcmToken) {
+        deviceTokenRepository.findByFcmToken(fcmToken)
+            .filter(device -> !device.isOwnedBy(userId))
+            .ifPresent(device -> {
+                device.clearToken();
+                deviceTokenRepository.flush();
+            });
     }
 }
