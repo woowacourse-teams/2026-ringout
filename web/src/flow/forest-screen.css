@@ -174,7 +174,9 @@
   background: var(--forest-card);
   text-align: left;
 }
-.growth-card > img {
+.growth-card > .card-seed {
+  width: 85px;
+  height: 85px;
   flex-shrink: 0;
 }
 .growth-copy {
@@ -231,6 +233,20 @@
 .growth-sheet::backdrop {
   background: transparent;
 }
+.growth-sheet-closing {
+  transform: translateY(calc(100% - var(--growth-collapsed-height, 0px)));
+  animation: sheet-drop 240ms ease-in forwards;
+}
+.forest-app:has(.growth-sheet[open]) .growth-card {
+  opacity: 0;
+  pointer-events: none;
+}
+.growth-sheet-closing .growth-sheet-content,
+.growth-sheet-closing .sheet-handle {
+  opacity: 0;
+  transition: opacity 240ms ease-in;
+}
+
 .sheet-handle {
   position: absolute;
   top: 0;
@@ -260,6 +276,8 @@
   padding: 12px 0 26px;
 }
 .sheet-seed {
+  width: 273px;
+  height: 273px;
   max-width: 100%;
   object-fit: contain;
   flex-shrink: 0;
@@ -385,6 +403,20 @@
     transform: translateY(0);
   }
 }
+@keyframes sheet-drop {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(100% - var(--growth-collapsed-height, 0px)));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .growth-sheet,
+  .growth-sheet-closing {
+    animation-duration: 1ms;
+  }
+}
 @media (max-width: 380px) {
   .onboarding-guide h1 {
     font-size: 22px;
@@ -448,3 +480,7 @@
 .forest-connection button { border: 0; border-radius: 12px; padding: 14px 24px; background: var(--forest-primary, #93d77b); color: #152411; font: inherit; cursor: pointer; }
 
 [data-native-forest="true"] .forest-app { width: 100%; height: var(--forest-host-height, 100vh); min-height: var(--forest-host-height, 100vh); }
+
+.seed-animation { display: block; position: relative; }
+.seed-animation img, .seed-animation canvas { display: block; width: 100%; height: 100%; }
+.seed-animation canvas { position: absolute; inset: 0; }

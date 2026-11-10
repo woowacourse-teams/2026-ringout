@@ -1,5 +1,5 @@
 import type { ForestSnapshot } from "../../bridge/protocol";
-import { forestImages } from "./assets";
+import { SeedAnimation } from "./SeedAnimation";
 
 export function GrowthCard({
   growth,
@@ -27,7 +27,7 @@ export function GrowthCard({
       aria-haspopup="dialog"
       aria-label={`나무 씨앗 성장 상태 보기, ${growth.remainingDays}일 남음`}
     >
-      <img src={forestImages.seed} alt="" width="85" height="85" />
+      <SeedAnimation variant="card" />
       <span className="growth-copy">
         <span>현재 키우는 씨앗</span>
         <strong>나무 씨앗</strong>

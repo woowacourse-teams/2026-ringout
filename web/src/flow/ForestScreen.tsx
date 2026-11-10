@@ -72,12 +72,11 @@ export function ForestScreen({ controller }: { controller: ForestController }) {
           나무를 심고 있어요
         </div>
       )}
-      {state.sheetOpen && (
-        <GrowthSheet
-          growth={state.snapshot.growth}
-          onClose={controller.closeSheet}
-        />
-      )}
+      <GrowthSheet
+        growth={state.snapshot.growth}
+        isOpen={state.sheetOpen}
+        onClose={controller.closeSheet}
+      />
       {state.page === "forest" && pending && state.plantingCycle === null && (
         <TreeCompletion
           key={pending.growthCycle}
