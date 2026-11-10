@@ -100,6 +100,7 @@ internal class AppNavigationState(
         }
         val destinationStack = when (route) {
             AppRoute.Home -> listOf(AppRoute.Home)
+            AppRoute.Forest -> listOf(AppRoute.Home, AppRoute.Forest)
             AppRoute.MyPage -> listOf(AppRoute.Home, AppRoute.MyPage)
             AppRoute.Social -> listOf(AppRoute.Home, AppRoute.Social)
             AppRoute.RoomCreate -> listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomCreate)

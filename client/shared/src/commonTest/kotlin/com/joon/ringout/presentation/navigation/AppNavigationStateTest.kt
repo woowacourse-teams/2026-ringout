@@ -14,6 +14,16 @@ import kotlin.test.assertTrue
 
 class AppNavigationStateTest {
     @Test
+    fun `숲 중복 진입은 하나만 쌓고 뒤로 가면 홈으로 돌아온다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Forest)
+        state.navigate(AppRoute.Forest)
+        assertEquals(listOf(AppRoute.Home, AppRoute.Forest), state.backStack.toList())
+        state.popBackStack(AppRoute.Forest)
+        assertEquals(listOf(AppRoute.Home), state.backStack.toList())
+    }
+
+    @Test
     fun `도착 화면은 이전 편집 스택을 정리하고 같은 결과를 중복 추가하지 않는다`() {
         val state = AppNavigationState()
         state.navigate(AppRoute.AddAlarm)

@@ -37,7 +37,7 @@ class RingoutDatabaseMigrationTestSuite {
             assertNull(arrivals.getResult("legacy-success"))
             assertNull(arrivals.observeLatestUnacknowledgedResult().first())
             assertTrue(growthActivationAt(path) > 0)
-            assertDatabaseVersion(path, expectedVersion = 14)
+            assertDatabaseVersion(path, expectedVersion = 15)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -60,7 +60,7 @@ class RingoutDatabaseMigrationTestSuite {
             database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
             assertEquals(0, RoomArrivalResultRepository(database.arrivalResultDao()).getGrowth().successfulDayCount)
             assertEquals(123_456L, growthActivationAt(path))
-            assertDatabaseVersion(path, expectedVersion = 14)
+            assertDatabaseVersion(path, expectedVersion = 15)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -232,7 +232,7 @@ class RingoutDatabaseMigrationTestSuite {
             ))
             assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY, dao.getIosRecordDecision("local-chain")?.state)
             assertTrue(dao.getPendingIosRecordDecisions().isEmpty())
-            assertDatabaseVersion(path, expectedVersion = 14)
+            assertDatabaseVersion(path, expectedVersion = 15)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -264,7 +264,7 @@ class RingoutDatabaseMigrationTestSuite {
             migrated.recordTerminal("1", "existing", com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
             assertEquals(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.ARRIVE,
                 migrated.getUnsentMovements("1").single().action)
-            assertDatabaseVersion(path, expectedVersion = 14)
+            assertDatabaseVersion(path, expectedVersion = 15)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -822,6 +822,8 @@ class RingoutDatabaseMigrationTestSuite {
     }
 
     private fun removeArrivalTables(connection: androidx.sqlite.SQLiteConnection) {
+        connection.execSQL("DROP TABLE forest_trees")
+        connection.execSQL("DROP TABLE forest_state")
         connection.execSQL("DROP TABLE arrival_results")
         connection.execSQL("DROP TABLE arrival_growth_activation")
     }

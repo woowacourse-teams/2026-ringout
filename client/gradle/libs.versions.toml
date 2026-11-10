@@ -38,6 +38,7 @@ room3 = "3.0.1"
 sqlite = "2.7.0"
 
 [libraries]
+androidx-webkit = { module = "androidx.webkit:webkit", version = "1.14.0" }
 androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4", version.ref = "androidx-compose-test" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 kakao-user = { module = "com.kakao.sdk:v2-user", version.ref = "kakao-android" }

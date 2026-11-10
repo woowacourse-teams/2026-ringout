@@ -12,6 +12,7 @@ class AppRouteTest {
         val routes = listOf<AppRoute>(
             AppRoute.Onboarding,
             AppRoute.Home,
+            AppRoute.Forest,
             AppRoute.Social,
             AppRoute.RoomCreate,
             AppRoute.RoomDetail("room/서울?name=러닝"),

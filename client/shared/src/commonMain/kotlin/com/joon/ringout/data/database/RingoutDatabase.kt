@@ -28,6 +28,9 @@ import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
 import com.joon.ringout.data.arrival.ArrivalGrowthActivationEntity
 import com.joon.ringout.data.arrival.ArrivalResultDao
 import com.joon.ringout.data.arrival.ArrivalResultEntity
+import com.joon.ringout.data.forest.ForestDao
+import com.joon.ringout.data.forest.ForestStateEntity
+import com.joon.ringout.data.forest.ForestTreeEntity
 import kotlin.time.Clock
 
 @Database(
@@ -48,8 +51,10 @@ import kotlin.time.Clock
         AlarmMovementOutboxEntity::class,
         ArrivalResultEntity::class,
         ArrivalGrowthActivationEntity::class,
+        ForestStateEntity::class,
+        ForestTreeEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -66,6 +71,8 @@ abstract class RingoutDatabase : RoomDatabase() {
 
     abstract fun localUserDataCleanupDao(): LocalUserDataCleanupDao
     abstract fun arrivalResultDao(): ArrivalResultDao
+
+    abstract fun forestDao(): ForestDao
 }
 
 @Suppress("KotlinNoActualForExpect")
@@ -85,6 +92,7 @@ internal fun buildRingoutDatabase(
 ): RingoutDatabase = builder
     .setDriver(driver)
     .addCallback(ArrivalGrowthDatabaseCallback(arrivalGrowthActivatedAtEpochMillis))
+    .addCallback(ForestDatabaseCallback())
     .addMigrations(
         RingoutMigration1To2,
         RingoutMigration2To3,
@@ -99,6 +107,7 @@ internal fun buildRingoutDatabase(
         RingoutMigration11To12,
         RingoutMigration12To13,
         createRingoutMigration13To14(arrivalGrowthActivatedAtEpochMillis),
+        RingoutMigration14To15,
     )
     .build()
 
