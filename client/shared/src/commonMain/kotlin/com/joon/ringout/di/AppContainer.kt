@@ -35,4 +35,6 @@ interface AppContainer {
     val forestRepository: com.joon.ringout.domain.forest.ForestRepository
     val productAnalyticsRecorder: ProductAnalyticsRecorder
     val hasStoredAlarmsForEntryMigration: suspend () -> Boolean
+    val currentVerifiedAlarmAccountId: suspend () -> String? get() = { null }
+    val migrateLegacyAlarmData: suspend (String) -> Unit get() = {}
 }

@@ -54,7 +54,7 @@ import kotlin.time.Clock
         ForestStateEntity::class,
         ForestTreeEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -108,6 +108,7 @@ internal fun buildRingoutDatabase(
         RingoutMigration12To13,
         createRingoutMigration13To14(arrivalGrowthActivatedAtEpochMillis),
         RingoutMigration14To15,
+        RingoutMigration15To16,
     )
     .build()
 

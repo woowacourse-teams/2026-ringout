@@ -9,8 +9,6 @@ import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecorder
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceSyncRuntime
-import com.joon.ringout.data.auth.local.createSecureTokenStorage
-import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.platform.IosNativeServices
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
@@ -41,7 +39,7 @@ class IosAlarmRuntime internal constructor(
     private val runtimeDispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val activityDao: AlarmActivityDao? = null,
     private val occurrenceRecorder: IosAlarmOccurrenceRecorder? = null,
-    private val startOccurrenceSync: (suspend () -> Unit, suspend () -> Unit) -> Unit = { _, _ -> },
+    private val startOccurrenceSync: (suspend () -> IosRecordProjectionReplayResult, suspend () -> Unit, suspend () -> Unit) -> Unit = { _, _, _ -> },
     private val nativeCleanup: IosAlarmNativeCleanupCoordinator? = null,
     private val missionCommands: IosAlarmMissionCommands? = null,
     private val restoreMissionAccess: suspend () -> Boolean = { true },
@@ -118,10 +116,12 @@ class IosAlarmRuntime internal constructor(
         }
         startOccurrenceSync(
             {
-                missionCoordinator.processPendingRecordProjections()
+                val failedChains = missionCoordinator.processPendingRecordProjections()
                 nativeCleanup?.requestCleanup()
+                failedChains
             },
             { nativeCleanup?.requestCleanup() },
+            { runStartupStep { reconciler.reconcile() } },
         )
         runStartupStep { missionCoordinator.processPendingRecordProjections() }
         scheduler.setStateListener(alarmStateListener)
@@ -786,10 +786,8 @@ class IosAlarmRuntime internal constructor(
 fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
     val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
     val database = getRingoutDatabase()
-    val tokens = createSecureTokenStorage()
-    val session = getAuthSession()
     val occurrenceRecorder = IosAlarmOccurrenceRecorder(database.alarmOccurrenceSyncDao(),
-        database.alarmActivityDao(), dataSource, tokens, session)
+        database.alarmActivityDao(), dataSource)
     val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker(), roomMembership = com.joon.ringout.analytics.createRoomMembershipAnalytics())
     val scheduler = nativeServices.alarmScheduler()
     val eventInbox = nativeServices.alarmMissionEventInbox()
@@ -821,8 +819,8 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
         locationService = nativeServices.missionLocationService(),
         activityDao = database.alarmActivityDao(),
         occurrenceRecorder = occurrenceRecorder,
-        startOccurrenceSync = { onAuthReady, onSyncCompleted ->
-            IosAlarmOccurrenceSyncRuntime.start(onAuthReady, onSyncCompleted)
+        startOccurrenceSync = { onAuthReady, onSyncCompleted, onLegacyMigrationCompleted ->
+            IosAlarmOccurrenceSyncRuntime.start(onAuthReady, onSyncCompleted, onLegacyMigrationCompleted)
         },
         nativeCleanup = nativeCleanup,
         missionCommands = nativeServices.alarmMissionCommands(),

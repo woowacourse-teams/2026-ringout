@@ -24,7 +24,10 @@ import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarm.LegacyAlarmPreferencesMigrator
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.alarm.validateForStorage
+import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
+import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.domain.auth.getAuthSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -399,6 +402,7 @@ internal class AndroidAlarmScheduler(
     private val ensureMigrated: suspend () -> Unit = {},
     private val analytics: AndroidAlarmCreationAnalytics? = null,
     private val isSchedulingAllowed: () -> Boolean = { true },
+    private val captureOwnerAccountId: suspend () -> String? = { null },
 ) {
 
     constructor(
@@ -415,6 +419,12 @@ internal class AndroidAlarmScheduler(
         analytics = runCatching { AndroidAlarmAnalyticsAdapter(AlarmAnalytics(context)) }
             .getOrNull(),
         isSchedulingAllowed = { !isAlarmSchedulingBlocked(context) },
+        captureOwnerAccountId = {
+            captureAlarmOccurrenceAccount(
+                createSecureTokenStorage(context),
+                getAuthSession(),
+            )?.ownerAccountId
+        },
     )
 
     suspend fun schedule(
@@ -425,7 +435,10 @@ internal class AndroidAlarmScheduler(
         check(isSchedulingAllowed()) { "로그아웃 처리 중에는 알람을 예약할 수 없습니다." }
         request.validateForStorage()
         val previous = dataSource.getById(request.id)
-        val versionedRequest = request.withScheduleVersion(previous?.request)
+        val ownerAccountId = previous?.request?.ownerAccountId
+            ?: if (previous == null) captureOwnerAccountId() else null
+        val versionedRequest = request.copy(ownerAccountId = ownerAccountId)
+            .withScheduleVersion(previous?.request)
         val replacement = SavedAlarmSchedule(
             request = versionedRequest,
             enabled = true,

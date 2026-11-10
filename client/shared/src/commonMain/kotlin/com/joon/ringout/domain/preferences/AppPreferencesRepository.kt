@@ -25,5 +25,10 @@ interface AppPreferencesRepository {
 
     suspend fun setLegacyRuntimeExceptionPending(pending: Boolean)
 
+    /** Pins the first verified account for one-time migration of proven legacy guest alarm data. */
+    suspend fun reserveLegacyAlarmMigrationAccount(accountId: String): String?
+
+    suspend fun completeLegacyAlarmMigration(accountId: String)
+
     suspend fun saveTermConsents(records: List<TermConsentRecord>)
 }

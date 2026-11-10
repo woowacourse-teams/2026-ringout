@@ -100,8 +100,9 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
                 title: request.title,
                 soundName: request.soundName,
                 soundURI: request.soundUri,
-                // Scheduling-time login does not prove stop-time ownership.
-                owner: .uncaptured
+                owner: request.ownerAccountId
+                    .flatMap { $0.isEmpty ? nil : AlarmRecoveryOwner.capturedAccount($0) }
+                    ?? .uncaptured
             )
             _ = try AlarmRecoveryDriver.journal.upsertSourceSnapshot(snapshot)
             try AlarmRecoveryDriver.journal.setSourceEligibility(

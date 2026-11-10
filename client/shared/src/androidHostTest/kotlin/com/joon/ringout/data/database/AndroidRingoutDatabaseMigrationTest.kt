@@ -11,8 +11,24 @@ class AndroidRingoutDatabaseMigrationTest {
     private val suite = RingoutDatabaseMigrationTestSuite()
 
     @Test
+    fun `버전 십사와 십오에서 알람과 숲 데이터를 보존하며 소유자 열을 추가한다`() =
+        suite.`버전 십사와 십오에서 알람과 숲 데이터를 보존하며 소유자 열을 추가한다`()
+
+    @Test
     fun `버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`() =
         suite.`버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`()
+
+    @Test
+    fun `첫 로그인 이관은 iOS 로컬 체인의 확인된 root 이벤트를 한 번 복원한다`() =
+        suite.`첫 로그인 이관은 iOS 로컬 체인의 확인된 root 이벤트를 한 번 복원한다`()
+
+    @Test
+    fun `필수 시각이 빠진 iOS 레거시 기록은 계정에 보존하되 outbox를 만들지 않는다`() =
+        suite.`필수 시각이 빠진 iOS 레거시 기록은 계정에 보존하되 outbox를 만들지 않는다`()
+
+    @Test
+    fun `다른 계정 소유 알람의 미귀속 iOS 기록은 첫 로그인 계정에 넘기지 않는다`() =
+        suite.`다른 계정 소유 알람의 미귀속 iOS 기록은 첫 로그인 계정에 넘기지 않는다`()
 
     @Test
     fun `마이그레이션으로 저장한 성장 활성화 기준은 재실행해도 바뀌지 않는다`() =

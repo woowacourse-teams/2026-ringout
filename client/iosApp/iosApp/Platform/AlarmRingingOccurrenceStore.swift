@@ -54,14 +54,13 @@ final class AlarmRingingOccurrenceStore {
                current.endedAtEpochMillis.map({ timestamp <= $0 + coalescingWindowMillis }) ?? true {
                 continue
             }
-            let owner = IosAlarmOccurrenceAccount.shared.capture()
             sessions[id] = AlarmRingingOccurrence(
                 occurrenceId: "\(id):\(UUID().uuidString)",
                 observedAtEpochMillis: timestamp,
                 endedAtEpochMillis: nil,
                 isAlerting: true,
-                ownerAccountId: owner.accountId,
-                ownerCaptured: owner.captured
+                ownerAccountId: nil,
+                ownerCaptured: false
             )
         }
         if sessions != previous { try write(sessions) }

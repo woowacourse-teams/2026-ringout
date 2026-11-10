@@ -17,6 +17,16 @@ class AlarmScheduleFingerprintTest {
     }
 
     @Test
+    fun `계정 소유자 메타데이터 변경은 기존 예약 fingerprint를 바꾸지 않는다`() {
+        val request = alarmRequest()
+
+        assertEquals(
+            request.scheduleFingerprint(),
+            request.copy(ownerAccountId = "42").scheduleFingerprint(),
+        )
+    }
+
+    @Test
     fun `저장 예약에 쓰이는 설정이 바뀌면 fingerprint가 바뀐다`() {
         val request = alarmRequest()
         val originalFingerprint = request.scheduleFingerprint()

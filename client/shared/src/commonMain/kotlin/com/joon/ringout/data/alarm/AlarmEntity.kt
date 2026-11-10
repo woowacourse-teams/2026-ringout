@@ -32,4 +32,6 @@ data class AlarmEntity(
     val enabled: Boolean,
     @ColumnInfo(name = "schedule_version", defaultValue = "1")
     val scheduleVersion: Long = 1,
+    @ColumnInfo(name = "owner_account_id", defaultValue = "NULL")
+    val ownerAccountId: String? = null,
 )

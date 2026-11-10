@@ -126,6 +126,8 @@ fun App(
             hasRuntimeEvidence = { currentRuntimeEvidence.value },
             alarmLogoutCleanup = alarmLogoutCleanup,
             localUserDataCleanup = appContainer.localUserDataCleanup,
+            currentVerifiedAlarmAccountId = appContainer.currentVerifiedAlarmAccountId,
+            migrateLegacyAlarmData = appContainer.migrateLegacyAlarmData,
         )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState

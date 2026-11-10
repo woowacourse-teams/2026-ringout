@@ -5,7 +5,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -30,6 +32,20 @@ class AlarmRuntimeLegacySnapshotTest {
             .putExtra(AlarmRuntime.EXTRA_DESTINATION_NAME, "")
 
         assertTrue(intent.matchesLegacyAlarmScheduleSnapshot(request))
+    }
+
+    @Test
+    fun `검증된 Room 예약 소유자는 발화 Intent에 전달하고 오래된 소유자 값은 지운다`() {
+        val ownedRequest = alarmRequest().copy(ownerAccountId = "42")
+        val intent = Intent()
+            .putExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID, "stale")
+            .putAlarmExtras(ownedRequest)
+
+        assertEquals("42", intent.getStringExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID))
+
+        val legacyRequest = alarmRequest()
+        assertNull(intent.putAlarmExtras(legacyRequest)
+            .getStringExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID))
     }
 }
 

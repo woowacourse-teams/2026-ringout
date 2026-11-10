@@ -81,12 +81,15 @@ class AppBootstrapViewModel(
     coroutineScope: CoroutineScope? = null,
     private val onboardingAnalytics: OnboardingAnalyticsRecorder = NoOpOnboardingAnalyticsRecorder,
     private val themeInitializationRetryDelayMillis: Long = ThemeInitializationRetryDelayMillis,
+    private val currentVerifiedAlarmAccountId: suspend () -> String? = { null },
+    private val migrateLegacyAlarmData: suspend (String) -> Unit = {},
 ) : ViewModel() {
     var uiState by mutableStateOf(AppBootstrapUiState())
         private set
 
     private val scope = coroutineScope ?: viewModelScope
     private val themeWriteMutex = Mutex()
+    private val legacyAlarmMigrationMutex = Mutex()
     private var latestRequestedThemeMode: ThemeMode? = null
     private var resolvedMissingThemeMode: ThemeMode? = null
     private var isThemeInitializationInProgress = false
@@ -198,6 +201,16 @@ class AppBootstrapViewModel(
             try {
                 authSession.state.first { it == AuthSessionState.Authenticated }
                 if (activeAuthFlowAttemptId != completion.attemptId) return@launch
+                if (latestSnapshot?.installationEntryState?.hasLegacyRuntimeExceptionPending == true) {
+                    val accountId = currentVerifiedAlarmAccountId()
+                        ?: error("첫 로그인 알람 이관에 사용할 계정을 확인하지 못했습니다.")
+                    val migrationAccountId = repository.reserveLegacyAlarmMigrationAccount(accountId)
+                        ?: error("첫 로그인 알람 이관 계정을 저장하지 못했습니다.")
+                    runLegacyAlarmMigration(migrationAccountId)
+                } else {
+                    val accountId = currentVerifiedAlarmAccountId()
+                    if (accountId != null) migrateLegacyAlarmData(accountId)
+                }
                 repository.setLegacyRuntimeExceptionPending(false)
                 val snapshot = awaitSnapshot {
                     it.installationEntryState?.hasLegacyRuntimeExceptionPending == false
@@ -369,6 +382,38 @@ class AppBootstrapViewModel(
                     }
                     latestSnapshot = snapshot
                 }
+                val installation = snapshot.installationEntryState
+                val migrationAccountId = installation
+                    ?.takeIf { !it.isLogoutCleanupPending && !it.isLegacyAlarmMigrationComplete }
+                    ?.legacyAlarmMigrationAccountId
+                    ?: if (installation?.hasLegacyRuntimeExceptionPending == true &&
+                        !installation.isLogoutCleanupPending &&
+                        authState == AuthSessionState.Authenticated
+                    ) {
+                        val accountId = currentVerifiedAlarmAccountId()
+                            ?: error("첫 로그인 알람 이관에 사용할 계정을 확인하지 못했습니다.")
+                        repository.reserveLegacyAlarmMigrationAccount(accountId)
+                            ?: error("첫 로그인 알람 이관 계정을 저장하지 못했습니다.")
+                    } else {
+                        null
+                    }
+                if (migrationAccountId != null) {
+                    runLegacyAlarmMigration(migrationAccountId)
+                    snapshot = repository.bootstrapState.first {
+                        it.installationEntryState?.let { installation ->
+                            installation.legacyAlarmMigrationAccountId == migrationAccountId &&
+                                installation.isLegacyAlarmMigrationComplete
+                        } == true
+                    }
+                    latestSnapshot = snapshot
+                }
+                if (authState == AuthSessionState.Authenticated &&
+                    snapshot.installationEntryState?.hasLegacyRuntimeExceptionPending != true &&
+                    snapshot.installationEntryState?.isLogoutCleanupPending != true
+                ) {
+                    val accountId = currentVerifiedAlarmAccountId()
+                    if (accountId != null) migrateLegacyAlarmData(accountId)
+                }
                 isBootstrapInitialized = true
                 applySnapshot(snapshot)
                 if (snapshot.installationEntryState?.isLogoutCleanupPending == true) {
@@ -394,6 +439,17 @@ class AppBootstrapViewModel(
             entryErrorMessage = "앱을 시작할 수 없어요. 설정을 확인하고 다시 시도해 주세요.",
         )
     }
+
+    private suspend fun runLegacyAlarmMigration(accountId: String) =
+        legacyAlarmMigrationMutex.withLock {
+            val installation = repository.bootstrapState.first().installationEntryState ?: return@withLock
+            check(installation.legacyAlarmMigrationAccountId == accountId) {
+                "첫 로그인 알람 이관 대상 계정이 변경됐습니다."
+            }
+            if (installation.isLegacyAlarmMigrationComplete) return@withLock
+            migrateLegacyAlarmData(accountId)
+            repository.completeLegacyAlarmMigration(accountId)
+        }
 
     private fun applySnapshot(snapshot: AppBootstrapSnapshot) {
         latestSnapshot = snapshot

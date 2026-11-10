@@ -23,6 +23,7 @@ internal object AlarmRuntime {
     const val ACTION_STOP = "com.joon.ringout.action.STOP_ALARM"
 
     const val EXTRA_ALARM_ID = "alarm_id"
+    const val EXTRA_OWNER_ACCOUNT_ID = "owner_account_id"
     const val EXTRA_OCCURRENCE_ID = "occurrence_id"
     const val EXTRA_RETRY_SOURCE_OCCURRENCE_ID = "retry_source_occurrence_id"
     const val EXTRA_RETRY_ATTEMPT = "retry_attempt"
@@ -43,6 +44,8 @@ internal object AlarmRuntime {
 internal fun Intent.putAlarmExtras(request: AlarmScheduleRequest): Intent = apply {
     data = Uri.parse("ringout://alarm/${Uri.encode(request.id)}")
     putExtra(AlarmRuntime.EXTRA_ALARM_ID, request.id)
+    removeExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID)
+    request.ownerAccountId?.let { putExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID, it) }
     putExtra(AlarmRuntime.EXTRA_ALARM_TIME, request.time)
     putExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, request.scheduleVersion)
     putExtra(AlarmRuntime.EXTRA_LIMIT_MINUTES, request.limitMinutes)

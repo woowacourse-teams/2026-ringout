@@ -22,7 +22,10 @@ internal class IosAlarmStore(
         IosAlarmStoreMutationMutex.withLock {
             request.validateForStorage()
             val previous = dataSource.getById(request.id)
-            val scheduleRequest = request.withScheduleVersion(previous?.request)
+            val ownerPreservingRequest = request.copy(
+                ownerAccountId = previous?.request?.ownerAccountId ?: request.ownerAccountId,
+            )
+            val scheduleRequest = ownerPreservingRequest.withScheduleVersion(previous?.request)
             // Each native configuration needs an immutable mission snapshot, including
             // changes that leave the calendar time/weekday schedule unchanged.
             val versionedRequest = if (previous != null &&
@@ -372,5 +375,8 @@ internal fun AlarmScheduleRequest.toRecoverySnapshot(): IosAlarmRecoverySourceSn
         title = destinationLabel.ifBlank { "Ringout" },
         soundName = alarmSoundName,
         soundUri = alarmSoundUri,
-        owner = IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.UNCAPTURED),
+        owner = ownerAccountId
+            ?.takeIf(String::isNotBlank)
+            ?.let { IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.CAPTURED_ACCOUNT, it) }
+            ?: IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.UNCAPTURED),
     )

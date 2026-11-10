@@ -1,26 +1,14 @@
 package com.joon.ringout.data.alarmoccurrence
 
 import com.joon.ringout.alarm.IosAlarmMissionEventDto
+import com.joon.ringout.alarm.IosAlarmRecoveryOwnerKind
 import com.joon.ringout.alarm.IosAlarmRecoveryAttemptDto
 import com.joon.ringout.alarm.toMissionEvent
 import com.joon.ringout.alarm.IosRingingAlarm
 import com.joon.ringout.alarm.iosInitialRingingScheduledAt
 import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarmactivity.AlarmActivityDao
-import com.joon.ringout.data.auth.local.createSecureTokenStorage
-import com.joon.ringout.domain.auth.AuthSession
-import com.joon.ringout.domain.auth.AuthSessionState
-import com.joon.ringout.domain.auth.SecureTokenStorage
 import platform.Foundation.NSUUID
-
-/** Native snapshots retain only a guest marker; server ownership is resolved from AuthSession in the app. */
-object IosAlarmOccurrenceAccount {
-    fun capture(): IosAlarmOccurrenceOwner = runCatching {
-        val token = createSecureTokenStorage().readSnapshot()?.accessToken
-        val accountId = token?.let(::alarmOccurrenceTokenOwner)
-        IosAlarmOccurrenceOwner(accountId, captured = token.isNullOrBlank() || accountId != null)
-    }.getOrElse { IosAlarmOccurrenceOwner(null, captured = false) }
-}
 
 data class IosAlarmOccurrenceOwner(val accountId: String?, val captured: Boolean)
 
@@ -30,11 +18,13 @@ class IosAlarmOccurrenceRecorder internal constructor(
     private val dao: AlarmOccurrenceSyncDao,
     private val activityDao: AlarmActivityDao,
     private val alarms: AlarmDataSource,
-    private val tokenStorage: SecureTokenStorage,
-    private val session: AuthSession,
 ) {
     internal suspend fun recordObserved(ringing: IosRingingAlarm, owner: String?, ownerCaptured: Boolean) {
         val id = ringing.occurrenceId ?: return
+        val savedOwner = alarms.getById(ringing.alarmId)?.request
+            ?.takeIf { it.scheduleVersion == ringing.scheduleVersion }
+            ?.ownerAccountId
+        val reservationOwner = savedOwner ?: owner?.takeIf { ownerCaptured && it.isNotBlank() }
         recordRinging(
             id = id,
             alarmId = ringing.alarmId,
@@ -42,17 +32,21 @@ class IosAlarmOccurrenceRecorder internal constructor(
             retryAttempt = ringing.retryAttempt,
             referenceTime = ringing.startedAtEpochMillis,
             alarmTime = ringing.alarmTime,
-            nativeOwner = owner,
-            nativeOwnerCaptured = ownerCaptured,
+            nativeOwner = reservationOwner,
+            nativeOwnerCaptured = reservationOwner != null,
             chainId = ringing.chainId ?: id,
         )
     }
 
     internal suspend fun recordStopped(event: IosAlarmMissionEventDto): Boolean {
         val saved = alarms.getById(event.alarmId)?.request?.takeIf { it.scheduleVersion == event.scheduleVersion }
+        val reservationOwner = saved?.ownerAccountId
+            ?: event.ownerAccountId?.takeIf { event.ownerCaptured && it.isNotBlank() }
+        val capturedGuest = saved?.ownerAccountId == null && event.ownerCaptured && event.ownerAccountId == null
         val ready = recordRinging(event.occurrenceId, event.alarmId, event.scheduleVersion, event.retryAttempt,
             event.ringingObservedAtEpochMillis ?: event.ringingStoppedAtEpochMillis ?: event.occurredAtEpochMillis,
-            saved?.time, event.ownerAccountId, event.ownerCaptured,
+            saved?.time, reservationOwner, reservationOwner != null,
+            nativeOwnerIsGuest = capturedGuest,
             chainId = event.chainId ?: event.occurrenceId)
         event.ringingStoppedAtEpochMillis?.let { at ->
             val execution = dao.findExecutionForRecording(event.occurrenceId) ?: return@let
@@ -70,15 +64,22 @@ class IosAlarmOccurrenceRecorder internal constructor(
         val decision = dao.getIosRecordDecision(attempt.chainId)
         val existingExecution = dao.findExecutionForRecording(event.occurrenceId)
             ?: dao.findExecutionForRecording(rootOccurrenceId)
+        if (decision != null && (
+                decision.rootOccurrenceId != rootOccurrenceId ||
+                    decision.alarmId != event.alarmId ||
+                    decision.scheduleVersion != event.scheduleVersion
+            )
+        ) return false
         if (decision?.state == IosAlarmOccurrenceRecordState.LOCAL_ONLY) return true
-        if (existingExecution == null && event.retryAttempt > 0) {
-            resolvePendingRecordDecisions()
-            val afterResolution = dao.getIosRecordDecision(attempt.chainId)
-            if (afterResolution?.state == IosAlarmOccurrenceRecordState.LOCAL_ONLY) return true
-            if (afterResolution?.state != IosAlarmOccurrenceRecordState.SERVER ||
-                dao.findExecutionForRecording(rootOccurrenceId) == null
-            ) return false
-        }
+        if (existingExecution == null && event.retryAttempt > 0 &&
+            dao.getIosRecordDecision(attempt.chainId)?.state != IosAlarmOccurrenceRecordState.SERVER
+        ) return false
+        if (existingExecution != null && (
+                existingExecution.localExecutionId != rootOccurrenceId ||
+                    existingExecution.alarmId != event.alarmId ||
+                    existingExecution.scheduleVersion != event.scheduleVersion
+            )
+        ) return false
         val ready = recordRinging(
             id = event.occurrenceId,
             alarmId = event.alarmId,
@@ -90,6 +91,7 @@ class IosAlarmOccurrenceRecorder internal constructor(
             alarmTime = attempt.snapshot.originalTime,
             nativeOwner = event.ownerAccountId,
             nativeOwnerCaptured = event.ownerCaptured,
+            nativeOwnerIsGuest = attempt.snapshot.owner.kind == IosAlarmRecoveryOwnerKind.CAPTURED_GUEST,
             chainId = attempt.chainId,
             scheduledAtEpochMillis = scheduledAtEpochMillis,
         )
@@ -107,39 +109,31 @@ class IosAlarmOccurrenceRecorder internal constructor(
         return dao.findExecutionForRecording(event.occurrenceId) != null
     }
 
-    /** Resolve only persisted record decisions; this never schedules or starts a mission. */
+    /** Resolve pending records only from a matching, persisted reservation owner. */
     internal suspend fun resolvePendingRecordDecisions() {
         val pending = dao.getPendingIosRecordDecisions()
         if (pending.isEmpty()) return
-        when (session.state.value) {
-            AuthSessionState.Unauthenticated -> {
-                for (decision in pending) dao.keepIosRecordLocalOnly(decision)
-            }
-            AuthSessionState.Authenticated -> {
-                val account = captureAlarmOccurrenceAccount(tokenStorage, session) ?: return
-                for (decision in pending) {
-                    try {
-                        account.checkSession(session)
-                    } catch (_: AlarmOccurrenceAccountChanged) {
-                        return
-                    }
-                    val execution = AlarmOccurrenceSyncEntity(
-                        localExecutionId = decision.rootOccurrenceId,
-                        ownerAccountId = account.ownerAccountId,
-                        alarmId = decision.alarmId,
-                        scheduleVersion = decision.scheduleVersion,
-                        scheduledAtEpochMillis = decision.scheduledAtEpochMillis,
-                        startedAtEpochMillis = decision.startedAtEpochMillis,
-                    )
-                    if (dao.recordIosStart(decision, execution)) {
-                        val stoppedAt = activityDao.getOccurrenceTimes(decision.rootOccurrenceId)
-                            ?.ringingStoppedAtEpochMillis
-                        if (stoppedAt != null) dao.recordDismissal(account.ownerAccountId, decision.rootOccurrenceId, stoppedAt)
-                    }
+        for (decision in pending) {
+            val owner = alarms.getById(decision.alarmId)?.request
+                ?.takeIf { it.scheduleVersion == decision.scheduleVersion }
+                ?.ownerAccountId
+                ?.takeIf(String::isNotBlank)
+                ?: continue
+            val execution = AlarmOccurrenceSyncEntity(
+                localExecutionId = decision.rootOccurrenceId,
+                ownerAccountId = owner,
+                alarmId = decision.alarmId,
+                scheduleVersion = decision.scheduleVersion,
+                scheduledAtEpochMillis = decision.scheduledAtEpochMillis,
+                startedAtEpochMillis = decision.startedAtEpochMillis,
+            )
+            if (dao.recordIosStart(decision, execution)) {
+                val stoppedAt = activityDao.getOccurrenceTimes(decision.rootOccurrenceId)
+                    ?.ringingStoppedAtEpochMillis
+                if (stoppedAt != null) {
+                    dao.recordDismissal(owner, decision.rootOccurrenceId, stoppedAt)
                 }
             }
-            AuthSessionState.Restoring,
-            AuthSessionState.ReauthenticationRequired -> Unit
         }
     }
 
@@ -148,6 +142,7 @@ class IosAlarmOccurrenceRecorder internal constructor(
         alarmTime: String?, nativeOwner: String?, nativeOwnerCaptured: Boolean,
         chainId: String = id,
         scheduledAtEpochMillis: Long? = null,
+        nativeOwnerIsGuest: Boolean = false,
     ): Boolean {
         val existing = dao.findExecutionForRecording(id)
         val scheduledAt = scheduledAtEpochMillis
@@ -164,7 +159,9 @@ class IosAlarmOccurrenceRecorder internal constructor(
                 scheduledAtEpochMillis = scheduledAt,
                 startedAtEpochMillis = scheduledAt,
             )
-            val disposition = chooseRecordDisposition(record, existing, nativeOwner, nativeOwnerCaptured)
+            val disposition = chooseRecordDisposition(
+                record, existing, nativeOwner, nativeOwnerCaptured, nativeOwnerIsGuest,
+            )
             when (disposition) {
                 RecordDisposition.LocalOnly -> {
                     dao.keepIosRecordLocalOnly(record)
@@ -175,15 +172,9 @@ class IosAlarmOccurrenceRecorder internal constructor(
                     return false
                 }
                 is RecordDisposition.Server -> {
-                    try {
-                        disposition.account.checkSession(session)
-                    } catch (_: AlarmOccurrenceAccountChanged) {
-                        dao.keepIosRecordPending(record)
-                        return false
-                    }
                     return dao.recordIosStart(
                         record,
-                        AlarmOccurrenceSyncEntity(id, disposition.account.ownerAccountId, alarmId, version, scheduledAt, scheduledAt),
+                        AlarmOccurrenceSyncEntity(id, disposition.ownerAccountId, alarmId, version, scheduledAt, scheduledAt),
                     )
                 }
                 is RecordDisposition.ExistingServer -> {
@@ -198,6 +189,9 @@ class IosAlarmOccurrenceRecorder internal constructor(
             val rootDecision = dao.getIosRecordDecision(chainId)
             if (rootDecision?.state == IosAlarmOccurrenceRecordState.LOCAL_ONLY) return true
             val execution = existing ?: dao.findExecutionForRecording(rootDecision?.rootOccurrenceId ?: return false) ?: return false
+            if (execution.alarmId != alarmId || execution.scheduleVersion != version ||
+                execution.localExecutionId != chainId
+            ) return false
             val link = dao.getRinging(execution.ownerAccountId, id) ?: return false
             dao.recordRepeat(execution.ownerAccountId, execution.localExecutionId, id,
                 checkNotNull(link.eventId), scheduledAt)
@@ -210,6 +204,7 @@ class IosAlarmOccurrenceRecorder internal constructor(
         existingExecution: AlarmOccurrenceSyncEntity?,
         nativeOwner: String?,
         nativeOwnerCaptured: Boolean,
+        nativeOwnerIsGuest: Boolean,
     ): RecordDisposition {
         val stored = dao.getIosRecordDecision(record.chainId)
         val execution = existingExecution ?: dao.findExecutionForRecording(record.rootOccurrenceId)
@@ -219,22 +214,16 @@ class IosAlarmOccurrenceRecorder internal constructor(
             )
         }
         if (stored?.state == IosAlarmOccurrenceRecordState.LOCAL_ONLY) return RecordDisposition.LocalOnly
-        // A previously captured guest remains local-only. Captured account IDs do not select server ownership.
-        if (nativeOwnerCaptured && nativeOwner == null) return RecordDisposition.LocalOnly
-        return when (session.state.value) {
-            AuthSessionState.Unauthenticated -> RecordDisposition.LocalOnly
-            AuthSessionState.Authenticated -> captureAlarmOccurrenceAccount(tokenStorage, session)
-                ?.let(RecordDisposition::Server)
-                ?: RecordDisposition.Pending
-            AuthSessionState.Restoring,
-            AuthSessionState.ReauthenticationRequired -> RecordDisposition.Pending
-        }
+        if (nativeOwnerIsGuest) return RecordDisposition.LocalOnly
+        val owner = nativeOwner?.takeIf { nativeOwnerCaptured && it.isNotBlank() }
+            ?: return RecordDisposition.Pending
+        return RecordDisposition.Server(owner)
     }
 
     private sealed interface RecordDisposition {
         data object LocalOnly : RecordDisposition
         data object Pending : RecordDisposition
-        data class Server(val account: AlarmOccurrenceAccount) : RecordDisposition
+        data class Server(val ownerAccountId: String) : RecordDisposition
         data class ExistingServer(val ownerAccountId: String) : RecordDisposition
     }
 

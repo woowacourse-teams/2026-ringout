@@ -8,7 +8,10 @@ import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.analytics.IosAlarmAnalytics
 import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
+import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
+import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.platform.LocalIosNativeServices
+import com.joon.ringout.domain.auth.getAuthSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +29,8 @@ actual fun rememberAlarmController(
     val dataSource = remember {
         RoomAlarmDataSource(getRingoutDatabase().alarmDao())
     }
+    val tokenStorage = remember { createSecureTokenStorage() }
+    val authSession = remember { getAuthSession() }
     val analytics = remember(nativeServices) {
         IosAlarmAnalytics(nativeServices.analyticsTracker(), roomMembership = com.joon.ringout.analytics.createRoomMembershipAnalytics())
     }
@@ -57,8 +62,14 @@ actual fun rememberAlarmController(
                         fallbackErrorMessage = "알람을 저장하지 못했습니다.",
                         onError = { message -> currentOnSaveError.value(request, message) },
                         mutation = {
-                            val isNewAlarm = dataSource.getById(request.id) == null
-                            store.save(request)
+                            val previous = dataSource.getById(request.id)
+                            val isNewAlarm = previous == null
+                            val verifiedOwner = if (isNewAlarm) {
+                                captureAlarmOccurrenceAccount(tokenStorage, authSession)?.ownerAccountId
+                            } else {
+                                previous.request.ownerAccountId
+                            }
+                            store.save(request.copy(ownerAccountId = verifiedOwner))
                             if (isNewAlarm) {
                                 analytics.recordAlarmCreated(request, analyticsContext)
                             } else {

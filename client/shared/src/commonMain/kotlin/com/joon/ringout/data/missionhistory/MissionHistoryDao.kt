@@ -87,6 +87,9 @@ interface MissionHistoryDao : AlarmOccurrenceTimesAccess, ArrivalResultWriteAcce
         endInclusive: String,
     ): List<MissionHistoryEntity>
 
+    @Query("SELECT * FROM mission_history WHERE occurrence_id = :occurrenceId LIMIT 1")
+    suspend fun getHistoryByOccurrence(occurrenceId: String): MissionHistoryEntity?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnoringDuplicate(history: MissionHistoryEntity): Long
 

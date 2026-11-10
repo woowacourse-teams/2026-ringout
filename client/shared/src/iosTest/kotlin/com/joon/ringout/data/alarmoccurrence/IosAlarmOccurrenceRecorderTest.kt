@@ -29,6 +29,7 @@ import platform.Foundation.NSLocale
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -99,51 +100,54 @@ class IosAlarmOccurrenceRecorderTest {
     }
 
     @Test
-    fun `게스트는 로컬 전용으로 유지하고 미확인 이전 이벤트는 현재 계정에 귀속한다`() = withFixture { f ->
+    fun `명시적 게스트 체인은 로컬 전용이고 미확인 이전 이벤트는 대기로 보존한다`() = withFixture { f ->
         f.outcomes.recordRingingTimes(stop("guest", "07:03").copy(ownerAccountId = null))
         f.outcomes.recordRetryRingingSchedule("retry", "guest", 5)
         assertTrue(f.outcomes.recordRingingTimes(stop("retry", "07:09", retry = 1, chainId = "guest")))
         f.outcomes.recordRingingTimes(stop("legacy", "07:10").copy(ownerCaptured = false))
         f.outcomes.recordFailure("retry", "2026-10-01", time("07:15"))
         assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY, f.dao.getIosRecordDecision("guest")?.state)
-        assertEquals("1", f.dao.getExecution("1", "legacy")?.ownerAccountId)
-        assertEquals(AlarmOccurrenceOutboxKind.START, f.dao.getEvents("1", "legacy").first().kind)
+        assertEquals(IosAlarmOccurrenceRecordState.AUTH_PENDING, f.dao.getIosRecordDecision("legacy")?.state)
+        assertNull(f.dao.findExecutionForRecording("legacy"))
     }
 
     @Test
-    fun `미확인 네이티브 계정은 현재 로그인 계정으로 실행을 만들고 이후 계정 변경에도 유지한다`() = withFixture { f ->
+    fun `예약 소유 계정은 현재 로그인 계정과 달라도 실행 소유자로 유지한다`() = withFixture { f ->
         f.tokens.userId = 2
         f.outcomes.recordRingingTimes(stop("current-account", "07:03").copy(ownerAccountId = "1"))
-        assertEquals("2", f.dao.getExecution("2", "current-account")?.ownerAccountId)
+        assertEquals("1", f.dao.getExecution("1", "current-account")?.ownerAccountId)
 
         f.tokens.userId = 3
         f.session.startNewSession()
         f.outcomes.recordRingingTimes(stop("current-account", "07:04").copy(ownerAccountId = "3"))
-        assertEquals("2", f.dao.getExecution("2", "current-account")?.ownerAccountId)
+        assertEquals("1", f.dao.getExecution("1", "current-account")?.ownerAccountId)
         assertNull(f.dao.getExecution("3", "current-account"))
     }
 
     @Test
-    fun `비로그인으로 확정한 체인은 이후 로그인과 재생에도 로컬 전용으로 남는다`() = withFixture { f ->
+    fun `소유권 미확정 체인은 로그인 후에도 대기로 보존하고 ACK하지 않는다`() = withFixture { f ->
         f.session.clear()
         f.outcomes.recordRingingTimes(stop("local-root", "07:03").copy(ownerCaptured = false, ownerAccountId = null))
-        assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY, f.dao.getIosRecordDecision("local-root")?.state)
+        assertEquals(IosAlarmOccurrenceRecordState.AUTH_PENDING, f.dao.getIosRecordDecision("local-root")?.state)
         assertNull(f.dao.findExecutionForRecording("local-root"))
 
         f.tokens.userId = 2
         f.session.startNewSession()
         f.recorder.resolvePendingRecordDecisions()
-        assertTrue(f.outcomes.recordRecoveryAttempt(recoveryAttempt(
-            id = "local-root", clock = "07:03", scheduledAt = "07:00", owner = "1",
+        assertFalse(f.outcomes.recordRecoveryAttempt(recoveryAttempt(
+            id = "local-root", clock = "07:03", scheduledAt = "07:00", ownerCaptured = false,
         )))
-        f.outcomes.recordRingingTimes(stop("local-root", "07:03"))
+        assertFalse(f.outcomes.recordRingingTimes(
+            stop("local-root", "07:03").copy(ownerCaptured = false, ownerAccountId = null),
+        ))
         f.outcomes.recordFailure("local-root", "2026-10-01", time("07:15"))
+        assertEquals(IosAlarmOccurrenceRecordState.AUTH_PENDING, f.dao.getIosRecordDecision("local-root")?.state)
         assertNull(f.dao.findExecutionForRecording("local-root"))
         assertTrue(f.dao.getEvents("2", "local-root").isEmpty())
     }
 
     @Test
-    fun `재인증 필요 상태는 판단 대기로 남고 인증 완료 뒤 현재 계정에 귀속한다`() = withFixture { f ->
+    fun `재인증 후에도 예약 소유권이 없으면 판단 대기로 남는다`() = withFixture { f ->
         f.session.requireReauthentication()
         assertEquals(false, f.outcomes.recordRecoveryAttempt(recoveryAttempt(
             id = "pending-root", clock = "07:03", scheduledAt = "07:00", ownerCaptured = false,
@@ -154,15 +158,15 @@ class IosAlarmOccurrenceRecorderTest {
         f.tokens.userId = 4
         f.session.startNewSession()
         f.recorder.resolvePendingRecordDecisions()
-        assertEquals("4", f.dao.getExecution("4", "pending-root")?.ownerAccountId)
-        assertEquals(IosAlarmOccurrenceRecordState.SERVER, f.dao.getIosRecordDecision("pending-root")?.state)
+        assertNull(f.dao.findExecutionForRecording("pending-root"))
+        assertEquals(IosAlarmOccurrenceRecordState.AUTH_PENDING, f.dao.getIosRecordDecision("pending-root")?.state)
     }
 
     @Test
-    fun `인증 복원 중 기록은 대기로 보존하고 복원 완료 뒤 현재 계정에 귀속한다`() = withFixture { f ->
+    fun `인증 복원 중 기록은 로그인 완료 뒤에도 소유권이 확인될 때까지 대기한다`() = withFixture { f ->
         val restoringSession = AuthSession()
         val recorder = IosAlarmOccurrenceRecorder(
-            f.dao, f.db.alarmActivityDao(), f.alarms, f.tokens, restoringSession,
+            f.dao, f.db.alarmActivityDao(), f.alarms,
         )
         val outcomes = RoomIosMissionOutcomeRecorder(
             RecordMissionResult(DefaultMissionHistoryRepository(RoomMissionHistoryDataSource(f.db.missionHistoryDao()))),
@@ -178,17 +182,30 @@ class IosAlarmOccurrenceRecorderTest {
         f.tokens.userId = 5
         restoringSession.markAuthenticated()
         recorder.resolvePendingRecordDecisions()
-        assertEquals("5", f.dao.getExecution("5", "restoring-root")?.ownerAccountId)
+        assertNull(f.dao.findExecutionForRecording("restoring-root"))
+        assertEquals(IosAlarmOccurrenceRecordState.AUTH_PENDING, f.dao.getIosRecordDecision("restoring-root")?.state)
+    }
+
+    @Test
+    fun `대기 체인은 일치하는 예약의 저장 소유자가 확인되면 해당 계정으로 재생한다`() = withFixture { f ->
+        f.outcomes.recordRingingTimes(stop("owned-later", "07:03").copy(ownerCaptured = false, ownerAccountId = null))
+        assertEquals(IosAlarmOccurrenceRecordState.AUTH_PENDING, f.dao.getIosRecordDecision("owned-later")?.state)
+
+        f.alarms.replace(settings().copy(request = settings().request.copy(ownerAccountId = "9")))
+        f.recorder.resolvePendingRecordDecisions()
+
+        assertEquals("9", f.dao.getExecution("9", "owned-later")?.ownerAccountId)
+        assertEquals(IosAlarmOccurrenceRecordState.SERVER, f.dao.getIosRecordDecision("owned-later")?.state)
     }
 
     @Test
     fun `재울림 연결은 기록기 재생성 후에도 유지하며 강제종료는 실제 완료 시각을 기록한다`() = withFixture { f ->
         f.outcomes.recordRingingTimes(stop("first", "07:03"))
         f.outcomes.recordRetryRingingSchedule("retry", "first", 5)
-        val originalId = f.dao.getRinging("1", "retry")?.eventId
-        val restored = IosAlarmOccurrenceRecorder(f.dao, f.db.alarmActivityDao(), f.alarms, f.tokens, f.session)
+        val originalId = assertNotNull(f.dao.getRinging("1", "retry")?.eventId)
+        val restored = IosAlarmOccurrenceRecorder(f.dao, f.db.alarmActivityDao(), f.alarms)
         restored.registerRetry("retry", "first")
-        restored.recordStopped(stop("retry", "07:09", retry = 1))
+        assertTrue(restored.recordStopped(stop("retry", "07:09", retry = 1, chainId = "first")))
         restored.recordTerminal("retry", time("07:11"), arrived = false)
         assertEquals(originalId, f.dao.getRinging("1", "retry")?.eventId)
         assertEquals(time("07:08"), f.dao.getRinging("1", "retry")?.ringingAtEpochMillis)
@@ -249,12 +266,37 @@ class IosAlarmOccurrenceRecorderTest {
     }
 
     @Test
+    fun `다른 알람이나 예약 버전의 재울림 복구는 기존 체인에 연결하지 않는다`() = withFixture { f ->
+        assertTrue(f.outcomes.recordRecoveryAttempt(recoveryAttempt(
+            id = "root",
+            clock = "07:03",
+            scheduledAt = "07:00",
+            nextId = "retry",
+            nextEventId = "retry-token",
+            nextDue = "07:08",
+        )))
+        val validRetry = recoveryAttempt(
+            id = "retry",
+            clock = "07:09",
+            scheduledAt = "07:08",
+            retry = 1,
+        )
+
+        assertEquals(false, f.outcomes.recordRecoveryAttempt(validRetry.copy(
+            snapshot = validRetry.snapshot.copy(scheduleVersion = 2),
+        )))
+        assertEquals(listOf(AlarmOccurrenceOutboxKind.START, AlarmOccurrenceOutboxKind.INITIAL_DISMISSED),
+            f.dao.getEvents("1", "root").map { it.kind })
+    }
+
+    @Test
     fun `복구 이벤트는 소유권 근거별로 ACK 여부를 구분한다`() = withFixture { f ->
         assertTrue(f.outcomes.recordRecoveryAttempt(recoveryAttempt("guest", "07:03", "07:00", owner = null)))
         assertNull(f.dao.findExecutionForRecording("guest"))
 
-        assertTrue(f.outcomes.recordRecoveryAttempt(recoveryAttempt("unknown", "07:04", "07:00", ownerCaptured = false)))
-        assertEquals("1", f.dao.getExecution("1", "unknown")?.ownerAccountId)
+        assertEquals(false, f.outcomes.recordRecoveryAttempt(recoveryAttempt("unknown", "07:04", "07:00", ownerCaptured = false)))
+        assertEquals(IosAlarmOccurrenceRecordState.AUTH_PENDING, f.dao.getIosRecordDecision("unknown")?.state)
+        assertNull(f.dao.findExecutionForRecording("unknown"))
 
         assertEquals(false, f.outcomes.recordRecoveryAttempt(recoveryAttempt("orphan-retry", "07:09", "07:08", retry = 1)))
         assertNull(f.dao.findExecutionForRecording("orphan-retry"))
@@ -275,7 +317,7 @@ private class Fixture(val db: RingoutDatabase) {
     val alarms = RoomAlarmDataSource(db.alarmDao())
     val tokens = Tokens()
     val session = AuthSession().apply { markAuthenticated() }
-    val recorder = IosAlarmOccurrenceRecorder(dao, db.alarmActivityDao(), alarms, tokens, session)
+    val recorder = IosAlarmOccurrenceRecorder(dao, db.alarmActivityDao(), alarms)
     val outcomes = RoomIosMissionOutcomeRecorder(
         RecordMissionResult(DefaultMissionHistoryRepository(RoomMissionHistoryDataSource(db.missionHistoryDao()))),
         db.alarmActivityDao(), alarms, recorder,

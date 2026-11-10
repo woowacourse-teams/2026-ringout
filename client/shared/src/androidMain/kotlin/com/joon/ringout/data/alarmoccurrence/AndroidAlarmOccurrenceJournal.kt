@@ -30,18 +30,105 @@ internal class AndroidAlarmOccurrenceJournal(private val preferences: SharedPref
         }
     }
 
-    suspend fun drain(record: suspend (CapturedAlarmOccurrenceEvent) -> Unit) = flushMutex.withLock {
+    suspend fun drain(record: suspend (CapturedAlarmOccurrenceEvent) -> Boolean) = flushMutex.withLock {
         val entries = synchronized(lock) {
             preferences.all.filterKeys { it.startsWith("event:") }
                 .map { (key, value) -> key to Json.decodeFromString<Entry>(value as String) }
                 .sortedBy { it.second.sequence }
         }
-        for ((key, entry) in entries) {
-            record(entry.event) // 실패 시 뒤의 해제/종료부터 처리하지 않는다.
-            synchronized(lock) {
-                check(preferences.edit().remove(key).commit()) { "알람 이벤트 저널을 정리하지 못했습니다." }
+        val chainBySequence = chainBySequence(entries)
+        val chains = entries.groupBy { (_, entry) -> chainBySequence.getValue(entry.sequence) }
+            .values
+            .sortedBy { chain -> chain.first().second.sequence }
+
+        for (chain in chains) {
+            for ((key, entry) in chain) {
+                if (!record(entry.event)) break
+                synchronized(lock) {
+                    check(preferences.edit().remove(key).commit()) {
+                        "알람 이벤트 저널을 정리하지 못했습니다."
+                    }
+                }
             }
         }
+    }
+
+    /** Rebinds only ownerless roots matching a Room schedule selected for legacy migration. */
+    suspend fun bindUnownedRoots(
+        ownerAccountId: String,
+        assignedSchedules: Set<Pair<String, Long>>,
+    ): Int {
+        require(ownerAccountId.isNotBlank())
+        if (assignedSchedules.isEmpty()) return 0
+
+        return flushMutex.withLock {
+            synchronized(lock) {
+                val editor = preferences.edit()
+                var rebound = 0
+                preferences.all.forEach { (key, value) ->
+                    if (!key.startsWith("event:")) return@forEach
+                    val entry = Json.decodeFromString<Entry>(value as String)
+                    val root = entry.event as? CapturedAlarmOccurrenceEvent.Rang ?: return@forEach
+                    if (root.sourceRingingId != null || root.ownerAccountId != null) return@forEach
+                    if ((root.alarmId to root.scheduleVersion) !in assignedSchedules) return@forEach
+
+                    val ownerKey = "owner:${root.ringingId}"
+                    if (!preferences.getString(ownerKey, "").isNullOrBlank()) return@forEach
+                    editor.putString(
+                        key,
+                        Json.encodeToString(entry.copy(event = root.copy(ownerAccountId = ownerAccountId))),
+                    )
+                    editor.putString(ownerKey, ownerAccountId)
+                    rebound += 1
+                }
+                if (rebound > 0) {
+                    check(editor.commit()) { "레거시 알람 이벤트 소유자를 저장하지 못했습니다." }
+                }
+                rebound
+            }
+        }
+    }
+
+    fun unownedRootScheduleKeys(): Set<Pair<String, Long>> = synchronized(lock) {
+        preferences.all.asSequence()
+            .filter { (key, _) -> key.startsWith("event:") }
+            .mapNotNull { (_, value) ->
+                val entry = Json.decodeFromString<Entry>(value as String)
+                val root = entry.event as? CapturedAlarmOccurrenceEvent.Rang ?: return@mapNotNull null
+                if (root.sourceRingingId != null || root.ownerAccountId != null) return@mapNotNull null
+                val ownerKey = "owner:${root.ringingId}"
+                if (!preferences.getString(ownerKey, "").isNullOrBlank()) return@mapNotNull null
+                root.alarmId to root.scheduleVersion
+            }
+            .toSet()
+    }
+
+    /** Joins repeat ringings to their parent chain so one unresolved chain cannot block another. */
+    private fun chainBySequence(entries: List<Pair<String, Entry>>): Map<Long, String> {
+        val parents = mutableMapOf<String, String>()
+
+        fun find(id: String): String {
+            if (id !in parents) parents[id] = id
+            val parent = parents.getValue(id)
+            if (parent == id) return id
+            return find(parent).also { root -> parents[id] = root }
+        }
+
+        fun union(first: String, second: String) {
+            val firstRoot = find(first)
+            val secondRoot = find(second)
+            if (firstRoot != secondRoot) parents[secondRoot] = firstRoot
+        }
+
+        for ((_, entry) in entries) {
+            val event = entry.event
+            find(event.ringingId)
+            if (event is CapturedAlarmOccurrenceEvent.Rang) {
+                event.sourceRingingId?.let { source -> union(event.ringingId, source) }
+            }
+        }
+
+        return entries.associate { (_, entry) -> entry.sequence to find(entry.event.ringingId) }
     }
 
     suspend fun clear() = flushMutex.withLock {

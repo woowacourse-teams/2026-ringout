@@ -79,6 +79,22 @@ class IosAlarmStoreTest {
     }
 
     @Test
+    fun `알람 수정은 기존 소유 계정을 보존하고 예약 스냅샷에도 전달한다`() = runBlocking {
+        val dataSource = FakeAlarmDataSource()
+        val scheduler = FakeIosAlarmScheduler()
+        val store = IosAlarmStore(dataSource, scheduler)
+        store.save(request(ownerAccountId = "account-1"))
+
+        store.save(request(time = "08:10", ownerAccountId = "account-2"))
+
+        assertEquals("account-1", dataSource.getById("alarm-1")?.request?.ownerAccountId)
+        assertEquals("account-1", scheduler.scheduledRequests.getValue("alarm-1").ownerAccountId)
+        val snapshot = dataSource.getById("alarm-1")!!.request.toRecoverySnapshot()
+        assertEquals(IosAlarmRecoveryOwnerKind.CAPTURED_ACCOUNT, snapshot.owner.kind)
+        assertEquals("account-1", snapshot.owner.accountId)
+    }
+
+    @Test
     fun savesNewAlarmAndReactivatesDisabledAlarmWhenReplacingSameId() = runBlocking {
         val dataSource = FakeAlarmDataSource()
         val scheduler = FakeIosAlarmScheduler()
@@ -415,6 +431,7 @@ class IosAlarmStoreTest {
 
     private fun request(
         time: String = "07:05",
+        ownerAccountId: String? = null,
     ) = AlarmScheduleRequest(
         id = "alarm-1",
         time = time,
@@ -427,6 +444,7 @@ class IosAlarmStoreTest {
         targetDistanceKm = 1.2,
         alarmSoundName = "기본 알람음",
         alarmSoundUri = null,
+        ownerAccountId = ownerAccountId,
     )
 }
 

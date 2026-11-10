@@ -28,4 +28,6 @@ data class InstallationEntryState(
     val isAlarmCreationGuideCompleted: Boolean = false,
     val hasLegacyRuntimeExceptionPending: Boolean = false,
     val isLogoutCleanupPending: Boolean = false,
+    val legacyAlarmMigrationAccountId: String? = null,
+    val isLegacyAlarmMigrationComplete: Boolean = false,
 )
