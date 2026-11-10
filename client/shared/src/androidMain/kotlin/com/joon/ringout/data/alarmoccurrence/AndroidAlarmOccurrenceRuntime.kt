@@ -51,15 +51,16 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
 
     fun recordRinging(
         alarmId: String,
+        ownerAccountId: String?,
         ringingId: String,
         scheduleVersion: Long,
         scheduledAt: Long?,
         sourceRingingId: String?,
         at: Long,
     ) {
-        // 토큰 자체는 저널에 저장하지 않는다. 네트워크 없이 발생 순간의 계정 ID만 고정한다.
-        val owner = if (sourceRingingId == null) tokenStorage.readSnapshot()?.accessToken
-            ?.let(::alarmOccurrenceTokenOwner) else null
+        // Reservation ownership was read from the Room schedule after validating the PendingIntent.
+        // Retry ringings inherit the root execution through sourceRingingId in the recorder.
+        val owner = ownerAccountId.takeIf { sourceRingingId == null }
         append(CapturedAlarmOccurrenceEvent.Rang(ringingId, alarmId, scheduleVersion,
             scheduledAt, at, owner, sourceRingingId, UUID.randomUUID().toString()))
     }

@@ -114,6 +114,7 @@ class AlarmRingingService : Service() {
         runCatching {
             AndroidAlarmOccurrenceRuntime.get(applicationContext).recordRinging(
                 alarmId = intent.getStringExtra(AlarmRuntime.EXTRA_ALARM_ID).orEmpty(),
+                ownerAccountId = intent.getStringExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID),
                 ringingId = occurrenceId,
                 scheduleVersion = intent.getLongExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, 1),
                 scheduledAt = if (intent.hasExtra(AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS))
