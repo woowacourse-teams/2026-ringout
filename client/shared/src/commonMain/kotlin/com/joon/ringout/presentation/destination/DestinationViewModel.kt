@@ -12,7 +12,6 @@ import com.joon.ringout.domain.destination.SavedDestination
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -53,15 +52,12 @@ class DestinationViewModel internal constructor(
     private val mutationMutex = Mutex()
     private val scope = coroutineScope ?: viewModelScope
     private var nextSavedEventId = 0L
-    private var fetchJob: Job? = null
-    private var fetchRequestId = 0L
 
     init {
         observeDestinations()
     }
 
     fun onScreenEntered() {
-        refreshDestinations()
     }
 
     internal fun onCurrentLocationResolved(latitude: Double, longitude: Double) {
@@ -72,38 +68,12 @@ class DestinationViewModel internal constructor(
         currentLocationCache.initialLocation()
 
     fun onLoggedOut() {
-        refreshDestinations(clearDestinations = true)
-    }
-
-    private fun refreshDestinations(clearDestinations: Boolean = false) {
-        fetchJob?.cancel()
-        val currentRequestId = ++fetchRequestId
         uiState = uiState.copy(
-            destinations = if (clearDestinations) emptyList() else uiState.destinations,
-            hasLoadedDestinations = !clearDestinations && uiState.hasLoadedDestinations,
-            isLoading = true,
+            destinations = emptyList(),
+            hasLoadedDestinations = false,
+            isLoading = false,
             errorMessage = null,
         )
-        fetchJob = scope.launch {
-            try {
-                val destinations = repository.fetchAll()
-                if (currentRequestId != fetchRequestId) return@launch
-                uiState = uiState.copy(
-                    destinations = destinations,
-                    hasLoadedDestinations = true,
-                    isLoading = false,
-                )
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Throwable) {
-                if (currentRequestId == fetchRequestId) {
-                    uiState = uiState.copy(
-                        isLoading = false,
-                        errorMessage = error.message ?: "목적지를 불러오지 못했어요.",
-                    )
-                }
-            }
-        }
     }
 
     fun save(
@@ -169,9 +139,6 @@ class DestinationViewModel internal constructor(
     fun confirmDelete() {
         val destinationId = uiState.pendingDeleteDestinationId ?: return
         if (uiState.isSaving || uiState.isDeletingDestination) return
-        fetchJob?.cancel()
-        fetchJob = null
-        fetchRequestId += 1L
         uiState = uiState.copy(
             isSaving = true,
             isDeletingDestination = true,

@@ -1,7 +1,5 @@
 package com.joon.ringout.data.destination
 
-import com.joon.ringout.domain.destination.SavedDestination
-
 /** Stable server identity and payload used by destination synchronization. */
 data class RemoteSavedDestination(
     val id: String,
@@ -12,13 +10,12 @@ data class RemoteSavedDestination(
 )
 
 interface DestinationRemoteDataSource {
-    suspend fun hasAccessToken(): Boolean
+    suspend fun fetchAll(ownerAccountId: String): List<RemoteSavedDestination>
 
-    suspend fun fetchAll(): List<SavedDestination>
+    suspend fun create(
+        ownerAccountId: String,
+        destination: RemoteSavedDestination,
+    ): RemoteSavedDestination
 
-    suspend fun sync(destinations: List<SavedDestination>): List<SavedDestination>
-
-    suspend fun create(destination: SavedDestination): SavedDestination
-
-    suspend fun delete(id: Long): Boolean
+    suspend fun delete(ownerAccountId: String, destinationId: String)
 }

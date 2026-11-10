@@ -5,10 +5,6 @@ import kotlinx.coroutines.flow.Flow
 interface DestinationRepository {
     fun observeAll(): Flow<List<SavedDestination>>
 
-    suspend fun fetchAll(): List<SavedDestination>
-
-    suspend fun sync(): List<SavedDestination>
-
     suspend fun save(destination: SavedDestination): SavedDestination
 
     suspend fun delete(id: Long): Boolean

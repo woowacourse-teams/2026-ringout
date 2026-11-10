@@ -466,10 +466,6 @@ private class EditorDestinationRepository : DestinationRepository {
     val destinations = kotlinx.coroutines.flow.MutableStateFlow(emptyList<SavedDestination>())
     override fun observeAll(): Flow<List<SavedDestination>> = destinations
 
-    override suspend fun fetchAll(): List<SavedDestination> = emptyList()
-
-    override suspend fun sync(): List<SavedDestination> = emptyList()
-
     override suspend fun save(destination: SavedDestination): SavedDestination {
         saveGate?.await()
         saveRequests += destination
