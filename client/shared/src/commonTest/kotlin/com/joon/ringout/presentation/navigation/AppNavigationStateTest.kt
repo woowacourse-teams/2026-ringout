@@ -14,6 +14,45 @@ import kotlin.test.assertTrue
 
 class AppNavigationStateTest {
     @Test
+    fun `기록 공유에서 상세와 기록으로 돌아가고 동일 경로 진입은 중복되지 않는다`() {
+        val state = AppNavigationState()
+        val detail = AppRoute.RecordsDetail("2026-09-30")
+        val share = AppRoute.RecordShare("2026-09-30", "group", "history:42")
+
+        state.navigate(AppRoute.Records)
+        state.navigate(detail)
+        state.navigate(share)
+        state.navigate(share.copy())
+        assertEquals(listOf(AppRoute.Home, AppRoute.Records, detail, share), state.backStack.toList())
+        state.popBackStack(share)
+        assertEquals(detail, state.requestedRoute)
+        state.popBackStack(detail)
+        assertEquals(AppRoute.Records, state.requestedRoute)
+    }
+
+    @Test
+    fun `잘못된 기록 상세와 공유 경로는 기존 백스택을 변경하지 않는다`() {
+        val state = AppNavigationState()
+        state.navigate(AppRoute.Records)
+        state.navigate(AppRoute.RecordsDetail("2026-02-30"))
+        state.navigate(AppRoute.RecordShare("2026-09-30", "", "success"))
+        assertEquals(listOf(AppRoute.Home, AppRoute.Records), state.backStack.toList())
+    }
+
+    @Test
+    fun `기록 공유 백스택을 복원하면 기록 식별자와 뒤로 가기 순서를 유지한다`() {
+        val detail = AppRoute.RecordsDetail("2026-09-30")
+        val share = AppRoute.RecordShare("2026-09-30", "group/한글", "history:42")
+        val original = NavBackStack<AppRoute>(AppRoute.Home, AppRoute.Records, detail, share)
+        val serializer = NavBackStackSerializer(AppRoute.serializer())
+        val state = AppNavigationState(Json.decodeFromString(serializer, Json.encodeToString(serializer, original)))
+
+        assertEquals(share, state.requestedRoute)
+        state.popBackStack(share)
+        assertEquals(detail, state.requestedRoute)
+    }
+
+    @Test
     fun `숲 중복 진입은 하나만 쌓고 뒤로 가면 홈으로 돌아온다`() {
         val state = AppNavigationState()
         state.navigate(AppRoute.Forest)

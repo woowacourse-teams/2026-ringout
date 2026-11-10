@@ -164,6 +164,7 @@ fun App(
     RingoutTheme(themeMode = appBootstrapUiState.themeMode) {
         RestrictedArrivalHost(
             repository = appContainer.arrivalResultRepository,
+            missionHistoryRepository = appContainer.missionHistoryRepository,
             hasActiveRuntime = hasExternalRingingAlarm || ringingAlarm != null || activeAlarmMission != null,
             isEnabled = shouldEnableRestrictedArrival(
                 isAppReady = appBootstrapUiState.isReady,
@@ -688,7 +689,7 @@ private fun RingoutAppContent(
         isPending = isAlarmCreationGuidePending,
         surface = guideSurface,
         canPresent = !termsViewModel.uiState.blocksService &&
-            displayedRoute !is AppRoute.ArrivalShare && displayedRoute !is AppRoute.Arrival &&
+            displayedRoute !is AppRoute.ArrivalShare && displayedRoute !is AppRoute.RecordShare && displayedRoute !is AppRoute.Arrival &&
             pendingArrival.isLoaded && pendingArrival.result == null &&
             forceEndState.phase == ForceEndPhase.Idle &&
             authSessionState != AuthSessionState.Restoring &&
@@ -802,6 +803,7 @@ private fun RingoutAppContent(
                     storeProvider = viewModelScopes.storeProvider,
                     navigationState = navigationState,
                     repository = appContainer.arrivalResultRepository,
+                    missionHistoryRepository = appContainer.missionHistoryRepository,
                     pendingArrival = pendingArrival,
                     hasActiveRuntime = hasExternalRingingAlarm || ringingAlarm != null || activeAlarmMission != null,
                 )
@@ -820,7 +822,7 @@ private fun RingoutAppContent(
     // 알람 울림과 진행 중 미션의 필수 조작은 기존 우선순위를 유지한다.
     if (forceEndState.phase == ForceEndPhase.Idle &&
         displayedRoute !is AppRoute.AlarmRinging && displayedRoute !is AppRoute.ActiveAlarmTracking &&
-        displayedRoute !is AppRoute.ArrivalShare && displayedRoute !is AppRoute.Arrival
+        displayedRoute !is AppRoute.ArrivalShare && displayedRoute !is AppRoute.RecordShare && displayedRoute !is AppRoute.Arrival
     ) {
         TermsReagreementRoute(termsViewModel)
     }

@@ -13,10 +13,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -48,12 +44,9 @@ fun RecordsScreen(
     onNextMonth: () -> Unit = {},
     onRetry: () -> Unit = {},
     onCalendarRetry: () -> Unit = {},
+    onRecordClick: (MissionDate) -> Unit = {},
 ) {
     val recordKeys = uiState.records.map(AlarmUsageRecordGroup::key)
-    var expandedRecordKeys by rememberSaveable(uiState.selectedDate.iso8601) {
-        mutableStateOf<List<String>?>(null)
-    }
-    val expandedRecords = expandedRecordKeys ?: recordKeys.take(1)
     val listState = rememberLazyListState()
     LaunchedEffect(uiState.selectedDate) { listState.scrollToItem(0) }
 
@@ -98,15 +91,7 @@ fun RecordsScreen(
                 itemsIndexed(uiState.records, key = { index, _ -> recordKeys[index] }) { index, record ->
                     RecordHistoryCard(
                         record = record,
-                        expanded = recordKeys[index] in expandedRecords,
-                        onExpandedChange = {
-                            val key = recordKeys[index]
-                            expandedRecordKeys = if (key in expandedRecords) {
-                                expandedRecords - key
-                            } else {
-                                expandedRecords + key
-                            }
-                        },
+                        onClick = { onRecordClick(uiState.selectedDate) },
                     )
                 }
             }

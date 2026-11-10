@@ -123,6 +123,12 @@ internal class AppNavigationState(
                 else -> routes.toList() + route
             }
             AppRoute.Records -> listOf(AppRoute.Home, AppRoute.Records)
+            is AppRoute.RecordsDetail -> if (route.isValid()) {
+                listOf(AppRoute.Home, AppRoute.Records, route)
+            } else routes.toList()
+            is AppRoute.RecordShare -> if (route.isValid()) {
+                listOf(AppRoute.Home, AppRoute.Records, AppRoute.RecordsDetail(route.date), route)
+            } else routes.toList()
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)
             AppRoute.Login,
@@ -210,6 +216,13 @@ internal class AppNavigationState(
     private fun AppRoute.RoomActivity.isValid(): Boolean =
         roomId.toLongOrNull()?.let { it > 0L } == true &&
             runCatching { MissionDate.parse(activityDate) }.getOrNull()?.iso8601 == activityDate
+
+    private fun AppRoute.RecordsDetail.isValid(): Boolean =
+        runCatching { MissionDate.parse(date) }.getOrNull()?.iso8601 == date
+
+    private fun AppRoute.RecordShare.isValid(): Boolean =
+        AppRoute.RecordsDetail(date).isValid() && groupKey.isNotBlank() && successRecordKey.isNotBlank() &&
+            (occurrenceId == null || occurrenceId.isNotBlank())
 
     /** 아직 제공하지 않는 닉네임 수정 화면은 마이페이지로 되돌린다. */
     internal fun normalizeForGuestMode() {
