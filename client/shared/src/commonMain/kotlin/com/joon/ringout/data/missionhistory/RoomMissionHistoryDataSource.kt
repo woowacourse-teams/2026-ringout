@@ -10,6 +10,9 @@ import com.joon.ringout.domain.missionhistory.AlarmUsageRecord
 class RoomMissionHistoryDataSource(
     private val missionHistoryDao: MissionHistoryDao,
 ) : MissionHistoryDataSource {
+    override suspend fun getRecordsOnOccurrenceDate(occurrenceId: String): List<AlarmUsageRecord> =
+        missionHistoryDao.getRecordsOnOccurrenceDate(occurrenceId).map(AlarmUsageRecordRow::toDomain)
+
     override suspend fun getRecords(month: MissionYearMonth): List<AlarmUsageRecord> =
         missionHistoryDao.getRecords(
             MissionDate.of(month.year, month.month, 1).iso8601,

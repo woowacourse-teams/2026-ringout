@@ -24,6 +24,23 @@ interface MissionHistoryDao : AlarmOccurrenceTimesAccess, ArrivalResultWriteAcce
     fun observeRecords(startInclusive: String, endInclusive: String): Flow<List<AlarmUsageRecordRow>>
 
     @Query("""
+        SELECT COALESCE(
+            (SELECT local_date FROM alarm_activity_events
+             WHERE event_key = 'rang:' || :occurrenceId AND type IN ('RANG', 'RANG_CONFIRMED_BY_STOP')),
+            (SELECT completed_at FROM mission_history WHERE occurrence_id = :occurrenceId LIMIT 1)
+        )
+    """)
+    suspend fun getRecordDateForOccurrence(occurrenceId: String): String?
+
+    /** Keep date resolution and the records on that date in the same snapshot. */
+    @Transaction
+    suspend fun getRecordsOnOccurrenceDate(occurrenceId: String): List<AlarmUsageRecordRow> {
+        if (occurrenceId.isBlank()) return emptyList()
+        val date = getRecordDateForOccurrence(occurrenceId) ?: return emptyList()
+        return getRecords(date, date)
+    }
+
+    @Query("""
         SELECT h.*, t.ringing_started_at, t.ringing_stopped_at,
             t.mission_completed_at, t.ringing_start_observed
         FROM mission_history h

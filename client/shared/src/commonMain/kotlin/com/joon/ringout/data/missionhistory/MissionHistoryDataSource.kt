@@ -18,6 +18,9 @@ interface MissionHistoryDataSource {
     fun observeRecords(month: MissionYearMonth): Flow<List<AlarmUsageRecord>> =
         observeHistory(month).map { history -> history.mapIndexed { index, entry -> entry.toDomain().toAlarmUsageRecord(index) } }
 
+    /** Local records on the ringing date of the specified occurrence. */
+    suspend fun getRecordsOnOccurrenceDate(occurrenceId: String): List<AlarmUsageRecord> = emptyList()
+
     /** Returns true only when the occurrence was newly persisted. */
     suspend fun record(history: MissionHistoryDto): Boolean
 }
