@@ -6,16 +6,17 @@ import com.ringout.api.destination.domain.Destination;
 import com.ringout.api.destination.domain.DestinationAlias;
 import com.ringout.api.destination.dto.request.DestinationSyncRequest;
 import com.ringout.api.destination.dto.request.DestinationSyncRequest.DestinationSyncItemRequest;
-import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
-import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.request.DestinationUpsertRequest;
 import com.ringout.api.destination.dto.response.DestinationResponse;
 import com.ringout.api.destination.dto.response.DestinationSyncResponse;
 import com.ringout.api.destination.dto.response.DestinationSyncResponse.DestinationSyncItemResponse;
-import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
+import com.ringout.api.destination.dto.response.DestinationUpsertResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -31,17 +32,24 @@ public class DestinationService {
 
     private final DestinationRepository destinationRepository;
     private final UserRepository userRepository;
+    private final Clock clock;
 
     @Transactional
-    public DestinationCreateResponse createDestination(Long userId, String destinationId, String alias,
-        Double latitude, Double longitude) {
+    public DestinationUpsertResponse upsertDestination(Long userId, String destinationId,
+        DestinationUpsertRequest request) {
         validateAuthenticatedUserExists(userId);
+        validateDestinationIdIsUsable(destinationId);
+        validateDestinationUpsertRequestBodyExists(request);
 
-        User user = userRepository.getReferenceById(userId);
-        Destination destination = Destination.create(user, destinationId, DestinationAlias.from(alias),
-            Coordinate.of(latitude, longitude));
+        DestinationAlias alias = createUpsertAlias(request.alias());
+        Coordinate coordinate = createUpsertCoordinate(request.latitude(), request.longitude());
 
-        return new DestinationCreateResponse(saveDestination(destination).getDestinationId());
+        validateDestinationVersionIsUsable(request.destinationVersion());
+
+        destinationRepository.upsertOwnedDestination(userId, destinationId, alias.getValue(), coordinate.getLatitude(),
+            coordinate.getLongitude(), request.destinationVersion(), LocalDateTime.now(clock));
+
+        return DestinationUpsertResponse.from(findUpsertedDestination(userId, destinationId));
     }
 
     @Transactional(readOnly = true)
@@ -71,20 +79,6 @@ public class DestinationService {
     }
 
     @Transactional
-    public DestinationUpdateResponse updateDestination(Long userId, String destinationId,
-        DestinationUpdateRequest request) {
-        validateAuthenticatedUserExists(userId);
-        validateDestinationIdIsUsable(destinationId);
-        validateDestinationUpdateRequestBodyExists(request);
-
-        Destination destination = findOwnedDestination(userId, destinationId);
-        destination.update(request.alias(), request.latitude(), request.longitude());
-
-        return new DestinationUpdateResponse(destination.getDestinationId(), destination.getAlias().getValue(),
-            destination.getCoordinate().getLatitude(), destination.getCoordinate().getLongitude());
-    }
-
-    @Transactional
     public void deleteDestination(Long userId, String destinationId) {
         validateAuthenticatedUserExists(userId);
         validateDestinationIdToDeleteIsUsable(destinationId);
@@ -110,10 +104,38 @@ public class DestinationService {
         }
     }
 
-    private void validateDestinationUpdateRequestBodyExists(DestinationUpdateRequest request) {
-        if (request == null || request.hasNoUpdateField()) {
-            throw new GeneralException(DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID);
+    private void validateDestinationUpsertRequestBodyExists(DestinationUpsertRequest request) {
+        if (request == null) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_UPSERT_REQUEST_INVALID);
         }
+    }
+
+    private void validateDestinationVersionIsUsable(Long destinationVersion) {
+        if (!Destination.isValidDestinationVersion(destinationVersion)) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_VERSION_INVALID);
+        }
+    }
+
+    private DestinationAlias createUpsertAlias(String alias) {
+        try {
+            return DestinationAlias.from(alias);
+        } catch (GeneralException exception) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_UPSERT_REQUEST_INVALID);
+        }
+    }
+
+    private Coordinate createUpsertCoordinate(Double latitude, Double longitude) {
+        try {
+            return Coordinate.of(latitude, longitude);
+        } catch (GeneralException exception) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_UPSERT_REQUEST_INVALID);
+        }
+    }
+
+    private Destination findUpsertedDestination(Long userId, String destinationId) {
+        return destinationRepository.findOwnedDestinationForUpdate(userId, destinationId)
+            .orElseThrow(() -> new IllegalStateException(
+                "Upsert한 목적지를 찾을 수 없습니다. userId=" + userId + ", destinationId=" + destinationId));
     }
 
     private void validateDestinationSyncRequestBodyExists(DestinationSyncRequest request) {
@@ -180,10 +202,5 @@ public class DestinationService {
         }
 
         return new GeneralException(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID);
-    }
-
-    private Destination findOwnedDestination(Long userId, String destinationId) {
-        return destinationRepository.findOwnedDestination(userId, destinationId)
-            .orElseThrow(() -> new GeneralException(DestinationErrorStatus.DESTINATION_NOT_FOUND));
     }
 }

@@ -47,4 +47,32 @@ class DestinationTest {
                     assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_ID_INVALID));
         }
     }
+
+    @Nested
+    class 목적지_버전_규칙 {
+
+        private Destination destinationWithVersion(Long destinationVersion) {
+            return Destination.create(mock(User.class), "dest-1", DestinationAlias.from("학교"),
+                Coordinate.of(37.5502, 127.0738), destinationVersion);
+        }
+
+        @Test
+        void 버전_없이_생성하면_초기_버전_0으로_생성한다() {
+            // when
+            Destination destination = Destination.create(
+                mock(User.class), "dest-1", DestinationAlias.from("집"), Coordinate.of(37.5, 127.0)
+            );
+
+            // then
+            assertThat(destination.getDestinationVersion()).isZero();
+        }
+
+        @Test
+        void 버전이_없으면_생성할_수_없다() {
+            // when // then
+            assertThatThrownBy(() -> destinationWithVersion(null))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_VERSION_INVALID));
+        }
+    }
 }

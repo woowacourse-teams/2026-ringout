@@ -3,13 +3,11 @@ package com.ringout.api.destination.controller.docs;
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.SwaggerConfig;
 import com.ringout.api.config.security.CustomUserDetails;
-import com.ringout.api.destination.dto.request.DestinationCreateRequest;
 import com.ringout.api.destination.dto.request.DestinationSyncRequest;
-import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
-import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.request.DestinationUpsertRequest;
 import com.ringout.api.destination.dto.response.DestinationResponse;
 import com.ringout.api.destination.dto.response.DestinationSyncResponse;
-import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
+import com.ringout.api.destination.dto.response.DestinationUpsertResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -81,23 +79,36 @@ public interface DestinationControllerApi {
     );
 
     @Operation(
-        summary = "목적지 저장",
-        description = "사용자의 목적지를 저장합니다.",
+        summary = "목적지 생성 또는 전체 수정 (Upsert)",
+        description = """
+            인증된 사용자와 경로의 destinationId 조합으로 목적지를 식별합니다.
+            - 목적지가 없으면 destinationVersion과 관계없이 새로 생성합니다.
+            - 목적지가 있고 요청 버전이 서버 버전보다 높으면 모든 필드를 요청 값으로 교체합니다.
+            - 요청 버전이 서버 버전보다 낮거나 같으면 아무것도 바꾸지 않습니다.
+            세 경우 모두 200을 반환하며, result는 요청 값이 아니라 서버에 최종 저장된 목적지 정보입니다.
+            서버는 전달받은 destinationVersion을 그대로 저장하며 임의로 증가시키지 않습니다.
+            동일한 (사용자, destinationId)에 대한 동시 요청에서도 목적지는 하나만 생성되며 최종 버전은 낮아지지 않습니다.
+            destinationId는 사용자별로 고유하므로, 다른 사용자가 같은 destinationId를 쓰고 있어도 내 목적지로 새로 생성됩니다.
+            """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
         @ApiResponse(
-            responseCode = "201",
-            description = "목적지 저장 성공",
+            responseCode = "200",
+            description = "목적지 생성·수정 또는 낮거나 같은 버전이라 변경 없음. 모두 서버에 최종 저장된 정보를 반환합니다.",
             content = @Content(
                 mediaType = "application/json",
                 examples = @ExampleObject(value = """
                     {
                       "isSuccess": true,
-                      "code": "DESTINATION201",
-                      "message": "목적지 생성에 성공했습니다.",
+                      "code": "DESTINATION200",
+                      "message": "목적지 동기화에 성공했습니다.",
                       "result": {
-                        "destinationId": "dest-1"
+                        "destinationId": "destination-001",
+                        "alias": "헬스장",
+                        "latitude": 37.4979,
+                        "longitude": 127.0276,
+                        "destinationVersion": 2
                       }
                     }
                     """)
@@ -105,38 +116,44 @@ public interface DestinationControllerApi {
         ),
         @ApiResponse(
             responseCode = "400",
-            description = "요청 필드 형식 오류",
+            description = """
+                요청 형식 오류.
+                JSON이 깨졌거나 필드 자료형이 맞지 않으면(예: destinationVersion이 문자열) 요청 바인딩 단계에서 COMMON400을 반환합니다.
+                바인딩 이후 값 검증에 실패하면 DESTINATION400을 반환합니다.
+                """,
             content = @Content(
                 mediaType = "application/json",
                 examples = {
+                    @ExampleObject(name = "malformedRequestBody", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "COMMON400",
+                          "message": "잘못된 요청입니다.",
+                          "result": null
+                        }
+                        """),
                     @ExampleObject(name = "invalidDestinationId", value = """
                         {
                           "isSuccess": false,
-                          "code": "COMMON400",
-                          "message": "잘못된 요청입니다.",
-                          "result": {
-                            "destinationId": "목적지 아이디는 1자 이상 36자 이하로 입력해야 합니다."
-                          }
+                          "code": "DESTINATION400",
+                          "message": "목적지 ID가 올바르지 않습니다.",
+                          "result": null
                         }
                         """),
-                    @ExampleObject(name = "invalidAlias", value = """
+                    @ExampleObject(name = "invalidDestinationInfo", value = """
                         {
                           "isSuccess": false,
-                          "code": "COMMON400",
-                          "message": "잘못된 요청입니다.",
-                          "result": {
-                            "alias": "위치 별명은 1자 이상 12자 이하로 입력해야 합니다."
-                          }
+                          "code": "DESTINATION400",
+                          "message": "목적지 정보가 올바르지 않습니다.",
+                          "result": null
                         }
                         """),
-                    @ExampleObject(name = "invalidCoordinate", value = """
+                    @ExampleObject(name = "invalidDestinationVersion", value = """
                         {
                           "isSuccess": false,
-                          "code": "COMMON400",
-                          "message": "잘못된 요청입니다.",
-                          "result": {
-                            "latitude": "좌표는 위도 -90~90, 경도 -180~180 범위의 숫자여야 합니다."
-                          }
+                          "code": "DESTINATION400",
+                          "message": "목적지 버전 값이 올바르지 않습니다.",
+                          "result": null
                         }
                         """)
                 }
@@ -147,51 +164,54 @@ public interface DestinationControllerApi {
             description = "인증되지 않은 사용자",
             content = @Content(
                 mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": false,
-                      "code": "DESTINATION401",
-                      "message": "인증되지 않은 사용자입니다."
-                    }
-                    """)
-            )
-        ),
-        @ApiResponse(
-            responseCode = "409",
-            description = "사용자 안에서 중복된 목적지 ID",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": false,
-                      "code": "DESTINATION409",
-                      "message": "이미 존재하는 목적지입니다.",
-                      "result": null
-                    }
-                    """)
+                examples = {
+                    @ExampleObject(name = "invalidToken", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "AUTH401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "userNotFound", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "DESTINATION401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """)
+                }
             )
         )
     })
-    ResponseEntity<CustomResponse<DestinationCreateResponse>> createDestination(
+    ResponseEntity<CustomResponse<DestinationUpsertResponse>> upsertDestination(
         @Parameter(hidden = true)
         CustomUserDetails customUserDetails,
+        @Parameter(
+            description = "클라이언트가 생성한 사용자별 목적지 ID. 1자 이상 36자 이하이며 공백을 포함할 수 없습니다.",
+            required = true,
+            schema = @Schema(type = "string", minLength = 1, maxLength = 36, example = "destination-001")
+        )
+        @PathVariable
+        String destinationId,
         @io.swagger.v3.oas.annotations.parameters.RequestBody(
             required = true,
-            description = "저장할 목적지 정보",
+            description = "생성하거나 전체 수정할 목적지 정보. 부분 수정은 지원하지 않으므로 모든 필드가 필요합니다.",
             content = @Content(
                 mediaType = "application/json",
-                schema = @Schema(implementation = DestinationCreateRequest.class),
+                schema = @Schema(implementation = DestinationUpsertRequest.class),
                 examples = @ExampleObject(value = """
                     {
-                      "destinationId": "dest-1",
                       "alias": "헬스장",
                       "latitude": 37.4979,
-                      "longitude": 127.0276
+                      "longitude": 127.0276,
+                      "destinationVersion": 2
                     }
                     """)
             )
         )
-        DestinationCreateRequest request
+        DestinationUpsertRequest request
     );
 
     @Operation(
@@ -317,119 +337,6 @@ public interface DestinationControllerApi {
             )
         )
         DestinationSyncRequest request
-    );
-
-    @Operation(
-        summary = "목적지 수정",
-        description = "목적지의 별칭 또는 위도 또는 경도를 수정합니다.",
-        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
-    )
-    @ApiResponses({
-        @ApiResponse(
-            responseCode = "200",
-            description = "목적지 수정 성공",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": true,
-                      "code": "DESTINATION200",
-                      "message": "목적지 정보가 수정되었습니다.",
-                      "result": {
-                        "destinationId": "dest-1",
-                        "alias": "회사",
-                        "latitude": 37.5665,
-                        "longitude": 126.9780
-                      }
-                    }
-                    """)
-            )
-        ),
-        @ApiResponse(
-            responseCode = "400",
-            description = "목적지 ID 또는 요청 본문 형식 오류",
-            content = @Content(
-                mediaType = "application/json",
-                examples = {
-                    @ExampleObject(name = "malformedRequestBody", value = """
-                        {
-                          "isSuccess": false,
-                          "code": "COMMON400",
-                          "message": "잘못된 요청입니다."
-                        }
-                        """),
-                    @ExampleObject(name = "invalidDestinationIdValue", value = """
-                        {
-                          "isSuccess": false,
-                          "code": "DESTINATION400",
-                          "message": "목적지 ID가 올바르지 않습니다."
-                        }
-                        """),
-                    @ExampleObject(name = "invalidRequestBody", value = """
-                        {
-                          "isSuccess": false,
-                          "code": "DESTINATION400",
-                          "message": "수정할 목적지 정보가 올바르지 않습니다."
-                        }
-                        """)
-                }
-            )
-        ),
-        @ApiResponse(
-            responseCode = "401",
-            description = "인증되지 않은 사용자",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": false,
-                      "code": "DESTINATION401",
-                      "message": "인증되지 않은 사용자입니다."
-                    }
-                    """)
-            )
-        ),
-        @ApiResponse(
-            responseCode = "404",
-            description = "목적지를 찾을 수 없음",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": false,
-                      "code": "DESTINATION404",
-                      "message": "목적지를 찾을 수 없습니다."
-                    }
-                    """)
-            )
-        )
-    })
-    ResponseEntity<CustomResponse<DestinationUpdateResponse>> updateDestination(
-        @Parameter(hidden = true)
-        CustomUserDetails customUserDetails,
-        @Parameter(
-            description = "수정하려는 목적지 ID",
-            required = true,
-            schema = @Schema(type = "string", maxLength = 36, example = "dest-1")
-        )
-        @PathVariable
-        String destinationId,
-        @io.swagger.v3.oas.annotations.parameters.RequestBody(
-            required = true,
-            description = "수정할 목적지 정보. alias, latitude, longitude 중 최소 1개 이상 포함되어야 합니다.",
-            content = @Content(
-                mediaType = "application/json",
-                schema = @Schema(implementation = DestinationUpdateRequest.class),
-                examples = @ExampleObject(value = """
-                    {
-                      "alias": "회사",
-                      "latitude": 37.5665,
-                      "longitude": 126.9780
-                    }
-                    """)
-            )
-        )
-        DestinationUpdateRequest request
     );
 
     @Operation(
