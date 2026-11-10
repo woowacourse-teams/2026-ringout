@@ -37,6 +37,7 @@ import ringout.shared.generated.resources.home_empty_logo
 internal fun HomeEmptyState(
     onAddAlarm: () -> Unit,
     modifier: Modifier = Modifier,
+    onForestClick: () -> Unit = {},
 ) {
     val isDarkTheme = LocalRingoutThemeMode.current == ThemeMode.Dark
     val background = MaterialTheme.ringoutColors.mainScreenBackground
@@ -58,7 +59,7 @@ internal fun HomeEmptyState(
                     .fillMaxSize()
                     .padding(20.dp),
             ) {
-                EmptyHomeHeader()
+                EmptyHomeHeader(onForestClick)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -92,8 +93,8 @@ internal fun HomeEmptyState(
 }
 
 @Composable
-private fun EmptyHomeHeader() {
-    AlarmListHeader(nextAlarmDescription = "")
+private fun EmptyHomeHeader(onForestClick: () -> Unit = {}) {
+    AlarmListHeader(nextAlarmDescription = "", onForestClick = onForestClick)
 }
 
 @Composable

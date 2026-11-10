@@ -284,6 +284,6 @@ internal fun createRingoutMigration13To14(activatedAtEpochMillis: Long): Migrati
 }
 
 /** Existing schedules keep an unknown owner until a first-login migration can prove ownership. */
-internal val RingoutMigration14To15 = Migration(14, 15) { connection ->
+internal val RingoutMigration15To16 = Migration(15, 16) { connection ->
     connection.executeSQL("ALTER TABLE alarms ADD COLUMN owner_account_id TEXT DEFAULT NULL")
 }

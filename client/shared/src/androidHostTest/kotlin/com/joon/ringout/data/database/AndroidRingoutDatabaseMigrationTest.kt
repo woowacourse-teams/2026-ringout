@@ -11,6 +11,10 @@ class AndroidRingoutDatabaseMigrationTest {
     private val suite = RingoutDatabaseMigrationTestSuite()
 
     @Test
+    fun `버전 십사와 십오에서 알람과 숲 데이터를 보존하며 소유자 열을 추가한다`() =
+        suite.`버전 십사와 십오에서 알람과 숲 데이터를 보존하며 소유자 열을 추가한다`()
+
+    @Test
     fun `버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`() =
         suite.`버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`()
 

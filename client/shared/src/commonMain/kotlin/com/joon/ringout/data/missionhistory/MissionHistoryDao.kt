@@ -11,11 +11,12 @@ import androidx.room3.Query
 import com.joon.ringout.data.arrival.ArrivalGrowthActivationEntity
 import com.joon.ringout.data.arrival.ArrivalResultEntity
 import com.joon.ringout.data.arrival.ArrivalResultWriteAccess
+import com.joon.ringout.data.forest.ForestWriteAccess
 import com.joon.ringout.domain.missionhistory.MissionResult
 import kotlin.time.Clock
 
 @Dao
-interface MissionHistoryDao : AlarmOccurrenceTimesAccess, ArrivalResultWriteAccess {
+interface MissionHistoryDao : AlarmOccurrenceTimesAccess, ArrivalResultWriteAccess, ForestWriteAccess {
     @Query(ALARM_USAGE_RECORDS_QUERY)
     suspend fun getRecords(startInclusive: String, endInclusive: String): List<AlarmUsageRecordRow>
 
@@ -66,6 +67,9 @@ interface MissionHistoryDao : AlarmOccurrenceTimesAccess, ArrivalResultWriteAcce
                         grewOnThisArrival = grew,
                     ),
                 )
+                // Persist the random kind and position even when the forest screen is never opened.
+                // Failure must roll back the mission, receipt and tree together for a safe retry.
+                if (grew) plantCompletedForestTrees()
             }
         }
         return inserted

@@ -212,12 +212,71 @@ class RingoutDatabaseMigrationTestSuite {
         }
     }
 
+    fun `버전 십사와 십오에서 알람과 숲 데이터를 보존하며 소유자 열을 추가한다`() = runBlocking {
+        val previousVersions = mapOf(
+            14 to "d9d139b7d5784a0097c765a22affc38e",
+            15 to "03aae7274de4a40f2e006cdf2afd3de3",
+        )
+        for ((version, identityHash) in previousVersions) {
+            val path = temporaryDatabasePath()
+            try {
+                val original = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+                try {
+                    RoomAlarmDataSource(original.alarmDao()).replace(savedAlarm())
+                } finally {
+                    original.close()
+                }
+                createMigrationTestSQLiteDriver().open(path).use { connection ->
+                    connection.execSQL("ALTER TABLE alarms DROP COLUMN owner_account_id")
+                    if (version == 14) {
+                        connection.execSQL("DROP TABLE forest_trees")
+                        connection.execSQL("DROP TABLE forest_state")
+                    } else {
+                        connection.execSQL("UPDATE forest_state SET onboarding_completed_at_epoch_millis = 123 WHERE id = 1")
+                        connection.execSQL(
+                            "INSERT INTO forest_trees (growth_cycle, kind, slot_index, planted_at_epoch_millis) " +
+                                "VALUES (1, 'pine', 0, 456)",
+                        )
+                    }
+                    setDatabaseVersion(connection, version, identityHash)
+                }
+
+                val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+                try {
+                    val alarm = assertNotNull(RoomAlarmDataSource(database.alarmDao()).getById("alarm-1"))
+                    assertEquals(savedAlarm().request.time, alarm.request.time)
+                    assertNull(alarm.request.ownerAccountId)
+                    assertDatabaseVersion(path, expectedVersion = 16)
+                    createMigrationTestSQLiteDriver().open(path).use { connection ->
+                        connection.prepare("SELECT onboarding_completed_at_epoch_millis FROM forest_state WHERE id = 1")
+                            .use { statement ->
+                                assertTrue(statement.step())
+                                if (version == 14) assertTrue(statement.isNull(0))
+                                else assertEquals(123L, statement.getLong(0))
+                            }
+                        connection.prepare("SELECT planted_at_epoch_millis FROM forest_trees WHERE growth_cycle = 1")
+                            .use { statement ->
+                                if (version == 14) assertFalse(statement.step())
+                                else {
+                                    assertTrue(statement.step())
+                                    assertEquals(456L, statement.getLong(0))
+                                }
+                            }
+                    }
+                } finally {
+                    database.close()
+                }
+            } finally {
+                deleteDatabaseFiles(path)
+            }
+        }
+    }
+
     fun `버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`() = runBlocking {
         val path = temporaryDatabasePath()
         createVersionThirteenDatabase(path)
         val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
         try {
-            RoomAlarmDataSource(database.alarmDao()).replace(savedAlarm())
             val arrivals = RoomArrivalResultRepository(database.arrivalResultDao())
             val history = database.missionHistoryDao().getHistoryWithTimes("2026-11-01", "2026-11-30")
 
@@ -229,7 +288,7 @@ class RingoutDatabaseMigrationTestSuite {
             assertNull(arrivals.observeLatestUnacknowledgedResult().first())
             assertNull(RoomAlarmDataSource(database.alarmDao()).getById("alarm-1")?.request?.ownerAccountId)
             assertTrue(growthActivationAt(path) > 0)
-            assertDatabaseVersion(path, expectedVersion = 15)
+            assertDatabaseVersion(path, expectedVersion = 16)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -252,7 +311,7 @@ class RingoutDatabaseMigrationTestSuite {
             database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
             assertEquals(0, RoomArrivalResultRepository(database.arrivalResultDao()).getGrowth().successfulDayCount)
             assertEquals(123_456L, growthActivationAt(path))
-            assertDatabaseVersion(path, expectedVersion = 15)
+            assertDatabaseVersion(path, expectedVersion = 16)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -424,7 +483,7 @@ class RingoutDatabaseMigrationTestSuite {
             ))
             assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY, dao.getIosRecordDecision("local-chain")?.state)
             assertTrue(dao.getPendingIosRecordDecisions().isEmpty())
-            assertDatabaseVersion(path, expectedVersion = 15)
+            assertDatabaseVersion(path, expectedVersion = 16)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -456,7 +515,7 @@ class RingoutDatabaseMigrationTestSuite {
             migrated.recordTerminal("1", "existing", com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
             assertEquals(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.ARRIVE,
                 migrated.getUnsentMovements("1").single().action)
-            assertDatabaseVersion(path, expectedVersion = 15)
+            assertDatabaseVersion(path, expectedVersion = 16)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -1017,6 +1076,8 @@ class RingoutDatabaseMigrationTestSuite {
     }
 
     private fun removeArrivalTables(connection: androidx.sqlite.SQLiteConnection) {
+        connection.execSQL("DROP TABLE forest_trees")
+        connection.execSQL("DROP TABLE forest_state")
         connection.execSQL("DROP TABLE arrival_results")
         connection.execSQL("DROP TABLE arrival_growth_activation")
     }

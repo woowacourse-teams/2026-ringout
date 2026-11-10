@@ -15,6 +15,8 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.AlarmController
 import com.joon.ringout.alarm.AlarmScheduleRequest
+import com.joon.ringout.presentation.forest.ForestRoute
+import com.joon.ringout.presentation.forest.ForestViewModel
 import com.joon.ringout.presentation.home.HomeRoute
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.mypage.MyPageRoute
@@ -66,9 +68,17 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             alarmController = alarmController,
             activeAlarmMission = activeAlarmMission,
             onAddAlarm = onAddAlarm,
+            onForestClick = { navigationState.navigate(AppRoute.Forest) },
             onEditAlarm = onEditAlarm,
             onActiveAlarmMissionClick = onActiveAlarmMissionClick,
             onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+        )
+    }
+
+    entry<AppRoute.Forest>(clazzContentKey = AppRoute::viewModelStoreKey) {
+        ForestRoute(
+            viewModel = viewModelScopes.get(AppRoute.Forest, ForestViewModel::class),
+            onBackClick = { navigationState.popBackStack(AppRoute.Forest) },
         )
     }
 

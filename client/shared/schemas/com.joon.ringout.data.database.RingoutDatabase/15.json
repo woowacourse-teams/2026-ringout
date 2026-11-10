@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 15,
-    "identityHash": "2ce639aba7ffc288bdcd13f6d6b5668e",
+    "identityHash": "03aae7274de4a40f2e006cdf2afd3de3",
     "entities": [
       {
         "tableName": "alarm_occurrence_times",
@@ -220,7 +220,7 @@
       },
       {
         "tableName": "alarms",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `time` TEXT NOT NULL, `repeat_enabled` INTEGER NOT NULL, `limit_minutes` INTEGER NOT NULL, `destination_label` TEXT NOT NULL, `destination_latitude` REAL NOT NULL, `destination_longitude` REAL NOT NULL, `target_distance_km` REAL NOT NULL, `alarm_sound_name` TEXT NOT NULL, `alarm_sound_uri` TEXT, `enabled` INTEGER NOT NULL, `schedule_version` INTEGER NOT NULL DEFAULT 1, `owner_account_id` TEXT DEFAULT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `time` TEXT NOT NULL, `repeat_enabled` INTEGER NOT NULL, `limit_minutes` INTEGER NOT NULL, `destination_label` TEXT NOT NULL, `destination_latitude` REAL NOT NULL, `destination_longitude` REAL NOT NULL, `target_distance_km` REAL NOT NULL, `alarm_sound_name` TEXT NOT NULL, `alarm_sound_uri` TEXT, `enabled` INTEGER NOT NULL, `schedule_version` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -293,12 +293,6 @@
             "affinity": "INTEGER",
             "notNull": true,
             "defaultValue": "1"
-          },
-          {
-            "fieldPath": "ownerAccountId",
-            "columnName": "owner_account_id",
-            "affinity": "TEXT",
-            "defaultValue": "NULL"
           }
         ],
         "primaryKey": {
@@ -942,11 +936,86 @@
             "id"
           ]
         }
+      },
+      {
+        "tableName": "forest_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `onboarding_completed_at_epoch_millis` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "onboardingCompletedAtEpochMillis",
+            "columnName": "onboarding_completed_at_epoch_millis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "forest_trees",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`growth_cycle` INTEGER NOT NULL, `kind` TEXT NOT NULL, `slot_index` INTEGER NOT NULL, `planted_at_epoch_millis` INTEGER NOT NULL, `acknowledged_at_epoch_millis` INTEGER, PRIMARY KEY(`growth_cycle`))",
+        "fields": [
+          {
+            "fieldPath": "growthCycle",
+            "columnName": "growth_cycle",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "slotIndex",
+            "columnName": "slot_index",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "plantedAtEpochMillis",
+            "columnName": "planted_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "acknowledgedAtEpochMillis",
+            "columnName": "acknowledged_at_epoch_millis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "growth_cycle"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_forest_trees_slot_index",
+            "unique": true,
+            "columnNames": [
+              "slot_index"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_forest_trees_slot_index` ON `${TABLE_NAME}` (`slot_index`)"
+          }
+        ]
       }
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2ce639aba7ffc288bdcd13f6d6b5668e')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '03aae7274de4a40f2e006cdf2afd3de3')"
     ]
   }
 }

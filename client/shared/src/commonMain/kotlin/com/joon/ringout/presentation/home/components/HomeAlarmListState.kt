@@ -38,6 +38,7 @@ internal fun HomeAlarmListState(
     modifier: Modifier = Modifier,
     activeAlarmMission: ActiveAlarmMission? = null,
     onActiveAlarmMissionExpired: () -> Unit = {},
+    onForestClick: () -> Unit = {},
 ) {
     val colors = homeAlarmColors()
     val listState = rememberLazyListState()
@@ -79,6 +80,7 @@ internal fun HomeAlarmListState(
             ) {
                 AlarmListHeader(
                     nextAlarmDescription = nextAlarmDescription,
+                    onForestClick = onForestClick,
                 )
 
                 Spacer(Modifier.height(30.dp))
