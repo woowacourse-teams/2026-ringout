@@ -26,6 +26,7 @@ internal fun PlatformAppHost(
             DeveloperToolsRoute(
                 buildInfo = currentAppBuildInfo(),
                 pushTokenRegistrationReadiness = appContainer.pushTokenRegistrationReadiness,
+                outboxReader = appContainer.outboxReader,
                 onBack = onBack,
                 remoteConfig = remoteConfigState.toUiState(),
                 onRefreshRemoteConfig = { repository.refresh() },
