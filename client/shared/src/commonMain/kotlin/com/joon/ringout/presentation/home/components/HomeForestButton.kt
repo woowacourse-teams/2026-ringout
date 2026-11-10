@@ -1,9 +1,11 @@
 package com.joon.ringout.presentation.home.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -18,7 +20,12 @@ internal fun HomeForestButton(onClick: () -> Unit, modifier: Modifier = Modifier
     Box(
         modifier = modifier.size(78.dp)
             .semantics(mergeDescendants = true) { contentDescription = "숲 키우기" }
-            .clickable(role = Role.Button, onClick = onClick),
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            ),
     ) {
         ArrivalSeedAnimation(modifier = Modifier.size(78.dp))
     }
