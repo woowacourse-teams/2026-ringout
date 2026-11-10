@@ -267,7 +267,7 @@ class ForestDatabaseTestSuite {
             assertEquals(state.trees, state.pendingTrees)
             assertEquals(original, (1..12).map { arrivals.getResult("day-$it") })
             assertEquals(100L, database.arrivalResultDao().getGrowthActivation())
-            assertEquals(16L, databaseVersion())
+            assertEquals(17L, databaseVersion())
             reopen()
             assertEquals(state, forest.getForest())
             (13..15).forEach { recordDay(it) }
@@ -352,7 +352,13 @@ class ForestDatabaseTestSuite {
                 "DROP TABLE forest_trees",
                 "DROP TABLE forest_state",
                 "ALTER TABLE alarms DROP COLUMN owner_account_id",
-                // Identity hash from committed schema 14.json; all other tables are unchanged.
+                "DROP INDEX index_saved_destinations_owner_account_id_remote_destination_id",
+                "DROP TABLE destination_outbox",
+                "DROP TABLE destination_sync_state",
+                "ALTER TABLE saved_destinations DROP COLUMN owner_account_id",
+                "ALTER TABLE saved_destinations DROP COLUMN remote_destination_id",
+                "ALTER TABLE saved_destinations DROP COLUMN destination_version",
+                // Identity hash from committed schema 14.json; restore the tables to that shape.
                 "UPDATE room_master_table SET identity_hash = 'd9d139b7d5784a0097c765a22affc38e' WHERE id = 42",
                 "PRAGMA user_version = 14",
             )

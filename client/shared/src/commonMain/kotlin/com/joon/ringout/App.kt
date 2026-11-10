@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.createSavedStateHandle
 import com.joon.ringout.alarm.ForceEndMissionResult
 import com.joon.ringout.alarm.rememberAlarmLogoutCleanup
@@ -113,6 +114,10 @@ fun App(
     pendingRoomActivityPush: RoomActivityPushRequest? = null,
     onRoomActivityPushHandled: (requestId: String) -> Unit = {},
 ) {
+    LifecycleResumeEffect(appContainer) {
+        appContainer.onAppResumed()
+        onPauseOrDispose { }
+    }
     val alarmLogoutCleanup = rememberAlarmLogoutCleanup()
     val currentRuntimeEvidence = rememberUpdatedState(ringingAlarm != null || activeAlarmMission != null)
     val appBootstrapViewModel = viewModel {

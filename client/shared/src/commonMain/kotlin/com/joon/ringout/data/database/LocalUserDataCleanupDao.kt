@@ -45,6 +45,12 @@ interface LocalUserDataCleanupDao {
     @Query("DELETE FROM saved_destinations")
     suspend fun deleteSavedDestinations()
 
+    @Query("DELETE FROM destination_outbox")
+    suspend fun deleteDestinationOutbox()
+
+    @Query("DELETE FROM destination_sync_state")
+    suspend fun deleteDestinationSyncState()
+
     /**
      * Clears only account-owned data. Keep storage_migrations so a later launch cannot
      * import legacy alarm preferences back into this installation. Keep the installation's
@@ -65,6 +71,8 @@ interface LocalUserDataCleanupDao {
         deleteAlarmOccurrenceTimes()
         // alarm_repeat_days is removed by its existing ON DELETE CASCADE foreign key.
         deleteAlarms()
+        deleteDestinationOutbox()
+        deleteDestinationSyncState()
         deleteSavedDestinations()
     }
 }
