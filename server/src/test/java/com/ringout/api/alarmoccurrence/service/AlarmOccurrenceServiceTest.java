@@ -15,6 +15,7 @@ import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
 import com.ringout.api.alarmoccurrence.domain.RingingType;
 import com.ringout.api.alarmoccurrence.dto.request.AlarmOccurrenceEventRequest;
 import com.ringout.api.alarmoccurrence.dto.request.AlarmOccurrenceStartRequest;
+import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrenceDayResponse;
 import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrenceDetailResponse;
 import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrenceResponse;
 import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrenceStartResult;
@@ -34,6 +35,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +44,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -55,9 +59,9 @@ class AlarmOccurrenceServiceTest {
     private static final Clock CLOCK = Clock.fixed(
         Instant.parse("2026-09-22T23:00:00Z"), ZoneId.of("Asia/Seoul"));
     private static final LocalDateTime NOW = LocalDateTime.now(CLOCK);
-    private static final LocalDate DATE = LocalDate.of(2026, 8, 17);
-    private static final LocalDateTime START = DATE.atStartOfDay();
-    private static final LocalDateTime END = DATE.plusDays(1).atStartOfDay();
+    private static final YearMonth MONTH = YearMonth.of(2026, 8);
+    private static final LocalDateTime START = LocalDateTime.of(2026, 8, 1, 0, 0);
+    private static final LocalDateTime END = LocalDateTime.of(2026, 9, 1, 0, 0);
     private static final String OCCURRENCE_ID = "5c9e1f7a-3b2d-4a6c-8e0f-1a2b3c4d5e6f";
 
     @Mock
@@ -83,75 +87,172 @@ class AlarmOccurrenceServiceTest {
     @Nested
     class 개인_알람_사용_기록_조회 {
 
+        private AlarmOccurrenceDayResponse dayOf(AlarmOccurrencesResponse response, int dayOfMonth) {
+            return response.days().get(dayOfMonth - 1);
+        }
+
         @Test
-        void 기록이_없는_날은_요약을_0으로_실행_목록을_빈_배열로_반환한다() {
+        void 기록이_없는_달도_모든_날짜를_빈_실행_목록으로_반환한다() {
             // given
             given(alarmOccurrenceRepository.findActiveByUserIdAndStartedAtBetween(USER_ID, START, END))
                 .willReturn(List.of());
 
             // when
-            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, DATE);
+            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, MONTH);
 
             // then
-            assertThat(response.date()).isEqualTo(DATE);
-            assertThat(response.summary().alarmCount()).isZero();
-            assertThat(response.summary().ringingCount()).isZero();
-            assertThat(response.occurrences()).isEmpty();
+            assertThat(response.month()).isEqualTo(MONTH);
+            assertThat(response.days())
+                .extracting(AlarmOccurrenceDayResponse::date)
+                .containsExactlyElementsOf(LocalDate.of(2026, 8, 1).datesUntil(LocalDate.of(2026, 9, 1)).toList());
+            assertThat(response.days()).allSatisfy(day -> assertThat(day.occurrences()).isEmpty());
             verifyNoInteractions(alarmRingingRepository);
         }
 
+        @ParameterizedTest
+        @CsvSource({"2026-02, 28", "2028-02, 29", "2026-04, 30", "2026-12, 31"})
+        void 조회_월의_일수만큼_날짜를_반환한다(String month, int lengthOfMonth) {
+            // given
+            YearMonth yearMonth = YearMonth.parse(month);
+            given(alarmOccurrenceRepository.findActiveByUserIdAndStartedAtBetween(any(), any(), any()))
+                .willReturn(List.of());
+
+            // when
+            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, yearMonth);
+
+            // then
+            assertThat(response.days()).hasSize(lengthOfMonth);
+            assertThat(response.days().get(0).date()).isEqualTo(yearMonth.atDay(1));
+            assertThat(response.days().get(lengthOfMonth - 1).date()).isEqualTo(yearMonth.atEndOfMonth());
+        }
+
         @Test
-        void 조회_날짜의_시작부터_다음_날_시작_전까지를_최초_울림_시각_범위로_조회한다() {
+        void 조회_월의_첫날_시작부터_다음_달_첫날_시작_전까지를_최초_울림_시각_범위로_조회한다() {
             // given
             given(alarmOccurrenceRepository.findActiveByUserIdAndStartedAtBetween(USER_ID, START, END))
                 .willReturn(List.of());
 
             // when
-            alarmOccurrenceService.getAlarmOccurrences(USER_ID, DATE);
+            alarmOccurrenceService.getAlarmOccurrences(USER_ID, MONTH);
 
             // then
             verify(alarmOccurrenceRepository).findActiveByUserIdAndStartedAtBetween(
-                USER_ID, LocalDateTime.of(2026, 8, 17, 0, 0), LocalDateTime.of(2026, 8, 18, 0, 0));
+                USER_ID, LocalDateTime.of(2026, 8, 1, 0, 0), LocalDateTime.of(2026, 9, 1, 0, 0));
         }
 
         @Test
-        void 실행별_울림_목록과_요약을_반환한다() {
+        void 십이월은_다음_해_일월_첫날_시작_전까지를_조회한다() {
             // given
-            AlarmOccurrence first = occurrenceWithId(10L, "alarm-morning", LocalDateTime.of(2026, 8, 17, 6, 30));
-            first.dismiss(null, LocalDateTime.of(2026, 8, 17, 6, 31, 2));
-            first.ringRepeat("E1", LocalDateTime.of(2026, 8, 17, 6, 35));
-            first.dismiss("E1", LocalDateTime.of(2026, 8, 17, 6, 35, 40));
-            first.end(OccurrenceEndType.ARRIVED, LocalDateTime.of(2026, 8, 17, 6, 53, 10));
-            AlarmOccurrence second = occurrenceWithId(11L, "alarm-morning", LocalDateTime.of(2026, 8, 17, 12, 0));
-            AlarmOccurrence third = occurrenceWithId(12L, "alarm-evening", LocalDateTime.of(2026, 8, 17, 18, 0));
-            given(alarmOccurrenceRepository.findActiveByUserIdAndStartedAtBetween(USER_ID, START, END))
-                .willReturn(List.of(first, second, third));
-            given(alarmRingingRepository.findActiveByAlarmOccurrenceIds(List.of(10L, 11L, 12L)))
-                .willReturn(ringingsOf(first, second, third));
+            YearMonth december = YearMonth.of(2026, 12);
+            LocalDateTime start = LocalDateTime.of(2026, 12, 1, 0, 0);
+            LocalDateTime end = LocalDateTime.of(2027, 1, 1, 0, 0);
+            given(alarmOccurrenceRepository.findActiveByUserIdAndStartedAtBetween(USER_ID, start, end))
+                .willReturn(List.of());
 
             // when
-            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, DATE);
+            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, december);
 
             // then
-            assertThat(response.summary().alarmCount()).isEqualTo(2);
-            assertThat(response.summary().ringingCount()).isEqualTo(4);
-            assertThat(response.occurrences())
-                .extracting(AlarmOccurrenceResponse::alarmOccurrenceId)
-                .containsExactly(first.getOccurrenceUuid(), second.getOccurrenceUuid(), third.getOccurrenceUuid());
+            assertThat(response.month()).isEqualTo(december);
+            verify(alarmOccurrenceRepository).findActiveByUserIdAndStartedAtBetween(USER_ID, start, end);
+        }
 
-            AlarmOccurrenceResponse firstResponse = response.occurrences().get(0);
+        @Test
+        void 실행을_최초_울림_날짜별로_묶어_최초_울림_시각_오름차순으로_반환한다() {
+            // given
+            AlarmOccurrence first = occurrenceWithId(10L, "alarm-morning", LocalDateTime.of(2026, 8, 1, 6, 30));
+            first.dismiss(null, LocalDateTime.of(2026, 8, 1, 6, 31, 2));
+            first.ringRepeat("E1", LocalDateTime.of(2026, 8, 1, 6, 35));
+            first.dismiss("E1", LocalDateTime.of(2026, 8, 1, 6, 35, 40));
+            first.end(OccurrenceEndType.ARRIVED, LocalDateTime.of(2026, 8, 1, 6, 53, 10));
+            AlarmOccurrence second = occurrenceWithId(11L, "alarm-morning", LocalDateTime.of(2026, 8, 17, 6, 30));
+            AlarmOccurrence third = occurrenceWithId(12L, "alarm-evening", LocalDateTime.of(2026, 8, 17, 7, 0));
+            AlarmOccurrence fourth = occurrenceWithId(13L, "alarm-evening", LocalDateTime.of(2026, 8, 31, 18, 0));
+            given(alarmOccurrenceRepository.findActiveByUserIdAndStartedAtBetween(USER_ID, START, END))
+                .willReturn(List.of(first, second, third, fourth));
+            given(alarmRingingRepository.findActiveByAlarmOccurrenceIds(List.of(10L, 11L, 12L, 13L)))
+                .willReturn(ringingsOf(first, second, third, fourth));
+
+            // when
+            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, MONTH);
+
+            // then
+            assertThat(response.days()).hasSize(31);
+            assertThat(dayOf(response, 1).occurrences())
+                .extracting(AlarmOccurrenceResponse::alarmOccurrenceId)
+                .containsExactly(first.getOccurrenceUuid());
+            assertThat(dayOf(response, 17).occurrences())
+                .extracting(AlarmOccurrenceResponse::alarmOccurrenceId)
+                .containsExactly(second.getOccurrenceUuid(), third.getOccurrenceUuid());
+            assertThat(dayOf(response, 31).occurrences())
+                .extracting(AlarmOccurrenceResponse::alarmOccurrenceId)
+                .containsExactly(fourth.getOccurrenceUuid());
+            assertThat(dayOf(response, 2).occurrences()).isEmpty();
+
+            AlarmOccurrenceResponse firstResponse = dayOf(response, 1).occurrences().get(0);
             assertThat(firstResponse.alarmId()).isEqualTo("alarm-morning");
             assertThat(firstResponse.alarmTime()).isEqualTo(LocalTime.of(6, 30));
             assertThat(firstResponse.endType()).isEqualTo(OccurrenceEndType.ARRIVED);
-            assertThat(firstResponse.endedAt()).isEqualTo(OffsetDateTime.parse("2026-08-17T06:53:10+09:00"));
+            assertThat(firstResponse.endedAt()).isEqualTo(OffsetDateTime.parse("2026-08-01T06:53:10+09:00"));
             assertThat(firstResponse.ringings()).containsExactly(
                 new AlarmRingingResponse(RingingType.INITIAL, null,
-                    OffsetDateTime.parse("2026-08-17T06:30:00+09:00"),
-                    OffsetDateTime.parse("2026-08-17T06:31:02+09:00")),
+                    OffsetDateTime.parse("2026-08-01T06:30:00+09:00"),
+                    OffsetDateTime.parse("2026-08-01T06:31:02+09:00")),
                 new AlarmRingingResponse(RingingType.REPEAT, "E1",
-                    OffsetDateTime.parse("2026-08-17T06:35:00+09:00"),
-                    OffsetDateTime.parse("2026-08-17T06:35:40+09:00"))
+                    OffsetDateTime.parse("2026-08-01T06:35:00+09:00"),
+                    OffsetDateTime.parse("2026-08-01T06:35:40+09:00"))
             );
+        }
+
+        @Test
+        void 최초_울림_다음_날로_넘어간_재울림과_종료도_최초_울림_날짜에_포함한다() {
+            // given
+            AlarmOccurrence occurrence = occurrenceWithId(10L, "alarm-night", LocalDateTime.of(2026, 8, 17, 23, 55));
+            occurrence.dismiss(null, LocalDateTime.of(2026, 8, 17, 23, 56));
+            occurrence.ringRepeat("E1", LocalDateTime.of(2026, 8, 18, 0, 5));
+            occurrence.end(OccurrenceEndType.ARRIVED, LocalDateTime.of(2026, 8, 18, 0, 10));
+            given(alarmOccurrenceRepository.findActiveByUserIdAndStartedAtBetween(USER_ID, START, END))
+                .willReturn(List.of(occurrence));
+            given(alarmRingingRepository.findActiveByAlarmOccurrenceIds(List.of(10L)))
+                .willReturn(ringingsOf(occurrence));
+
+            // when
+            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, MONTH);
+
+            // then
+            assertThat(dayOf(response, 17).occurrences()).hasSize(1);
+            assertThat(dayOf(response, 17).occurrences().get(0).ringings())
+                .extracting(AlarmRingingResponse::ringingAt)
+                .containsExactly(
+                    OffsetDateTime.parse("2026-08-17T23:55:00+09:00"),
+                    OffsetDateTime.parse("2026-08-18T00:05:00+09:00"));
+            assertThat(dayOf(response, 18).occurrences()).isEmpty();
+        }
+
+        @Test
+        void 최초_울림이_조회_월_마지막_날이면_다음_달로_넘어간_재울림과_종료도_마지막_날에_포함한다() {
+            // given
+            AlarmOccurrence occurrence = occurrenceWithId(10L, "alarm-night", LocalDateTime.of(2026, 8, 31, 23, 55));
+            occurrence.dismiss(null, LocalDateTime.of(2026, 8, 31, 23, 56));
+            occurrence.ringRepeat("E1", LocalDateTime.of(2026, 9, 1, 0, 5));
+            occurrence.end(OccurrenceEndType.FORCE_ENDED, LocalDateTime.of(2026, 9, 1, 0, 10));
+            given(alarmOccurrenceRepository.findActiveByUserIdAndStartedAtBetween(USER_ID, START, END))
+                .willReturn(List.of(occurrence));
+            given(alarmRingingRepository.findActiveByAlarmOccurrenceIds(List.of(10L)))
+                .willReturn(ringingsOf(occurrence));
+
+            // when
+            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, MONTH);
+
+            // then
+            AlarmOccurrenceResponse occurrenceResponse = dayOf(response, 31).occurrences().get(0);
+            assertThat(occurrenceResponse.ringings())
+                .extracting(AlarmRingingResponse::ringingAt)
+                .containsExactly(
+                    OffsetDateTime.parse("2026-08-31T23:55:00+09:00"),
+                    OffsetDateTime.parse("2026-09-01T00:05:00+09:00"));
+            assertThat(occurrenceResponse.endType()).isEqualTo(OccurrenceEndType.FORCE_ENDED);
+            assertThat(occurrenceResponse.endedAt()).isEqualTo(OffsetDateTime.parse("2026-09-01T00:10:00+09:00"));
         }
 
         @Test
@@ -164,10 +265,10 @@ class AlarmOccurrenceServiceTest {
                 .willReturn(ringingsOf(occurrence));
 
             // when
-            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, DATE);
+            AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(USER_ID, MONTH);
 
             // then
-            AlarmOccurrenceResponse occurrenceResponse = response.occurrences().get(0);
+            AlarmOccurrenceResponse occurrenceResponse = dayOf(response, 17).occurrences().get(0);
             assertThat(occurrenceResponse.endType()).isNull();
             assertThat(occurrenceResponse.endedAt()).isNull();
             assertThat(occurrenceResponse.ringings().get(0).dismissedAt()).isNull();
