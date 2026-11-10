@@ -10,9 +10,8 @@ import com.ringout.api.alarmoccurrence.service.AlarmOccurrenceService;
 import com.ringout.api.alarmoccurrence.status.AlarmOccurrenceSuccessStatus;
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
-import java.time.LocalDate;
+import java.time.YearMonth;
 import lombok.RequiredArgsConstructor;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,9 +34,9 @@ public class AlarmOccurrenceController implements AlarmOccurrenceControllerApi {
     @GetMapping
     public ResponseEntity<CustomResponse<AlarmOccurrencesResponse>> getAlarmOccurrences(
         @AuthenticationPrincipal CustomUserDetails customUserDetails,
-        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        @RequestParam YearMonth month) {
         AlarmOccurrencesResponse response = alarmOccurrenceService.getAlarmOccurrences(
-            customUserDetails.getUserId(), date);
+            customUserDetails.getUserId(), month);
 
         return ResponseEntity.status(AlarmOccurrenceSuccessStatus.ALARM_OCCURRENCE_OK.getHttpStatus())
             .body(CustomResponse.onSuccess(AlarmOccurrenceSuccessStatus.ALARM_OCCURRENCE_OK, response));
