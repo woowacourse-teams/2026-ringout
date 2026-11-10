@@ -27,6 +27,7 @@ class RingoutDatabaseMigrationTestSuite {
         createVersionThirteenDatabase(path)
         val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
         try {
+            RoomAlarmDataSource(database.alarmDao()).replace(savedAlarm())
             val arrivals = RoomArrivalResultRepository(database.arrivalResultDao())
             val history = database.missionHistoryDao().getHistoryWithTimes("2026-11-01", "2026-11-30")
 
@@ -36,8 +37,9 @@ class RingoutDatabaseMigrationTestSuite {
             assertEquals(0, arrivals.getGrowth().successfulDayCount)
             assertNull(arrivals.getResult("legacy-success"))
             assertNull(arrivals.observeLatestUnacknowledgedResult().first())
+            assertNull(RoomAlarmDataSource(database.alarmDao()).getById("alarm-1")?.request?.ownerAccountId)
             assertTrue(growthActivationAt(path) > 0)
-            assertDatabaseVersion(path, expectedVersion = 14)
+            assertDatabaseVersion(path, expectedVersion = 15)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -60,7 +62,7 @@ class RingoutDatabaseMigrationTestSuite {
             database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
             assertEquals(0, RoomArrivalResultRepository(database.arrivalResultDao()).getGrowth().successfulDayCount)
             assertEquals(123_456L, growthActivationAt(path))
-            assertDatabaseVersion(path, expectedVersion = 14)
+            assertDatabaseVersion(path, expectedVersion = 15)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -232,7 +234,7 @@ class RingoutDatabaseMigrationTestSuite {
             ))
             assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY, dao.getIosRecordDecision("local-chain")?.state)
             assertTrue(dao.getPendingIosRecordDecisions().isEmpty())
-            assertDatabaseVersion(path, expectedVersion = 14)
+            assertDatabaseVersion(path, expectedVersion = 15)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -264,7 +266,7 @@ class RingoutDatabaseMigrationTestSuite {
             migrated.recordTerminal("1", "existing", com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
             assertEquals(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.ARRIVE,
                 migrated.getUnsentMovements("1").single().action)
-            assertDatabaseVersion(path, expectedVersion = 14)
+            assertDatabaseVersion(path, expectedVersion = 15)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -526,6 +528,7 @@ class RingoutDatabaseMigrationTestSuite {
     private suspend fun createVersionThirteenDatabase(databasePath: String) {
         val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = databasePath))
         try {
+            RoomAlarmDataSource(database.alarmDao()).replace(savedAlarm())
             val history = RoomMissionHistoryDataSource(database.missionHistoryDao())
             history.record(MissionHistoryDto(
                 result = "SUCCESS",
@@ -544,6 +547,7 @@ class RingoutDatabaseMigrationTestSuite {
         }
         createMigrationTestSQLiteDriver().open(databasePath).use { connection ->
             removeArrivalTables(connection)
+            connection.execSQL("ALTER TABLE alarms DROP COLUMN owner_account_id")
             // Identity hash from the committed Room schema 13.json.
             setDatabaseVersion(connection, 13, "311bb99f2c095756c5ded6fc1066d941")
         }
@@ -815,6 +819,7 @@ class RingoutDatabaseMigrationTestSuite {
         connection: androidx.sqlite.SQLiteConnection,
     ) {
         removeArrivalTables(connection)
+        connection.execSQL("ALTER TABLE alarms DROP COLUMN owner_account_id")
         connection.execSQL("ALTER TABLE saved_destinations ADD COLUMN address TEXT NOT NULL DEFAULT ''")
         connection.execSQL("ALTER TABLE saved_destinations RENAME COLUMN label TO name")
         connection.execSQL("ALTER TABLE alarms ADD COLUMN destination_address TEXT NOT NULL DEFAULT ''")

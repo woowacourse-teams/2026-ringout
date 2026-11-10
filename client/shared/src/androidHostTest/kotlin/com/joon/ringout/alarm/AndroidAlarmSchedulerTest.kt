@@ -15,6 +15,76 @@ import kotlin.test.assertTrue
 
 class AndroidAlarmSchedulerTest {
     @Test
+    fun `신규 알람 저장 시 검증된 로그인 계정을 함께 저장하고 예약에 전달한다`() = runBlocking {
+        val dataSource = FakeAlarmDataSource()
+        val gateway = FakeAndroidAlarmGateway()
+        val scheduler = AndroidAlarmScheduler(
+            dataSource = dataSource,
+            alarmGateway = gateway,
+            captureOwnerAccountId = { "42" },
+        )
+
+        scheduler.schedule(request())
+
+        assertEquals("42", dataSource.getById("alarm-1")!!.request.ownerAccountId)
+        assertEquals("42", gateway.scheduled.getValue("alarm-1").ownerAccountId)
+    }
+
+    @Test
+    fun `수정과 토글은 기존 알람의 소유 계정을 유지한다`() = runBlocking {
+        val previous = request().copy(ownerAccountId = "1")
+        val dataSource = FakeAlarmDataSource(initial = listOf(SavedAlarmSchedule(previous, true)))
+        val gateway = FakeAndroidAlarmGateway(initial = mapOf(previous.id to previous))
+        val scheduler = AndroidAlarmScheduler(
+            dataSource = dataSource,
+            alarmGateway = gateway,
+            captureOwnerAccountId = { "2" },
+        )
+
+        scheduler.schedule(request(time = "08:10").copy(ownerAccountId = "2"))
+        scheduler.setEnabled(previous.id, false)
+        scheduler.setEnabled(previous.id, true)
+
+        assertEquals("1", dataSource.getById(previous.id)!!.request.ownerAccountId)
+        assertEquals("1", gateway.scheduled.getValue(previous.id).ownerAccountId)
+    }
+
+    @Test
+    fun `소유 미확인 기존 알람 수정은 현재 로그인 계정으로 자동 귀속하지 않는다`() = runBlocking {
+        val previous = request()
+        val dataSource = FakeAlarmDataSource(initial = listOf(SavedAlarmSchedule(previous, false)))
+        val gateway = FakeAndroidAlarmGateway()
+        val scheduler = AndroidAlarmScheduler(
+            dataSource = dataSource,
+            alarmGateway = gateway,
+            captureOwnerAccountId = { "2" },
+        )
+
+        scheduler.schedule(request(time = "08:10"))
+
+        assertEquals(null, dataSource.getById(previous.id)!!.request.ownerAccountId)
+        assertEquals(null, gateway.scheduled.getValue(previous.id).ownerAccountId)
+    }
+
+    @Test
+    fun `발화 검증은 구 PendingIntent에도 Room에 저장된 소유자를 전달한다`() = runBlocking {
+        val stored = request().copy(ownerAccountId = "42")
+        val scheduler = AndroidAlarmScheduler(
+            dataSource = FakeAlarmDataSource(initial = listOf(SavedAlarmSchedule(stored, true))),
+            alarmGateway = FakeAndroidAlarmGateway(),
+        )
+        var delivered: AlarmScheduleRequest? = null
+
+        val didRing = scheduler.ringTriggeredIfCurrent(
+            alarmId = stored.id,
+            expectedFingerprint = stored.scheduleFingerprint(),
+        ) { request -> delivered = request }
+
+        assertTrue(didRing)
+        assertEquals("42", delivered?.ownerAccountId)
+    }
+
+    @Test
     fun `로그아웃 취소 실패 뒤 재시도해도 모든 정의는 남고 비활성 상태를 유지한다`() = runBlocking {
         val first = request()
         val second = first.copy(id = "alarm-2")

@@ -49,7 +49,7 @@ import kotlin.time.Clock
         ArrivalResultEntity::class,
         ArrivalGrowthActivationEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -99,6 +99,7 @@ internal fun buildRingoutDatabase(
         RingoutMigration11To12,
         RingoutMigration12To13,
         createRingoutMigration13To14(arrivalGrowthActivatedAtEpochMillis),
+        RingoutMigration14To15,
     )
     .build()
 

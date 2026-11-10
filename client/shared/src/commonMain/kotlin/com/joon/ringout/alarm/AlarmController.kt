@@ -18,6 +18,8 @@ data class AlarmScheduleRequest(
     val alarmSoundName: String,
     val alarmSoundUri: String?,
     val scheduleVersion: Long = 1,
+    /** Verified account that owns this schedule; null keeps legacy or unresolved schedules unassigned. */
+    val ownerAccountId: String? = null,
 )
 
 class AlarmController(
