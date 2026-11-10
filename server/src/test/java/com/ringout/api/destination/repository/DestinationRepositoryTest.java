@@ -11,6 +11,7 @@ import com.ringout.api.destination.domain.DestinationAlias;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Nested;
@@ -111,6 +112,41 @@ class DestinationRepositoryTest {
         // when // then
         assertThatThrownBy(() -> saveDestination(owner, "same"))
             .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Nested
+    class 소유_목적지_목록_조회 {
+
+        @Test
+        void 소유자의_목적지만_목적지_id_오름차순으로_조회한다() {
+            // given
+            User owner = saveUser();
+            User otherUser = saveUser();
+            saveDestination(owner, "destination-003");
+            saveDestination(owner, "destination-001");
+            saveDestination(otherUser, "destination-000");
+            saveDestination(owner, "destination-002");
+
+            // when
+            List<Destination> destinations = destinationRepository.findOwnedDestinations(owner.getId());
+
+            // then
+            assertThat(destinations)
+                .extracting(Destination::getDestinationId)
+                .containsExactly("destination-001", "destination-002", "destination-003");
+        }
+
+        @Test
+        void 목적지가_없으면_빈_목록을_조회한다() {
+            // given
+            User owner = saveUser();
+
+            // when
+            List<Destination> destinations = destinationRepository.findOwnedDestinations(owner.getId());
+
+            // then
+            assertThat(destinations).isEmpty();
+        }
     }
 
     @Nested

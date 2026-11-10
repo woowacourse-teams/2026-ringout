@@ -3,10 +3,8 @@ package com.ringout.api.destination.controller.docs;
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.SwaggerConfig;
 import com.ringout.api.config.security.CustomUserDetails;
-import com.ringout.api.destination.dto.request.DestinationSyncRequest;
 import com.ringout.api.destination.dto.request.DestinationUpsertRequest;
-import com.ringout.api.destination.dto.response.DestinationResponse;
-import com.ringout.api.destination.dto.response.DestinationSyncResponse;
+import com.ringout.api.destination.dto.response.DestinationListResponse;
 import com.ringout.api.destination.dto.response.DestinationUpsertResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,7 +15,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 
@@ -26,36 +23,56 @@ public interface DestinationControllerApi {
 
     @Operation(
         summary = "목적지 전체 조회",
-        description = "사용자가 소유한 목적지들을 ID 오름차순으로 전체 조회합니다.",
+        description = """
+            인증된 사용자가 소유한 모든 목적지를 result.destinations 배열로 조회합니다.
+            목적지는 destinationId 문자열 오름차순으로 정렬하며, 페이지네이션은 적용하지 않습니다.
+            목적지가 없으면 빈 배열을 반환합니다.
+            """,
         security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
     )
     @ApiResponses({
         @ApiResponse(
             responseCode = "200",
-            description = "목적지 전체 조회 성공",
+            description = "목적지 전체 조회 성공. 목적지가 없으면 destinations는 빈 배열",
             content = @Content(
                 mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": true,
-                      "code": "DESTINATION200",
-                      "message": "조회되었습니다.",
-                      "result": [
+                examples = {
+                    @ExampleObject(name = "destinations", value = """
                         {
-                          "destinationId": "dest-1",
-                          "alias": "런닝 장소",
-                          "latitude": 37.5665,
-                          "longitude": 126.9780
-                        },
-                        {
-                          "destinationId": "dest-2",
-                          "alias": "헬스장",
-                          "latitude": 37.4979,
-                          "longitude": 127.0276
+                          "isSuccess": true,
+                          "code": "DESTINATION200",
+                          "message": "조회되었습니다.",
+                          "result": {
+                            "destinations": [
+                              {
+                                "destinationId": "destination-001",
+                                "alias": "런닝 장소",
+                                "latitude": 37.5665,
+                                "longitude": 126.9780,
+                                "destinationVersion": 1
+                              },
+                              {
+                                "destinationId": "destination-002",
+                                "alias": "헬스장",
+                                "latitude": 37.4979,
+                                "longitude": 127.0276,
+                                "destinationVersion": 3
+                              }
+                            ]
+                          }
                         }
-                      ]
-                    }
-                    """)
+                        """),
+                    @ExampleObject(name = "emptyDestinations", value = """
+                        {
+                          "isSuccess": true,
+                          "code": "DESTINATION200",
+                          "message": "조회되었습니다.",
+                          "result": {
+                            "destinations": []
+                          }
+                        }
+                        """)
+                }
             )
         ),
         @ApiResponse(
@@ -63,17 +80,28 @@ public interface DestinationControllerApi {
             description = "인증되지 않은 사용자",
             content = @Content(
                 mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": false,
-                      "code": "DESTINATION401",
-                      "message": "인증되지 않은 사용자입니다."
-                    }
-                    """)
+                examples = {
+                    @ExampleObject(name = "invalidToken", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "AUTH401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "userNotFound", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "DESTINATION401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """)
+                }
             )
         )
     })
-    ResponseEntity<CustomResponse<List<DestinationResponse>>> findDestinations(
+    ResponseEntity<CustomResponse<DestinationListResponse>> findDestinations(
         @Parameter(hidden = true)
         CustomUserDetails customUserDetails
     );
@@ -212,131 +240,6 @@ public interface DestinationControllerApi {
             )
         )
         DestinationUpsertRequest request
-    );
-
-    @Operation(
-        summary = "목적지 동기화",
-        description = "사용자가 회원가입 시, 기기에 저장되어 있던 목적지 정보들을 서버에 저장합니다.",
-        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
-    )
-    @ApiResponses({
-        @ApiResponse(
-            responseCode = "200",
-            description = "목적지 동기화 성공",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": true,
-                      "code": "DESTINATION200",
-                      "message": "목적지 동기화가 완료되었습니다.",
-                      "result": {
-                        "destinations": [
-                          {
-                            "clientDestinationId": 2,
-                            "destinationId": "dest-2",
-                            "alias": "집",
-                            "latitude": 37.4979,
-                            "longitude": 127.0276
-                          },
-                          {
-                            "clientDestinationId": 3,
-                            "destinationId": "dest-3",
-                            "alias": "회사",
-                            "latitude": 37.5665,
-                            "longitude": 126.9780
-                          }
-                        ]
-                      }
-                    }
-                    """)
-            )
-        ),
-        @ApiResponse(
-            responseCode = "400",
-            description = "목적지 동기화 요청 형식 오류",
-            content = @Content(
-                mediaType = "application/json",
-                examples = {
-                    @ExampleObject(name = "invalidDestinationInfo", value = """
-                        {
-                          "isSuccess": false,
-                          "code": "DESTINATION400",
-                          "message": "목적지 정보가 올바르지 않습니다."
-                        }
-                        """),
-                    @ExampleObject(name = "invalidCoordinate", value = """
-                        {
-                          "isSuccess": false,
-                          "code": "DESTINATION400",
-                          "message": "목적지 좌표가 올바르지 않습니다."
-                        }
-                        """)
-                }
-            )
-        ),
-        @ApiResponse(
-            responseCode = "401",
-            description = "인증되지 않은 사용자",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": false,
-                      "code": "DESTINATION401",
-                      "message": "인증되지 않은 사용자입니다."
-                    }
-                    """)
-            )
-        ),
-        @ApiResponse(
-            responseCode = "409",
-            description = "사용자 안에서 중복된 목적지 ID",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(value = """
-                    {
-                      "isSuccess": false,
-                      "code": "DESTINATION409",
-                      "message": "이미 존재하는 목적지입니다.",
-                      "result": null
-                    }
-                    """)
-            )
-        )
-    })
-    ResponseEntity<CustomResponse<DestinationSyncResponse>> syncDestinations(
-        @Parameter(hidden = true)
-        CustomUserDetails customUserDetails,
-        @io.swagger.v3.oas.annotations.parameters.RequestBody(
-            required = true,
-            description = "서버에 저장할 기기 내 목적지 목록",
-            content = @Content(
-                mediaType = "application/json",
-                schema = @Schema(implementation = DestinationSyncRequest.class),
-                examples = @ExampleObject(value = """
-                    {
-                      "destinations": [
-                        {
-                          "clientDestinationId": 2,
-                          "destinationId": "dest-2",
-                          "alias": "집",
-                          "latitude": 37.4979,
-                          "longitude": 127.0276
-                        },
-                        {
-                          "clientDestinationId": 3,
-                          "destinationId": "dest-3",
-                          "alias": "회사",
-                          "latitude": 37.5665,
-                          "longitude": 126.9780
-                        }
-                      ]
-                    }
-                    """)
-            )
-        )
-        DestinationSyncRequest request
     );
 
     @Operation(
