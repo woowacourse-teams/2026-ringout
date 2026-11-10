@@ -44,6 +44,14 @@ internal class AndroidAlarmOccurrenceJournal(private val preferences: SharedPref
         }
     }
 
+    suspend fun clear() = flushMutex.withLock {
+        synchronized(lock) {
+            check(preferences.edit().clear().commit()) {
+                "로그아웃 대기 중인 알람 이벤트를 정리하지 못했습니다."
+            }
+        }
+    }
+
     @Serializable
     private data class Entry(val sequence: Long, val event: CapturedAlarmOccurrenceEvent)
 }

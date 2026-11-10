@@ -13,6 +13,7 @@ import com.joon.ringout.domain.push.PushTokenSource
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
 import com.joon.ringout.domain.preferences.SystemThemeModeReader
 import com.joon.ringout.domain.room.RoomRepository
+import com.joon.ringout.data.database.LocalUserDataCleanup
 
 interface AppContainer {
     val termsRepository: com.joon.ringout.domain.terms.TermsRepository
@@ -29,6 +30,7 @@ interface AppContainer {
     val destinationRepository: DestinationRepository
     val alarmActivityRepository: AlarmActivityRepository
     val missionHistoryRepository: MissionHistoryRepository
+    val localUserDataCleanup: LocalUserDataCleanup
     val arrivalResultRepository: com.joon.ringout.domain.arrival.ArrivalResultRepository
     val productAnalyticsRecorder: ProductAnalyticsRecorder
     val hasStoredAlarmsForEntryMigration: suspend () -> Boolean

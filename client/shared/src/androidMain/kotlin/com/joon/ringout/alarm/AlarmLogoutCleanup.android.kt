@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
+import com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime
 import kotlinx.coroutines.CancellationException
 
 private const val SchedulingPreferences = "ringout_alarm_scheduling"
@@ -58,6 +60,9 @@ actual fun rememberAlarmLogoutCleanup(): AlarmLogoutCleanup {
                     }
                 }
                 firstFailure?.let { throw it }
+                ActiveAlarmMissionStore(context).clear()
+                AndroidAlarmActivityRecorder.get(context).clearPendingForLogout()
+                AndroidAlarmOccurrenceRuntime.get(context).clearPendingForLogout()
             }
 
             override fun allowScheduling() {

@@ -30,6 +30,7 @@ actual fun rememberAlarmLogoutCleanup(): AlarmLogoutCleanup {
         object : AlarmLogoutCleanup {
             override suspend fun cancelScheduledAlarms() {
                 val defaults = NSUserDefaults.standardUserDefaults
+                val inbox = services.alarmMissionEventInbox()
                 defaults.setBool(true, SchedulingBlocked)
                 defaults.setInteger(
                     defaults.integerForKey("ringout.alarm.logout_generation") + 1,
@@ -42,6 +43,18 @@ actual fun rememberAlarmLogoutCleanup(): AlarmLogoutCleanup {
                     defaults.setObject((ids + deadlineId).distinct(), BlockedReservationIds)
                 }
                 store.cancelAllForLogout { services.normalizeAlarmId(it) != null }
+                inbox.clearPendingDataForLogoutAwait()
+                listOf(
+                    "ios.activeMission.record.v2",
+                    "ios.activeMission.lastLocation.v1",
+                    "ios.activeMission.deadlineLocation.v1",
+                    "ios.activeMission.deadlineAlarm.v1",
+                    "ios.activeMission.pendingTerminal.v1",
+                    "ios.activeMission.consumedOccurrences",
+                    "ios.activeMission.record.v1",
+                    BlockedReservationIds,
+                ).forEach(defaults::removeObjectForKey)
+                check(defaults.synchronize()) { "로그아웃 미션 복구 상태를 정리하지 못했습니다." }
             }
 
             override fun allowScheduling() {

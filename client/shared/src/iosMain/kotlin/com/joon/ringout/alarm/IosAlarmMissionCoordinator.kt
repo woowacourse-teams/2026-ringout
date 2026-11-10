@@ -47,6 +47,13 @@ interface IosAlarmMissionEventInbox {
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
     }
 
+    fun clearPendingDataForLogout(callback: (IosAlarmOperationResult) -> Unit) {
+        callback(IosAlarmOperationResult(
+            IosAlarmOperationCode.SDK_ERROR,
+            "iOS 알람 기록을 정리할 수 없습니다.",
+        ))
+    }
+
     fun setEventListener(listener: IosAlarmMissionEventListener?)
 
     fun recordStopEvent(
@@ -1489,6 +1496,13 @@ internal suspend fun IosAlarmMissionEventInbox.pendingEventsAwait():
     IosAlarmOperationResult(result.code, result.message)
         .requireAlarmKitSuccess("알람 미션 이벤트를 읽지 못했습니다.")
     return result.events
+}
+
+internal suspend fun IosAlarmMissionEventInbox.clearPendingDataForLogoutAwait() {
+    val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+        clearPendingDataForLogout(callback)
+    }
+    result.requireAlarmKitSuccess("iOS 알람 기록을 정리하지 못했습니다.")
 }
 
 internal suspend fun IosAlarmMissionEventInbox.recordProjectionEventsAwait():

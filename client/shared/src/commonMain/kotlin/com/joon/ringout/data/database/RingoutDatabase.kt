@@ -64,6 +64,7 @@ abstract class RingoutDatabase : RoomDatabase() {
 
     abstract fun alarmOccurrenceSyncDao(): AlarmOccurrenceSyncDao
 
+    abstract fun localUserDataCleanupDao(): LocalUserDataCleanupDao
     abstract fun arrivalResultDao(): ArrivalResultDao
 }
 
@@ -100,5 +101,6 @@ internal fun buildRingoutDatabase(
         createRingoutMigration13To14(arrivalGrowthActivatedAtEpochMillis),
     )
     .build()
+
 
 internal const val RingoutDatabaseName = "ringout.db"

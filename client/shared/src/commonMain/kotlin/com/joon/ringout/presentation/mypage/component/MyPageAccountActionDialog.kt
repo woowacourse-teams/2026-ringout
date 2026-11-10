@@ -202,7 +202,7 @@ private val MyPageAccountAction.dialogContent: MyPageAccountActionDialogContent
     get() = when (this) {
         MyPageAccountAction.Logout -> MyPageAccountActionDialogContent(
             title = "로그아웃",
-            description = "정말 로그아웃 하시겠습니까?",
+                description = "정말 로그아웃 하시겠습니까?",
             confirmLabel = "로그아웃",
         )
 

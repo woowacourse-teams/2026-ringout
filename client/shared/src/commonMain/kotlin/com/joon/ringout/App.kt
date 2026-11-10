@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -60,6 +61,7 @@ import com.joon.ringout.presentation.navigation.authGraph
 import com.joon.ringout.presentation.navigation.rememberAuthNavigation
 import com.joon.ringout.presentation.navigation.rememberAuthOnlyNavigationState
 import com.joon.ringout.presentation.mypage.MyPageViewModel
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
 import com.joon.ringout.presentation.roomedit.RoomEditViewModel
 import com.joon.ringout.presentation.roomhome.RoomHomeViewModel
@@ -112,6 +114,7 @@ fun App(
     onRoomActivityPushHandled: (requestId: String) -> Unit = {},
 ) {
     val alarmLogoutCleanup = rememberAlarmLogoutCleanup()
+    val currentRuntimeEvidence = rememberUpdatedState(ringingAlarm != null || activeAlarmMission != null)
     val appBootstrapViewModel = viewModel {
         AppBootstrapViewModel(
             repository = appContainer.appPreferencesRepository,
@@ -120,8 +123,9 @@ fun App(
             authRepository = appContainer.authRepository,
             authSession = appContainer.authSession,
             hasStoredAlarms = appContainer.hasStoredAlarmsForEntryMigration,
-            hasRuntimeEvidence = { ringingAlarm != null || activeAlarmMission != null },
+            hasRuntimeEvidence = { currentRuntimeEvidence.value },
             alarmLogoutCleanup = alarmLogoutCleanup,
+            localUserDataCleanup = appContainer.localUserDataCleanup,
         )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState
@@ -141,6 +145,7 @@ fun App(
             session = appContainer.authSession,
             networkMonitor = appContainer.networkMonitor,
             explicitLogout = appBootstrapViewModel::requestExplicitLogout,
+            canStartExplicitLogout = appBootstrapViewModel::canOpenExplicitLogoutConfirmation,
         )
     }
 
@@ -170,6 +175,24 @@ fun App(
                     errorMessage = appBootstrapUiState.entryErrorMessage,
                     onRetry = appBootstrapViewModel::retryInitialization,
                 )
+
+                appBootstrapUiState.destination == AppEntryDestination.LogoutCleaning &&
+                    (ringingAlarm != null || activeAlarmMission != null) ->
+                    LimitedRuntimeContent(
+                        ringingAlarm = ringingAlarm,
+                        activeAlarmMission = activeAlarmMission,
+                        activeAlarmMissionLocation = activeAlarmMissionLocation,
+                        missionLocationState = missionLocationState,
+                        onRingingAlarmDismiss = onRingingAlarmDismiss,
+                        onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
+                        onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
+                        onActiveAlarmMissionForceEndHoldStarted =
+                            onActiveAlarmMissionForceEndHoldStarted,
+                        onActiveAlarmMissionForceEndHoldCancelled =
+                            onActiveAlarmMissionForceEndHoldCancelled,
+                        onActiveAlarmMissionForceEndHoldCompleted =
+                            onActiveAlarmMissionForceEndHoldCompleted,
+                    )
 
                 appBootstrapUiState.destination == AppEntryDestination.LogoutCleaning ->
                     LogoutCleanupSurface(
@@ -242,6 +265,16 @@ fun App(
                         hasAlarmCreationGuideSaveFailed = appBootstrapUiState.hasAlarmCreationGuideSaveFailed,
                         onAlarmCreationGuideFinished = appBootstrapViewModel::completeAlarmCreationGuide,
                         onExplicitLogout = appBootstrapViewModel::requestExplicitLogout,
+                        canPerformAccountAction = { action ->
+                            when (action) {
+                                MyPageAccountAction.Logout ->
+                                    appBootstrapViewModel.canOpenExplicitLogoutConfirmation()
+                                MyPageAccountAction.Withdraw -> !currentRuntimeEvidence.value
+                            }
+                        },
+                        logoutBlockedMessage = appBootstrapUiState.logoutCleanupErrorMessage
+                            .takeUnless { appBootstrapUiState.isLogoutCleanupPending },
+                        onDismissLogoutBlocked = appBootstrapViewModel::dismissLogoutCleanupError,
                         onAuthenticationRequired = appBootstrapViewModel::requestAuthentication,
                         appVersion = appVersion,
                         myPageExtraContent = myPageExtraContent,
@@ -451,6 +484,9 @@ private fun RingoutAppContent(
     hasAlarmCreationGuideSaveFailed: Boolean,
     onAlarmCreationGuideFinished: () -> Unit,
     onExplicitLogout: () -> Unit,
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean,
+    logoutBlockedMessage: String?,
+    onDismissLogoutBlocked: () -> Unit,
     onAuthenticationRequired: () -> Unit,
     appVersion: String,
     myPageExtraContent: (@Composable (ThemeMode) -> Unit)?,
@@ -721,6 +757,9 @@ private fun RingoutAppContent(
                     alarmController = alarmController,
                     activeAlarmMission = activeAlarmMission,
                     onThemeModeChange = onThemeModeChange,
+                    canPerformAccountAction = canPerformAccountAction,
+                    logoutBlockedMessage = logoutBlockedMessage,
+                    onDismissLogoutBlocked = onDismissLogoutBlocked,
                     onAddAlarm = onAddAlarm,
                     onEditAlarm = { request ->
                         viewModelScopes.createAlarmEditorNavigation(

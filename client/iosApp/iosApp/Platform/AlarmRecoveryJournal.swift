@@ -289,6 +289,10 @@ final class AlarmRecoveryJournal {
         self.uuidProvider = uuidProvider
     }
 
+    func clearForLogout() throws {
+        try withFileLock { try writeUnlocked(.empty) }
+    }
+
     func setSourceEligibility(
         sourceAlarmId: String,
         scheduleVersion: Int64,

@@ -19,6 +19,7 @@ import com.joon.ringout.presentation.home.HomeRoute
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.mypage.MyPageRoute
 import com.joon.ringout.presentation.mypage.MyPageViewModel
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.roomcreate.RoomCreateRoute
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
 import com.joon.ringout.domain.room.RoomCreateInput
@@ -48,6 +49,9 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     alarmController: AlarmController,
     activeAlarmMission: ActiveAlarmMission?,
     onThemeModeChange: (ThemeMode) -> Unit,
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean = { true },
+    logoutBlockedMessage: String? = null,
+    onDismissLogoutBlocked: () -> Unit = {},
     onAddAlarm: () -> Unit,
     onEditAlarm: (AlarmScheduleRequest) -> Unit,
     onAuthenticationRequired: () -> Unit,
@@ -76,6 +80,9 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             appVersion = appVersion,
             extraContent = myPageExtraContent,
             onThemeModeChange = onThemeModeChange,
+            canPerformAccountAction = canPerformAccountAction,
+            logoutBlockedMessage = logoutBlockedMessage,
+            onDismissLogoutBlocked = onDismissLogoutBlocked,
             onEditProfileClick = { navigationState.navigate(AppRoute.NicknameChange) },
         )
     }

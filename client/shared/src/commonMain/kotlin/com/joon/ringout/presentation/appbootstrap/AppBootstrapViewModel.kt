@@ -19,6 +19,7 @@ import com.joon.ringout.domain.preferences.AppBootstrapSnapshot
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
 import com.joon.ringout.domain.preferences.InstallationEntryState
 import com.joon.ringout.domain.preferences.SystemThemeModeReader
+import com.joon.ringout.data.database.LocalUserDataCleanup
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -75,6 +76,7 @@ class AppBootstrapViewModel(
     private val authSession: AuthSession,
     private val hasStoredAlarms: suspend () -> Boolean,
     private val alarmLogoutCleanup: AlarmLogoutCleanup,
+    private val localUserDataCleanup: LocalUserDataCleanup,
     private val hasRuntimeEvidence: () -> Boolean = { false },
     coroutineScope: CoroutineScope? = null,
     private val onboardingAnalytics: OnboardingAnalyticsRecorder = NoOpOnboardingAnalyticsRecorder,
@@ -233,20 +235,37 @@ class AppBootstrapViewModel(
         }
     }
 
+    fun canOpenExplicitLogoutConfirmation(): Boolean {
+        if (uiState.isLogoutCleanupPending || logoutCleanupJob?.isActive == true) return false
+        if (hasRuntimeEvidence()) return false
+        uiState = uiState.copy(logoutCleanupErrorMessage = null)
+        return true
+    }
+
     fun requestExplicitLogout() {
         if (uiState.isLogoutCleanupPending || logoutCleanupJob?.isActive == true) return
+        if (hasRuntimeEvidence()) {
+            uiState = uiState.copy(
+                logoutCleanupErrorMessage = "진행 중인 알람이나 미션을 종료한 뒤 로그아웃해 주세요.",
+            )
+            return
+        }
         uiState = uiState.copy(
             isLogoutCleanupPending = true,
             logoutCleanupErrorMessage = null,
         )
         publishDestination()
-        runLogoutCleanup(pendingAlreadyStored = false)
+        runLogoutCleanup()
     }
 
     fun retryLogoutCleanup() {
         if (!uiState.isLogoutCleanupPending || logoutCleanupJob?.isActive == true) return
         uiState = uiState.copy(logoutCleanupErrorMessage = null)
-        runLogoutCleanup(pendingAlreadyStored = true)
+        runLogoutCleanup()
+    }
+
+    fun dismissLogoutCleanupError() {
+        uiState = uiState.copy(logoutCleanupErrorMessage = null)
     }
 
     fun setThemeMode(themeMode: ThemeMode) {
@@ -353,7 +372,7 @@ class AppBootstrapViewModel(
                 isBootstrapInitialized = true
                 applySnapshot(snapshot)
                 if (snapshot.installationEntryState?.isLogoutCleanupPending == true) {
-                    runLogoutCleanup(pendingAlreadyStored = true)
+                    runLogoutCleanup()
                 }
                 snapshot.themeMode?.let { mode ->
                     if (latestRequestedThemeMode == null) latestRequestedThemeMode = mode
@@ -417,15 +436,22 @@ class AppBootstrapViewModel(
         )
     }
 
-    private fun runLogoutCleanup(pendingAlreadyStored: Boolean) {
+    private fun runLogoutCleanup() {
         if (logoutCleanupJob?.isActive == true) return
+        if (hasRuntimeEvidence()) {
+            uiState = uiState.copy(
+                isLogoutCleanupPending = true,
+                logoutCleanupErrorMessage = "진행 중인 알람이나 미션을 종료한 뒤 다시 시도해 주세요.",
+            )
+            publishDestination()
+            return
+        }
         logoutCleanupJob = scope.launch {
             try {
-                if (!pendingAlreadyStored) {
-                    repository.setLogoutCleanupPending(true)
-                    awaitSnapshot { it.installationEntryState?.isLogoutCleanupPending == true }
-                }
+                repository.setLogoutCleanupPending(true)
+                awaitSnapshot { it.installationEntryState?.isLogoutCleanupPending == true }
                 alarmLogoutCleanup.cancelScheduledAlarms()
+                localUserDataCleanup.clear()
                 authRepository.logout()
                 repository.setLegacyRuntimeExceptionPending(false)
                 repository.setLogoutCleanupPending(false)
@@ -442,7 +468,7 @@ class AppBootstrapViewModel(
             } catch (_: Throwable) {
                 uiState = uiState.copy(
                     isLogoutCleanupPending = true,
-                    logoutCleanupErrorMessage = "예약된 알람을 정리하지 못했어요. 다시 시도해 주세요.",
+                    logoutCleanupErrorMessage = "로그아웃 데이터를 정리하지 못했어요. 다시 시도해 주세요.",
                 )
                 publishDestination()
             }

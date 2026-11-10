@@ -92,6 +92,12 @@ final class AlarmRingingOccurrenceStore {
         return session
     }
 
+    func clearForLogout() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try write([:])
+    }
+
     private func fileURL() throws -> URL {
         let directory = try directoryURL ?? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,

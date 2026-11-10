@@ -136,7 +136,7 @@ class MyPageViewModel(
         performAccountAction(MyPageAccountAction.Withdraw) {
             memberRepository.withdraw()
             runCatching { productAnalyticsRecorder.recordAccountWithdrawalCompleted() }
-            authRepository.logout()
+            performExplicitLogout()
         }
     }
 

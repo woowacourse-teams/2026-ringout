@@ -24,6 +24,9 @@ internal fun MyPageRoute(
     modifier: Modifier = Modifier,
     extraContent: (@Composable (ThemeMode) -> Unit)? = null,
     onEditProfileClick: () -> Unit = {},
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean = { true },
+    logoutBlockedMessage: String? = null,
+    onDismissLogoutBlocked: () -> Unit = {},
 ) {
     val uriHandler = LocalUriHandler.current
     val networkStatus by networkMonitor.status.collectAsStateWithLifecycle()
@@ -41,6 +44,9 @@ internal fun MyPageRoute(
             accountStatus = viewModel.uiState.accountStatus,
             profileImageUrl = viewModel.uiState.profileImageUrl,
             onAccountRetry = viewModel::retryAccount,
+            canPerformAccountAction = canPerformAccountAction,
+            logoutBlockedMessage = logoutBlockedMessage,
+            onDismissLogoutBlocked = onDismissLogoutBlocked,
             isAccountActionInProgress = accountAction is MyPageAccountActionState.InProgress,
             onConfirmAccountAction = { action ->
                 when (action) {
