@@ -9,6 +9,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.destination.domain.Coordinate;
@@ -16,23 +17,30 @@ import com.ringout.api.destination.domain.Destination;
 import com.ringout.api.destination.domain.DestinationAlias;
 import com.ringout.api.destination.dto.request.DestinationSyncRequest;
 import com.ringout.api.destination.dto.request.DestinationSyncRequest.DestinationSyncItemRequest;
-import com.ringout.api.destination.dto.request.DestinationUpdateRequest;
-import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.request.DestinationUpsertRequest;
 import com.ringout.api.destination.dto.response.DestinationResponse;
 import com.ringout.api.destination.dto.response.DestinationSyncResponse;
-import com.ringout.api.destination.dto.response.DestinationUpdateResponse;
+import com.ringout.api.destination.dto.response.DestinationUpsertResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -40,6 +48,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class DestinationServiceTest {
+
+    private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-11-09T00:00:00Z"), ZoneOffset.UTC);
 
     @Mock
     private DestinationRepository destinationRepository;
@@ -51,7 +61,7 @@ class DestinationServiceTest {
 
     @BeforeEach
     void setUp() {
-        destinationService = new DestinationService(destinationRepository, userRepository);
+        destinationService = new DestinationService(destinationRepository, userRepository, FIXED_CLOCK);
         lenient().when(userRepository.existsById(any())).thenReturn(true);
     }
 
@@ -347,194 +357,84 @@ class DestinationServiceTest {
     }
 
     @Nested
-    class 목적지_생성 {
+    class 목적지_upsert {
 
-        @Test
-        void 목적지_생성에_성공한다() {
-            // given
-            Long userId = 1L;
-            String destinationId = "dest-1";
-            given(destinationRepository.save(any(Destination.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
+        private static final Long USER_ID = 1L;
+        private static final String DESTINATION_ID = "destination-001";
 
-            // when
-            DestinationCreateResponse response = destinationService.createDestination(
-                userId, destinationId, "헬스장", 37.4979, 127.0276
-            );
-
-            // then
-            assertThat(response.destinationId()).isEqualTo(destinationId);
-            verify(destinationRepository).save(any(Destination.class));
+        private DestinationUpsertRequest request(Long destinationVersion) {
+            return new DestinationUpsertRequest("회사", 37.5665, 126.9780, destinationVersion);
         }
 
         @Test
-        void 사용자_id가_없으면_목적지를_생성할_수_없다() {
+        void 검증된_값으로_upsert하고_서버에_최종_저장된_목적지를_반환한다() {
             // given
-            Long userId = null;
+            Destination stored = Destination.create(userWithId(USER_ID), DESTINATION_ID, DestinationAlias.from("학교"),
+                Coordinate.of(37.5502, 127.0738), 5L);
+            given(destinationRepository.findOwnedDestinationForUpdate(USER_ID, DESTINATION_ID)).willReturn(Optional.of(stored));
 
+            // when
+            DestinationUpsertResponse response = destinationService.upsertDestination(USER_ID, DESTINATION_ID,
+                new DestinationUpsertRequest("  회사  ", 37.5665, 126.9780, 3L));
+
+            // then
+            verify(destinationRepository).upsertOwnedDestination(USER_ID, DESTINATION_ID, "회사", 37.5665, 126.9780,
+                3L, LocalDateTime.now(FIXED_CLOCK));
+            assertThat(response).isEqualTo(
+                new DestinationUpsertResponse(DESTINATION_ID, "학교", 37.5502, 127.0738, 5L));
+        }
+
+        @Test
+        void 사용자_id가_없으면_upsert할_수_없다() {
             // when // then
-            assertThatThrownBy(() -> destinationService.createDestination(
-                userId, "dest-1", "헬스장", 37.4979, 127.0276
-            ))
+            assertThatThrownBy(() -> destinationService.upsertDestination(null, DESTINATION_ID, request(1L)))
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 같은_사용자에게_이미_있는_목적지_id로는_생성할_수_없다() {
-            // given
-            Long userId = 1L;
-            given(destinationRepository.save(any(Destination.class)))
-                .willThrow(new DataIntegrityViolationException("duplicate"));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.createDestination(
-                userId, "dest-1", "헬스장", 37.4979, 127.0276
-            ))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_ID_DUPLICATED));
-        }
-    }
-
-    @Nested
-    class 목적지_수정 {
-
-        @Test
-        void 목적지_수정에_성공한다() {
-            // given
-            Long userId = 1L;
-            String destinationId = "10";
-            Destination destination = Destination.create(
-                userWithId(userId),
-                "10",
-                DestinationAlias.from("헬스장"),
-                Coordinate.of(37.4979, 127.0276)
-            );
-            given(destinationRepository.findOwnedDestination(userId, destinationId)).willReturn(Optional.of(destination));
-
-            // when
-            DestinationUpdateResponse response = destinationService.updateDestination(
-                userId,
-                destinationId,
-                new DestinationUpdateRequest("회사", 37.5665, 126.9780)
-            );
-
-            // then
-            assertThat(response.destinationId()).isEqualTo(destinationId);
-            assertThat(response.alias()).isEqualTo("회사");
-            assertThat(response.latitude()).isEqualTo(37.5665);
-            assertThat(response.longitude()).isEqualTo(126.9780);
-        }
-
-        @Test
-        void 일부_필드만_수정하면_나머지는_기존_값을_유지한다() {
-            // given
-            Long userId = 1L;
-            String destinationId = "10";
-            Destination destination = Destination.create(
-                userWithId(userId),
-                "10",
-                DestinationAlias.from("헬스장"),
-                Coordinate.of(37.4979, 127.0276)
-            );
-            given(destinationRepository.findOwnedDestination(userId, destinationId)).willReturn(Optional.of(destination));
-
-            // when
-            DestinationUpdateResponse response = destinationService.updateDestination(
-                userId,
-                destinationId,
-                new DestinationUpdateRequest("회사", null, null)
-            );
-
-            // then
-            assertThat(response.destinationId()).isEqualTo(destinationId);
-            assertThat(response.alias()).isEqualTo("회사");
-            assertThat(response.latitude()).isEqualTo(37.4979);
-            assertThat(response.longitude()).isEqualTo(127.0276);
-        }
-
-        @Test
-        void 사용자_id가_없으면_목적지를_수정할_수_없다() {
-            // given
-            Long userId = null;
-            String destinationId = "10";
-
-            // when // then
-            assertThatThrownBy(
-                () -> destinationService.updateDestination(userId, destinationId,
-                    new DestinationUpdateRequest("회사", null, null)))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
-            verify(destinationRepository, never()).findOwnedDestination(any(), any());
+            verifyNoInteractions(destinationRepository);
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {" ", "dest 1", "1234567890123456789012345678901234567"})
-        void 목적지_id가_올바르지_않으면_수정할_수_없다(String destinationId) {
-            // given
-            Long userId = 1L;
-
+        @NullSource
+        @ValueSource(strings = {"", " ", "dest 1", "1234567890123456789012345678901234567"})
+        void 목적지_id가_올바르지_않으면_upsert할_수_없다(String destinationId) {
             // when // then
-            assertThatThrownBy(
-                () -> destinationService.updateDestination(userId, destinationId,
-                    new DestinationUpdateRequest("회사", null, null)))
+            assertThatThrownBy(() -> destinationService.upsertDestination(USER_ID, destinationId, request(1L)))
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_ID_INVALID));
-            verify(destinationRepository, never()).findOwnedDestination(any(), any());
+            verifyNoInteractions(destinationRepository);
         }
 
         @Test
-        void 수정할_정보가_없으면_수정할_수_없다() {
+        void 요청_body가_없으면_upsert할_수_없다() {
+            // when // then
+            assertThatThrownBy(() -> destinationService.upsertDestination(USER_ID, DESTINATION_ID, null))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode())
+                        .isEqualTo(DestinationErrorStatus.DESTINATION_UPSERT_REQUEST_INVALID));
+            verifyNoInteractions(destinationRepository);
+        }
+
+        @ParameterizedTest
+        @MethodSource("com.ringout.api.destination.service.DestinationServiceTest#invalidUpsertDestinationInfos")
+        void 목적지_정보가_올바르지_않으면_upsert할_수_없다(String alias, Double latitude, Double longitude) {
             // given
-            Long userId = 1L;
-            String destinationId = "10";
+            DestinationUpsertRequest request = new DestinationUpsertRequest(alias, latitude, longitude, 1L);
 
             // when // then
-            assertThatThrownBy(
-                () -> destinationService.updateDestination(userId, destinationId,
-                    new DestinationUpdateRequest(null, null, null)))
+            assertThatThrownBy(() -> destinationService.upsertDestination(USER_ID, DESTINATION_ID, request))
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(
-                        DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID));
-            verify(destinationRepository, never()).findOwnedDestination(any(), any());
+                    assertThat(exception.getCode())
+                        .isEqualTo(DestinationErrorStatus.DESTINATION_UPSERT_REQUEST_INVALID));
+            verifyNoInteractions(destinationRepository);
         }
 
         @Test
-        void 수정할_정보가_올바르지_않으면_수정할_수_없다() {
-            // given
-            Long userId = 1L;
-            String destinationId = "10";
-            Destination destination = Destination.create(
-                userWithId(userId),
-                "10",
-                DestinationAlias.from("헬스장"),
-                Coordinate.of(37.4979, 127.0276)
-            );
-            given(destinationRepository.findOwnedDestination(userId, destinationId)).willReturn(Optional.of(destination));
-
+        void 목적지_버전이_없으면_upsert할_수_없다() {
             // when // then
-            assertThatThrownBy(
-                () -> destinationService.updateDestination(userId, destinationId,
-                    new DestinationUpdateRequest("", null, null)))
+            assertThatThrownBy(() -> destinationService.upsertDestination(USER_ID, DESTINATION_ID, request(null)))
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(
-                        DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID));
-        }
-
-        @Test
-        void 목적지가_없으면_수정할_수_없다() {
-            // given
-            Long userId = 1L;
-            String destinationId = "10";
-            given(destinationRepository.findOwnedDestination(userId, destinationId)).willReturn(Optional.empty());
-
-            // when // then
-            assertThatThrownBy(
-                () -> destinationService.updateDestination(userId, destinationId,
-                    new DestinationUpdateRequest("회사", null, null)))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_NOT_FOUND));
+                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_VERSION_INVALID));
+            verifyNoInteractions(destinationRepository);
         }
     }
 
@@ -579,5 +479,20 @@ class DestinationServiceTest {
                     assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_DELETE_ID_INVALID));
             verify(destinationRepository, never()).deleteOwnedDestination(any(), any());
         }
+    }
+
+    static Stream<Arguments> invalidUpsertDestinationInfos() {
+        return Stream.of(
+            Arguments.of(null, 37.5665, 126.9780),
+            Arguments.of("   ", 37.5665, 126.9780),
+            Arguments.of("1234567890123", 37.5665, 126.9780),
+            Arguments.of("회사", null, 126.9780),
+            Arguments.of("회사", 37.5665, null),
+            Arguments.of("회사", 90.1, 126.9780),
+            Arguments.of("회사", -90.1, 126.9780),
+            Arguments.of("회사", 37.5665, 180.1),
+            Arguments.of("회사", 37.5665, -180.1),
+            Arguments.of("회사", Double.NaN, 126.9780)
+        );
     }
 }

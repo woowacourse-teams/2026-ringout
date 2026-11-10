@@ -32,6 +32,7 @@ import lombok.NoArgsConstructor;
 public class Destination extends BaseEntity {
 
     private static final int MAX_DESTINATION_ID_LENGTH = 36;
+    private static final long INITIAL_DESTINATION_VERSION = 0L;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,23 +47,36 @@ public class Destination extends BaseEntity {
     @Embedded
     private Coordinate coordinate;
 
+    @Column(name = "destination_version", nullable = false)
+    private Long destinationVersion;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    private Destination(User user, String destinationId, DestinationAlias alias, Coordinate coordinate) {
+    private Destination(User user, String destinationId, DestinationAlias alias, Coordinate coordinate,
+        Long destinationVersion) {
         this.user = user;
         this.destinationId = destinationId;
         this.alias = alias;
         this.coordinate = coordinate;
+        this.destinationVersion = destinationVersion;
     }
 
     public static Destination create(User user, String destinationId, DestinationAlias alias, Coordinate coordinate) {
+        return create(user, destinationId, alias, coordinate, INITIAL_DESTINATION_VERSION);
+    }
+
+    public static Destination create(User user, String destinationId, DestinationAlias alias, Coordinate coordinate,
+        Long destinationVersion) {
         if (!isValidDestinationId(destinationId)) {
             throw new GeneralException(DestinationErrorStatus.DESTINATION_ID_INVALID);
         }
+        if (!isValidDestinationVersion(destinationVersion)) {
+            throw new GeneralException(DestinationErrorStatus.DESTINATION_VERSION_INVALID);
+        }
 
-        return new Destination(user, destinationId, alias, coordinate);
+        return new Destination(user, destinationId, alias, coordinate, destinationVersion);
     }
 
     public static boolean isValidDestinationId(String destinationId) {
@@ -70,42 +84,7 @@ public class Destination extends BaseEntity {
             && destinationId.length() <= MAX_DESTINATION_ID_LENGTH;
     }
 
-    public void update(String alias, Double latitude, Double longitude) {
-        updateAlias(alias);
-        updateCoordinate(latitude, longitude);
-    }
-
-    private void updateAlias(String alias) {
-        if (alias == null) {
-            return;
-        }
-
-        try {
-            this.alias = DestinationAlias.from(alias);
-        } catch (GeneralException exception) {
-            throw new GeneralException(DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID);
-        }
-    }
-
-    private void updateCoordinate(Double latitude, Double longitude) {
-        if (latitude == null && longitude == null) {
-            return;
-        }
-
-        Double updatedLatitude = this.coordinate.getLatitude();
-        if (latitude != null) {
-            updatedLatitude = latitude;
-        }
-
-        Double updatedLongitude = this.coordinate.getLongitude();
-        if (longitude != null) {
-            updatedLongitude = longitude;
-        }
-
-        try {
-            this.coordinate = Coordinate.of(updatedLatitude, updatedLongitude);
-        } catch (GeneralException exception) {
-            throw new GeneralException(DestinationErrorStatus.DESTINATION_UPDATE_REQUEST_INVALID);
-        }
+    public static boolean isValidDestinationVersion(Long destinationVersion) {
+        return destinationVersion != null;
     }
 }
