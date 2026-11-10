@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -21,10 +22,13 @@ import com.ringout.api.config.jwt.JwtProvider;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.config.security.JwtAuthenticationEntryPoint;
 import com.ringout.api.destination.dto.request.DestinationUpsertRequest;
+import com.ringout.api.destination.dto.response.DestinationListResponse;
+import com.ringout.api.destination.dto.response.DestinationResponse;
 import com.ringout.api.destination.dto.response.DestinationUpsertResponse;
 import com.ringout.api.destination.service.DestinationService;
 import com.ringout.api.destination.status.DestinationErrorStatus;
 import com.ringout.api.user.domain.Role;
+import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +51,71 @@ class DestinationControllerTest {
 
     @MockitoBean
     private JwtProvider jwtProvider;
+
+    @Nested
+    class 목적지_목록_조회_응답 {
+
+        @Test
+        void 목적지_목록을_destinations_배열로_반환한다() throws Exception {
+            // given
+            given(destinationService.getDestinations(1L)).willReturn(new DestinationListResponse(List.of(
+                new DestinationResponse("destination-001", "런닝 장소", 37.5665, 126.9780, 1L),
+                new DestinationResponse("destination-002", "헬스장", 37.4979, 127.0276, 3L)
+            )));
+
+            // when
+            var result = mockMvc.perform(get("/api/v1/destinations")
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.code").value("DESTINATION200"),
+                jsonPath("$.message").value("조회되었습니다."),
+                jsonPath("$.result.destinations.length()").value(2),
+                jsonPath("$.result.destinations[0].destinationId").value("destination-001"),
+                jsonPath("$.result.destinations[0].alias").value("런닝 장소"),
+                jsonPath("$.result.destinations[0].latitude").value(37.5665),
+                jsonPath("$.result.destinations[0].longitude").value(126.9780),
+                jsonPath("$.result.destinations[0].destinationVersion").value(1),
+                jsonPath("$.result.destinations[1].destinationId").value("destination-002"),
+                jsonPath("$.result.destinations[1].destinationVersion").value(3)
+            );
+        }
+
+        @Test
+        void 목적지가_없으면_빈_destinations_배열을_반환한다() throws Exception {
+            // given
+            given(destinationService.getDestinations(1L)).willReturn(new DestinationListResponse(List.of()));
+
+            // when
+            var result = mockMvc.perform(get("/api/v1/destinations")
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.code").value("DESTINATION200"),
+                jsonPath("$.result.destinations").isArray(),
+                jsonPath("$.result.destinations").isEmpty()
+            );
+        }
+
+        @Test
+        void 인증_정보가_없으면_AUTH401을_반환한다() throws Exception {
+            // given
+
+            // when
+            var result = mockMvc.perform(get("/api/v1/destinations"));
+
+            // then
+            result.andExpectAll(
+                status().isUnauthorized(),
+                jsonPath("$.code").value("AUTH401")
+            );
+            verify(destinationService, never()).getDestinations(any());
+        }
+    }
 
     @Nested
     class 목적지_삭제_응답 {

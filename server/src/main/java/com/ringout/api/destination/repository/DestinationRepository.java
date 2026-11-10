@@ -17,7 +17,7 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
         select destination
         from Destination destination
         where destination.user.id = :userId
-        order by destination.id asc
+        order by destination.destinationId asc
         """)
     List<Destination> findOwnedDestinations(@Param("userId") Long userId);
 

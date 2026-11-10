@@ -7,7 +7,6 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -15,11 +14,9 @@ import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.destination.domain.Coordinate;
 import com.ringout.api.destination.domain.Destination;
 import com.ringout.api.destination.domain.DestinationAlias;
-import com.ringout.api.destination.dto.request.DestinationSyncRequest;
-import com.ringout.api.destination.dto.request.DestinationSyncRequest.DestinationSyncItemRequest;
 import com.ringout.api.destination.dto.request.DestinationUpsertRequest;
+import com.ringout.api.destination.dto.response.DestinationListResponse;
 import com.ringout.api.destination.dto.response.DestinationResponse;
-import com.ringout.api.destination.dto.response.DestinationSyncResponse;
 import com.ringout.api.destination.dto.response.DestinationUpsertResponse;
 import com.ringout.api.destination.repository.DestinationRepository;
 import com.ringout.api.destination.status.DestinationErrorStatus;
@@ -29,7 +26,6 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -44,7 +40,6 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class DestinationServiceTest {
@@ -75,35 +70,34 @@ class DestinationServiceTest {
     class 목적지_조회 {
 
         @Test
-        void 목적지_목록_조회에_성공한다() {
+        void 목적지_목록을_버전과_함께_조회한다() {
             // given
             Long userId = 1L;
             Destination firstDestination = Destination.create(
                 userWithId(userId),
-                "first",
+                "destination-001",
                 DestinationAlias.from("런닝 장소"),
-                Coordinate.of(37.5665, 126.9780)
+                Coordinate.of(37.5665, 126.9780),
+                1L
             );
             Destination secondDestination = Destination.create(
                 userWithId(userId),
-                "second",
+                "destination-002",
                 DestinationAlias.from("헬스장"),
-                Coordinate.of(37.4979, 127.0276)
+                Coordinate.of(37.4979, 127.0276),
+                3L
             );
             given(destinationRepository.findOwnedDestinations(userId))
                 .willReturn(List.of(firstDestination, secondDestination));
 
             // when
-            List<DestinationResponse> responses = destinationService.getDestinations(userId);
+            DestinationListResponse response = destinationService.getDestinations(userId);
 
             // then
-            assertThat(responses).hasSize(2);
-            assertThat(responses.get(0).destinationId()).isEqualTo("first");
-            assertThat(responses.get(0).alias()).isEqualTo("런닝 장소");
-            assertThat(responses.get(0).latitude()).isEqualTo(37.5665);
-            assertThat(responses.get(0).longitude()).isEqualTo(126.9780);
-            assertThat(responses.get(1).destinationId()).isEqualTo("second");
-            assertThat(responses.get(1).alias()).isEqualTo("헬스장");
+            assertThat(response.destinations()).containsExactly(
+                new DestinationResponse("destination-001", "런닝 장소", 37.5665, 126.9780, 1L),
+                new DestinationResponse("destination-002", "헬스장", 37.4979, 127.0276, 3L)
+            );
             verify(destinationRepository).findOwnedDestinations(userId);
         }
 
@@ -114,10 +108,10 @@ class DestinationServiceTest {
             given(destinationRepository.findOwnedDestinations(userId)).willReturn(List.of());
 
             // when
-            List<DestinationResponse> responses = destinationService.getDestinations(userId);
+            DestinationListResponse response = destinationService.getDestinations(userId);
 
             // then
-            assertThat(responses).isEmpty();
+            assertThat(response.destinations()).isEmpty();
         }
 
         @Test
@@ -143,216 +137,6 @@ class DestinationServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
             verify(destinationRepository, never()).findOwnedDestinations(any());
-        }
-    }
-
-    @Nested
-    class 목적지_동기화 {
-
-        @Test
-        void 목적지_동기화에_성공한다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
-                new DestinationSyncItemRequest(2L, "dest-2", "집", 37.4979, 127.0276),
-                new DestinationSyncItemRequest(3L, "dest-3", "회사", 37.5665, 126.9780)
-            ));
-
-            given(destinationRepository.save(any(Destination.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
-
-            // when
-            DestinationSyncResponse response = destinationService.syncDestinations(userId, request);
-
-            // then
-            assertThat(response.destinations()).hasSize(2);
-            assertThat(response.destinations().get(0).clientDestinationId()).isEqualTo(2L);
-            assertThat(response.destinations().get(0).destinationId()).isEqualTo("dest-2");
-            assertThat(response.destinations().get(0).alias()).isEqualTo("집");
-            assertThat(response.destinations().get(0).latitude()).isEqualTo(37.4979);
-            assertThat(response.destinations().get(0).longitude()).isEqualTo(127.0276);
-            assertThat(response.destinations().get(1).clientDestinationId()).isEqualTo(3L);
-            assertThat(response.destinations().get(1).destinationId()).isEqualTo("dest-3");
-            assertThat(response.destinations().get(1).alias()).isEqualTo("회사");
-            verify(destinationRepository, times(2)).save(any(Destination.class));
-        }
-
-        @Test
-        void 사용자_id가_없으면_목적지를_동기화할_수_없다() {
-            // given
-            Long userId = null;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
-                new DestinationSyncItemRequest(2L, "dest-2", "집", 37.4979, 127.0276)
-            ));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_UNAUTHORIZED));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 요청_body가_없으면_목적지를_동기화할_수_없다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = null;
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 목적지_목록이_비어있으면_빈_목록으로_동기화한다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of());
-
-            // when
-            DestinationSyncResponse response = destinationService.syncDestinations(userId, request);
-
-            // then
-            assertThat(response.destinations()).isEmpty();
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 목적지_목록이_없으면_동기화할_수_없다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(null);
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 목적지_항목이_null_이라면_동기화할_수_없다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(Collections.singletonList(null));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 클라이언트_목적지_id가_올바르지_않으면_동기화할_수_없다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
-                new DestinationSyncItemRequest(0L, "dest-0", "집", 37.4979, 127.0276)
-            ));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 클라이언트_목적지_id가_중복되면_동기화할_수_없다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
-                new DestinationSyncItemRequest(2L, "dest-2", "집", 37.4979, 127.0276),
-                new DestinationSyncItemRequest(2L, "dest-2", "회사", 37.5665, 126.9780)
-            ));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 요청_안에서_목적지_id가_중복되면_동기화할_수_없다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
-                new DestinationSyncItemRequest(2L, "same", "집", 37.4979, 127.0276),
-                new DestinationSyncItemRequest(3L, "same", "회사", 37.5665, 126.9780)
-            ));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @ParameterizedTest
-        @ValueSource(strings = {" ", "dest 1", "1234567890123456789012345678901234567"})
-        void 목적지_id가_올바르지_않으면_동기화할_수_없다(String destinationId) {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
-                new DestinationSyncItemRequest(2L, destinationId, "집", 37.4979, 127.0276)
-            ));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 이미_저장된_목적지_id는_동기화할_수_없다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
-                new DestinationSyncItemRequest(2L, "dest-2", "집", 37.4979, 127.0276)
-            ));
-            given(destinationRepository.save(any(Destination.class)))
-                .willThrow(new DataIntegrityViolationException("duplicate"));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_ID_DUPLICATED));
-        }
-
-        @Test
-        void 목적지_별칭이_올바르지_않으면_동기화할_수_없다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
-                new DestinationSyncItemRequest(2L, "dest-2", "", 37.4979, 127.0276)
-            ));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(DestinationErrorStatus.DESTINATION_SYNC_REQUEST_INVALID));
-            verify(destinationRepository, never()).save(any(Destination.class));
-        }
-
-        @Test
-        void 목적지_좌표가_올바르지_않으면_동기화할_수_없다() {
-            // given
-            Long userId = 1L;
-            DestinationSyncRequest request = new DestinationSyncRequest(List.of(
-                new DestinationSyncItemRequest(2L, "dest-2", "집", 91.0, 127.0276)
-            ));
-
-            // when // then
-            assertThatThrownBy(() -> destinationService.syncDestinations(userId, request))
-                .isInstanceOfSatisfying(GeneralException.class, exception ->
-                    assertThat(exception.getCode()).isEqualTo(
-                        DestinationErrorStatus.DESTINATION_SYNC_COORDINATE_INVALID));
-            verify(destinationRepository, never()).save(any(Destination.class));
         }
     }
 
