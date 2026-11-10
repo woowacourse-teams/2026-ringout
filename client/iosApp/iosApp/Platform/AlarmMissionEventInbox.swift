@@ -132,6 +132,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
 
         let alarmId = alarmUUID.uuidString
         let occurredAtEpochMillis = Int64(now.timeIntervalSince1970 * 1_000)
+        let reservationOwner = ownerForReservation(alarmId: alarmId, scheduleVersion: scheduleVersion)
         let event = try mutateEvents { events, dedupRecords in
             let observation = try? AlarmRingingOccurrenceStore.shared.consume(
                 systemAlarmId: systemAlarmId.flatMap { UUID(uuidString: $0)?.uuidString } ?? alarmId,
@@ -163,7 +164,6 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
             }.flatMap { $0.chainId ?? (($0.retryAttempt ?? 0) == 0 ? $0.occurrenceId : nil) }
             let chainId = requestedChainId ?? previous?.chainId ??
                 (retryAttempt == 0 ? occurrenceId : previousChainId)
-            // Preserve an explicitly captured guest, including across native/fallback duplicates.
             let owner: IosAlarmOccurrenceOwner
             if let previous {
                 owner = IosAlarmOccurrenceOwner(accountId: previous.ownerAccountId, captured: previous.ownerCaptured ?? false)
@@ -172,10 +172,8 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                     accountId: previousDedupRecord.ownerAccountId,
                     captured: previousDedupRecord.ownerCaptured ?? false
                 )
-            } else if let observation {
-                owner = IosAlarmOccurrenceOwner(accountId: observation.ownerAccountId, captured: observation.ownerCaptured ?? false)
             } else {
-                owner = IosAlarmOccurrenceAccount.shared.capture()
+                owner = reservationOwner
             }
             let event = AlarmMissionEvent(
                 eventId: UUID().uuidString,
@@ -198,6 +196,26 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         }
         notifyEventRecorded()
         return event
+    }
+
+    private func ownerForReservation(alarmId: String, scheduleVersion: Int64) -> IosAlarmOccurrenceOwner {
+        guard let snapshot = try? AlarmRecoveryDriver.journal.sourceSnapshot(
+            sourceAlarmId: alarmId,
+            scheduleVersion: scheduleVersion
+        ) else {
+            return IosAlarmOccurrenceOwner(accountId: nil, captured: false)
+        }
+        switch snapshot.owner.kind {
+        case .capturedAccount:
+            guard let accountId = snapshot.owner.accountId, !accountId.isEmpty else {
+                return IosAlarmOccurrenceOwner(accountId: nil, captured: false)
+            }
+            return IosAlarmOccurrenceOwner(accountId: accountId, captured: true)
+        case .capturedGuest:
+            return IosAlarmOccurrenceOwner(accountId: nil, captured: true)
+        case .uncaptured:
+            return IosAlarmOccurrenceOwner(accountId: nil, captured: false)
+        }
     }
 
     func recordOpenEvent(

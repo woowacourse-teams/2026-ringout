@@ -50,7 +50,7 @@ struct AlarmRecoveryJournalTests {
         try `손상된_저널은_빈_상태로_덮어쓰지_않는다`()
         try `다른_프로세스의_동시_저장은_유실되지_않는다`()
         try `legacy_import는_멱등이며_기존_ID를_chain으로_사용한다`()
-        try `source_snapshot은_버전별로_처음_값을_보존한다`()
+        try `source_snapshot은_검증된_계정_소유자를_보존한다`()
         try `terminal_record_ACK는_mission_record_ACK와_분리된다`()
         try `terminal_취소확인_후_예약이_다시_보이면_취소의무가_되살아난다`()
         try `미정산_schedule_call은_취소확인으로_닫히지_않는다`()
@@ -882,16 +882,19 @@ struct AlarmRecoveryJournalTests {
         }
     }
 
-    static func `source_snapshot은_버전별로_처음_값을_보존한다`() throws {
+    static func `source_snapshot은_검증된_계정_소유자를_보존한다`() throws {
         try withJournal { _, journal in
             let first = testSnapshot(sourceAlarmId: "alarm", scheduleVersion: 3, owner: .uncaptured)
             let second = testSnapshot(sourceAlarmId: "alarm", scheduleVersion: 3, owner: .capturedAccount("later"))
+            let third = testSnapshot(sourceAlarmId: "alarm", scheduleVersion: 3, owner: .capturedAccount("different"))
             let storedFirst = try journal.upsertSourceSnapshot(first)
             let storedSecond = try journal.upsertSourceSnapshot(second)
+            let storedThird = try journal.upsertSourceSnapshot(third)
             let loaded = try journal.sourceSnapshot(sourceAlarmId: "alarm", scheduleVersion: 3)
             assert(storedFirst == first)
-            assert(storedSecond == first)
-            assert(loaded == first)
+            assert(storedSecond.owner == .capturedAccount("later"))
+            assert(storedThird == storedSecond)
+            assert(loaded == storedThird)
         }
     }
 

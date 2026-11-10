@@ -26,6 +26,13 @@ class IosAlarmReconciler(
         )
         migrateNonUuidAlarmIds(failures, shouldMigratePresentation)
         val roomAlarms = dataSource.getAll()
+        roomAlarms.forEach { roomAlarm ->
+            if (!roomAlarm.request.ownerAccountId.isNullOrBlank()) {
+                failures.capture(roomAlarm.request.id) {
+                    recoveryInbox?.upsertSourceSnapshotAwait(roomAlarm.request.toRecoverySnapshot())
+                }
+            }
+        }
         val roomById = roomAlarms.associateBy { alarm -> alarm.request.id }
         val scheduledAlarms = scheduler.scheduledAlarmsAwait()
         val scheduledById = scheduledAlarms.associateBy(IosScheduledAlarmDto::alarmId)

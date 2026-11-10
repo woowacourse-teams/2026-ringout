@@ -9,8 +9,6 @@ import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecorder
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceSyncRuntime
-import com.joon.ringout.data.auth.local.createSecureTokenStorage
-import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.platform.IosNativeServices
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
@@ -786,10 +784,8 @@ class IosAlarmRuntime internal constructor(
 fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
     val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
     val database = getRingoutDatabase()
-    val tokens = createSecureTokenStorage()
-    val session = getAuthSession()
     val occurrenceRecorder = IosAlarmOccurrenceRecorder(database.alarmOccurrenceSyncDao(),
-        database.alarmActivityDao(), dataSource, tokens, session)
+        database.alarmActivityDao(), dataSource)
     val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker(), roomMembership = com.joon.ringout.analytics.createRoomMembershipAnalytics())
     val scheduler = nativeServices.alarmScheduler()
     val eventInbox = nativeServices.alarmMissionEventInbox()

@@ -54,7 +54,66 @@ struct AlarmRecoverySourceSnapshot: Codable, Equatable {
     let title: String?
     let soundName: String?
     let soundURI: String?
-    let owner: AlarmRecoveryOwner
+    var owner: AlarmRecoveryOwner
+
+    private enum CodingKeys: String, CodingKey {
+        case sourceAlarmId
+        case scheduleVersion
+        case destination
+        case limitSeconds
+        case scheduledAtEpochMillis
+        case originalTime
+        case arrivalRadiusMeters
+        case repeatRule
+        case title
+        case soundName
+        case soundURI
+        case owner
+    }
+
+    init(
+        sourceAlarmId: String,
+        scheduleVersion: Int64,
+        destination: AlarmRecoveryDestinationSnapshot,
+        limitSeconds: Int64,
+        scheduledAtEpochMillis: Int64?,
+        originalTime: String?,
+        arrivalRadiusMeters: Double?,
+        repeatRule: String?,
+        title: String?,
+        soundName: String?,
+        soundURI: String?,
+        owner: AlarmRecoveryOwner
+    ) {
+        self.sourceAlarmId = sourceAlarmId
+        self.scheduleVersion = scheduleVersion
+        self.destination = destination
+        self.limitSeconds = limitSeconds
+        self.scheduledAtEpochMillis = scheduledAtEpochMillis
+        self.originalTime = originalTime
+        self.arrivalRadiusMeters = arrivalRadiusMeters
+        self.repeatRule = repeatRule
+        self.title = title
+        self.soundName = soundName
+        self.soundURI = soundURI
+        self.owner = owner
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceAlarmId = try container.decode(String.self, forKey: .sourceAlarmId)
+        scheduleVersion = try container.decode(Int64.self, forKey: .scheduleVersion)
+        destination = try container.decode(AlarmRecoveryDestinationSnapshot.self, forKey: .destination)
+        limitSeconds = try container.decode(Int64.self, forKey: .limitSeconds)
+        scheduledAtEpochMillis = try container.decodeIfPresent(Int64.self, forKey: .scheduledAtEpochMillis)
+        originalTime = try container.decodeIfPresent(String.self, forKey: .originalTime)
+        arrivalRadiusMeters = try container.decodeIfPresent(Double.self, forKey: .arrivalRadiusMeters)
+        repeatRule = try container.decodeIfPresent(String.self, forKey: .repeatRule)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        soundName = try container.decodeIfPresent(String.self, forKey: .soundName)
+        soundURI = try container.decodeIfPresent(String.self, forKey: .soundURI)
+        owner = try container.decodeIfPresent(AlarmRecoveryOwner.self, forKey: .owner) ?? .uncaptured
+    }
 }
 
 struct AlarmRecoverySourceKey: Codable, Hashable {
@@ -116,7 +175,7 @@ struct AlarmRecoveryAttempt: Codable, Equatable {
     let parentOccurrenceId: String?
     let sequence: Int
     let sourceKey: AlarmRecoverySourceKey
-    let snapshot: AlarmRecoverySourceSnapshot
+    var snapshot: AlarmRecoverySourceSnapshot
     let stopDedupKey: String
     let stopAtEpochMillis: Int64
     let scheduledAtEpochMillis: Int64?
@@ -331,7 +390,23 @@ final class AlarmRecoveryJournal {
                 sourceAlarmId: snapshot.sourceAlarmId,
                 scheduleVersion: snapshot.scheduleVersion
             )
-            if let existing = state.snapshots[key] {
+            if var existing = state.snapshots[key] {
+                guard existing.owner.kind != .capturedAccount,
+                      snapshot.owner.kind == .capturedAccount else {
+                    return existing
+                }
+                existing.owner = snapshot.owner
+                state.snapshots[key] = existing
+                for chainId in Array(state.chains.keys) {
+                    guard var chain = state.chains[chainId] else { continue }
+                    var changed = false
+                    for index in chain.attempts.indices where chain.attempts[index].sourceKey == key {
+                        guard chain.attempts[index].snapshot.owner.kind != .capturedAccount else { continue }
+                        chain.attempts[index].snapshot.owner = snapshot.owner
+                        changed = true
+                    }
+                    if changed { state.chains[chainId] = chain }
+                }
                 return existing
             }
             state.snapshots[key] = snapshot

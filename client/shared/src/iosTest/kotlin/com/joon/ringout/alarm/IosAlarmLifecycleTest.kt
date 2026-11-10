@@ -493,6 +493,98 @@ class IosAlarmLifecycleTest {
     }
 
     @Test
+    fun `체인 ID 없는 재울림 이벤트 실패는 같은 체인의 종료 기록을 보류한다`() = runBlocking {
+        val root = nativeAttempt("root", "root", 0)
+        val retry = nativeAttempt("retry", "root", 1)
+        val retryEvent = IosAlarmMissionEventDto(
+            eventId = "retry-stop",
+            alarmId = root.snapshot.sourceAlarmId,
+            occurrenceId = "retry",
+            action = IosAlarmMissionAction.STOP,
+            occurredAtEpochMillis = retry.stopAtEpochMillis,
+            retryAttempt = 1,
+            scheduleVersion = root.snapshot.scheduleVersion,
+            chainId = null,
+        )
+        val inbox = LifecycleInbox(listOf(retryEvent)).apply {
+            recoveryAttempts = listOf(root, retry)
+            recoveryTerminals = listOf(IosAlarmRecoveryTerminalDto(
+                chainId = "root",
+                occurrenceId = "root",
+                outcome = IosAlarmRecoveryAttemptOutcome.TERMINAL_FORCED_STOP,
+                completedAtEpochMillis = retry.stopAtEpochMillis + 1,
+                terminalRecordAck = false,
+            ))
+        }
+        val terminalRecords = mutableListOf<String>()
+        val outcomeRecorder = object : IosMissionOutcomeRecorder {
+            var eventChainId: String? = null
+            override suspend fun recordRingingTimes(event: IosAlarmMissionEventDto): Boolean {
+                eventChainId = event.chainId
+                return event.occurrenceId != "retry"
+            }
+            override suspend fun recordRecoveryAttempt(attempt: IosAlarmRecoveryAttemptDto): Boolean = true
+            override suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) = Unit
+            override suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) {
+                terminalRecords += occurrenceId
+            }
+        }
+        val coordinator = IosAlarmMissionCoordinator(
+            LifecycleAlarmDataSource(emptyList()), inbox, LifecycleScheduler(), outcomeRecorder, LifecycleMissionStore(),
+        )
+
+        val result = coordinator.processPendingRecordProjections()
+
+        assertEquals("root", outcomeRecorder.eventChainId)
+        assertEquals(setOf("root"), result.failedChainIds)
+        assertTrue(terminalRecords.isEmpty())
+        assertFalse(inbox.events.contains("terminalAck:root"))
+    }
+
+    @Test
+    fun `연결할 체인을 찾지 못한 기록 이벤트 실패는 모든 종료 이관을 보류한다`() = runBlocking {
+        val root = nativeAttempt("root", "root", 0)
+        val orphanEvent = IosAlarmMissionEventDto(
+            eventId = "orphan-retry-stop",
+            alarmId = root.snapshot.sourceAlarmId,
+            occurrenceId = "orphan-retry",
+            action = IosAlarmMissionAction.STOP,
+            occurredAtEpochMillis = root.stopAtEpochMillis + 1,
+            retryAttempt = 1,
+            scheduleVersion = root.snapshot.scheduleVersion,
+            chainId = null,
+        )
+        val inbox = LifecycleInbox(listOf(orphanEvent)).apply {
+            recoveryAttempts = listOf(root)
+            recoveryTerminals = listOf(IosAlarmRecoveryTerminalDto(
+                chainId = "root",
+                occurrenceId = "root",
+                outcome = IosAlarmRecoveryAttemptOutcome.TERMINAL_FORCED_STOP,
+                completedAtEpochMillis = root.stopAtEpochMillis + 2,
+                terminalRecordAck = false,
+            ))
+        }
+        val terminalRecords = mutableListOf<String>()
+        val outcomeRecorder = object : IosMissionOutcomeRecorder {
+            override suspend fun recordRingingTimes(event: IosAlarmMissionEventDto): Boolean = false
+            override suspend fun recordRecoveryAttempt(attempt: IosAlarmRecoveryAttemptDto): Boolean = true
+            override suspend fun recordSuccess(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) = Unit
+            override suspend fun recordFailure(occurrenceId: String, completedAt: String, completedAtEpochMillis: Long?) {
+                terminalRecords += occurrenceId
+            }
+        }
+        val coordinator = IosAlarmMissionCoordinator(
+            LifecycleAlarmDataSource(emptyList()), inbox, LifecycleScheduler(), outcomeRecorder, LifecycleMissionStore(),
+        )
+
+        val result = coordinator.processPendingRecordProjections()
+
+        assertTrue(result.hasUnresolvedChainFailure)
+        assertTrue(terminalRecords.isEmpty())
+        assertFalse(inbox.events.contains("terminalAck:root"))
+    }
+
+    @Test
     fun `소유권 미확인 기록은 서버 반영 ACK 없이 복원한다`() = runBlocking {
         val inbox = LifecycleInbox(emptyList()).apply { recoveryAttempts = listOf(nativeAttempt("root", "root", 0)) }
         val coordinator = IosAlarmMissionCoordinator(LifecycleAlarmDataSource(emptyList()), inbox,
@@ -609,6 +701,28 @@ class IosAlarmLifecycleTest {
         assertFalse(dataSource.getById(CanonicalUuid)!!.enabled)
         assertTrue(dataSource.getById(alertingId)!!.enabled)
         assertEquals(listOf("cancel:$orphanId"), scheduler.events)
+    }
+
+    @Test
+    fun `조정기는 저장된 소유자를 복구 스냅샷에 반영하고 기존 예약을 다시 만들지 않는다`() = runBlocking {
+        val alarm = savedAlarm(id = CanonicalUuid, ownerAccountId = "account-7")
+        val inbox = LifecycleInbox(emptyList())
+        val scheduler = LifecycleScheduler(
+            alarms = listOf(IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.SCHEDULED)),
+        )
+
+        val report = IosAlarmReconciler(
+            dataSource = LifecycleAlarmDataSource(listOf(alarm)),
+            scheduler = scheduler,
+            normalizeAlarmId = ::canonicalUuid,
+            recoveryInbox = inbox,
+        ).reconcile()
+
+        assertTrue(report.isSuccess)
+        assertEquals(1, inbox.sourceSnapshots.size)
+        assertEquals("account-7", inbox.sourceSnapshots.single().owner.accountId)
+        assertEquals(IosAlarmRecoveryOwnerKind.CAPTURED_ACCOUNT, inbox.sourceSnapshots.single().owner.kind)
+        assertTrue(scheduler.events.isEmpty())
     }
 
     @Test
@@ -2152,6 +2266,7 @@ class IosAlarmLifecycleTest {
         repeatEnabled: Boolean = true,
         selectedDays: List<String> = listOf("월"),
         limitMinutes: Int = 12,
+        ownerAccountId: String? = null,
     ) = SavedAlarmSchedule(
         request = AlarmScheduleRequest(
             id = id,
@@ -2164,6 +2279,7 @@ class IosAlarmLifecycleTest {
             destinationLongitude = 127.0,
             alarmSoundName = "기본",
             alarmSoundUri = null,
+            ownerAccountId = ownerAccountId,
         ),
         enabled = true,
     )
@@ -2360,6 +2476,14 @@ private class LifecycleInbox(
 ) :
     IosAlarmMissionEventInbox {
     var terminalCommitCode = IosAlarmOperationCode.SUCCESS
+    val sourceSnapshots = mutableListOf<IosAlarmRecoverySourceSnapshotDto>()
+    override fun upsertSourceSnapshot(
+        snapshot: IosAlarmRecoverySourceSnapshotDto,
+        callback: (IosAlarmOperationResult) -> Unit,
+    ) {
+        sourceSnapshots += snapshot
+        callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
+    }
     override fun ackTerminalRecord(chainId: String, callback: (IosAlarmOperationResult) -> Unit) {
         events += "terminalAck:$chainId"
         callback(IosAlarmOperationResult(IosAlarmOperationCode.SUCCESS))
