@@ -2,6 +2,7 @@ package com.joon.ringout.di
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import com.joon.ringout.data.alarmactivity.RoomAlarmActivityRepository
 import com.joon.ringout.analytics.createRoomMembershipAnalytics
@@ -15,7 +16,13 @@ import com.joon.ringout.data.auth.remote.KtorAuthApi
 import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.data.database.RoomLocalUserDataCleanup
 import com.joon.ringout.data.destination.DefaultDestinationRepository
+import com.joon.ringout.data.destination.DestinationAccountProvider
+import com.joon.ringout.data.destination.DestinationOutboxSyncer
+import com.joon.ringout.data.destination.DestinationSyncCoordinator
+import com.joon.ringout.data.destination.DestinationSyncSessionGate
+import com.joon.ringout.data.destination.KtorDestinationRemoteDataSource
 import com.joon.ringout.data.destination.RoomDestinationDataSource
+import com.joon.ringout.data.outbox.RoomOutboxReader
 import com.joon.ringout.data.member.DefaultMemberRepository
 import com.joon.ringout.data.room.DefaultRoomRepository
 import com.joon.ringout.data.missionhistory.DefaultMissionHistoryRepository
@@ -29,6 +36,7 @@ import com.joon.ringout.data.preferences.getInstallationPreferencesDataStore
 import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.domain.push.PushPlatform
 import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
+import com.joon.ringout.domain.outbox.OutboxReader
 import com.joon.ringout.domain.push.PushTokenSource
 import com.joon.ringout.platform.IosFcmTokenListener
 import com.joon.ringout.platform.IosNativeServices
@@ -42,6 +50,10 @@ class IosAppContainer(
     private val httpClient = getRingoutHttpClient()
     private val tokenStorage = createSecureTokenStorage()
     private val database = getRingoutDatabase()
+    override val outboxReader: OutboxReader = RoomOutboxReader(
+        destinationDao = database.destinationDao(),
+        alarmOccurrenceSyncDao = database.alarmOccurrenceSyncDao(),
+    )
 
     override val authSession = getAuthSession()
     override val currentVerifiedAlarmAccountId: suspend () -> String? = {
@@ -56,6 +68,11 @@ class IosAppContainer(
     override val pushTokenRegistrar = KtorPushTokenRegistrar(httpClient, tokenStorage, authSession)
     override val termsRepository = com.joon.ringout.data.terms.DefaultTermsRepository(httpClient, tokenStorage, authSession)
     override val networkMonitor = com.joon.ringout.data.connectivity.IosNetworkMonitor()
+    private val destinationSessionGate = DestinationSyncSessionGate()
+    private val destinationAccountProvider = DestinationAccountProvider(
+        authSession = authSession,
+        currentVerifiedAccountId = currentVerifiedAlarmAccountId,
+    )
 
     override val appPreferencesRepository =
         DataStoreAppPreferencesRepository(
@@ -94,8 +111,31 @@ class IosAppContainer(
             dataSource = RoomDestinationDataSource(
                 database.destinationDao(),
             ),
+            accountProvider = destinationAccountProvider,
+            sessionGate = destinationSessionGate,
         )
-    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 KtorDestinationRemoteDataSource를 다시 주입한다.
+
+    private val destinationSyncer = DestinationOutboxSyncer(
+        dao = database.destinationDao(),
+        remoteDataSource = KtorDestinationRemoteDataSource(httpClient, tokenStorage),
+        accountProvider = destinationAccountProvider,
+        sessionGate = destinationSessionGate,
+        authSession = authSession,
+    )
+    private val destinationSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val destinationSyncCoordinator = DestinationSyncCoordinator(
+        syncer = destinationSyncer,
+        dao = database.destinationDao(),
+        accountProvider = destinationAccountProvider,
+        authSession = authSession,
+        networkMonitor = networkMonitor,
+    )
+
+    init {
+        destinationSyncCoordinator.start(destinationSyncScope)
+    }
+
+    override fun onAppResumed() = destinationSyncCoordinator.requestSync()
 
     override val alarmActivityRepository =
         RoomAlarmActivityRepository(
@@ -113,7 +153,11 @@ class IosAppContainer(
         DefaultMissionHistoryRepository(
             dataSource = RoomMissionHistoryDataSource(database.missionHistoryDao()),
         )
-    override val localUserDataCleanup = RoomLocalUserDataCleanup(database.localUserDataCleanupDao())
+    override val localUserDataCleanup = RoomLocalUserDataCleanup(
+        dao = database.localUserDataCleanupDao(),
+        destinationSessionGate = destinationSessionGate,
+        currentSessionIdentity = { authSession.identity.value },
+    )
     // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 KtorMissionHistoryRemoteDataSource를 다시 주입한다.
 
     override val arrivalResultRepository =

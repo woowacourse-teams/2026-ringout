@@ -14,6 +14,8 @@ import com.joon.ringout.domain.preferences.AppPreferencesRepository
 import com.joon.ringout.domain.preferences.SystemThemeModeReader
 import com.joon.ringout.domain.room.RoomRepository
 import com.joon.ringout.data.database.LocalUserDataCleanup
+import com.joon.ringout.domain.outbox.EmptyOutboxReader
+import com.joon.ringout.domain.outbox.OutboxReader
 
 interface AppContainer {
     val termsRepository: com.joon.ringout.domain.terms.TermsRepository
@@ -34,7 +36,9 @@ interface AppContainer {
     val arrivalResultRepository: com.joon.ringout.domain.arrival.ArrivalResultRepository
     val forestRepository: com.joon.ringout.domain.forest.ForestRepository
     val productAnalyticsRecorder: ProductAnalyticsRecorder
+    val outboxReader: OutboxReader get() = EmptyOutboxReader
     val hasStoredAlarmsForEntryMigration: suspend () -> Boolean
     val currentVerifiedAlarmAccountId: suspend () -> String? get() = { null }
     val migrateLegacyAlarmData: suspend (String) -> Unit get() = {}
+    fun onAppResumed() {}
 }
