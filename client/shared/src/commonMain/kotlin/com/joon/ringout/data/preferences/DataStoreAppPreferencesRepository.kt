@@ -108,6 +108,28 @@ class DataStoreAppPreferencesRepository(
         }
     }
 
+    override suspend fun reserveLegacyAlarmMigrationAccount(accountId: String): String? {
+        require(accountId.isNotBlank())
+        installationDataStore.edit { preferences ->
+            if (preferences[LegacyAlarmMigrationAccountIdKey] == null &&
+                preferences[LegacyRuntimeExceptionPendingKey] == true
+            ) {
+                preferences[LegacyAlarmMigrationAccountIdKey] = accountId
+            }
+        }
+        return installationDataStore.data.first()[LegacyAlarmMigrationAccountIdKey]
+    }
+
+    override suspend fun completeLegacyAlarmMigration(accountId: String) {
+        require(accountId.isNotBlank())
+        installationDataStore.edit { preferences ->
+            check(preferences[LegacyAlarmMigrationAccountIdKey] == accountId) {
+                "첫 로그인 알람 이관 계정이 일치하지 않습니다."
+            }
+            preferences[LegacyAlarmMigrationCompleteKey] = true
+        }
+    }
+
     override suspend fun saveTermConsents(records: List<TermConsentRecord>) {
         val recordsById = records.associateBy(TermConsentRecord::id)
         require(recordsById.keys == terms.mapTo(mutableSetOf(), TermDefinition::id)) {
@@ -154,6 +176,8 @@ class DataStoreAppPreferencesRepository(
             isAlarmCreationGuideCompleted = this[InstallationAlarmGuideCompletedKey] ?: false,
             hasLegacyRuntimeExceptionPending = this[LegacyRuntimeExceptionPendingKey] ?: false,
             isLogoutCleanupPending = this[LogoutCleanupPendingKey] ?: false,
+            legacyAlarmMigrationAccountId = this[LegacyAlarmMigrationAccountIdKey],
+            isLegacyAlarmMigrationComplete = this[LegacyAlarmMigrationCompleteKey] ?: false,
         )
 }
 
@@ -181,6 +205,8 @@ private val InstallationOnboardingCompletedKey = booleanPreferencesKey("onboardi
 private val InstallationAlarmGuideCompletedKey = booleanPreferencesKey("alarm_guide_completed")
 private val LegacyRuntimeExceptionPendingKey = booleanPreferencesKey("legacy_runtime_exception_pending")
 private val LogoutCleanupPendingKey = booleanPreferencesKey("logout_cleanup_pending")
+private val LegacyAlarmMigrationAccountIdKey = stringPreferencesKey("legacy_alarm_migration_account_id")
+private val LegacyAlarmMigrationCompleteKey = booleanPreferencesKey("legacy_alarm_migration_complete")
 
 private fun nameKey(id: TermId) = stringPreferencesKey("terms.${id.value}.name")
 private fun versionKey(id: TermId) = stringPreferencesKey("terms.${id.value}.version")

@@ -34,4 +34,6 @@ interface AppContainer {
     val arrivalResultRepository: com.joon.ringout.domain.arrival.ArrivalResultRepository
     val productAnalyticsRecorder: ProductAnalyticsRecorder
     val hasStoredAlarmsForEntryMigration: suspend () -> Boolean
+    val currentVerifiedAlarmAccountId: suspend () -> String? get() = { null }
+    val migrateLegacyAlarmData: suspend (String) -> Unit get() = {}
 }

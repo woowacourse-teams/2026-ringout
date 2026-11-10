@@ -9,6 +9,8 @@ import com.joon.ringout.data.room.AnalyticsRoomRepository
 import com.joon.ringout.analytics.createProductAnalyticsRecorder
 import com.joon.ringout.data.auth.DefaultAuthRepository
 import com.joon.ringout.data.auth.local.createSecureTokenStorage
+import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceSyncRuntime
+import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
 import com.joon.ringout.data.auth.remote.KtorAuthApi
 import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.data.database.RoomLocalUserDataCleanup
@@ -42,6 +44,12 @@ class IosAppContainer(
     private val database = getRingoutDatabase()
 
     override val authSession = getAuthSession()
+    override val currentVerifiedAlarmAccountId: suspend () -> String? = {
+        captureAlarmOccurrenceAccount(tokenStorage, authSession)?.ownerAccountId
+    }
+    override val migrateLegacyAlarmData: suspend (String) -> Unit = { accountId ->
+        IosAlarmOccurrenceSyncRuntime.migrateLegacyData(accountId)
+    }
     override val pushTokenSource: PushTokenSource = IosFcmTokenSource(nativeServices)
     override val pushTokenRegistrationReadiness =
         PushTokenRegistrationReadiness(PushPlatform.Ios)

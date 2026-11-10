@@ -5,11 +5,17 @@ import androidx.sqlite.execSQL
 import com.joon.ringout.alarm.AlarmScheduleRequest
 import com.joon.ringout.alarm.SavedAlarmSchedule
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
+import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
+import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
+import com.joon.ringout.data.alarmactivity.AlarmOccurrenceTimesEntity
 import com.joon.ringout.data.arrival.RoomArrivalResultRepository
 import com.joon.ringout.data.destination.DefaultDestinationRepository
 import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordState
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
+import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryDto
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
 import com.joon.ringout.domain.destination.SavedDestination
@@ -22,6 +28,190 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTestSuite {
+    fun `과거 Android 기록은 확인된 시각만 한 번 전송 대기로 옮긴다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val activity = AlarmActivityEntity.rang(
+                alarmId = "alarm-1",
+                occurrenceId = "legacy-root",
+                timestamp = AlarmActivityTimestamp(1_100, "2026-11-01"),
+                scheduleVersion = 3,
+            )
+            database.alarmActivityDao().record(activity)
+            database.missionHistoryDao().insert(MissionHistoryEntity(
+                result = "SUCCESS",
+                completedAt = "2026-11-01",
+                occurrenceId = "legacy-root",
+            ))
+            val times = AlarmOccurrenceTimesEntity(
+                occurrenceId = "legacy-root",
+                ringingStartedAtEpochMillis = 1_100,
+                ringingStoppedAtEpochMillis = 1_800,
+                missionCompletedAtEpochMillis = 3_000,
+                ringingScheduledAtEpochMillis = 1_000,
+            )
+            database.alarmActivityDao().mergeOccurrenceTimes(times)
+            val dao = database.alarmOccurrenceSyncDao()
+
+            assertTrue(dao.migrateLegacyAndroidRingingToAccount("account-1", activity, times,
+                MissionHistoryEntity(result = "SUCCESS", completedAt = "2026-11-01", occurrenceId = "legacy-root")))
+            assertTrue(dao.migrateLegacyAndroidRingingToAccount("account-1", activity, times,
+                MissionHistoryEntity(result = "SUCCESS", completedAt = "2026-11-01", occurrenceId = "legacy-root")))
+
+            val events = dao.getEvents("account-1", "legacy-root")
+            assertEquals(listOf(AlarmOccurrenceOutboxKind.START, AlarmOccurrenceOutboxKind.ARRIVED), events.map { it.kind })
+            assertEquals(1, events.count { it.kind == AlarmOccurrenceOutboxKind.START })
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `예정 시각이 없거나 부모 없는 재울림 ID는 outbox를 만들지 않는다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val dao = database.alarmOccurrenceSyncDao()
+            val root = AlarmActivityEntity.rang(
+                alarmId = "alarm-1",
+                occurrenceId = "legacy-local",
+                timestamp = AlarmActivityTimestamp(1_100, "2026-11-01"),
+                scheduleVersion = 3,
+            )
+            val incompleteTimes = AlarmOccurrenceTimesEntity(
+                occurrenceId = "legacy-local",
+                ringingStartedAtEpochMillis = 1_100,
+            )
+            assertTrue(dao.migrateLegacyAndroidRingingToAccount("account-1", root, incompleteTimes, null))
+            assertNotNull(dao.getExecution("account-1", "legacy-local"))
+            assertTrue(dao.getEvents("account-1", "legacy-local").isEmpty())
+
+            val retry = root.copy(eventKey = "rang:legacy-local:retry-1")
+            assertFalse(dao.migrateLegacyAndroidRingingToAccount("account-1", retry, incompleteTimes, null))
+            assertTrue(dao.getEvents("account-1", "legacy-local").isEmpty())
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `첫 로그인 이관은 iOS 로컬 체인의 확인된 root 이벤트를 한 번 복원한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val decision = IosAlarmOccurrenceRecordEntity(
+                chainId = "legacy-ios-root",
+                rootOccurrenceId = "legacy-ios-root",
+                state = IosAlarmOccurrenceRecordState.LOCAL_ONLY,
+                ownerAccountId = null,
+                alarmId = "alarm-1",
+                scheduleVersion = 3,
+                scheduledAtEpochMillis = 1_000,
+                startedAtEpochMillis = 1_000,
+            )
+            val activity = database.alarmActivityDao()
+            val dao = database.alarmOccurrenceSyncDao()
+            dao.keepIosRecordLocalOnly(decision)
+            activity.record(AlarmActivityEntity.rang(
+                alarmId = "alarm-1",
+                occurrenceId = "legacy-ios-root",
+                timestamp = AlarmActivityTimestamp(1_100, "2026-11-01"),
+                scheduleVersion = 3,
+            ))
+            database.missionHistoryDao().insert(MissionHistoryEntity(
+                result = "SUCCESS",
+                completedAt = "2026-11-01",
+                occurrenceId = "legacy-ios-root",
+            ))
+            activity.mergeOccurrenceTimes(AlarmOccurrenceTimesEntity(
+                occurrenceId = "legacy-ios-root",
+                ringingStartedAtEpochMillis = 1_100,
+                ringingStoppedAtEpochMillis = 1_800,
+                missionCompletedAtEpochMillis = 3_000,
+                ringingScheduledAtEpochMillis = 1_000,
+            ))
+
+            assertEquals(IosAlarmOccurrenceRecordState.SERVER,
+                dao.migrateLegacyIosDecisionToAccount("legacy-ios-root", "account-1"))
+            assertEquals(listOf(
+                AlarmOccurrenceOutboxKind.START,
+                AlarmOccurrenceOutboxKind.INITIAL_DISMISSED,
+            ), dao.getEvents("account-1", "legacy-ios-root").map { it.kind })
+            assertTrue(dao.migrateLegacyIosTerminalToAccount("legacy-ios-root", "account-1"))
+            val events = dao.getEvents("account-1", "legacy-ios-root")
+            assertEquals(listOf(
+                AlarmOccurrenceOutboxKind.START,
+                AlarmOccurrenceOutboxKind.INITIAL_DISMISSED,
+                AlarmOccurrenceOutboxKind.ARRIVED,
+            ), events.map { it.kind })
+            assertEquals(listOf(1_000L, 1_800L, 3_000L), events.map { it.occurredAtEpochMillis })
+
+            assertNull(dao.migrateLegacyIosDecisionToAccount("legacy-ios-root", "account-1"))
+            assertTrue(dao.migrateLegacyIosTerminalToAccount("legacy-ios-root", "account-1"))
+            assertEquals(3, dao.getEvents("account-1", "legacy-ios-root").size)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `필수 시각이 빠진 iOS 레거시 기록은 계정에 보존하되 outbox를 만들지 않는다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val dao = database.alarmOccurrenceSyncDao()
+            dao.keepIosRecordLocalOnly(IosAlarmOccurrenceRecordEntity(
+                chainId = "incomplete-ios-root",
+                rootOccurrenceId = "incomplete-ios-root",
+                state = IosAlarmOccurrenceRecordState.LOCAL_ONLY,
+                ownerAccountId = null,
+                alarmId = "alarm-1",
+                scheduleVersion = 3,
+                scheduledAtEpochMillis = null,
+                startedAtEpochMillis = 1_100,
+            ))
+
+            assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY,
+                dao.migrateLegacyIosDecisionToAccount("incomplete-ios-root", "account-1"))
+            assertEquals("account-1", dao.getIosRecordDecision("incomplete-ios-root")?.ownerAccountId)
+            assertTrue(dao.getEvents("account-1", "incomplete-ios-root").isEmpty())
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `다른 계정 소유 알람의 미귀속 iOS 기록은 첫 로그인 계정에 넘기지 않는다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val otherAccountAlarm = savedAlarm().let { alarm ->
+                alarm.copy(request = alarm.request.copy(ownerAccountId = "account-2"))
+            }
+            RoomAlarmDataSource(database.alarmDao()).replace(otherAccountAlarm)
+            val dao = database.alarmOccurrenceSyncDao()
+            dao.keepIosRecordLocalOnly(IosAlarmOccurrenceRecordEntity(
+                chainId = "conflicting-ios-root",
+                rootOccurrenceId = "conflicting-ios-root",
+                state = IosAlarmOccurrenceRecordState.LOCAL_ONLY,
+                ownerAccountId = null,
+                alarmId = "alarm-1",
+                scheduleVersion = 3,
+                scheduledAtEpochMillis = 1_000,
+                startedAtEpochMillis = 1_000,
+            ))
+
+            assertNull(dao.migrateLegacyIosDecisionToAccount("conflicting-ios-root", "account-1"))
+            assertNull(dao.getIosRecordDecision("conflicting-ios-root")?.ownerAccountId)
+            assertNull(dao.getExecution("account-1", "conflicting-ios-root"))
+            assertTrue(dao.getEvents("account-1", "conflicting-ios-root").isEmpty())
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
     fun `버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`() = runBlocking {
         val path = temporaryDatabasePath()
         createVersionThirteenDatabase(path)

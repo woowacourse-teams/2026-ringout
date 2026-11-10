@@ -2,6 +2,7 @@ package com.joon.ringout.data.alarmoccurrence
 
 import android.content.Context
 import android.util.Log
+import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
 import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.data.auth.restoreAuthSession
 import com.joon.ringout.data.connectivity.AndroidNetworkMonitor
@@ -24,7 +25,11 @@ import java.util.UUID
 internal class AndroidAlarmOccurrenceRuntime private constructor(private val context: Context) {
     private val tokenStorage = createSecureTokenStorage(context)
     private val authSession = getAuthSession()
-    private val dao = getRingoutDatabase(context).alarmOccurrenceSyncDao()
+    private val database = getRingoutDatabase(context)
+    private val alarmDao = database.alarmDao()
+    private val activityDao = database.alarmActivityDao()
+    private val missionHistoryDao = database.missionHistoryDao()
+    private val dao = database.alarmOccurrenceSyncDao()
     private val journal = AndroidAlarmOccurrenceJournal(
         context.getSharedPreferences("alarm_occurrence_pending", Context.MODE_PRIVATE),
     )
@@ -99,6 +104,33 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
     }
 
     suspend fun clearPendingForLogout() = journal.clear()
+
+    suspend fun migrateLegacyData(ownerAccountId: String) {
+        require(ownerAccountId.isNotBlank())
+        alarmDao.assignUnownedLegacyAlarms(ownerAccountId)
+        val ownedSchedules = alarmDao.getAlarmsOwnedBy(ownerAccountId)
+        val journalSchedules = journal.unownedRootScheduleKeys().filter { (alarmId, _) ->
+            dao.canMigrateLegacyAlarmOccurrence(alarmId, ownerAccountId)
+        }.toSet()
+        journal.bindUnownedRoots(
+            ownerAccountId = ownerAccountId,
+            assignedSchedules = ownedSchedules.mapTo(mutableSetOf()) { alarm -> alarm.id to alarm.scheduleVersion } +
+                journalSchedules,
+        )
+        journal.drain(recorder::record)
+
+        AndroidAlarmActivityRecorder.get(context).flushPending()
+        activityDao.getRingingEventsForLegacyMigration().forEach { event ->
+            val occurrenceId = event.eventKey.removePrefix("rang:")
+            dao.migrateLegacyAndroidRingingToAccount(
+                ownerAccountId = ownerAccountId,
+                event = event,
+                times = activityDao.getOccurrenceTimes(occurrenceId),
+                history = missionHistoryDao.getHistoryByOccurrence(occurrenceId),
+            )
+        }
+        AlarmOccurrenceSyncWorker.enqueue(context)
+    }
 
     private suspend fun flushAccountOutbox(): Long? =
         if (isAlarmSchedulingBlocked(context)) null else syncer.flush()

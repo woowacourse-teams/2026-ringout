@@ -43,6 +43,38 @@ abstract class AlarmOccurrenceSyncDao {
     @Query("SELECT * FROM ios_alarm_occurrence_recording WHERE state = 'AUTH_PENDING' ORDER BY chain_id")
     abstract suspend fun getPendingIosRecordDecisions(): List<IosAlarmOccurrenceRecordEntity>
 
+    @Query("SELECT * FROM ios_alarm_occurrence_recording WHERE state = 'SERVER' AND owner_account_id = :ownerAccountId ORDER BY chain_id")
+    abstract suspend fun getIosServerRecordDecisions(ownerAccountId: String): List<IosAlarmOccurrenceRecordEntity>
+
+    @Query("SELECT * FROM ios_alarm_occurrence_recording WHERE state = 'LOCAL_ONLY' AND owner_account_id IS NULL ORDER BY chain_id")
+    abstract suspend fun getUnownedIosLocalOnlyDecisions(): List<IosAlarmOccurrenceRecordEntity>
+
+    @Query("""
+        SELECT EXISTS(
+            SELECT 1 FROM alarms
+            WHERE id = :alarmId AND owner_account_id IS NOT NULL AND owner_account_id != :ownerAccountId
+        ) OR EXISTS(
+            SELECT 1 FROM alarm_occurrence_sync
+            WHERE alarm_id = :alarmId AND owner_account_id != :ownerAccountId
+        ) OR EXISTS(
+            SELECT 1 FROM ios_alarm_occurrence_recording
+            WHERE alarm_id = :alarmId AND owner_account_id IS NOT NULL
+                AND owner_account_id != :ownerAccountId
+        )
+    """)
+    protected abstract suspend fun hasDifferentAccountForAlarm(alarmId: String, ownerAccountId: String): Boolean
+
+    suspend fun canMigrateLegacyAlarmOccurrence(alarmId: String, ownerAccountId: String): Boolean {
+        require(alarmId.isNotBlank() && ownerAccountId.isNotBlank())
+        return !hasDifferentAccountForAlarm(alarmId, ownerAccountId)
+    }
+
+    @Query("SELECT * FROM alarm_occurrence_sync WHERE local_execution_id = :executionId LIMIT 1")
+    protected abstract suspend fun findAnyExecution(executionId: String): AlarmOccurrenceSyncEntity?
+
+    @Query("SELECT * FROM ios_alarm_occurrence_recording WHERE root_occurrence_id = :executionId LIMIT 1")
+    protected abstract suspend fun findIosDecisionForRoot(executionId: String): IosAlarmOccurrenceRecordEntity?
+
     @Query("SELECT * FROM alarm_activity_events WHERE event_key = :eventKey")
     protected abstract suspend fun getCleanupActivityEvent(eventKey: String): AlarmActivityEntity?
 
@@ -137,6 +169,162 @@ abstract class AlarmOccurrenceSyncDao {
         return true
     }
 
+    /** First-login-only bridge for a confirmed legacy guest chain. Incomplete chains remain local. */
+    @Transaction
+    open suspend fun migrateLegacyIosDecisionToAccount(
+        chainId: String,
+        ownerAccountId: String,
+    ): IosAlarmOccurrenceRecordState? {
+        require(chainId.isNotBlank() && ownerAccountId.isNotBlank())
+        val current = getIosRecordDecision(chainId) ?: return null
+        if (current.state != IosAlarmOccurrenceRecordState.LOCAL_ONLY || current.ownerAccountId != null) return null
+        if (hasDifferentAccountForAlarm(current.alarmId, ownerAccountId)) return null
+        val existing = findAnyExecution(current.rootOccurrenceId)
+        if (existing != null) return null
+
+        val times = getCleanupOccurrenceTimes(current.rootOccurrenceId)
+        val scheduledAt = current.scheduledAtEpochMillis ?: times?.ringingScheduledAtEpochMillis
+        val startedAt = current.startedAtEpochMillis ?: times?.ringingStartedAtEpochMillis
+        val hasRequestTimes = scheduledAt != null && startedAt != null && scheduledAt <= startedAt &&
+            current.alarmId.isNotBlank() && current.alarmId.length <= 64 && current.scheduleVersion > 0
+        if (hasRequestTimes) {
+            recordStartInTransaction(AlarmOccurrenceSyncEntity(
+                localExecutionId = current.rootOccurrenceId,
+                ownerAccountId = ownerAccountId,
+                alarmId = current.alarmId,
+                scheduleVersion = current.scheduleVersion,
+                scheduledAtEpochMillis = scheduledAt,
+                startedAtEpochMillis = startedAt,
+            ))
+            replaceIosRecordDecision(current.copy(
+                state = IosAlarmOccurrenceRecordState.SERVER,
+                ownerAccountId = ownerAccountId,
+            ))
+
+            val rootActivity = getCleanupActivityEvent("rang:${current.rootOccurrenceId}")
+            val hasMatchingRootActivity = rootActivity?.alarmId == current.alarmId &&
+                rootActivity.scheduleVersion == current.scheduleVersion && when (rootActivity.type) {
+                "RANG" -> times?.ringingStartedAtEpochMillis == rootActivity.occurredAtEpochMillis
+                "RANG_CONFIRMED_BY_STOP" -> times != null && times.ringingStartedAtEpochMillis == null &&
+                    times.ringingStoppedAtEpochMillis == rootActivity.occurredAtEpochMillis
+                else -> false
+            }
+            val dismissedAt = times?.ringingStoppedAtEpochMillis
+                ?.takeIf { hasMatchingRootActivity && it >= checkNotNull(startedAt) }
+            if (dismissedAt != null) {
+                recordDismissal(ownerAccountId, current.rootOccurrenceId, dismissedAt)
+            }
+
+            return IosAlarmOccurrenceRecordState.SERVER
+        }
+
+        replaceIosRecordDecision(current.copy(ownerAccountId = ownerAccountId))
+        return IosAlarmOccurrenceRecordState.LOCAL_ONLY
+    }
+
+    /** Adds a proven historical terminal only after the native recovery chain has been replayed. */
+    @Transaction
+    open suspend fun migrateLegacyIosTerminalToAccount(
+        chainId: String,
+        ownerAccountId: String,
+    ): Boolean {
+        require(chainId.isNotBlank() && ownerAccountId.isNotBlank())
+        val decision = getIosRecordDecision(chainId) ?: return false
+        if (decision.state != IosAlarmOccurrenceRecordState.SERVER ||
+            decision.ownerAccountId != ownerAccountId
+        ) return false
+        val execution = getExecution(ownerAccountId, decision.rootOccurrenceId) ?: return false
+        val existingTerminal = getEvents(ownerAccountId, execution.localExecutionId)
+            .firstOrNull { it.deduplicationKey == "terminal" }
+        if (existingTerminal != null) return true
+
+        val history = getCleanupMissionHistory(execution.localExecutionId) ?: return false
+        if (history.occurrenceId != execution.localExecutionId || history.result !in setOf("SUCCESS", "FAILURE")) {
+            return false
+        }
+        val completedAt = getCleanupOccurrenceTimes(execution.localExecutionId)
+            ?.missionCompletedAtEpochMillis ?: return false
+        val startedAt = execution.startedAtEpochMillis ?: return false
+        if (completedAt < startedAt) return false
+
+        recordTerminal(
+            ownerAccountId = ownerAccountId,
+            localRingingId = execution.localExecutionId,
+            kind = if (history.result == "SUCCESS") {
+                AlarmOccurrenceOutboxKind.ARRIVED
+            } else {
+                AlarmOccurrenceOutboxKind.FORCE_ENDED
+            },
+            occurredAtEpochMillis = completedAt,
+        )
+        return true
+    }
+
+    /**
+     * Binds an old Android history row to its proven schedule owner. It creates a START only when
+     * both API-required times were captured; incomplete rows remain local without an outbox event.
+     */
+    @Transaction
+    open suspend fun migrateLegacyAndroidRingingToAccount(
+        ownerAccountId: String,
+        event: AlarmActivityEntity,
+        times: AlarmOccurrenceTimesEntity?,
+        history: MissionHistoryEntity?,
+    ): Boolean {
+        require(ownerAccountId.isNotBlank())
+        if (event.type !in setOf("RANG", "RANG_CONFIRMED_BY_STOP") || !event.eventKey.startsWith("rang:")) return false
+        val occurrenceId = event.eventKey.removePrefix("rang:")
+        if (occurrenceId.isBlank() || ":retry-" in occurrenceId) return false
+
+        val existing = findAnyExecution(occurrenceId)
+        if (existing != null) return existing.ownerAccountId == ownerAccountId
+        if (findIosDecisionForRoot(occurrenceId) != null ||
+            hasDifferentAccountForAlarm(event.alarmId, ownerAccountId)
+        ) return false
+
+        val recordedStartAt = times?.ringingStartedAtEpochMillis
+        val startedAt = recordedStartAt
+            ?: event.occurredAtEpochMillis.takeIf { event.type == "RANG" }
+        val scheduledAt = times?.ringingScheduledAtEpochMillis
+        val activityStartAt = event.occurredAtEpochMillis.takeIf { event.type == "RANG" }
+        val hasConsistentStart = activityStartAt == null || recordedStartAt == null ||
+            activityStartAt == recordedStartAt
+        val execution = AlarmOccurrenceSyncEntity(
+            localExecutionId = occurrenceId,
+            ownerAccountId = ownerAccountId,
+            alarmId = event.alarmId,
+            scheduleVersion = event.scheduleVersion,
+            scheduledAtEpochMillis = scheduledAt,
+            startedAtEpochMillis = startedAt,
+        )
+
+        if (scheduledAt != null && startedAt != null && scheduledAt <= startedAt && hasConsistentStart &&
+            event.alarmId.isNotBlank() && event.alarmId.length <= 64 && event.scheduleVersion > 0
+        ) {
+            recordStartInTransaction(execution)
+            val completedAt = times.missionCompletedAtEpochMillis
+            if (completedAt != null && history?.occurrenceId == occurrenceId &&
+                completedAt >= startedAt && history.result in setOf("SUCCESS", "FAILURE")
+            ) {
+                recordTerminal(
+                    ownerAccountId = ownerAccountId,
+                    localRingingId = occurrenceId,
+                    kind = if (history.result == "SUCCESS") {
+                        AlarmOccurrenceOutboxKind.ARRIVED
+                    } else {
+                        AlarmOccurrenceOutboxKind.FORCE_ENDED
+                    },
+                    occurredAtEpochMillis = completedAt,
+                )
+            }
+        } else {
+            insertExecution(execution)
+            val stored = checkNotNull(getExecution(ownerAccountId, occurrenceId))
+            check(stored.alarmId == event.alarmId && stored.scheduleVersion == event.scheduleVersion)
+        }
+        return true
+    }
+
     /** Reads the persisted account decision and all projection proof in one Room transaction. */
     @Transaction
     open suspend fun evaluateIosAlarmCleanup(
@@ -153,12 +341,9 @@ abstract class AlarmOccurrenceSyncDao {
             IosAlarmOccurrenceRecordState.AUTH_PENDING ->
                 return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.AUTH_PENDING)
             IosAlarmOccurrenceRecordState.LOCAL_ONLY -> {
-                if (decision.ownerAccountId != null) {
-                    return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_DECISION)
-                }
                 val localReason = verifyLocalProjections(request)
                 if (localReason != null) return IosAlarmCleanupReadiness(localReason)
-                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.READY)
+                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.READY, decision.ownerAccountId)
             }
             IosAlarmOccurrenceRecordState.SERVER -> Unit
         }

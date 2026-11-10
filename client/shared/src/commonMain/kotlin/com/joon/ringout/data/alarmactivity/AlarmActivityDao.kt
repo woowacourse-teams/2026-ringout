@@ -34,6 +34,9 @@ interface AlarmActivityDao : AlarmOccurrenceTimesAccess {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertEvent(event: AlarmActivityEntity)
 
+    @Query("SELECT * FROM alarm_activity_events WHERE event_key LIKE 'rang:%' AND type IN ('RANG', 'RANG_CONFIRMED_BY_STOP')")
+    suspend fun getRingingEventsForLegacyMigration(): List<AlarmActivityEntity>
+
     // A late start moves the existing occurrence to its ringing date without adding another count.
     @Query("""
         UPDATE alarm_activity_events SET type = 'RANG', occurred_at_epoch_millis = :startedAt, local_date = :localDate

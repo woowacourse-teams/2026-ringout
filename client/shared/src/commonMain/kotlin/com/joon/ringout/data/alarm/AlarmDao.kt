@@ -57,6 +57,50 @@ interface AlarmDao {
     @Query("UPDATE alarms SET enabled = 0")
     suspend fun disableAll(): Int
 
+    /** One-time legacy guest migration; never changes an existing owner or a conflicting account's alarm. */
+    @Query("""
+        SELECT * FROM alarms
+        WHERE owner_account_id IS NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM alarm_occurrence_sync e
+                WHERE e.alarm_id = alarms.id AND e.owner_account_id != :ownerAccountId
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM ios_alarm_occurrence_recording d
+                WHERE d.alarm_id = alarms.id AND d.owner_account_id IS NOT NULL
+                    AND d.owner_account_id != :ownerAccountId
+            )
+    """)
+    suspend fun getEligibleUnownedLegacyAlarms(ownerAccountId: String): List<AlarmEntity>
+
+    @Query("SELECT * FROM alarms WHERE owner_account_id = :ownerAccountId")
+    suspend fun getAlarmsOwnedBy(ownerAccountId: String): List<AlarmEntity>
+
+    @Query("""
+        UPDATE alarms SET owner_account_id = :ownerAccountId
+        WHERE id IN (:alarmIds) AND owner_account_id IS NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM alarm_occurrence_sync e
+                WHERE e.alarm_id = alarms.id AND e.owner_account_id != :ownerAccountId
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM ios_alarm_occurrence_recording d
+                WHERE d.alarm_id = alarms.id AND d.owner_account_id IS NOT NULL
+                    AND d.owner_account_id != :ownerAccountId
+            )
+    """)
+    suspend fun bindLegacyAlarms(alarmIds: List<String>, ownerAccountId: String): Int
+
+    @Transaction
+    suspend fun assignUnownedLegacyAlarms(ownerAccountId: String): List<AlarmEntity> {
+        require(ownerAccountId.isNotBlank())
+        val candidates = getEligibleUnownedLegacyAlarms(ownerAccountId)
+        if (candidates.isEmpty()) return emptyList()
+        val updated = bindLegacyAlarms(candidates.map(AlarmEntity::id), ownerAccountId)
+        check(updated == candidates.size) { "레거시 알람 소유자를 일괄 저장하지 못했습니다." }
+        return candidates.map { it.copy(ownerAccountId = ownerAccountId) }
+    }
+
     @Query("DELETE FROM alarms WHERE id = :id")
     suspend fun delete(id: String): Int
 

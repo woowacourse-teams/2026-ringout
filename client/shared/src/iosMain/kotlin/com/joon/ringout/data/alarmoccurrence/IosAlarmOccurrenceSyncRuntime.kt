@@ -4,9 +4,11 @@ package com.joon.ringout.data.alarmoccurrence
 
 import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.data.auth.restoreAuthSession
+import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.connectivity.IosNetworkMonitor
 import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.data.network.getRingoutHttpClient
+import com.joon.ringout.alarm.IosRecordProjectionReplayResult
 import com.joon.ringout.domain.auth.getAuthSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,15 +40,20 @@ internal object IosAlarmOccurrenceSyncRuntime {
         NSLog("AlarmOccurrence: sync initialization failed; retry on next activation")
     })
     private var job: Job? = null
-    private var onAuthenticationDecisionReady: suspend () -> Unit = {}
+    private var onAuthenticationDecisionReady: suspend () -> IosRecordProjectionReplayResult? = { null }
     private var onSyncCompleted: suspend () -> Unit = {}
+    private var onLegacyMigrationCompleted: suspend () -> Unit = {}
 
     fun start(
-        onAuthenticationDecisionReady: suspend () -> Unit = {},
+        onAuthenticationDecisionReady: suspend () -> IosRecordProjectionReplayResult = {
+            IosRecordProjectionReplayResult()
+        },
         onSyncCompleted: suspend () -> Unit = {},
+        onLegacyMigrationCompleted: suspend () -> Unit = {},
     ) {
         this.onAuthenticationDecisionReady = onAuthenticationDecisionReady
         this.onSyncCompleted = onSyncCompleted
+        this.onLegacyMigrationCompleted = onLegacyMigrationCompleted
         if (job?.isActive == true) return
         job = scope.launch {
             val tokens = createSecureTokenStorage()
@@ -59,7 +66,11 @@ internal object IosAlarmOccurrenceSyncRuntime {
                             state == com.joon.ringout.domain.auth.AuthSessionState.Unauthenticated
                         ) {
                             try {
-                                onAuthenticationDecisionReady()
+                                val replayResult = onAuthenticationDecisionReady()
+                                val ownerAccountId = captureAlarmOccurrenceAccount(tokens, session)?.ownerAccountId
+                                if (ownerAccountId != null) {
+                                    migrateLegacyTerminalsAfterReplay(ownerAccountId, replayResult)
+                                }
                                 onSyncCompleted()
                             } catch (error: CancellationException) {
                                 throw error
@@ -87,6 +98,43 @@ internal object IosAlarmOccurrenceSyncRuntime {
                 },
             ).start(this).join()
         }
+    }
+
+    suspend fun migrateLegacyData(ownerAccountId: String) {
+        require(ownerAccountId.isNotBlank())
+        val database = getRingoutDatabase()
+        val alarmDao = database.alarmDao()
+        alarmDao.assignUnownedLegacyAlarms(ownerAccountId)
+        val occurrenceDao = database.alarmOccurrenceSyncDao()
+        occurrenceDao.getUnownedIosLocalOnlyDecisions().forEach { decision ->
+            occurrenceDao.migrateLegacyIosDecisionToAccount(decision.chainId, ownerAccountId)
+        }
+
+        val dataSource = RoomAlarmDataSource(alarmDao)
+        IosAlarmOccurrenceRecorder(
+            dao = occurrenceDao,
+            activityDao = database.alarmActivityDao(),
+            alarms = dataSource,
+        ).resolvePendingRecordDecisions()
+
+        onLegacyMigrationCompleted()
+        onAuthenticationDecisionReady()?.let { replayResult ->
+            migrateLegacyTerminalsAfterReplay(ownerAccountId, replayResult)
+        }
+        onSyncCompleted()
+    }
+
+    private suspend fun migrateLegacyTerminalsAfterReplay(
+        ownerAccountId: String,
+        replayResult: IosRecordProjectionReplayResult,
+    ) {
+        if (replayResult.hasUnresolvedChainFailure) return
+        val occurrenceDao = getRingoutDatabase().alarmOccurrenceSyncDao()
+        occurrenceDao.getIosServerRecordDecisions(ownerAccountId)
+            .filterNot { decision -> decision.chainId in replayResult.failedChainIds }
+            .forEach { decision ->
+                occurrenceDao.migrateLegacyIosTerminalToAccount(decision.chainId, ownerAccountId)
+            }
     }
 }
 

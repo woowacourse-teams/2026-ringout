@@ -3,6 +3,7 @@ package com.joon.ringout.di
 import android.content.Context
 import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
 import com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime
+import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -45,6 +46,12 @@ class AndroidAppContainer(
     }
 
     override val authSession = getAuthSession()
+    override val currentVerifiedAlarmAccountId: suspend () -> String? = {
+        captureAlarmOccurrenceAccount(tokenStorage, authSession)?.ownerAccountId
+    }
+    override val migrateLegacyAlarmData: suspend (String) -> Unit = { accountId ->
+        AndroidAlarmOccurrenceRuntime.get(context).migrateLegacyData(accountId)
+    }
     override val pushTokenSource = AndroidFcmTokenSource
     override val pushTokenRegistrationReadiness =
         PushTokenRegistrationReadiness(PushPlatform.Android)

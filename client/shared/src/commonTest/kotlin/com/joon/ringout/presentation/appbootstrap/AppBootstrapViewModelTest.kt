@@ -29,6 +29,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import okio.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -474,6 +476,83 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
+    fun `첫 로그인 계정과 이관 완료를 저장한 뒤 레거시 예외를 해제한다`() = runBlocking {
+        val session = AuthSession()
+        val initial = snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)).copy(
+            installationEntryState = InstallationEntryState(
+                policyVersion = EntryPolicyVersion,
+                isOnboardingCompleted = true,
+                isAlarmCreationGuideCompleted = true,
+                hasLegacyRuntimeExceptionPending = true,
+            ),
+        )
+        val repository = FakeAppPreferencesRepository(initial)
+        val migratedAccounts = mutableListOf<String>()
+        withViewModel(
+            repository = repository,
+            authSession = session,
+            authRepository = FakeAuthRepository(session, restoredState = AuthSessionState.Unauthenticated),
+            currentVerifiedAlarmAccountId = { "account-42" },
+            migrateLegacyAlarmData = { migratedAccounts += it },
+        ) { viewModel, _, _ ->
+            val attemptId = viewModel.beginAuthFlow()
+            session.startNewSession()
+
+            assertEquals(
+                AuthFlowEventResult.Accepted,
+                viewModel.handleAuthFlowEvent(
+                    AuthFlowEvent(attemptId, 1, AuthFlowEventType.LoginAuthenticated),
+                ),
+            )
+            val installation = runBlocking { repository.bootstrapState.first().installationEntryState!! }
+            assertEquals(listOf("account-42"), migratedAccounts)
+            assertEquals("account-42", installation.legacyAlarmMigrationAccountId)
+            assertTrue(installation.isLegacyAlarmMigrationComplete)
+            assertFalse(installation.hasLegacyRuntimeExceptionPending)
+        }
+    }
+
+    @Test
+    fun `기존 인증 설치는 미소유 알람 데이터를 검증 계정에 연결한다`() = runBlocking {
+        val migratedAccounts = mutableListOf<String>()
+        withViewModel(
+            repository = FakeAppPreferencesRepository(snapshot()),
+            authSession = authenticatedSession(),
+            currentVerifiedAlarmAccountId = { "account-42" },
+            migrateLegacyAlarmData = { migratedAccounts += it },
+        ) { viewModel, _, _ ->
+            assertTrue(viewModel.uiState.isReady)
+            assertEquals(listOf("account-42"), migratedAccounts)
+        }
+    }
+
+    @Test
+    fun `첫 로그인 후 이관 계정 저장 전에 종료돼도 부트스트랩에서 이관을 재개한다`() = runBlocking {
+        val initial = snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)).copy(
+            installationEntryState = InstallationEntryState(
+                policyVersion = EntryPolicyVersion,
+                isOnboardingCompleted = true,
+                isAlarmCreationGuideCompleted = true,
+                hasLegacyRuntimeExceptionPending = true,
+            ),
+        )
+        val repository = FakeAppPreferencesRepository(initial)
+        val migratedAccounts = mutableListOf<String>()
+        withViewModel(
+            repository = repository,
+            authSession = authenticatedSession(),
+            currentVerifiedAlarmAccountId = { "account-42" },
+            migrateLegacyAlarmData = { migratedAccounts += it },
+        ) { viewModel, _, _ ->
+            val installation = runBlocking { repository.bootstrapState.first().installationEntryState!! }
+            assertTrue(viewModel.uiState.isReady)
+            assertEquals(listOf("account-42"), migratedAccounts)
+            assertEquals("account-42", installation.legacyAlarmMigrationAccountId)
+            assertTrue(installation.isLegacyAlarmMigrationComplete)
+        }
+    }
+
+    @Test
     fun `재시작 시 대기 중인 로그아웃 정리가 실패하면 정리 화면을 유지하고 재시도한다`() {
         val session = authenticatedSession()
         val auth = FakeAuthRepository(session)
@@ -692,6 +771,8 @@ private fun withViewModel(
     localUserDataCleanup: FakeLocalUserDataCleanup = FakeLocalUserDataCleanup(),
     hasStoredAlarms: suspend () -> Boolean = { false },
     hasRuntimeEvidence: () -> Boolean = { false },
+    currentVerifiedAlarmAccountId: suspend () -> String? = { null },
+    migrateLegacyAlarmData: suspend (String) -> Unit = {},
     block: (
         AppBootstrapViewModel,
         FakeAppPreferencesRepository,
@@ -710,6 +791,8 @@ private fun withViewModel(
         hasRuntimeEvidence = hasRuntimeEvidence,
         coroutineScope = scope,
         themeInitializationRetryDelayMillis = themeInitializationRetryDelayMillis,
+        currentVerifiedAlarmAccountId = currentVerifiedAlarmAccountId,
+        migrateLegacyAlarmData = migrateLegacyAlarmData,
     )
     try {
         block(viewModel, repository, systemThemeModeReader)
@@ -842,6 +925,25 @@ private class FakeAppPreferencesRepository(
         )
     }
 
+    override suspend fun reserveLegacyAlarmMigrationAccount(accountId: String): String? {
+        val installation = mutableBootstrapState.value.installationEntryState ?: return null
+        val target = installation.legacyAlarmMigrationAccountId
+            ?: accountId.takeIf { installation.hasLegacyRuntimeExceptionPending }
+            ?: return null
+        emit(mutableBootstrapState.value.copy(
+            installationEntryState = installation.copy(legacyAlarmMigrationAccountId = target),
+        ))
+        return target
+    }
+
+    override suspend fun completeLegacyAlarmMigration(accountId: String) {
+        val installation = mutableBootstrapState.value.installationEntryState ?: return
+        check(installation.legacyAlarmMigrationAccountId == accountId)
+        emit(mutableBootstrapState.value.copy(
+            installationEntryState = installation.copy(isLegacyAlarmMigrationComplete = true),
+        ))
+    }
+
     override suspend fun saveTermConsents(records: List<TermConsentRecord>) = Unit
 
     fun emit(snapshot: AppBootstrapSnapshot) {
@@ -853,6 +955,8 @@ private object EmptyAppPreferencesRepository : AppPreferencesRepository {
     override suspend fun initializeEntryPolicy(authSessionState: AuthSessionState, hasLegacyAlarmOrRuntimeEvidence: Boolean) = Unit
     override suspend fun setLogoutCleanupPending(pending: Boolean) = Unit
     override suspend fun setLegacyRuntimeExceptionPending(pending: Boolean) = Unit
+    override suspend fun reserveLegacyAlarmMigrationAccount(accountId: String): String? = null
+    override suspend fun completeLegacyAlarmMigration(accountId: String) = Unit
     override val bootstrapState: Flow<AppBootstrapSnapshot> = emptyFlow()
     override suspend fun initializeThemeModeIfMissing(themeMode: ThemeMode) = Unit
     override suspend fun setThemeMode(themeMode: ThemeMode) = Unit

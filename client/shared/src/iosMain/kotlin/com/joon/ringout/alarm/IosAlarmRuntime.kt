@@ -39,7 +39,7 @@ class IosAlarmRuntime internal constructor(
     private val runtimeDispatcher: CoroutineDispatcher = Dispatchers.Main,
     private val activityDao: AlarmActivityDao? = null,
     private val occurrenceRecorder: IosAlarmOccurrenceRecorder? = null,
-    private val startOccurrenceSync: (suspend () -> Unit, suspend () -> Unit) -> Unit = { _, _ -> },
+    private val startOccurrenceSync: (suspend () -> IosRecordProjectionReplayResult, suspend () -> Unit, suspend () -> Unit) -> Unit = { _, _, _ -> },
     private val nativeCleanup: IosAlarmNativeCleanupCoordinator? = null,
     private val missionCommands: IosAlarmMissionCommands? = null,
     private val restoreMissionAccess: suspend () -> Boolean = { true },
@@ -116,10 +116,12 @@ class IosAlarmRuntime internal constructor(
         }
         startOccurrenceSync(
             {
-                missionCoordinator.processPendingRecordProjections()
+                val failedChains = missionCoordinator.processPendingRecordProjections()
                 nativeCleanup?.requestCleanup()
+                failedChains
             },
             { nativeCleanup?.requestCleanup() },
+            { runStartupStep { reconciler.reconcile() } },
         )
         runStartupStep { missionCoordinator.processPendingRecordProjections() }
         scheduler.setStateListener(alarmStateListener)
@@ -817,8 +819,8 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
         locationService = nativeServices.missionLocationService(),
         activityDao = database.alarmActivityDao(),
         occurrenceRecorder = occurrenceRecorder,
-        startOccurrenceSync = { onAuthReady, onSyncCompleted ->
-            IosAlarmOccurrenceSyncRuntime.start(onAuthReady, onSyncCompleted)
+        startOccurrenceSync = { onAuthReady, onSyncCompleted, onLegacyMigrationCompleted ->
+            IosAlarmOccurrenceSyncRuntime.start(onAuthReady, onSyncCompleted, onLegacyMigrationCompleted)
         },
         nativeCleanup = nativeCleanup,
         missionCommands = nativeServices.alarmMissionCommands(),
