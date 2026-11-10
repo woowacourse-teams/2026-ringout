@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
 
 class LocalUserDataCleanupDatabaseTest {
     @Test
-    fun `사용자 데이터를 모두 원자적으로 비우고 설치 마이그레이션 표식은 보존한다`() = runBlocking {
+    fun `로그아웃 정리는 목적지와 동기화 대기열을 지우고 설치 표식은 보존한다`() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder<RingoutDatabase>()
             .setDriver(BundledSQLiteDriver())
             .build()
@@ -55,7 +55,12 @@ class LocalUserDataCleanupDatabaseTest {
             alarmDao.insertRepeatDays(listOf(AlarmRepeatDayEntity("alarm-1", 1)))
             alarmDao.insertStorageMigration(StorageMigrationEntity("legacy-import", 1L))
             assertEquals(listOf(1), alarmDao.getById("alarm-1")?.repeatDays?.map { it.dayOfWeek })
-            database.destinationDao().insert(SavedDestinationEntity(label = "회사", latitude = 37.5, longitude = 127.0))
+            val destinationDao = database.destinationDao()
+            destinationDao.saveNew(
+                SavedDestinationEntity(label = "회사", latitude = 37.5, longitude = 127.0),
+                ownerAccountId = "account-1",
+            )
+            destinationDao.prepareAccount("account-1")
 
             occurrenceDao.recordStart(
                 AlarmOccurrenceSyncEntity(
@@ -109,7 +114,9 @@ class LocalUserDataCleanupDatabaseTest {
             cleanup.clear()
 
             assertTrue(alarmDao.getAll().isEmpty())
-            assertTrue(database.destinationDao().observeAll().first().isEmpty())
+            assertTrue(destinationDao.observeAll(ownerAccountId = null).first().isEmpty())
+            assertTrue(destinationDao.observeOutbox().first().isEmpty())
+            assertNull(destinationDao.getSyncState("account-1"))
             assertEquals(0, activityDao.observeCounts("2026-11-09").first().ringingCount)
             assertNull(activityDao.observeCounts("2026-11-09").first().trackingStartDate)
             assertNull(activityDao.getOccurrenceTimes("execution-1"))

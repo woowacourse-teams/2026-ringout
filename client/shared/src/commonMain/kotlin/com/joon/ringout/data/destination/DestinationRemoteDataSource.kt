@@ -2,6 +2,15 @@ package com.joon.ringout.data.destination
 
 import com.joon.ringout.domain.destination.SavedDestination
 
+/** Stable server identity and payload used by destination synchronization. */
+data class RemoteSavedDestination(
+    val id: String,
+    val alias: String,
+    val latitude: Double,
+    val longitude: Double,
+    val version: Long,
+)
+
 interface DestinationRemoteDataSource {
     suspend fun hasAccessToken(): Boolean
 

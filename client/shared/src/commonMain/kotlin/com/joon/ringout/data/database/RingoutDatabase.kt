@@ -18,6 +18,8 @@ import com.joon.ringout.data.alarm.AlarmRepeatDayEntity
 import com.joon.ringout.data.alarm.StorageMigrationEntity
 import com.joon.ringout.data.destination.SavedDestinationDao
 import com.joon.ringout.data.destination.SavedDestinationEntity
+import com.joon.ringout.data.destination.DestinationOutboxEntity
+import com.joon.ringout.data.destination.DestinationSyncStateEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryDao
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
@@ -44,6 +46,8 @@ import kotlin.time.Clock
         AlarmRepeatDayEntity::class,
         StorageMigrationEntity::class,
         SavedDestinationEntity::class,
+        DestinationOutboxEntity::class,
+        DestinationSyncStateEntity::class,
         AlarmOccurrenceSyncEntity::class,
         AlarmOccurrenceRingingLinkEntity::class,
         AlarmOccurrenceOutboxEntity::class,
@@ -54,7 +58,7 @@ import kotlin.time.Clock
         ForestStateEntity::class,
         ForestTreeEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -109,6 +113,7 @@ internal fun buildRingoutDatabase(
         createRingoutMigration13To14(arrivalGrowthActivatedAtEpochMillis),
         RingoutMigration14To15,
         RingoutMigration15To16,
+        RingoutMigration16To17,
     )
     .build()
 

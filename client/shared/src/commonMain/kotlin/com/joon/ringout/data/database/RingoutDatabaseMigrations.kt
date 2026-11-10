@@ -287,3 +287,50 @@ internal fun createRingoutMigration13To14(activatedAtEpochMillis: Long): Migrati
 internal val RingoutMigration15To16 = Migration(15, 16) { connection ->
     connection.executeSQL("ALTER TABLE alarms ADD COLUMN owner_account_id TEXT DEFAULT NULL")
 }
+
+/** Saved destinations keep their local row IDs while gaining per-account server identity and a durable outbox. */
+internal val RingoutMigration16To17 = Migration(16, 17) { connection ->
+    connection.executeSQL("ALTER TABLE saved_destinations ADD COLUMN owner_account_id TEXT DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE saved_destinations ADD COLUMN remote_destination_id TEXT DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE saved_destinations ADD COLUMN destination_version INTEGER NOT NULL DEFAULT 1")
+    connection.executeSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS index_saved_destinations_owner_account_id_remote_destination_id " +
+            "ON saved_destinations (owner_account_id, remote_destination_id)",
+    )
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS destination_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            owner_account_id TEXT NOT NULL,
+            local_destination_id INTEGER NOT NULL,
+            remote_destination_id TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            payload_alias TEXT,
+            payload_latitude REAL,
+            payload_longitude REAL,
+            destination_version INTEGER,
+            state TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            next_attempt_at INTEGER,
+            last_error_code TEXT,
+            last_error_message TEXT
+        )
+    """.trimIndent())
+    connection.executeSQL(
+        "CREATE INDEX IF NOT EXISTS index_destination_outbox_owner_account_id_remote_destination_id_id " +
+            "ON destination_outbox (owner_account_id, remote_destination_id, id)",
+    )
+    connection.executeSQL(
+        "CREATE INDEX IF NOT EXISTS index_destination_outbox_owner_account_id_state_next_attempt_at " +
+            "ON destination_outbox (owner_account_id, state, next_attempt_at)",
+    )
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS destination_sync_state (
+            owner_account_id TEXT NOT NULL PRIMARY KEY,
+            restore_complete INTEGER NOT NULL,
+            restore_attempt_count INTEGER NOT NULL,
+            restore_next_attempt_at INTEGER,
+            last_restore_error_code TEXT,
+            last_restore_error_message TEXT
+        )
+    """.trimIndent())
+}

@@ -102,19 +102,19 @@ private class FakeDestinationDataSource : DestinationDataSource {
     var deleteCallCount = 0
         private set
 
-    override fun observeAll(): Flow<List<SavedDestination>> {
+    override fun observeAll(ownerAccountId: String?): Flow<List<SavedDestination>> {
         observeAllCallCount += 1
         return destinations
     }
 
-    override suspend fun save(destination: SavedDestination): SavedDestination {
+    override suspend fun save(destination: SavedDestination, ownerAccountId: String?): SavedDestination {
         saveCallCount += 1
         return destination.copy(id = 1L).also { saved ->
             destinations.value = destinations.value + saved
         }
     }
 
-    override suspend fun delete(id: Long): Boolean {
+    override suspend fun delete(id: Long, ownerAccountId: String?): Boolean {
         deleteCallCount += 1
         val containsDestination = destinations.value.any { it.id == id }
         destinations.value = destinations.value.filterNot { it.id == id }
