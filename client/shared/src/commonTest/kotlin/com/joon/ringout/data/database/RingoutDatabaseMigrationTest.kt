@@ -13,7 +13,6 @@ import com.joon.ringout.data.destination.DefaultDestinationRepository
 import com.joon.ringout.data.destination.DestinationAccountProvider
 import com.joon.ringout.data.destination.DestinationOutboxSyncer
 import com.joon.ringout.data.destination.DestinationOutboxOperation
-import com.joon.ringout.data.destination.DestinationOutboxState
 import com.joon.ringout.data.destination.DestinationRemoteDataSource
 import com.joon.ringout.data.destination.DestinationSyncSessionGate
 import com.joon.ringout.data.destination.RemoteSavedDestination
@@ -39,7 +38,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTestSuite {
-    fun `생성 응답이 불명확하면 중복 생성을 막기 위해 재전송하지 않는다`() = runBlocking {
+    fun `응답이 유실된 upsert는 같은 목적지 ID로 안전하게 재전송한다`() = runBlocking {
         val path = temporaryDatabasePath()
         val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
         try {
@@ -48,9 +47,10 @@ class RingoutDatabaseMigrationTestSuite {
             val dao = database.destinationDao()
             val remote = TestDestinationRemoteDataSource()
             val attempts = mutableListOf<RemoteSavedDestination>()
-            remote.createBlock = { _, destination ->
+            remote.upsertBlock = { _, destination ->
                 attempts += destination
-                throw IOException("temporary network failure")
+                if (attempts.size == 1) throw IOException("temporary network failure")
+                destination
             }
             var now = 1_000L
             val syncer = DestinationOutboxSyncer(
@@ -64,15 +64,18 @@ class RingoutDatabaseMigrationTestSuite {
             val saved = RoomDestinationDataSource(dao).save(destination("집"), "account-1")
             val queued = dao.getDueOutbox("account-1", now).single()
 
-            assertNull(syncer.flush())
+            assertEquals(2_000L, syncer.flush())
             assertTrue(dao.getDueOutbox("account-1", now).isEmpty())
-            assertNull(syncer.flush())
+            assertEquals(2_000L, syncer.flush())
             assertEquals(1, attempts.size)
             assertEquals(queued.remoteDestinationId, attempts[0].id)
             assertEquals(saved.label, attempts[0].alias)
-            val blocked = dao.observeOutbox().first().single()
-            assertEquals(DestinationOutboxState.BLOCKED, blocked.state)
-            assertEquals("CREATE_OUTCOME_UNKNOWN", blocked.lastErrorCode)
+            now = 2_000L
+            assertNull(syncer.flush())
+            assertEquals(2, attempts.size)
+            assertEquals(attempts[0].id, attempts[1].id)
+            assertEquals(attempts[0].version, attempts[1].version)
+            assertTrue(dao.observeOutbox().first().isEmpty())
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -96,7 +99,7 @@ class RingoutDatabaseMigrationTestSuite {
                 requestStarted.complete(Unit)
                 returnSnapshot.await()
             }
-            remote.createBlock = { _, destination -> destination.copy(id = "101") }
+            remote.upsertBlock = { _, destination -> destination }
             val syncer = DestinationOutboxSyncer(
                 dao = dao,
                 remoteDataSource = remote,
@@ -125,7 +128,7 @@ class RingoutDatabaseMigrationTestSuite {
             assertEquals(saved.id, dao.observeAll("account-1").first().single().id)
             assertEquals("내가 저장한 집", dataSource.observeAll("account-1").first().single().label)
             val synced = dao.observeAll("account-1").first().single()
-            assertEquals("101", synced.remoteDestinationId)
+            assertEquals(entity.remoteDestinationId, synced.remoteDestinationId)
             assertEquals(1L, synced.destinationVersion)
         } finally {
             database.close()
@@ -149,10 +152,10 @@ class RingoutDatabaseMigrationTestSuite {
             val remote = TestDestinationRemoteDataSource()
             val requestStarted = CompletableDeferred<RemoteSavedDestination>()
             val allowResponse = CompletableDeferred<Unit>()
-            remote.createBlock = { _, destination ->
+            remote.upsertBlock = { _, destination ->
                 requestStarted.complete(destination)
                 allowResponse.await()
-                destination.copy(id = "102")
+                destination
             }
             val syncer = DestinationOutboxSyncer(
                 dao = dao,
@@ -499,12 +502,12 @@ class RingoutDatabaseMigrationTestSuite {
                 dao.observeOutbox().first().map { it.operation },
             )
 
-            dao.acknowledgeCreatedOutbox(
+            dao.acknowledgeUpsertOutbox(
                 ownerAccountId = "account-1",
                 outboxId = upsert.id,
-                temporaryRemoteId = upsert.remoteDestinationId,
-                createdDestination = RemoteSavedDestination(
-                    id = "103",
+                remoteDestinationId = upsert.remoteDestinationId,
+                serverDestination = RemoteSavedDestination(
+                    id = upsert.remoteDestinationId,
                     alias = checkNotNull(upsert.payloadAlias),
                     latitude = checkNotNull(upsert.payloadLatitude),
                     longitude = checkNotNull(upsert.payloadLongitude),
@@ -515,7 +518,7 @@ class RingoutDatabaseMigrationTestSuite {
                 DestinationOutboxOperation.DELETE,
                 dao.getDueOutbox("account-1", 0L).single().operation,
             )
-            assertEquals("103", dao.getDueOutbox("account-1", 0L).single().remoteDestinationId)
+            assertEquals(upsert.remoteDestinationId, dao.getDueOutbox("account-1", 0L).single().remoteDestinationId)
             assertTrue(dataSource.observeAll("account-1").first().isEmpty())
         } finally {
             database.close()
@@ -1409,23 +1412,18 @@ class RingoutDatabaseMigrationTestSuite {
 
 private class TestDestinationRemoteDataSource : DestinationRemoteDataSource {
     var fetchAllBlock: suspend (String) -> List<RemoteSavedDestination> = { emptyList() }
-    private var nextDestinationId = 100L
-    var createBlock: suspend (String, RemoteSavedDestination) -> RemoteSavedDestination = { _, destination ->
-        if (destination.id.toLongOrNull() == null) {
-            destination.copy(id = (nextDestinationId++).toString())
-        } else {
-            destination
-        }
+    var upsertBlock: suspend (String, RemoteSavedDestination) -> RemoteSavedDestination = { _, destination ->
+        destination
     }
     var deleteBlock: suspend (String, String) -> Unit = { _, _ -> }
 
     override suspend fun fetchAll(ownerAccountId: String): List<RemoteSavedDestination> =
         fetchAllBlock(ownerAccountId)
 
-    override suspend fun create(
+    override suspend fun upsert(
         ownerAccountId: String,
         destination: RemoteSavedDestination,
-    ): RemoteSavedDestination = createBlock(ownerAccountId, destination)
+    ): RemoteSavedDestination = upsertBlock(ownerAccountId, destination)
 
     override suspend fun delete(ownerAccountId: String, destinationId: String) =
         deleteBlock(ownerAccountId, destinationId)

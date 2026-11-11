@@ -102,20 +102,6 @@ internal class DestinationOutboxSyncer(
             if (due.isEmpty()) return dao.getNextOutboxRetryAt(account.ownerAccountId)
             for (pending in due) {
                 checkAccount(account)
-                val isCreate = pending.operation == DestinationOutboxOperation.UPSERT &&
-                    pending.remoteDestinationId.toServerDestinationIdOrNull() == null
-                if (isCreate && pending.attemptCount > 0) {
-                    sessionGate.withSession(account.sessionIdentity) {
-                        checkAccount(account)
-                        dao.blockOutbox(
-                            ownerAccountId = account.ownerAccountId,
-                            id = pending.id,
-                            errorCode = "CREATE_OUTCOME_UNKNOWN",
-                            errorMessage = "목적지 생성 결과를 확인할 수 없어 중복 생성을 막기 위해 전송을 중단했습니다.",
-                        )
-                    }
-                    continue
-                }
                 val operation = sessionGate.withSession(account.sessionIdentity) {
                     checkAccount(account)
                     dao.recordOutboxAttempt(account.ownerAccountId, pending.id)
@@ -128,41 +114,11 @@ internal class DestinationOutboxSyncer(
                     throw error
                 } catch (error: Exception) {
                     if (error is ApiException && error.statusCode == 401) {
-                        if (isCreate) {
-                            sessionGate.withSession(account.sessionIdentity) {
-                                checkAccount(account)
-                                dao.resetOutboxAttempt(account.ownerAccountId, operation.id)
-                            }
-                        }
                         unauthorizedSession = account.sessionIdentity
                         return null
                     }
                     val retryable = error.isRetryable()
-                    if (isCreate && error is ApiException && error.statusCode == 429) {
-                        val retryAt = now() + DestinationRetryPolicy.delayMillis(operation.attemptCount)
-                        sessionGate.withSession(account.sessionIdentity) {
-                            checkAccount(account)
-                            dao.retryOutbox(
-                                ownerAccountId = account.ownerAccountId,
-                                id = operation.id,
-                                nextAttemptAtEpochMillis = retryAt,
-                                errorCode = error.code,
-                                errorMessage = error.message ?: "목적지 생성 요청이 제한되었습니다.",
-                                resetAttemptCount = true,
-                            )
-                        }
-                    } else if (isCreate) {
-                        sessionGate.withSession(account.sessionIdentity) {
-                            checkAccount(account)
-                            dao.blockOutbox(
-                                ownerAccountId = account.ownerAccountId,
-                                id = operation.id,
-                                errorCode = (error as? ApiException)?.code ?: "CREATE_OUTCOME_UNKNOWN",
-                                errorMessage = error.message
-                                    ?: "목적지 생성 결과를 확인할 수 없어 중복 생성을 막기 위해 전송을 중단했습니다.",
-                            )
-                        }
-                    } else if (retryable) {
+                    if (retryable) {
                         val retryAt = now() + DestinationRetryPolicy.delayMillis(operation.attemptCount)
                         sessionGate.withSession(account.sessionIdentity) {
                             checkAccount(account)
@@ -201,21 +157,18 @@ internal class DestinationOutboxSyncer(
                     longitude = checkNotNull(operation.payloadLongitude),
                     version = checkNotNull(operation.destinationVersion),
                 )
-                val response = remoteDataSource.create(account.ownerAccountId, request)
+                val response = remoteDataSource.upsert(account.ownerAccountId, request)
                 checkAccount(account)
-                check(response.copy(id = request.id) == request) {
-                    "목적지 생성 응답의 내용이 요청한 값과 다릅니다."
-                }
-                check(response.id.toServerDestinationIdOrNull() != null) {
-                    "목적지 생성 응답에 숫자 서버 ID가 없습니다."
+                check(response.id == request.id) {
+                    "목적지 upsert 응답의 ID가 요청한 ID와 다릅니다."
                 }
                 sessionGate.withSession(account.sessionIdentity) {
                     checkAccount(account)
-                    dao.acknowledgeCreatedOutbox(
+                    dao.acknowledgeUpsertOutbox(
                         ownerAccountId = account.ownerAccountId,
                         outboxId = operation.id,
-                        temporaryRemoteId = request.id,
-                        createdDestination = response,
+                        remoteDestinationId = request.id,
+                        serverDestination = response,
                     )
                 }
                 return
