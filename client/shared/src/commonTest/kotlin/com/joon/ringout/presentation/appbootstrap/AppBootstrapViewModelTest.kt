@@ -1,6 +1,8 @@
 package com.joon.ringout.presentation.appbootstrap
 
 import com.joon.ringout.alarm.AlarmLogoutCleanup
+import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceMonthLoader
+import com.joon.ringout.domain.alarmoccurrence.currentAlarmOccurrenceMonth
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
@@ -412,6 +414,58 @@ class AppBootstrapViewModelTest {
     }
 
     @Test
+    fun `로그인 완료는 이번 달 기록 조회를 기다리지 않는다`() {
+        val session = AuthSession()
+        val fetch = CompletableDeferred<Boolean>()
+        var calls = 0
+        withViewModel(
+            repository = FakeAppPreferencesRepository(
+                snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)),
+            ),
+            authSession = session,
+            authRepository = FakeAuthRepository(session, restoredState = AuthSessionState.Unauthenticated),
+            alarmOccurrenceMonthLoader = AlarmOccurrenceMonthLoader { month ->
+                assertEquals(currentAlarmOccurrenceMonth(), month)
+                calls++
+                fetch.await()
+            },
+        ) { viewModel, _, _ ->
+            assertEquals(0, calls)
+            val attemptId = viewModel.beginAuthFlow()
+            session.startNewSession()
+            viewModel.handleAuthFlowEvent(AuthFlowEvent(attemptId, 1, AuthFlowEventType.LoginAuthenticated))
+
+            assertEquals(1, calls)
+            assertFalse(fetch.isCompleted)
+            assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+            fetch.complete(false)
+            assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+        }
+    }
+
+    @Test
+    fun `인증 세션 복원은 알람 이관을 마친 뒤 이번 달 기록을 조회한다`() {
+        var migrated = false
+        var calls = 0
+        withViewModel(
+            repository = FakeAppPreferencesRepository(
+                snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true)),
+            ),
+            currentVerifiedAlarmAccountId = { "account" },
+            migrateLegacyAlarmData = { migrated = true },
+            alarmOccurrenceMonthLoader = AlarmOccurrenceMonthLoader { month ->
+                assertTrue(migrated)
+                assertEquals(currentAlarmOccurrenceMonth(), month)
+                calls++
+                false
+            },
+        ) { viewModel, _, _ ->
+            assertEquals(1, calls)
+            assertEquals(AppEntryDestination.Home, viewModel.uiState.destination)
+        }
+    }
+
+    @Test
     fun `인증 요청은 공급자 시도 전 루트 인증 화면으로 진입한다`() {
         val session = AuthSession()
         withViewModel(
@@ -558,6 +612,7 @@ class AppBootstrapViewModelTest {
         val auth = FakeAuthRepository(session)
         val cleanup = FakeAlarmLogoutCleanup().apply { failCancellation = true }
         val localCleanup = FakeLocalUserDataCleanup()
+        var monthLoads = 0
         val initial = snapshot(firstLaunchStatus = FirstLaunchStatus(isOnboardingCompleted = true))
         withViewModel(
             repository = FakeAppPreferencesRepository(initial.copy(
@@ -570,16 +625,22 @@ class AppBootstrapViewModelTest {
             authRepository = auth,
             alarmLogoutCleanup = cleanup,
             localUserDataCleanup = localCleanup,
+            alarmOccurrenceMonthLoader = AlarmOccurrenceMonthLoader {
+                monthLoads++
+                true
+            },
         ) { viewModel, repository, _ ->
             assertEquals(AppEntryDestination.LogoutCleaning, viewModel.uiState.destination)
             assertTrue(viewModel.uiState.isLogoutCleanupPending)
             assertTrue(viewModel.uiState.logoutCleanupErrorMessage != null)
             assertEquals(0, auth.logoutCount)
+            assertEquals(0, monthLoads)
             assertEquals(listOf(true), repository.logoutPendingWrites)
             cleanup.failCancellation = false
             viewModel.retryLogoutCleanup()
             assertEquals(2, cleanup.cancelCount)
             assertEquals(1, auth.logoutCount)
+            assertEquals(0, monthLoads)
             assertEquals(1, localCleanup.clearCount)
             assertEquals(listOf(true, true, false), repository.logoutPendingWrites)
             assertEquals(AppEntryDestination.Login, viewModel.uiState.destination)
@@ -773,6 +834,7 @@ private fun withViewModel(
     hasRuntimeEvidence: () -> Boolean = { false },
     currentVerifiedAlarmAccountId: suspend () -> String? = { null },
     migrateLegacyAlarmData: suspend (String) -> Unit = {},
+    alarmOccurrenceMonthLoader: AlarmOccurrenceMonthLoader = AlarmOccurrenceMonthLoader { true },
     block: (
         AppBootstrapViewModel,
         FakeAppPreferencesRepository,
@@ -793,6 +855,7 @@ private fun withViewModel(
         themeInitializationRetryDelayMillis = themeInitializationRetryDelayMillis,
         currentVerifiedAlarmAccountId = currentVerifiedAlarmAccountId,
         migrateLegacyAlarmData = migrateLegacyAlarmData,
+        alarmOccurrenceMonthLoader = alarmOccurrenceMonthLoader,
     )
     try {
         block(viewModel, repository, systemThemeModeReader)

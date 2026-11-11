@@ -133,6 +133,7 @@ fun App(
             localUserDataCleanup = appContainer.localUserDataCleanup,
             currentVerifiedAlarmAccountId = appContainer.currentVerifiedAlarmAccountId,
             migrateLegacyAlarmData = appContainer.migrateLegacyAlarmData,
+            alarmOccurrenceMonthLoader = appContainer.alarmOccurrenceMonthLoader,
         )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState
