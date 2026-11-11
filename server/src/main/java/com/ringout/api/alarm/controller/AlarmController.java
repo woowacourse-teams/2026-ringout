@@ -11,6 +11,7 @@ import com.ringout.api.config.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -46,5 +47,17 @@ public class AlarmController implements AlarmControllerApi {
 
         return ResponseEntity.status(AlarmSuccessStatus.ALARM_UPSERTED.getHttpStatus())
             .body(CustomResponse.onSuccess(AlarmSuccessStatus.ALARM_UPSERTED, response));
+    }
+
+    @Override
+    @DeleteMapping("/{alarmId}")
+    public ResponseEntity<CustomResponse<Void>> deleteAlarm(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @PathVariable String alarmId
+    ) {
+        alarmService.deleteAlarm(customUserDetails.getUserId(), alarmId);
+
+        return ResponseEntity.status(AlarmSuccessStatus.ALARM_DELETED.getHttpStatus())
+            .body(CustomResponse.onSuccess(AlarmSuccessStatus.ALARM_DELETED, null));
     }
 }

@@ -90,6 +90,31 @@ class AlarmDaysTest {
     }
 
     @Nested
+    class 알람_요일_동등성 {
+
+        @Test
+        void 같은_요일을_가지면_순서와_관계없이_같은_값이다() {
+            // given
+            AlarmDays first = AlarmDays.from(List.of(AlarmDay.FRIDAY, AlarmDay.MONDAY));
+            AlarmDays second = AlarmDays.fromMask(64 + 4);
+
+            // when // then
+            assertThat(first).isEqualTo(second);
+            assertThat(first).hasSameHashCodeAs(second);
+        }
+
+        @Test
+        void 다른_요일을_가지면_다른_값이다() {
+            // given
+            AlarmDays first = AlarmDays.from(List.of(AlarmDay.MONDAY));
+            AlarmDays second = AlarmDays.from(List.of(AlarmDay.TUESDAY));
+
+            // when // then
+            assertThat(first).isNotEqualTo(second);
+        }
+    }
+
+    @Nested
     class 알람_요일_비트마스크_복원 {
 
         @Test

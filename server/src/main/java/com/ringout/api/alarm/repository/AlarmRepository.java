@@ -32,6 +32,14 @@ public interface AlarmRepository extends JpaRepository<Alarm, Long> {
         """)
     Optional<Alarm> findOwnedAlarmForUpdate(@Param("userId") Long userId, @Param("alarmId") String alarmId);
 
+    @Modifying
+    @Query("""
+        delete from Alarm alarm
+        where alarm.user.id = :userId
+          and alarm.clientAlarmId.value = :alarmId
+        """)
+    void deleteOwnedAlarm(@Param("userId") Long userId, @Param("alarmId") String alarmId);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(nativeQuery = true, value = """
         INSERT INTO alarm
