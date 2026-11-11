@@ -11,8 +11,8 @@ class AndroidRingoutDatabaseMigrationTest {
     private val suite = RingoutDatabaseMigrationTestSuite()
 
     @Test
-    fun `생성 응답이 불명확하면 중복 생성을 막기 위해 재전송하지 않는다`() =
-        suite.`생성 응답이 불명확하면 중복 생성을 막기 위해 재전송하지 않는다`()
+    fun `응답이 유실된 upsert는 같은 목적지 ID로 안전하게 재전송한다`() =
+        suite.`응답이 유실된 upsert는 같은 목적지 ID로 안전하게 재전송한다`()
 
     @Test
     fun `조회 중 추가한 로컬 변경은 늦은 서버 스냅샷에 덮이지 않는다`() =

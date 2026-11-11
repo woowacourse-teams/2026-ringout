@@ -12,7 +12,7 @@ data class RemoteSavedDestination(
 interface DestinationRemoteDataSource {
     suspend fun fetchAll(ownerAccountId: String): List<RemoteSavedDestination>
 
-    suspend fun create(
+    suspend fun upsert(
         ownerAccountId: String,
         destination: RemoteSavedDestination,
     ): RemoteSavedDestination

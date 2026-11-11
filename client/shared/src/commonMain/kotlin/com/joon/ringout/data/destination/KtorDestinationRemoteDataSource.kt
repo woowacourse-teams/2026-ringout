@@ -12,11 +12,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
-import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.URLBuilder
+import io.ktor.http.appendPathSegments
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -37,20 +39,18 @@ class KtorDestinationRemoteDataSource(
                 bearerAuth(accessToken)
             }
         }
-        val body = response.decodeOrThrow<List<DestinationResponse>>()
+        val body = response.decodeOrThrow<DestinationListResponse>()
         requireSuccess(body)
         return checkNotNull(body.result) { "목적지 조회 응답이 비어 있어요." }
+            .destinations
             .map(DestinationResponse::toRemote)
     }
 
-    override suspend fun create(
+    override suspend fun upsert(
         ownerAccountId: String,
         destination: RemoteSavedDestination,
     ): RemoteSavedDestination {
-        require(destination.id.isNotBlank()) { "목적지 ID가 비어 있어요." }
-        require(destination.id.toServerDestinationIdOrNull() == null) {
-            "서버 ID가 이미 할당된 목적지는 생성할 수 없어요."
-        }
+        requireValidDestinationId(destination.id)
         val response = authenticatedRequests.execute { accessToken ->
             check(alarmOccurrenceTokenOwner(accessToken) == ownerAccountId) {
                 "현재 로그인 계정이 목적지 계정과 일치하지 않아요."
@@ -59,29 +59,26 @@ class KtorDestinationRemoteDataSource(
                 alias = destination.alias,
                 latitude = destination.latitude,
                 longitude = destination.longitude,
+                destinationVersion = destination.version,
             )
-            httpClient.post(ApiConfig.url("/api/v1/destinations")) {
+            httpClient.put(destinationUrl(destination.id)) {
                 bearerAuth(accessToken)
                 setBody(request)
             }
         }
 
-        val body = response.decodeOrThrow<DestinationCreateResponse>(HttpStatusCode.Created)
-        requireSuccess(body, DestinationCreatedSuccessCode)
-        val createdId = checkNotNull(body.result) { "목적지 생성 응답이 비어 있어요." }
-            .destinationId
-            .toString()
-        return destination.copy(id = createdId)
+        val body = response.decodeOrThrow<DestinationResponse>()
+        requireSuccess(body)
+        return checkNotNull(body.result) { "목적지 upsert 응답이 비어 있어요." }.toRemote()
     }
 
     override suspend fun delete(ownerAccountId: String, destinationId: String) {
-        val serverId = destinationId.toServerDestinationIdOrNull()
-            ?: throw IllegalArgumentException("서버 목적지 ID는 양의 정수여야 해요.")
+        requireValidDestinationId(destinationId)
         val response = authenticatedRequests.execute { accessToken ->
             check(alarmOccurrenceTokenOwner(accessToken) == ownerAccountId) {
                 "현재 로그인 계정이 목적지 계정과 일치하지 않아요."
             }
-            httpClient.delete(destinationUrl(serverId)) {
+            httpClient.delete(destinationUrl(destinationId)) {
                 bearerAuth(accessToken)
             }
         }
@@ -90,8 +87,10 @@ class KtorDestinationRemoteDataSource(
         check(body.result == null) { "목적지 삭제 응답은 result를 포함하지 않아야 해요." }
     }
 
-    private fun destinationUrl(destinationId: Long): String =
-        ApiConfig.url("/api/v1/destinations/$destinationId")
+    private fun destinationUrl(destinationId: String): String =
+        URLBuilder(ApiConfig.url("/api/v1/destinations"))
+            .apply { appendPathSegments(destinationId, encodeSlash = true) }
+            .buildString()
 }
 
 @Serializable
@@ -99,28 +98,36 @@ private data class DestinationWriteRequest(
     val alias: String,
     val latitude: Double,
     val longitude: Double,
+    val destinationVersion: Long,
 )
 
 @Serializable
-private data class DestinationCreateResponse(
-    val destinationId: Long,
+private data class DestinationListResponse(
+    val destinations: List<DestinationResponse>,
 )
 
 @Serializable
 private data class DestinationResponse(
-    val destinationId: Long,
+    val destinationId: String,
     val alias: String,
     val latitude: Double,
     val longitude: Double,
+    val destinationVersion: Long,
 )
 
-private fun DestinationResponse.toRemote(version: Long = 1L): RemoteSavedDestination = RemoteSavedDestination(
-    id = destinationId.toString(),
+private fun DestinationResponse.toRemote(): RemoteSavedDestination = RemoteSavedDestination(
+    id = destinationId,
     alias = alias,
     latitude = latitude,
     longitude = longitude,
-    version = version,
+    version = destinationVersion,
 )
+
+private fun requireValidDestinationId(destinationId: String) {
+    require(destinationId.length in 1..36 && destinationId.none(Char::isWhitespace)) {
+        "목적지 ID는 공백 없이 1~36자여야 해요."
+    }
+}
 
 private fun requireSuccess(response: ApiResponse<*>, expectedCode: String = DestinationSuccessCode) {
     check(response.isSuccess && response.code == expectedCode) { response.message }
@@ -154,7 +161,3 @@ private suspend inline fun <reified T> HttpResponse.decodeOrThrow(
 }
 
 private const val DestinationSuccessCode = "DESTINATION200"
-private const val DestinationCreatedSuccessCode = "DESTINATION201"
-
-internal fun String.toServerDestinationIdOrNull(): Long? =
-    toLongOrNull()?.takeIf { it > 0L }

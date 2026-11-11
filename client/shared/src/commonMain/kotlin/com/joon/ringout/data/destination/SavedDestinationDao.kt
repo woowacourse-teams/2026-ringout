@@ -288,12 +288,10 @@ abstract class SavedDestinationDao {
         nextAttemptAtEpochMillis: Long,
         errorCode: String?,
         errorMessage: String,
-        resetAttemptCount: Boolean = false,
     ) {
         getOutboxById(id, ownerAccountId)?.let { operation ->
             updateOutbox(
                 operation.copy(
-                    attemptCount = if (resetAttemptCount) 0 else operation.attemptCount,
                     nextAttemptAtEpochMillis = nextAttemptAtEpochMillis,
                     lastErrorCode = errorCode,
                     lastErrorMessage = errorMessage,
@@ -321,51 +319,34 @@ abstract class SavedDestinationDao {
     }
 
     @Transaction
-    open suspend fun acknowledgeCreatedOutbox(
+    open suspend fun acknowledgeUpsertOutbox(
         ownerAccountId: String,
         outboxId: Long,
-        temporaryRemoteId: String,
-        createdDestination: RemoteSavedDestination,
+        remoteDestinationId: String,
+        serverDestination: RemoteSavedDestination,
     ) {
-        val create = checkNotNull(getOutboxById(outboxId, ownerAccountId)) {
-            "생성 완료된 목적지 작업을 찾을 수 없습니다."
+        val upsert = checkNotNull(getOutboxById(outboxId, ownerAccountId)) {
+            "완료된 목적지 upsert 작업을 찾을 수 없습니다."
         }
-        check(create.operation == DestinationOutboxOperation.UPSERT)
-        check(create.remoteDestinationId == temporaryRemoteId)
-        check(createdDestination.id.toServerDestinationIdOrNull() != null) {
-            "서버가 숫자 목적지 ID를 반환하지 않았습니다."
+        check(upsert.operation == DestinationOutboxOperation.UPSERT)
+        check(upsert.remoteDestinationId == remoteDestinationId)
+        check(serverDestination.id == remoteDestinationId) {
+            "서버 응답의 목적지 ID가 요청한 ID와 다릅니다."
         }
 
-        val local = getById(create.localDestinationId)
-        if (local?.ownerAccountId == ownerAccountId && local.remoteDestinationId == temporaryRemoteId) {
+        val local = getById(upsert.localDestinationId)
+        if (local?.ownerAccountId == ownerAccountId && local.remoteDestinationId == remoteDestinationId) {
             updateDestination(
                 local.copy(
-                    remoteDestinationId = createdDestination.id,
-                    destinationVersion = createdDestination.version,
+                    label = serverDestination.alias,
+                    latitude = serverDestination.latitude,
+                    longitude = serverDestination.longitude,
+                    destinationVersion = serverDestination.version,
                 ),
             )
         }
 
-        getOutboxForRemoteId(ownerAccountId, temporaryRemoteId)
-            .filter { it.localDestinationId == create.localDestinationId }
-            .forEach { operation ->
-                updateOutbox(operation.copy(remoteDestinationId = createdDestination.id))
-            }
-        deleteOutbox(outboxId, ownerAccountId)
-    }
-
-    @Transaction
-    open suspend fun resetOutboxAttempt(ownerAccountId: String, id: Long) {
-        getOutboxById(id, ownerAccountId)?.let { operation ->
-            updateOutbox(
-                operation.copy(
-                    attemptCount = 0,
-                    nextAttemptAtEpochMillis = null,
-                    lastErrorCode = null,
-                    lastErrorMessage = null,
-                ),
-            )
-        }
+        deleteOutbox(upsert.id, ownerAccountId)
     }
 
     private suspend fun insertUpsert(destination: SavedDestinationEntity, ownerAccountId: String) {
