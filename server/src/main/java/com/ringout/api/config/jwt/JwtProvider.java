@@ -2,6 +2,7 @@ package com.ringout.api.config.jwt;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import com.ringout.api.user.domain.Role;
@@ -10,7 +11,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 import javax.crypto.SecretKey;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -29,6 +32,7 @@ public class JwtProvider {
   private final long refreshTokenExpirationMillis;
   private final long signupTokenExpirationMillis;
   private final Clock clock;
+  private RedisTokenBlacklist tokenBlacklist;
 
   public JwtProvider(
       @Value("${app.jwt.secret}") String secret,
@@ -86,6 +90,7 @@ public class JwtProvider {
 
     return Jwts.builder()
         .setSubject(userId.toString())
+        .setId(UUID.randomUUID().toString())
         .claim(USER_ID_CLAIM, userId)
         .claim(PROVIDER_ID_CLAIM, providerId)
         .claim(ROLE_CLAIM, role.name())
@@ -123,13 +128,37 @@ public class JwtProvider {
         .compact();
   }
 
+  @Autowired(required = false)
+  void setTokenBlacklist(RedisTokenBlacklist tokenBlacklist) {
+    this.tokenBlacklist = tokenBlacklist;
+  }
+
   public boolean isValid(String token) {
+    Claims claims;
     try {
-      parseClaims(token);
-      return true;
+      claims = parseClaims(token);
     } catch (RuntimeException exception) {
       return false;
     }
+    return tokenBlacklist == null || !isRevocable(claims) || !tokenBlacklist.contains(token);
+  }
+
+  public Instant getRevocableTokenExpiration(String token) {
+    try {
+      Claims claims = parseClaims(token);
+      Date expiration = claims.getExpiration();
+      if (expiration != null && isRevocable(claims)) {
+        return expiration.toInstant();
+      }
+    } catch (JwtException | IllegalArgumentException exception) {
+      return null;
+    }
+    return null;
+  }
+
+  private boolean isRevocable(Claims claims) {
+    Object type = claims.get(TOKEN_TYPE_CLAIM);
+    return TokenType.ACCESS.name().equals(type) || TokenType.REFRESH.name().equals(type);
   }
 
   public boolean isExpiredToken(String token) {
