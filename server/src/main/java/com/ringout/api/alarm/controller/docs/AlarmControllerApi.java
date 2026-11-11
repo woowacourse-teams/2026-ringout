@@ -256,4 +256,83 @@ public interface AlarmControllerApi {
         )
         AlarmUpsertRequest request
     );
+
+    @Operation(
+        summary = "알람 삭제",
+        description = """
+            인증된 사용자와 경로의 alarmId 조합으로 알람을 식별해 삭제합니다.
+            같은 알람에 삭제 요청을 여러 번 보내도 최종 상태는 같으며, 이미 삭제되었거나 사용자에게 없는 알람도 200을 반환합니다.
+            다른 사용자가 같은 alarmId의 알람을 가지고 있어도 그 알람은 삭제되지 않으며, 존재 여부를 노출하지 않도록 같은 200을 반환합니다.
+            alarmVersion은 전달하거나 비교하지 않습니다.
+            """,
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "알람 삭제 성공 또는 이미 삭제되었거나 사용자에게 없는 알람",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": true,
+                      "code": "ALARM200",
+                      "message": "알람 삭제에 성공했습니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "알람 식별자가 비어있거나 공백을 포함하거나 36자를 초과하는 경우",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "ALARM400",
+                      "message": "알람 식별자가 올바르지 않습니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "invalidToken", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "AUTH401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "userNotFound", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "ALARM401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """)
+                }
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<Void>> deleteAlarm(
+        @Parameter(hidden = true)
+        CustomUserDetails customUserDetails,
+        @Parameter(
+            description = "삭제하려는 알람 ID. 1자 이상 36자 이하이며 공백을 포함할 수 없습니다.",
+            required = true,
+            schema = @Schema(type = "string", minLength = 1, maxLength = 36, example = "alarm-001")
+        )
+        @PathVariable
+        String alarmId
+    );
 }

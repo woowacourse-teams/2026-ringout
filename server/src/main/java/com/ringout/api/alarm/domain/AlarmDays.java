@@ -43,6 +43,22 @@ public final class AlarmDays {
         return days;
     }
 
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) {
+            return true;
+        }
+        if (!(object instanceof AlarmDays other)) {
+            return false;
+        }
+        return days.equals(other.days);
+    }
+
+    @Override
+    public int hashCode() {
+        return days.hashCode();
+    }
+
     private static void validateDays(List<AlarmDay> days) {
         if (days == null || days.stream().anyMatch(Objects::isNull)) {
             throw new GeneralException(AlarmErrorStatus.ALARM_REQUEST_INVALID);

@@ -29,7 +29,7 @@ public class ClientAlarmId {
         return new ClientAlarmId(value);
     }
 
-    private static boolean isValid(String value) {
+    public static boolean isValid(String value) {
         return value != null && !value.isBlank() && !value.contains(" ") && value.length() <= MAX_LENGTH;
     }
 }

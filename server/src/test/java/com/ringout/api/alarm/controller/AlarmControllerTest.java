@@ -4,9 +4,11 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -57,6 +59,62 @@ class AlarmControllerTest {
 
     @MockitoBean
     private JwtProvider jwtProvider;
+
+    @Nested
+    class 알람_삭제_응답 {
+
+        @Test
+        void 삭제_요청이_처리되면_200과_null_result를_반환한다() throws Exception {
+            // given
+
+            // when
+            var result = mockMvc.perform(delete("/api/v1/alarms/alarm-001")
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.code").value("ALARM200"),
+                jsonPath("$.message").value("알람 삭제에 성공했습니다."),
+                jsonPath("$.result").value(nullValue())
+            );
+            verify(alarmService).deleteAlarm(1L, "alarm-001");
+        }
+
+        @Test
+        void 올바르지_않은_알람_ID는_ALARM400을_반환한다() throws Exception {
+            // given
+            willThrow(new GeneralException(AlarmErrorStatus.ALARM_DELETE_ID_INVALID))
+                .given(alarmService).deleteAlarm(1L, "alarm 1");
+
+            // when
+            var result = mockMvc.perform(delete("/api/v1/alarms/{alarmId}", "alarm 1")
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isBadRequest(),
+                jsonPath("$.code").value("ALARM400"),
+                jsonPath("$.message").value("알람 식별자가 올바르지 않습니다."),
+                jsonPath("$.result").value(nullValue())
+            );
+        }
+
+        @Test
+        void 인증_정보가_없으면_AUTH401을_반환한다() throws Exception {
+            // given
+
+            // when
+            var result = mockMvc.perform(delete("/api/v1/alarms/alarm-001"));
+
+            // then
+            result.andExpectAll(
+                status().isUnauthorized(),
+                jsonPath("$.code").value("AUTH401")
+            );
+            verify(alarmService, never()).deleteAlarm(any(), any());
+        }
+    }
 
     @Nested
     class 알람_목록_조회_응답 {

@@ -53,9 +53,23 @@ public class AlarmService {
         return AlarmResponse.from(findUpsertedAlarm(userId, clientAlarmId));
     }
 
+    @Transactional
+    public void deleteAlarm(Long userId, String alarmId) {
+        validateAuthenticatedUserExists(userId);
+        validateAlarmIdToDeleteIsUsable(alarmId);
+
+        alarmRepository.deleteOwnedAlarm(userId, alarmId);
+    }
+
     private void validateAuthenticatedUserExists(Long userId) {
         if (userId == null || !userRepository.existsById(userId)) {
             throw new GeneralException(AlarmErrorStatus.ALARM_UNAUTHORIZED);
+        }
+    }
+
+    private void validateAlarmIdToDeleteIsUsable(String alarmId) {
+        if (!ClientAlarmId.isValid(alarmId)) {
+            throw new GeneralException(AlarmErrorStatus.ALARM_DELETE_ID_INVALID);
         }
     }
 

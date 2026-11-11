@@ -64,6 +64,59 @@ class AlarmRepositoryTest {
     }
 
     @Nested
+    class 소유_알람_삭제 {
+
+        @Test
+        void 소유자의_알람을_삭제한다() {
+            // given
+            User owner = saveUser();
+            saveAlarm(owner, "alarm-a", LocalTime.of(7, 0));
+            saveAlarm(owner, "alarm-b", LocalTime.of(8, 0));
+
+            // when
+            alarmRepository.deleteOwnedAlarm(owner.getId(), "alarm-a");
+
+            // then
+            assertThat(alarmRepository.findOwnedAlarms(owner.getId()))
+                .extracting(Alarm::alarmId)
+                .containsExactly("alarm-b");
+        }
+
+        @Test
+        void 이미_삭제되었거나_없는_알람을_삭제해도_오류가_발생하지_않는다() {
+            // given
+            User owner = saveUser();
+            saveAlarm(owner, "alarm-a", LocalTime.of(7, 0));
+            alarmRepository.deleteOwnedAlarm(owner.getId(), "alarm-a");
+
+            // when
+            alarmRepository.deleteOwnedAlarm(owner.getId(), "alarm-a");
+            alarmRepository.deleteOwnedAlarm(owner.getId(), "missing");
+
+            // then
+            assertThat(alarmRepository.findOwnedAlarms(owner.getId())).isEmpty();
+        }
+
+        @Test
+        void 같은_알람_ID를_가진_다른_사용자의_알람은_삭제하지_않는다() {
+            // given
+            User owner = saveUser();
+            User otherUser = saveUser();
+            saveAlarm(owner, "same", LocalTime.of(7, 0));
+            saveAlarm(otherUser, "same", LocalTime.of(7, 0));
+
+            // when
+            alarmRepository.deleteOwnedAlarm(owner.getId(), "same");
+
+            // then
+            assertThat(alarmRepository.findOwnedAlarms(owner.getId())).isEmpty();
+            assertThat(alarmRepository.findOwnedAlarms(otherUser.getId()))
+                .extracting(Alarm::alarmId)
+                .containsExactly("same");
+        }
+    }
+
+    @Nested
     class 소유_알람_목록_조회 {
 
         @Test

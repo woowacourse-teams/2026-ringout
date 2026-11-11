@@ -85,6 +85,57 @@ class AlarmServiceTest {
     }
 
     @Nested
+    class 알람_삭제 {
+
+        @Test
+        void 사용자와_알람_ID로_알람을_삭제한다() {
+            // given
+
+            // when
+            alarmService.deleteAlarm(USER_ID, ALARM_ID);
+
+            // then
+            verify(alarmRepository).deleteOwnedAlarm(USER_ID, ALARM_ID);
+        }
+
+        @Test
+        void 사용자_id가_없으면_삭제할_수_없다() {
+            // given
+
+            // when // then
+            assertThatThrownBy(() -> alarmService.deleteAlarm(null, ALARM_ID))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(AlarmErrorStatus.ALARM_UNAUTHORIZED));
+            verifyNoInteractions(alarmRepository);
+        }
+
+        @Test
+        void 사용자가_존재하지_않으면_삭제할_수_없다() {
+            // given
+            given(userRepository.existsById(USER_ID)).willReturn(false);
+
+            // when // then
+            assertThatThrownBy(() -> alarmService.deleteAlarm(USER_ID, ALARM_ID))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(AlarmErrorStatus.ALARM_UNAUTHORIZED));
+            verifyNoInteractions(alarmRepository);
+        }
+
+        @ParameterizedTest
+        @NullSource
+        @ValueSource(strings = {"", " ", " alarm", "alarm ", "alarm 1", "1234567890123456789012345678901234567"})
+        void 알람_ID가_올바르지_않으면_삭제할_수_없다(String alarmId) {
+            // given
+
+            // when // then
+            assertThatThrownBy(() -> alarmService.deleteAlarm(USER_ID, alarmId))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(AlarmErrorStatus.ALARM_DELETE_ID_INVALID));
+            verifyNoInteractions(alarmRepository);
+        }
+    }
+
+    @Nested
     class 알람_목록_조회 {
 
         @Test
