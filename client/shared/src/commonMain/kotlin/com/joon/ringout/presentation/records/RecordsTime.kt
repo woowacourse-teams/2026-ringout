@@ -5,7 +5,7 @@ import com.joon.ringout.domain.missionhistory.AlarmUsageRecord
 import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.presentation.toTwelveHourDisplay
 
-/** Include the date for events outside the card's ringing day (e.g. across midnight). */
+/** Show each timeline timestamp as a local clock time. */
 internal expect fun formatRecordsTime(epochMillis: Long, completedDate: MissionDate): String
 
 internal expect fun formatRecordsRingingRange(started: String?, stopped: String?): String
@@ -48,6 +48,5 @@ internal fun AlarmUsageRecord.recordTimes(
 
 private fun String.toRecordTime(): String {
     val display = substringAfterLast(' ').toTwelveHourDisplay()
-    val datePrefix = substringBeforeLast(' ', "").let { if (it.isEmpty()) "" else "$it " }
-    return "$datePrefix${display.period} ${display.time}"
+    return "${display.period} ${display.time}"
 }

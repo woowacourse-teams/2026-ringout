@@ -68,7 +68,7 @@ class RecordsTimeTest {
             ringingStartedAtEpochMillis = 1, ringingStoppedAtEpochMillis = 2, missionCompletedAtEpochMillis = 3,
         ).recordTimes(format)
 
-        assertEquals("9/27 오후 11:58 ~ 오전 12:03", times.ringingRange)
+        assertEquals("오후 11:58 ~ 오전 12:03", times.ringingRange)
         assertEquals("오전 12:15", times.completedTime)
         assertEquals("강제 종료 오전 12:15", times.completedDescription)
     }
@@ -95,8 +95,8 @@ class RecordsTimeTest {
     @Test
     fun `저장된 시작과 종료와 완료 시각을 카드에 표시한다`() {
         val times = MissionHistoryEntry(MissionResult.SUCCESS, date, "one", 1, 2, 3).toAlarmUsageRecord().recordTimes(format)
-        assertEquals("9/27 오후 11:58에 울린 알람", times.title)
-        assertEquals("9/27 오후 11:58 ~ 오전 12:03", times.ringingRange)
+        assertEquals("오후 11:58에 울린 알람", times.title)
+        assertEquals("오후 11:58 ~ 오전 12:03", times.ringingRange)
         assertEquals("울림 시작 ~ 울림 종료", times.ringingDescription)
         assertEquals("미션 완료 오전 12:15", times.completedDescription)
     }
