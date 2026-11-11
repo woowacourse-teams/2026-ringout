@@ -84,4 +84,4 @@ networks:
     driver: bridge
   redis:
     external: true
-    name: ${COMPOSE_PROJECT_NAME:-ringout}-redis
+    name: ${REDIS_NETWORK_NAME:-ringout-redis}
