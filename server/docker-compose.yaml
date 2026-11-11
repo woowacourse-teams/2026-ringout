@@ -38,6 +38,8 @@ services:
       TZ: Asia/Seoul
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       APP_ENV: ${APP_ENV:-production}
+      JWT_REVOCATION_ENABLED: ${JWT_REVOCATION_ENABLED:-false}
+      SPRING_DATA_REDIS_URL: ${SPRING_DATA_REDIS_URL:-redis://localhost:6379}
       JAVA_TOOL_OPTIONS: >-
         -Xmx${JAVA_MAX_HEAP:-384m}
         -Duser.timezone=Asia/Seoul
