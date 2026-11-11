@@ -5,13 +5,15 @@ import com.ringout.api.alarm.domain.AlarmSetting;
 import com.ringout.api.alarm.domain.AlarmVersion;
 import com.ringout.api.alarm.domain.ClientAlarmId;
 import com.ringout.api.alarm.dto.request.AlarmUpsertRequest;
-import com.ringout.api.alarm.dto.response.AlarmUpsertResponse;
+import com.ringout.api.alarm.dto.response.AlarmListResponse;
+import com.ringout.api.alarm.dto.response.AlarmResponse;
 import com.ringout.api.alarm.repository.AlarmRepository;
 import com.ringout.api.alarm.status.AlarmErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.user.repository.UserRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,8 +26,18 @@ public class AlarmService {
     private final UserRepository userRepository;
     private final Clock clock;
 
+    @Transactional(readOnly = true)
+    public AlarmListResponse getAlarms(Long userId) {
+        validateAuthenticatedUserExists(userId);
+
+        List<AlarmResponse> alarms = alarmRepository.findOwnedAlarms(userId).stream()
+            .map(AlarmResponse::from)
+            .toList();
+        return new AlarmListResponse(alarms);
+    }
+
     @Transactional
-    public AlarmUpsertResponse upsertAlarm(Long userId, String alarmId, AlarmUpsertRequest request) {
+    public AlarmResponse upsertAlarm(Long userId, String alarmId, AlarmUpsertRequest request) {
         validateAuthenticatedUserExists(userId);
         ClientAlarmId clientAlarmId = ClientAlarmId.from(alarmId);
         validateAlarmUpsertRequestBodyExists(request);
@@ -38,7 +50,7 @@ public class AlarmService {
             setting.repeatMinutes(), setting.destinationName(), setting.latitude(), setting.longitude(),
             version.getValue(), LocalDateTime.now(clock));
 
-        return AlarmUpsertResponse.from(findUpsertedAlarm(userId, clientAlarmId));
+        return AlarmResponse.from(findUpsertedAlarm(userId, clientAlarmId));
     }
 
     private void validateAuthenticatedUserExists(Long userId) {

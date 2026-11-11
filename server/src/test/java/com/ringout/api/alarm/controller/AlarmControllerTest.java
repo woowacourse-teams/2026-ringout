@@ -7,13 +7,15 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ringout.api.alarm.domain.AlarmDay;
 import com.ringout.api.alarm.dto.request.AlarmUpsertRequest;
-import com.ringout.api.alarm.dto.response.AlarmUpsertResponse;
+import com.ringout.api.alarm.dto.response.AlarmListResponse;
+import com.ringout.api.alarm.dto.response.AlarmResponse;
 import com.ringout.api.alarm.service.AlarmService;
 import com.ringout.api.alarm.status.AlarmErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
@@ -57,12 +59,84 @@ class AlarmControllerTest {
     private JwtProvider jwtProvider;
 
     @Nested
+    class 알람_목록_조회_응답 {
+
+        @Test
+        void 알람_목록을_alarms_배열로_반환한다() throws Exception {
+            // given
+            given(alarmService.getAlarms(1L)).willReturn(new AlarmListResponse(List.of(
+                new AlarmResponse("alarm-001", LocalTime.of(7, 0), List.of(AlarmDay.MONDAY, AlarmDay.FRIDAY), 5,
+                    "세종대학교", 37.5502, 127.0738, 1L),
+                new AlarmResponse("alarm-002", LocalTime.of(8, 30), List.of(), 10, "서울역", 37.5547, 126.9706,
+                    3L)
+            )));
+
+            // when
+            var result = mockMvc.perform(get("/api/v1/alarms")
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.code").value("ALARM200"),
+                jsonPath("$.message").value("전체 알람 조회에 성공했습니다."),
+                jsonPath("$.result.alarms.length()").value(2),
+                jsonPath("$.result.alarms[0].alarmId").value("alarm-001"),
+                jsonPath("$.result.alarms[0].time").value("07:00"),
+                jsonPath("$.result.alarms[0].dayOfWeek", contains("MONDAY", "FRIDAY")),
+                jsonPath("$.result.alarms[0].repeatTime").value(5),
+                jsonPath("$.result.alarms[0].destinationName").value("세종대학교"),
+                jsonPath("$.result.alarms[0].destinationLatitude").value(37.5502),
+                jsonPath("$.result.alarms[0].destinationLongitude").value(127.0738),
+                jsonPath("$.result.alarms[0].alarmVersion").value(1),
+                jsonPath("$.result.alarms[1].alarmId").value("alarm-002"),
+                jsonPath("$.result.alarms[1].time").value("08:30"),
+                jsonPath("$.result.alarms[1].dayOfWeek").isEmpty(),
+                jsonPath("$.result.alarms[1].alarmVersion").value(3)
+            );
+        }
+
+        @Test
+        void 알람이_없으면_빈_alarms_배열을_반환한다() throws Exception {
+            // given
+            given(alarmService.getAlarms(1L)).willReturn(new AlarmListResponse(List.of()));
+
+            // when
+            var result = mockMvc.perform(get("/api/v1/alarms")
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.code").value("ALARM200"),
+                jsonPath("$.result.alarms").isArray(),
+                jsonPath("$.result.alarms").isEmpty()
+            );
+        }
+
+        @Test
+        void 인증_정보가_없으면_AUTH401을_반환한다() throws Exception {
+            // given
+
+            // when
+            var result = mockMvc.perform(get("/api/v1/alarms"));
+
+            // then
+            result.andExpectAll(
+                status().isUnauthorized(),
+                jsonPath("$.code").value("AUTH401")
+            );
+            verify(alarmService, never()).getAlarms(any());
+        }
+    }
+
+    @Nested
     class 알람_upsert_응답 {
 
         @Test
         void 경로의_알람_ID와_body로_upsert하고_200과_서버에_저장된_알람을_반환한다() throws Exception {
             // given
-            given(alarmService.upsertAlarm(any(), any(), any())).willReturn(new AlarmUpsertResponse("alarm-001",
+            given(alarmService.upsertAlarm(any(), any(), any())).willReturn(new AlarmResponse("alarm-001",
                 LocalTime.of(9, 0), List.of(AlarmDay.MONDAY, AlarmDay.TUESDAY, AlarmDay.FRIDAY), 5, "세종대학교",
                 37.5502, 127.0738, 3L));
 

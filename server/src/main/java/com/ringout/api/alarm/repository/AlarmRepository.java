@@ -4,6 +4,7 @@ import com.ringout.api.alarm.domain.Alarm;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -12,6 +13,15 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface AlarmRepository extends JpaRepository<Alarm, Long> {
+
+    @Query("""
+        select alarm
+        from Alarm alarm
+        where alarm.user.id = :userId
+          and alarm.deletedAt is null
+        order by alarm.setting.schedule.ringingRule.alarmTime.value asc, alarm.clientAlarmId.value asc
+        """)
+    List<Alarm> findOwnedAlarms(@Param("userId") Long userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""

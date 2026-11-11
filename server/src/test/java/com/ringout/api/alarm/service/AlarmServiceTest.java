@@ -13,7 +13,8 @@ import com.ringout.api.alarm.domain.Alarm;
 import com.ringout.api.alarm.domain.AlarmDay;
 import com.ringout.api.alarm.domain.AlarmSetting;
 import com.ringout.api.alarm.dto.request.AlarmUpsertRequest;
-import com.ringout.api.alarm.dto.response.AlarmUpsertResponse;
+import com.ringout.api.alarm.dto.response.AlarmListResponse;
+import com.ringout.api.alarm.dto.response.AlarmResponse;
 import com.ringout.api.alarm.repository.AlarmRepository;
 import com.ringout.api.alarm.status.AlarmErrorStatus;
 import com.ringout.api.common.response.error.GeneralException;
@@ -84,6 +85,67 @@ class AlarmServiceTest {
     }
 
     @Nested
+    class 알람_목록_조회 {
+
+        @Test
+        void 소유한_알람을_조회_순서대로_반환한다() {
+            // given
+            Alarm first = Alarm.create(mock(User.class), "alarm-001",
+                AlarmSetting.of(LocalTime.of(7, 0), List.of(AlarmDay.MONDAY, AlarmDay.FRIDAY), 5, "세종대학교", 37.5502,
+                    127.0738), 1L);
+            Alarm second = Alarm.create(mock(User.class), "alarm-002",
+                AlarmSetting.of(LocalTime.of(8, 30), List.of(), 10, "서울역", 37.5547, 126.9706), 3L);
+            given(alarmRepository.findOwnedAlarms(USER_ID)).willReturn(List.of(first, second));
+
+            // when
+            AlarmListResponse response = alarmService.getAlarms(USER_ID);
+
+            // then
+            assertThat(response.alarms()).containsExactly(
+                new AlarmResponse("alarm-001", LocalTime.of(7, 0), List.of(AlarmDay.MONDAY, AlarmDay.FRIDAY), 5,
+                    "세종대학교", 37.5502, 127.0738, 1L),
+                new AlarmResponse("alarm-002", LocalTime.of(8, 30), List.of(), 10, "서울역", 37.5547, 126.9706,
+                    3L)
+            );
+        }
+
+        @Test
+        void 알람이_없으면_빈_목록을_반환한다() {
+            // given
+            given(alarmRepository.findOwnedAlarms(USER_ID)).willReturn(List.of());
+
+            // when
+            AlarmListResponse response = alarmService.getAlarms(USER_ID);
+
+            // then
+            assertThat(response.alarms()).isEmpty();
+        }
+
+        @Test
+        void 사용자_id가_없으면_조회할_수_없다() {
+            // given
+
+            // when // then
+            assertThatThrownBy(() -> alarmService.getAlarms(null))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(AlarmErrorStatus.ALARM_UNAUTHORIZED));
+            verifyNoInteractions(alarmRepository);
+        }
+
+        @Test
+        void 사용자가_존재하지_않으면_조회할_수_없다() {
+            // given
+            given(userRepository.existsById(USER_ID)).willReturn(false);
+
+            // when // then
+            assertThatThrownBy(() -> alarmService.getAlarms(USER_ID))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(AlarmErrorStatus.ALARM_UNAUTHORIZED));
+            verifyNoInteractions(alarmRepository);
+        }
+    }
+
+    @Nested
     class 알람_upsert {
 
         @Test
@@ -95,14 +157,14 @@ class AlarmServiceTest {
             given(alarmRepository.findOwnedAlarmForUpdate(USER_ID, ALARM_ID)).willReturn(Optional.of(stored));
 
             // when
-            AlarmUpsertResponse response = alarmService.upsertAlarm(USER_ID, ALARM_ID,
+            AlarmResponse response = alarmService.upsertAlarm(USER_ID, ALARM_ID,
                 new AlarmUpsertRequest(LocalTime.of(8, 0), List.of(AlarmDay.FRIDAY, AlarmDay.MONDAY), 10,
                     "  우아한테크코스  ", 37.5502, 127.0738, 2L));
 
             // then
             verify(alarmRepository).upsertOwnedAlarm(USER_ID, ALARM_ID, LocalTime.of(8, 0), 64 + 4, 10, "우아한테크코스",
                 37.5502, 127.0738, 2L, LocalDateTime.of(2026, 11, 10, 12, 0));
-            assertThat(response).isEqualTo(new AlarmUpsertResponse(ALARM_ID, LocalTime.of(9, 0),
+            assertThat(response).isEqualTo(new AlarmResponse(ALARM_ID, LocalTime.of(9, 0),
                 List.of(AlarmDay.TUESDAY), 5, "세종대학교", 37.55, 127.07, 3L));
         }
 
@@ -114,7 +176,7 @@ class AlarmServiceTest {
             given(alarmRepository.findOwnedAlarmForUpdate(USER_ID, ALARM_ID)).willReturn(Optional.of(stored));
 
             // when
-            AlarmUpsertResponse response = alarmService.upsertAlarm(USER_ID, ALARM_ID,
+            AlarmResponse response = alarmService.upsertAlarm(USER_ID, ALARM_ID,
                 new AlarmUpsertRequest(LocalTime.of(8, 0), List.of(), 0, "세종대학교", 37.55, 127.07, 1L));
 
             // then

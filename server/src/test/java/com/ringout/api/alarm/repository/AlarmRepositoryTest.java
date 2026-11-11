@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ringout.api.alarm.domain.Alarm;
 import com.ringout.api.alarm.domain.AlarmDay;
+import com.ringout.api.alarm.domain.AlarmSetting;
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.config.JpaAuditingConfig;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @DataJpaTest(properties = {
     "spring.test.database.replace=none",
@@ -53,6 +56,63 @@ class AlarmRepositoryTest {
         alarmRepository.upsertOwnedAlarm(user.getId(), ALARM_ID, time, daysMask, repeatMinutes, name, 37.5502,
             127.0738, version, NOW);
         return alarmRepository.findOwnedAlarmForUpdate(user.getId(), ALARM_ID).orElseThrow();
+    }
+
+    private Alarm saveAlarm(User user, String alarmId, LocalTime time) {
+        AlarmSetting setting = AlarmSetting.of(time, List.of(AlarmDay.MONDAY), 5, "세종대학교", 37.5502, 127.0738);
+        return alarmRepository.save(Alarm.create(user, alarmId, setting, 1L));
+    }
+
+    @Nested
+    class 소유_알람_목록_조회 {
+
+        @Test
+        void 소유자의_알람만_알람_시간_오름차순으로_조회하고_같은_시간이면_알람_ID_오름차순이다() {
+            // given
+            User owner = saveUser();
+            User otherUser = saveUser();
+            saveAlarm(owner, "alarm-c", LocalTime.of(9, 0));
+            saveAlarm(owner, "alarm-b", LocalTime.of(7, 0));
+            saveAlarm(otherUser, "alarm-x", LocalTime.of(6, 0));
+            saveAlarm(owner, "alarm-a", LocalTime.of(7, 0));
+            saveAlarm(owner, "alarm-d", LocalTime.of(8, 30));
+
+            // when
+            List<Alarm> alarms = alarmRepository.findOwnedAlarms(owner.getId());
+
+            // then
+            assertThat(alarms)
+                .extracting(Alarm::alarmId)
+                .containsExactly("alarm-a", "alarm-b", "alarm-d", "alarm-c");
+        }
+
+        @Test
+        void 삭제된_알람은_조회하지_않는다() {
+            // given
+            User owner = saveUser();
+            saveAlarm(owner, "alarm-a", LocalTime.of(7, 0));
+            Alarm deleted = saveAlarm(owner, "alarm-b", LocalTime.of(8, 0));
+            ReflectionTestUtils.setField(deleted, "deletedAt", LocalDateTime.of(2026, 11, 10, 0, 0));
+            alarmRepository.saveAndFlush(deleted);
+
+            // when
+            List<Alarm> alarms = alarmRepository.findOwnedAlarms(owner.getId());
+
+            // then
+            assertThat(alarms).extracting(Alarm::alarmId).containsExactly("alarm-a");
+        }
+
+        @Test
+        void 알람이_없으면_빈_목록을_조회한다() {
+            // given
+            User owner = saveUser();
+
+            // when
+            List<Alarm> alarms = alarmRepository.findOwnedAlarms(owner.getId());
+
+            // then
+            assertThat(alarms).isEmpty();
+        }
     }
 
     @Nested

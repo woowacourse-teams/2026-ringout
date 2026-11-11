@@ -1,7 +1,8 @@
 package com.ringout.api.alarm.controller.docs;
 
 import com.ringout.api.alarm.dto.request.AlarmUpsertRequest;
-import com.ringout.api.alarm.dto.response.AlarmUpsertResponse;
+import com.ringout.api.alarm.dto.response.AlarmListResponse;
+import com.ringout.api.alarm.dto.response.AlarmResponse;
 import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.SwaggerConfig;
 import com.ringout.api.config.security.CustomUserDetails;
@@ -19,6 +20,98 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 @Tag(name = "알람 (Alarm)", description = "알람 API")
 public interface AlarmControllerApi {
+
+    @Operation(
+        summary = "전체 알람 조회",
+        description = """
+            인증된 사용자가 소유한 알람을 모두 result.alarms 배열로 조회합니다. 삭제된 알람은 포함하지 않습니다.
+            알람 시간 오름차순으로 정렬하고, 같은 시간이면 alarmId 오름차순(대소문자를 구분하는 바이트 순서)입니다.
+            페이지네이션은 적용하지 않으며, 알람이 없으면 빈 배열을 반환합니다.
+            각 알람은 알람 Upsert 응답과 같은 필드 구조입니다.
+            """,
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "전체 알람 조회 성공. 알람이 없으면 alarms는 빈 배열",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "alarms", value = """
+                        {
+                          "isSuccess": true,
+                          "code": "ALARM200",
+                          "message": "전체 알람 조회에 성공했습니다.",
+                          "result": {
+                            "alarms": [
+                              {
+                                "alarmId": "alarm-001",
+                                "time": "07:00",
+                                "dayOfWeek": ["MONDAY", "FRIDAY"],
+                                "repeatTime": 5,
+                                "destinationName": "세종대학교",
+                                "destinationLatitude": 37.5502,
+                                "destinationLongitude": 127.0738,
+                                "alarmVersion": 1
+                              },
+                              {
+                                "alarmId": "alarm-002",
+                                "time": "08:30",
+                                "dayOfWeek": [],
+                                "repeatTime": 10,
+                                "destinationName": "서울역",
+                                "destinationLatitude": 37.5547,
+                                "destinationLongitude": 126.9706,
+                                "alarmVersion": 3
+                              }
+                            ]
+                          }
+                        }
+                        """),
+                    @ExampleObject(name = "emptyAlarms", value = """
+                        {
+                          "isSuccess": true,
+                          "code": "ALARM200",
+                          "message": "전체 알람 조회에 성공했습니다.",
+                          "result": {
+                            "alarms": []
+                          }
+                        }
+                        """)
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "invalidToken", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "AUTH401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "userNotFound", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "ALARM401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """)
+                }
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<AlarmListResponse>> findAlarms(
+        @Parameter(hidden = true)
+        CustomUserDetails customUserDetails
+    );
 
     @Operation(
         summary = "알람 생성 또는 전체 수정 (Upsert)",
@@ -132,7 +225,7 @@ public interface AlarmControllerApi {
             )
         )
     })
-    ResponseEntity<CustomResponse<AlarmUpsertResponse>> upsertAlarm(
+    ResponseEntity<CustomResponse<AlarmResponse>> upsertAlarm(
         @Parameter(hidden = true)
         CustomUserDetails customUserDetails,
         @Parameter(
