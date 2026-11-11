@@ -11,6 +11,7 @@ import com.joon.ringout.analytics.createProductAnalyticsRecorder
 import com.joon.ringout.data.auth.DefaultAuthRepository
 import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceSyncRuntime
+import com.joon.ringout.data.alarmoccurrence.DefaultAlarmOccurrenceMonthLoader
 import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
 import com.joon.ringout.data.auth.remote.KtorAuthApi
 import com.joon.ringout.data.database.getRingoutDatabase
@@ -25,6 +26,7 @@ import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.outbox.RoomOutboxReader
 import com.joon.ringout.data.member.DefaultMemberRepository
 import com.joon.ringout.data.room.DefaultRoomRepository
+import com.joon.ringout.data.missionhistory.RoomRecordsHistoryRepository
 import com.joon.ringout.data.missionhistory.DefaultMissionHistoryRepository
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
 import com.joon.ringout.data.network.getRingoutHttpClient
@@ -122,7 +124,7 @@ class IosAppContainer(
         sessionGate = destinationSessionGate,
         authSession = authSession,
     )
-    private val destinationSyncScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val destinationSyncCoordinator = DestinationSyncCoordinator(
         syncer = destinationSyncer,
         dao = database.destinationDao(),
@@ -132,7 +134,7 @@ class IosAppContainer(
     )
 
     init {
-        destinationSyncCoordinator.start(destinationSyncScope)
+        destinationSyncCoordinator.start(applicationScope)
     }
 
     override fun onAppResumed() = destinationSyncCoordinator.requestSync()
@@ -153,6 +155,20 @@ class IosAppContainer(
         DefaultMissionHistoryRepository(
             dataSource = RoomMissionHistoryDataSource(database.missionHistoryDao()),
         )
+    override val recordsHistoryRepository = RoomRecordsHistoryRepository(
+        database,
+        tokenStorage,
+        authSession,
+        alarmActivityRepository,
+    )
+    override val alarmOccurrenceMonthLoader = DefaultAlarmOccurrenceMonthLoader(
+        httpClient,
+        tokenStorage,
+        authSession,
+        database.alarmOccurrenceCacheDao(),
+        destinationSessionGate,
+        applicationScope,
+    )
     override val localUserDataCleanup = RoomLocalUserDataCleanup(
         dao = database.localUserDataCleanupDao(),
         destinationSessionGate = destinationSessionGate,

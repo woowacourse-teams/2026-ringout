@@ -17,6 +17,7 @@ data class AlarmUsageRecordRow(
     @ColumnInfo(name = "alarm_id") val alarmId: String?,
     @ColumnInfo(name = "ringing_scheduled_at") val ringingScheduledAtEpochMillis: Long?,
     @ColumnInfo(name = "schedule_version") val scheduleVersion: Long,
+    @ColumnInfo(name = "ringing_count") val ringingCount: Int,
 )
 
 internal fun AlarmUsageRecordRow.toDomain() = AlarmUsageRecord(
@@ -31,4 +32,5 @@ internal fun AlarmUsageRecordRow.toDomain() = AlarmUsageRecord(
     alarmId = alarmId,
     ringingScheduledAtEpochMillis = ringingScheduledAtEpochMillis,
     scheduleVersion = scheduleVersion,
+    ringingCount = ringingCount,
 )

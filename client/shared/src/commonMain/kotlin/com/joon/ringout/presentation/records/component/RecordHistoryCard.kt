@@ -49,7 +49,11 @@ internal fun RecordHistoryCard(
     val colors = recordsColors()
     val lastResult = record.entries.last().result
     val times = record.entries.map { it.recordTimes() }
-    val rowCount = if (expanded) record.entries.size + record.entries.count { it.result != null } else 1
+    val rowCount = if (expanded) {
+        record.entries.count { it.showsRingingRow() } + record.entries.count { it.result != null }
+    } else {
+        1
+    }
     val lastRowCenter = when (lastResult) {
         MissionResult.SUCCESS -> 24.dp
         MissionResult.FAILURE -> 29.dp
@@ -83,7 +87,7 @@ internal fun RecordHistoryCard(
             if (expanded) {
                 record.entries.forEachIndexed { index, entry ->
                     key(entry.key) {
-                        RecordRingingRow(times[index])
+                        if (entry.showsRingingRow()) RecordRingingRow(times[index])
                         when (entry.result) {
                             MissionResult.SUCCESS -> RecordArrivalRow(completedTime = times[index].completedTime)
                             MissionResult.FAILURE -> RecordForceEndRow(completedTime = times[index].completedTime)
@@ -101,6 +105,8 @@ internal fun RecordHistoryCard(
         }
     }
 }
+
+private fun AlarmUsageRecord.showsRingingRow() = ringingCount > 0 || result == null
 
 @Preview
 @Composable

@@ -2,11 +2,13 @@ package com.joon.ringout.di
 
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.domain.alarmactivity.AlarmActivityRepository
+import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceMonthLoader
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.destination.DestinationRepository
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.MissionHistoryRepository
+import com.joon.ringout.domain.missionhistory.RecordsHistoryRepository
 import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
 import com.joon.ringout.domain.push.PushTokenRegistrar
 import com.joon.ringout.domain.push.PushTokenSource
@@ -32,6 +34,8 @@ interface AppContainer {
     val destinationRepository: DestinationRepository
     val alarmActivityRepository: AlarmActivityRepository
     val missionHistoryRepository: MissionHistoryRepository
+    val recordsHistoryRepository: RecordsHistoryRepository? get() = null
+    val alarmOccurrenceMonthLoader: AlarmOccurrenceMonthLoader get() = AlarmOccurrenceMonthLoader { true }
     val localUserDataCleanup: LocalUserDataCleanup
     val arrivalResultRepository: com.joon.ringout.domain.arrival.ArrivalResultRepository
     val forestRepository: com.joon.ringout.domain.forest.ForestRepository

@@ -169,8 +169,9 @@ private fun navigationViewModelFactory(
         }
         initializer {
             RecordsViewModel(
-                activityRepository = container.alarmActivityRepository,
-                getRecordsHistory = GetRecordsHistory(container.missionHistoryRepository),
+                activityRepository = container.alarmActivityRepository.takeIf { container.recordsHistoryRepository == null },
+                getRecordsHistory = GetRecordsHistory(container.missionHistoryRepository, container.recordsHistoryRepository),
+                monthLoader = container.alarmOccurrenceMonthLoader,
                 initialDate = currentRecordsDate(),
                 currentDate = ::currentRecordsDate,
             )
