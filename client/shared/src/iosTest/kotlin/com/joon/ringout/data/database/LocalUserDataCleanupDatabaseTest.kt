@@ -11,6 +11,8 @@ import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmOccurrenceEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmRingingEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordState
 import com.joon.ringout.data.arrival.ArrivalGrowthActivationEntity
@@ -109,10 +111,27 @@ class LocalUserDataCleanupDatabaseTest {
                 ),
             )
 
+            val cache = database.alarmOccurrenceCacheDao()
+            cache.saveMonth(
+                ownerAccountId = "account-1",
+                month = "2026-11",
+                occurrences = listOf(
+                    CachedAlarmOccurrenceEntity(
+                        "account-1", "2026-11", "remote-1", "alarm-1", "2026-11-09", "07:05", null, null,
+                    ),
+                ),
+                ringings = listOf(
+                    CachedAlarmRingingEntity("account-1", "remote-1", "INITIAL", null, 1_100, 1_200),
+                ),
+            )
+            cache.saveMonth("account-1", "2026-10", emptyList(), emptyList())
+
             val cleanup = RoomLocalUserDataCleanup(database.localUserDataCleanupDao())
             cleanup.clear()
             cleanup.clear()
 
+            assertTrue(cache.getCompleteMonths("account-1").isEmpty())
+            assertTrue(cache.getOccurrences("account-1").isEmpty())
             assertTrue(alarmDao.getAll().isEmpty())
             assertTrue(destinationDao.observeAll(ownerAccountId = null).first().isEmpty())
             assertTrue(destinationDao.observeOutbox().first().isEmpty())
@@ -133,6 +152,10 @@ class LocalUserDataCleanupDatabaseTest {
             assertTrue(alarmDao.hasStorageMigration("legacy-import"))
             database.useReaderConnection { connection ->
                 connection.usePrepared("SELECT COUNT(*) FROM alarm_repeat_days") { statement ->
+                    assertTrue(statement.step())
+                    assertEquals(0L, statement.getLong(0))
+                }
+                connection.usePrepared("SELECT COUNT(*) FROM alarm_occurrence_cache_ringings") { statement ->
                     assertTrue(statement.step())
                     assertEquals(0L, statement.getLong(0))
                 }

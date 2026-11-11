@@ -21,6 +21,8 @@ import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordState
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmOccurrenceEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmRingingEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryDto
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.IOException
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -405,7 +408,7 @@ class RingoutDatabaseMigrationTestSuite {
                     val alarm = assertNotNull(RoomAlarmDataSource(database.alarmDao()).getById("alarm-1"))
                     assertEquals(savedAlarm().request.time, alarm.request.time)
                     assertNull(alarm.request.ownerAccountId)
-                    assertDatabaseVersion(path, expectedVersion = 17)
+                    assertDatabaseVersion(path, expectedVersion = 18)
                     createMigrationTestSQLiteDriver().open(path).use { connection ->
                         connection.prepare("SELECT onboarding_completed_at_epoch_millis FROM forest_state WHERE id = 1")
                             .use { statement ->
@@ -428,6 +431,54 @@ class RingoutDatabaseMigrationTestSuite {
             } finally {
                 deleteDatabaseFiles(path)
             }
+        }
+    }
+
+    fun `버전 십칠의 전송 대기 이벤트를 보존하고 월별 캐시는 원자적으로 저장한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        var database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            database.alarmOccurrenceSyncDao().recordStart(
+                AlarmOccurrenceSyncEntity("local", "account-1", "alarm", 1, 1_000, 1_100),
+            )
+            database.close()
+            createMigrationTestSQLiteDriver().open(path).use { connection ->
+                connection.execSQL("DROP TABLE alarm_occurrence_cache_ringings")
+                connection.execSQL("DROP TABLE alarm_occurrence_cache")
+                connection.execSQL("DROP TABLE alarm_occurrence_cache_months")
+                setDatabaseVersion(connection, 17, "e3680293be6b815b3a9c83012e23b3c2")
+            }
+
+            database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+            val cache = database.alarmOccurrenceCacheDao()
+            val occurrence = CachedAlarmOccurrenceEntity(
+                "account-1", "2026-11", "remote", "alarm", "2026-11-30", "23:59", null, null,
+            )
+            val ringing = CachedAlarmRingingEntity("account-1", "remote", "INITIAL", null, 1_200, null)
+            assertFails {
+                cache.saveMonth("account-1", "2026-11", listOf(occurrence), listOf(ringing, ringing))
+            }
+            assertFalse(cache.isComplete("account-1", "2026-11"))
+            assertTrue(cache.getOccurrences("account-1").isEmpty())
+
+            cache.saveMonth("account-1", "2026-11", listOf(occurrence), listOf(ringing))
+            cache.saveMonth("account-2", "2026-11", emptyList(), emptyList())
+            assertEquals(1, database.alarmOccurrenceSyncDao().getUnsentEvents("account-1").size)
+            assertEquals(0, database.arrivalResultDao().getSuccessfulDayCount())
+            assertDatabaseVersion(path, expectedVersion = 18)
+            database.close()
+
+            database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+            val reopenedCache = database.alarmOccurrenceCacheDao()
+            assertTrue(reopenedCache.isComplete("account-1", "2026-11"))
+            assertTrue(reopenedCache.isComplete("account-2", "2026-11"))
+            assertTrue(reopenedCache.getOccurrences("account-2").isEmpty())
+            val row = reopenedCache.getOccurrences("account-1").single()
+            assertEquals(occurrence, row.occurrence)
+            assertEquals(listOf(ringing), row.ringings)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
         }
     }
 
@@ -457,7 +508,7 @@ class RingoutDatabaseMigrationTestSuite {
             try {
                 assertEquals(listOf(saved), destinationRepository(migrated).observeAll().first())
                 assertTrue(migrated.destinationDao().getDueOutbox("account-1", 0L).isEmpty())
-                assertDatabaseVersion(path, expectedVersion = 17)
+                assertDatabaseVersion(path, expectedVersion = 18)
                 createMigrationTestSQLiteDriver().open(path).use { connection ->
                     connection.prepare(
                         "SELECT owner_account_id, remote_destination_id, destination_version " +
@@ -570,7 +621,7 @@ class RingoutDatabaseMigrationTestSuite {
             assertNull(arrivals.observeLatestUnacknowledgedResult().first())
             assertNull(RoomAlarmDataSource(database.alarmDao()).getById("alarm-1")?.request?.ownerAccountId)
             assertTrue(growthActivationAt(path) > 0)
-            assertDatabaseVersion(path, expectedVersion = 17)
+            assertDatabaseVersion(path, expectedVersion = 18)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -593,7 +644,7 @@ class RingoutDatabaseMigrationTestSuite {
             database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
             assertEquals(0, RoomArrivalResultRepository(database.arrivalResultDao()).getGrowth().successfulDayCount)
             assertEquals(123_456L, growthActivationAt(path))
-            assertDatabaseVersion(path, expectedVersion = 17)
+            assertDatabaseVersion(path, expectedVersion = 18)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -765,7 +816,7 @@ class RingoutDatabaseMigrationTestSuite {
             ))
             assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY, dao.getIosRecordDecision("local-chain")?.state)
             assertTrue(dao.getPendingIosRecordDecisions().isEmpty())
-            assertDatabaseVersion(path, expectedVersion = 17)
+            assertDatabaseVersion(path, expectedVersion = 18)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -797,7 +848,7 @@ class RingoutDatabaseMigrationTestSuite {
             migrated.recordTerminal("1", "existing", com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
             assertEquals(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.ARRIVE,
                 migrated.getUnsentMovements("1").single().action)
-            assertDatabaseVersion(path, expectedVersion = 17)
+            assertDatabaseVersion(path, expectedVersion = 18)
         } finally {
             database.close()
             deleteDatabaseFiles(path)

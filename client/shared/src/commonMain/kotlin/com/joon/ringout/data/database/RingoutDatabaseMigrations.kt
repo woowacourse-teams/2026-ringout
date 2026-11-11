@@ -334,3 +334,44 @@ internal val RingoutMigration16To17 = Migration(16, 17) { connection ->
         )
     """.trimIndent())
 }
+
+internal val RingoutMigration17To18 = Migration(17, 18) { connection ->
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_occurrence_cache_months (
+            owner_account_id TEXT NOT NULL,
+            month TEXT NOT NULL,
+            PRIMARY KEY (owner_account_id, month)
+        )
+    """.trimIndent())
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_occurrence_cache (
+            owner_account_id TEXT NOT NULL,
+            month TEXT NOT NULL,
+            occurrence_id TEXT NOT NULL,
+            alarm_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            alarm_time TEXT NOT NULL,
+            end_type TEXT,
+            ended_at INTEGER,
+            PRIMARY KEY (owner_account_id, occurrence_id)
+        )
+    """.trimIndent())
+    connection.executeSQL(
+        "CREATE INDEX IF NOT EXISTS index_alarm_occurrence_cache_owner_account_id_date " +
+            "ON alarm_occurrence_cache (owner_account_id, date)",
+    )
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_occurrence_cache_ringings (
+            owner_account_id TEXT NOT NULL,
+            occurrence_id TEXT NOT NULL,
+            ringing_key TEXT NOT NULL,
+            event_id TEXT,
+            ringing_at INTEGER NOT NULL,
+            dismissed_at INTEGER,
+            PRIMARY KEY (owner_account_id, occurrence_id, ringing_key),
+            FOREIGN KEY (owner_account_id, occurrence_id)
+                REFERENCES alarm_occurrence_cache (owner_account_id, occurrence_id)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+    """.trimIndent())
+}

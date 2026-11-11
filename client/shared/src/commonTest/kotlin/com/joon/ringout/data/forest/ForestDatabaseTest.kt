@@ -267,7 +267,7 @@ class ForestDatabaseTestSuite {
             assertEquals(state.trees, state.pendingTrees)
             assertEquals(original, (1..12).map { arrivals.getResult("day-$it") })
             assertEquals(100L, database.arrivalResultDao().getGrowthActivation())
-            assertEquals(17L, databaseVersion())
+            assertEquals(18L, databaseVersion())
             reopen()
             assertEquals(state, forest.getForest())
             (13..15).forEach { recordDay(it) }

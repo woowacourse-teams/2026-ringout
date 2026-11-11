@@ -51,6 +51,12 @@ interface LocalUserDataCleanupDao {
     @Query("DELETE FROM destination_sync_state")
     suspend fun deleteDestinationSyncState()
 
+    @Query("DELETE FROM alarm_occurrence_cache")
+    suspend fun deleteAlarmOccurrenceCache()
+
+    @Query("DELETE FROM alarm_occurrence_cache_months")
+    suspend fun deleteAlarmOccurrenceCacheMonths()
+
     /**
      * Clears only account-owned data. Keep storage_migrations so a later launch cannot
      * import legacy alarm preferences back into this installation. Keep the installation's
@@ -58,6 +64,9 @@ interface LocalUserDataCleanupDao {
      */
     @Transaction
     suspend fun clear() {
+        // The foreign key removes the cached ringings with their occurrence.
+        deleteAlarmOccurrenceCache()
+        deleteAlarmOccurrenceCacheMonths()
         deleteAlarmOccurrenceOutbox()
         deleteAlarmMovementOutbox()
         deleteAlarmOccurrenceRingingLinks()
