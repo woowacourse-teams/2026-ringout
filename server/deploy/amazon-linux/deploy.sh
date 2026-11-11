@@ -124,6 +124,15 @@ if [[ ! "$SCRIPT_DIR/deploy.sh" -ef "$APP_DIR/deploy.sh" ]]; then
   install -m 755 "$RECORDER" "$APP_DIR/deployment.py"
 fi
 
+# Keep the blacklist shared across both application deployment ports.
+redis_project="${COMPOSE_PROJECT_NAME:-ringout}-redis"
+if ! docker network inspect "$redis_project" >/dev/null 2>&1; then
+  docker network create "$redis_project" >/dev/null
+fi
+if [[ "${JWT_REVOCATION_ENABLED:-false}" == true && -z "${SPRING_DATA_REDIS_URL:-}" ]]; then
+  "${compose[@]}" -p "$redis_project" up -d --wait --wait-timeout 30 --no-recreate redis
+fi
+
 # 2. 이미지 Pull
 log IMAGE_PULL_STARTED
 

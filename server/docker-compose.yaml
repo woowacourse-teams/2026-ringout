@@ -39,7 +39,7 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       APP_ENV: ${APP_ENV:-production}
       JWT_REVOCATION_ENABLED: ${JWT_REVOCATION_ENABLED:-false}
-      SPRING_DATA_REDIS_URL: ${SPRING_DATA_REDIS_URL:-redis://localhost:6379}
+      SPRING_DATA_REDIS_URL: ${SPRING_DATA_REDIS_URL:-redis://redis:6379}
       JAVA_TOOL_OPTIONS: >-
         -Xmx${JAVA_MAX_HEAP:-384m}
         -Duser.timezone=Asia/Seoul
@@ -59,7 +59,29 @@ services:
       - no-new-privileges:true
     networks:
       - backend
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    profiles: [redis]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    networks:
+      - redis
+
+volumes:
+  redis-data:
 
 networks:
   backend:
     driver: bridge
+  redis:
+    external: true
+    name: ${COMPOSE_PROJECT_NAME:-ringout}-redis
