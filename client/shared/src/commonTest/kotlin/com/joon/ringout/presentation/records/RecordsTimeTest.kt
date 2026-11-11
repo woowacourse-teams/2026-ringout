@@ -10,6 +10,22 @@ import kotlin.test.assertEquals
 
 class RecordsTimeTest {
     @Test
+    fun `서버 실행의 제목은 설정 시각을 쓰고 울림과 강제 종료는 실제 시각을 표시한다`() {
+        val record = AlarmUsageRecord(
+            key = "cached-first", date = MissionDate.of(2026, 11, 30), serverOccurrenceId = "1",
+            alarmTime = "23:50", ringingScheduledAtEpochMillis = 1, ringingStartedAtEpochMillis = 2,
+            ringingStoppedAtEpochMillis = 3, result = MissionResult.FAILURE, missionCompletedAtEpochMillis = 4,
+        )
+        val times = record.recordTimes { millis, _ ->
+            mapOf(2L to "23:55", 3L to "12/1 00:02", 4L to "12/1 00:07").getValue(millis)
+        }
+
+        assertEquals("오후 11:50 알람", times.title)
+        assertEquals("오후 11:55 ~ 오전 12:02", times.ringingRange)
+        assertEquals("강제 종료 오전 12:07", times.completedDescription)
+    }
+
+    @Test
     fun `예정 시각이 있으면 관찰 시각 대신 카드 제목과 울림 행에 표시한다`() {
         val record = AlarmUsageRecord(
             "one", MissionDate.of(2026, 9, 28), ringingScheduledAtEpochMillis = 1,
@@ -52,7 +68,7 @@ class RecordsTimeTest {
             ringingStartedAtEpochMillis = 1, ringingStoppedAtEpochMillis = 2, missionCompletedAtEpochMillis = 3,
         ).recordTimes(format)
 
-        assertEquals("9/27 오후 11:58 ~ 오전 12:03", times.ringingRange)
+        assertEquals("오후 11:58 ~ 오전 12:03", times.ringingRange)
         assertEquals("오전 12:15", times.completedTime)
         assertEquals("강제 종료 오전 12:15", times.completedDescription)
     }
@@ -79,8 +95,8 @@ class RecordsTimeTest {
     @Test
     fun `저장된 시작과 종료와 완료 시각을 카드에 표시한다`() {
         val times = MissionHistoryEntry(MissionResult.SUCCESS, date, "one", 1, 2, 3).toAlarmUsageRecord().recordTimes(format)
-        assertEquals("9/27 오후 11:58에 울린 알람", times.title)
-        assertEquals("9/27 오후 11:58 ~ 오전 12:03", times.ringingRange)
+        assertEquals("오후 11:58에 울린 알람", times.title)
+        assertEquals("오후 11:58 ~ 오전 12:03", times.ringingRange)
         assertEquals("울림 시작 ~ 울림 종료", times.ringingDescription)
         assertEquals("미션 완료 오전 12:15", times.completedDescription)
     }

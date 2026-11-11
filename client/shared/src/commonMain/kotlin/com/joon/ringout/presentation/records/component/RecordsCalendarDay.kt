@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +49,7 @@ internal fun RecordsCalendarDay(
         append("${day.date.year}년 ${day.date.month}월 ${day.date.day}일")
         if (day.isToday) append(", 오늘")
         append(", 기록 ${day.recordCount}개")
+        day.ringingCount?.let { append(", 알람 울림 ${it}번") }
         when (day.result) {
             MissionResult.SUCCESS -> append(", 최근 기록 목적지 도착")
             MissionResult.FAILURE -> append(", 최근 기록 미션 실패")
@@ -81,7 +83,9 @@ internal fun RecordsCalendarDay(
                     painterResource(Res.drawable.records_failure), null,
                     tint = colors.failure, modifier = Modifier.size(23.dp),
                 )
-                null -> Unit
+                null -> if ((day.ringingCount ?: 0) > 0) {
+                    Box(Modifier.size(6.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
+                }
             }
         }
     }

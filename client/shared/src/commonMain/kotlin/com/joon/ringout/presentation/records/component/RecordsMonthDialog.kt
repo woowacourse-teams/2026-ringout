@@ -53,6 +53,7 @@ internal fun RecordsMonthDialog(
     onDismiss: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    cacheErrorMessage: String? = null,
 ) {
     val colors = recordsColors()
     val headerHeight = with(LocalDensity.current) { (24.sp.toDp() * 2).coerceAtLeast(48.dp) }
@@ -93,6 +94,9 @@ internal fun RecordsMonthDialog(
                         ) {
                             RecordsMonthStatus(isLoading = isLoading, errorMessage = errorMessage, onRetry = onRetry)
                         }
+                    }
+                    if (cacheErrorMessage != null && errorMessage == null) {
+                        RecordsStateContent(isLoading = false, errorMessage = cacheErrorMessage, onRetry = onRetry)
                     }
                 }
             }

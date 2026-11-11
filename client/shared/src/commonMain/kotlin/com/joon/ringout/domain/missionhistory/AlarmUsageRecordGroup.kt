@@ -1,6 +1,6 @@
 package com.joon.ringout.domain.missionhistory
 
-/** One schedule version's occurrences on one local day, ordered from the first ringing to the last. */
+/** Ringings shown in one card, ordered from the first ringing to the last. */
 data class AlarmUsageRecordGroup(
     val key: String,
     val date: MissionDate,
@@ -14,12 +14,10 @@ data class AlarmUsageRecordGroup(
 
 /** Use the stop or completion time when the start is unknown; keep unknown legacy alarm IDs separate. */
 fun List<AlarmUsageRecord>.groupByAlarm(): List<AlarmUsageRecordGroup> =
-    sortedWith(compareBy({ it.date.iso8601 }, {
-        it.ringingScheduledAtEpochMillis ?: it.ringingStartedAtEpochMillis ?: it.ringingStoppedAtEpochMillis
-            ?: it.missionCompletedAtEpochMillis ?: Long.MIN_VALUE
-    }))
+    sortedWith(compareBy({ it.date.iso8601 }, { it.recordSortTime }))
         .groupBy { record ->
-            val identity = record.alarmId?.takeIf(String::isNotBlank)?.let { "alarm:$it:version:${record.scheduleVersion}" }
+            val identity = record.serverOccurrenceId?.let { "server-occurrence:$it" }
+                ?: record.alarmId?.takeIf(String::isNotBlank)?.let { "alarm:$it:version:${record.scheduleVersion}" }
                 ?: "record:${record.key}"
             "${record.date.iso8601}:$identity"
         }
@@ -31,3 +29,7 @@ fun List<AlarmUsageRecord>.groupByAlarm(): List<AlarmUsageRecordGroup> =
                 entries = chronologicalEntries,
             )
         }
+
+internal val AlarmUsageRecord.recordSortTime: Long
+    get() = ringingScheduledAtEpochMillis ?: ringingStartedAtEpochMillis ?: ringingStoppedAtEpochMillis
+        ?: missionCompletedAtEpochMillis ?: Long.MIN_VALUE

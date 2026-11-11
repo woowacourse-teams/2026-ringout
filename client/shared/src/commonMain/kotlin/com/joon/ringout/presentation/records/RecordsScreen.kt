@@ -92,6 +92,9 @@ fun RecordsScreen(
             if (uiState.weekChangeErrorMessage != null) {
                 item { RecordsStateContent(false, uiState.weekChangeErrorMessage, onRetry) }
             }
+            if (uiState.weekCacheErrorMessage != null && !uiState.isWeekChanging) {
+                item { RecordsStateContent(false, uiState.weekCacheErrorMessage, onRetry) }
+            }
             if (uiState.isLoading || uiState.errorMessage != null) {
                 item { RecordsStateContent(uiState.isLoading, uiState.errorMessage, onRetry) }
             } else {
@@ -118,6 +121,7 @@ fun RecordsScreen(
             days = uiState.calendarDays,
             isLoading = uiState.isCalendarLoading,
             errorMessage = uiState.calendarErrorMessage,
+            cacheErrorMessage = uiState.calendarCacheErrorMessage,
             onDateSelected = onDateSelected,
             onPreviousMonth = onPreviousMonth,
             onNextMonth = onNextMonth,

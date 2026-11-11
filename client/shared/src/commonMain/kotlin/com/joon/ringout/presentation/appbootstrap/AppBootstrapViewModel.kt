@@ -9,6 +9,8 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.AlarmLogoutCleanup
 import com.joon.ringout.analytics.NoOpOnboardingAnalyticsRecorder
 import com.joon.ringout.analytics.OnboardingAnalyticsRecorder
+import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceMonthLoader
+import com.joon.ringout.domain.alarmoccurrence.currentAlarmOccurrenceMonth
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
@@ -83,6 +85,7 @@ class AppBootstrapViewModel(
     private val themeInitializationRetryDelayMillis: Long = ThemeInitializationRetryDelayMillis,
     private val currentVerifiedAlarmAccountId: suspend () -> String? = { null },
     private val migrateLegacyAlarmData: suspend (String) -> Unit = {},
+    private val alarmOccurrenceMonthLoader: AlarmOccurrenceMonthLoader = AlarmOccurrenceMonthLoader { true },
 ) : ViewModel() {
     var uiState by mutableStateOf(AppBootstrapUiState())
         private set
@@ -201,6 +204,7 @@ class AppBootstrapViewModel(
             try {
                 authSession.state.first { it == AuthSessionState.Authenticated }
                 if (activeAuthFlowAttemptId != completion.attemptId) return@launch
+                val sessionIdentity = authSession.identity.value
                 if (latestSnapshot?.installationEntryState?.hasLegacyRuntimeExceptionPending == true) {
                     val accountId = currentVerifiedAlarmAccountId()
                         ?: error("첫 로그인 알람 이관에 사용할 계정을 확인하지 못했습니다.")
@@ -226,6 +230,9 @@ class AppBootstrapViewModel(
                     hasAuthFlowCompletionFailed = false,
                 )
                 applySnapshot(snapshot)
+                if (snapshot.installationEntryState?.isLogoutCleanupPending != true) {
+                    warmCurrentAlarmOccurrenceMonth(sessionIdentity)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {
@@ -368,6 +375,7 @@ class AppBootstrapViewModel(
                     isAuthRestoreComplete = true
                 }
                 val authState = authSession.state.value
+                val sessionIdentity = authSession.identity.value
                 check(authState != AuthSessionState.Restoring) {
                     "Authentication restore is still in progress."
                 }
@@ -418,6 +426,10 @@ class AppBootstrapViewModel(
                 applySnapshot(snapshot)
                 if (snapshot.installationEntryState?.isLogoutCleanupPending == true) {
                     runLogoutCleanup()
+                } else if (authState == AuthSessionState.Authenticated &&
+                    snapshot.installationEntryState?.hasLegacyRuntimeExceptionPending != true
+                ) {
+                    warmCurrentAlarmOccurrenceMonth(sessionIdentity)
                 }
                 snapshot.themeMode?.let { mode ->
                     if (latestRequestedThemeMode == null) latestRequestedThemeMode = mode
@@ -426,6 +438,22 @@ class AppBootstrapViewModel(
                 throw error
             } catch (_: Throwable) {
                 failBootstrap()
+            }
+        }
+    }
+
+    private fun warmCurrentAlarmOccurrenceMonth(sessionIdentity: Any?) {
+        if (sessionIdentity == null) return
+        scope.launch {
+            if (authSession.identity.value !== sessionIdentity ||
+                authSession.state.value != AuthSessionState.Authenticated
+            ) return@launch
+            try {
+                alarmOccurrenceMonthLoader.ensure(currentAlarmOccurrenceMonth())
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // A cache fetch failure does not block entry. Records can retry it.
             }
         }
     }
