@@ -7,7 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalTime;
 import java.util.List;
 
-public record AlarmUpsertResponse(
+public record AlarmResponse(
     @Schema(description = "사용자별 알람 고유 식별자", example = "alarm-001")
     String alarmId,
 
@@ -34,8 +34,8 @@ public record AlarmUpsertResponse(
     long alarmVersion
 ) {
 
-    public static AlarmUpsertResponse from(Alarm alarm) {
-        return new AlarmUpsertResponse(
+    public static AlarmResponse from(Alarm alarm) {
+        return new AlarmResponse(
             alarm.alarmId(),
             alarm.alarmTime(),
             alarm.days(),

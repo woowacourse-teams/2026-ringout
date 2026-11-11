@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum AlarmSuccessStatus implements BaseCode {
 
-    ALARM_UPSERTED(HttpStatus.OK, "ALARM200", "알람 동기화에 성공했습니다.");
+    ALARM_UPSERTED(HttpStatus.OK, "ALARM200", "알람 동기화에 성공했습니다."),
+    ALARMS_FOUND(HttpStatus.OK, "ALARM200", "전체 알람 조회에 성공했습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

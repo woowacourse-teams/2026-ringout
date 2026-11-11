@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.ringout.api.alarm.domain.Alarm;
 import com.ringout.api.alarm.domain.AlarmDay;
 import com.ringout.api.alarm.dto.request.AlarmUpsertRequest;
-import com.ringout.api.alarm.dto.response.AlarmUpsertResponse;
+import com.ringout.api.alarm.dto.response.AlarmResponse;
 import com.ringout.api.alarm.repository.AlarmRepository;
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.config.ClockConfig;
@@ -69,7 +69,7 @@ class AlarmUpsertConcurrencyTest {
             String alarmId = "alarm-" + repeat;
 
             // when
-            List<AlarmUpsertResponse> responses = getAll(runConcurrently(version ->
+            List<AlarmResponse> responses = getAll(runConcurrently(version ->
                 alarmService.upsertAlarm(user.getId(), alarmId, request(version))));
 
             // then
@@ -116,15 +116,15 @@ class AlarmUpsertConcurrencyTest {
         return userRepository.save(User.register(SocialProvider.KAKAO, socialId, null, LocalDateTime.now()));
     }
 
-    private List<Future<AlarmUpsertResponse>> runConcurrently(VersionedUpsert upsert) throws Exception {
+    private List<Future<AlarmResponse>> runConcurrently(VersionedUpsert upsert) throws Exception {
         CountDownLatch ready = new CountDownLatch(REQUEST_COUNT);
         CountDownLatch start = new CountDownLatch(1);
-        List<Future<AlarmUpsertResponse>> results = new ArrayList<>();
+        List<Future<AlarmResponse>> results = new ArrayList<>();
 
         try (ExecutorService executor = Executors.newFixedThreadPool(REQUEST_COUNT)) {
             for (int request = 1; request <= REQUEST_COUNT; request++) {
                 long version = request;
-                Callable<AlarmUpsertResponse> task = () -> {
+                Callable<AlarmResponse> task = () -> {
                     ready.countDown();
                     start.await();
                     return upsert.run(version);
@@ -137,9 +137,9 @@ class AlarmUpsertConcurrencyTest {
         return results;
     }
 
-    private List<AlarmUpsertResponse> getAll(List<Future<AlarmUpsertResponse>> futures) throws Exception {
-        List<AlarmUpsertResponse> responses = new ArrayList<>();
-        for (Future<AlarmUpsertResponse> future : futures) {
+    private List<AlarmResponse> getAll(List<Future<AlarmResponse>> futures) throws Exception {
+        List<AlarmResponse> responses = new ArrayList<>();
+        for (Future<AlarmResponse> future : futures) {
             responses.add(future.get());
         }
         return responses;
@@ -148,6 +148,6 @@ class AlarmUpsertConcurrencyTest {
     @FunctionalInterface
     private interface VersionedUpsert {
 
-        AlarmUpsertResponse run(long version);
+        AlarmResponse run(long version);
     }
 }
