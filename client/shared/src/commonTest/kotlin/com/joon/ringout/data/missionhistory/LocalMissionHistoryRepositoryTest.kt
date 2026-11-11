@@ -10,6 +10,26 @@ import kotlin.test.assertEquals
 
 class LocalMissionHistoryRepositoryTest {
     @Test
+    fun `로그인 상태에서도 공유 기록 회차는 로컬에서 조회한다`() = runTest {
+        val remote = AuthenticatedRemoteHistory()
+        val repository = DefaultMissionHistoryRepository(
+            InMemoryMissionHistoryDataSource(
+                listOf(
+                    MissionHistoryDto("SUCCESS", "2026-09-28", "selected"),
+                    MissionHistoryDto("FAILURE", "2026-09-28", "another"),
+                    MissionHistoryDto("SUCCESS", "2026-09-29", "next-day"),
+                ),
+            ),
+            remote,
+        )
+
+        assertEquals(listOf("selected", "another"), repository.getLocalRecordsOnOccurrenceDate("selected").map { it.occurrenceId })
+        assertEquals(emptyList(), repository.getLocalRecordsOnOccurrenceDate("missing"))
+        assertEquals(0, remote.historyQueries)
+        assertEquals(0, remote.tokenQueries)
+    }
+
+    @Test
     fun `로그인 상태에서도 기기 기록 조회는 서버를 호출하지 않고 로컬 결과를 반환한다`() = runTest {
         val remote = AuthenticatedRemoteHistory()
         val repository = DefaultMissionHistoryRepository(

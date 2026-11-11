@@ -4,12 +4,14 @@ import com.joon.ringout.presentation.roomlist.RoomListRoute
 import com.joon.ringout.presentation.roomlist.RoomListViewModel
 import com.joon.ringout.presentation.roomlist.roomdetail.RoomDetailRoute
 import com.joon.ringout.presentation.records.RecordsRoute
+import com.joon.ringout.presentation.records.RecordsDetailRoute
 import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.compose.runtime.Composable
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.connectivity.NetworkMonitor
 import com.joon.ringout.domain.member.MemberRepository
+import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.presentation.profilechange.ProfileChangeRoute
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
@@ -214,7 +216,33 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
         )
     }
     entry<AppRoute.Records>(clazzContentKey = AppRoute::viewModelStoreKey) {
-        RecordsRoute(viewModelScopes.get(AppRoute.Records, RecordsViewModel::class))
+        RecordsRoute(
+            viewModel = viewModelScopes.get(AppRoute.Records, RecordsViewModel::class),
+            onRecordClick = { date -> navigationState.navigate(AppRoute.RecordsDetail(date.iso8601)) },
+        )
+    }
+
+    entry<AppRoute.RecordsDetail>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        val date = runCatching { MissionDate.parse(route.date) }.getOrNull()
+        if (date != null) {
+            RecordsDetailRoute(
+                viewModel = viewModelScopes.get(AppRoute.Records, RecordsViewModel::class),
+                date = date,
+                onBack = { navigationState.popBackStack(route) },
+                onShare = { record ->
+                    if (navigationState.isCurrentRoute(route) && record.date == date) {
+                        navigationState.navigate(
+                            AppRoute.RecordShare(
+                                date = record.date.iso8601,
+                                groupKey = record.groupKey,
+                                successRecordKey = record.successRecordKey,
+                                occurrenceId = record.occurrenceId,
+                            ),
+                        )
+                    }
+                },
+            )
+        }
     }
 
     entry<AppRoute.NicknameChange>(clazzContentKey = AppRoute::viewModelStoreKey) {

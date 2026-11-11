@@ -58,6 +58,19 @@ internal sealed interface AppRoute : NavKey {
     data object Records : AppRoute
 
     @Serializable
+    @SerialName("records_detail")
+    data class RecordsDetail(val date: String) : AppRoute
+
+    @Serializable
+    @SerialName("record_share")
+    data class RecordShare(
+        val date: String,
+        val groupKey: String,
+        val successRecordKey: String,
+        val occurrenceId: String? = null,
+    ) : AppRoute
+
+    @Serializable
     @SerialName("add_alarm")
     data object AddAlarm : AppRoute
 
