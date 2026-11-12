@@ -133,6 +133,7 @@ fun App(
             localUserDataCleanup = appContainer.localUserDataCleanup,
             currentVerifiedAlarmAccountId = appContainer.currentVerifiedAlarmAccountId,
             migrateLegacyAlarmData = appContainer.migrateLegacyAlarmData,
+            prepareAlarmSync = appContainer::prepareAlarmSync,
             alarmOccurrenceMonthLoader = appContainer.alarmOccurrenceMonthLoader,
         )
     }

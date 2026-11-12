@@ -1,10 +1,19 @@
 package com.joon.ringout.di
 
 import android.content.Context
+import com.joon.ringout.alarm.AndroidAlarmScheduler
 import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
 import com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime
 import com.joon.ringout.data.alarmoccurrence.DefaultAlarmOccurrenceMonthLoader
 import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
+import com.joon.ringout.alarm.newAlarmId
+import com.joon.ringout.data.alarm.AlarmOutboxSyncer
+import com.joon.ringout.data.alarm.LegacyAlarmPreferencesMigrator
+import com.joon.ringout.data.alarm.RoomAlarmDataSource
+import kotlinx.coroutines.CancellationException
+import com.joon.ringout.data.alarm.AlarmSyncCoordinator
+import com.joon.ringout.data.alarm.AlarmSyncStore
+import com.joon.ringout.data.alarm.KtorAlarmRemoteDataSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -64,6 +73,7 @@ class AndroidAppContainer(
         captureAlarmOccurrenceAccount(tokenStorage, authSession)?.ownerAccountId
     }
     override val migrateLegacyAlarmData: suspend (String) -> Unit = { accountId ->
+        LegacyAlarmPreferencesMigrator(context, RoomAlarmDataSource(database)).ensureMigrated()
         AndroidAlarmOccurrenceRuntime.get(context).migrateLegacyData(accountId)
     }
     override val pushTokenSource = AndroidFcmTokenSource
@@ -133,11 +143,43 @@ class AndroidAppContainer(
         networkMonitor = networkMonitor,
     )
 
+    private val alarmScheduler = AndroidAlarmScheduler(context)
+    private val alarmSyncCoordinator = AlarmSyncCoordinator(
+        syncer = AlarmOutboxSyncer(
+            store = AlarmSyncStore(database, ::newAlarmId),
+            remoteDataSource = KtorAlarmRemoteDataSource(httpClient, tokenStorage),
+            accountProvider = destinationAccountProvider,
+            sessionGate = destinationSessionGate,
+            applyServerChange = alarmScheduler::applyServerChange,
+        ),
+        accountProvider = destinationAccountProvider,
+        authSession = authSession,
+        networkMonitor = networkMonitor,
+    )
+
     init {
         destinationSyncCoordinator.start(applicationScope)
+        alarmSyncCoordinator.start(applicationScope)
     }
 
-    override fun onAppResumed() = destinationSyncCoordinator.requestSync()
+    override suspend fun prepareAlarmSync(forceRestore: Boolean) {
+        val sessionIdentity = authSession.identity.value
+        try {
+            alarmScheduler.rescheduleAll()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            android.util.Log.w("AndroidAppContainer", "알람 예약을 복구하지 못했습니다.", error)
+        }
+        if (authSession.identity.value === sessionIdentity) {
+            alarmSyncCoordinator.prepareCurrentSession(forceRestore)
+        }
+    }
+
+    override fun onAppResumed() {
+        destinationSyncCoordinator.requestSync()
+        alarmSyncCoordinator.requestSync()
+    }
 
     override val alarmActivityRepository =
         RoomAlarmActivityRepository(

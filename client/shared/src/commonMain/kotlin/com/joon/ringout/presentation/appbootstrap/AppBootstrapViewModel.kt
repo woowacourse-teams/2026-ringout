@@ -85,6 +85,7 @@ class AppBootstrapViewModel(
     private val themeInitializationRetryDelayMillis: Long = ThemeInitializationRetryDelayMillis,
     private val currentVerifiedAlarmAccountId: suspend () -> String? = { null },
     private val migrateLegacyAlarmData: suspend (String) -> Unit = {},
+    private val prepareAlarmSync: suspend (Boolean) -> Unit = {},
     private val alarmOccurrenceMonthLoader: AlarmOccurrenceMonthLoader = AlarmOccurrenceMonthLoader { true },
 ) : ViewModel() {
     var uiState by mutableStateOf(AppBootstrapUiState())
@@ -222,6 +223,11 @@ class AppBootstrapViewModel(
                 if (activeAuthFlowAttemptId != completion.attemptId) return@launch
                 latestSnapshot = snapshot
                 alarmLogoutCleanup.allowScheduling()
+                if (snapshot.installationEntryState?.isLogoutCleanupPending != true &&
+                    authSession.identity.value === sessionIdentity
+                ) {
+                    prepareAlarmSync(true)
+                }
                 activeAuthFlowAttemptId = null
                 acceptedAuthFlowEvents.clear()
                 acceptedAuthFlowCompletion = null
@@ -420,7 +426,10 @@ class AppBootstrapViewModel(
                     snapshot.installationEntryState?.isLogoutCleanupPending != true
                 ) {
                     val accountId = currentVerifiedAlarmAccountId()
-                    if (accountId != null) migrateLegacyAlarmData(accountId)
+                    if (accountId != null) {
+                        migrateLegacyAlarmData(accountId)
+                        if (authSession.identity.value === sessionIdentity) prepareAlarmSync(false)
+                    }
                 }
                 isBootstrapInitialized = true
                 applySnapshot(snapshot)
