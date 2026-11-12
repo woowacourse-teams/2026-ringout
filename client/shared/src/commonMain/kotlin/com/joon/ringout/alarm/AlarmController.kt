@@ -20,6 +20,8 @@ data class AlarmScheduleRequest(
     val scheduleVersion: Long = 1,
     /** Verified account that owns this schedule; null keeps legacy or unresolved schedules unassigned. */
     val ownerAccountId: String? = null,
+    val remoteAlarmId: String? = null,
+    val pendingReservationId: String? = null,
 )
 
 class AlarmController(

@@ -375,3 +375,38 @@ internal val RingoutMigration17To18 = Migration(17, 18) { connection ->
         )
     """.trimIndent())
 }
+
+internal val RingoutMigration18To19 = Migration(18, 19) { connection ->
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN remote_alarm_id TEXT DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN alarm_version INTEGER NOT NULL DEFAULT 0")
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN confirmed_alarm_version INTEGER DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN remote_repeat_time INTEGER DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN pending_reservation_id TEXT DEFAULT NULL")
+    connection.executeSQL("""
+        UPDATE alarms SET remote_alarm_id = id,
+            pending_reservation_id = upper(hex(randomblob(4)) || '-' || hex(randomblob(2)) ||
+                '-4' || substr(hex(randomblob(2)), 2) || '-8' || substr(hex(randomblob(2)), 2) ||
+                '-' || hex(randomblob(6)))
+    """.trimIndent())
+    connection.executeSQL(
+        "CREATE UNIQUE INDEX index_alarms_owner_account_id_remote_alarm_id ON alarms (owner_account_id, remote_alarm_id)",
+    )
+    connection.executeSQL("""
+        CREATE TABLE alarm_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            owner_account_id TEXT NOT NULL,
+            remote_alarm_id TEXT NOT NULL,
+            payload TEXT,
+            attempt_count INTEGER NOT NULL,
+            next_attempt_at INTEGER,
+            state TEXT NOT NULL,
+            last_error TEXT
+        )
+    """.trimIndent())
+    connection.executeSQL(
+        "CREATE INDEX index_alarm_outbox_owner_account_id_remote_alarm_id_id ON alarm_outbox (owner_account_id, remote_alarm_id, id)",
+    )
+    connection.executeSQL("CREATE TABLE alarm_restore (owner_account_id TEXT NOT NULL PRIMARY KEY)")
+    connection.executeSQL("ALTER TABLE alarm_occurrence_sync ADD COLUMN remote_alarm_id TEXT DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE ios_alarm_occurrence_recording ADD COLUMN remote_alarm_id TEXT DEFAULT NULL")
+}

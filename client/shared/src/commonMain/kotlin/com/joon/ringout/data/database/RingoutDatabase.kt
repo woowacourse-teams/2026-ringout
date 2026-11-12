@@ -12,6 +12,9 @@ import com.joon.ringout.data.alarmactivity.AlarmActivityDao
 import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTrackingEntity
 import com.joon.ringout.data.alarmactivity.AlarmRingingObservationEntity
+import com.joon.ringout.data.alarm.AlarmOutboxEntity
+import com.joon.ringout.data.alarm.AlarmRestoreEntity
+import com.joon.ringout.data.alarm.AlarmSyncDao
 import com.joon.ringout.data.alarm.AlarmDao
 import com.joon.ringout.data.alarm.AlarmEntity
 import com.joon.ringout.data.alarm.AlarmRepeatDayEntity
@@ -47,6 +50,8 @@ import kotlin.time.Clock
         AlarmRingingObservationEntity::class,
         MissionHistoryEntity::class,
         AlarmEntity::class,
+        AlarmOutboxEntity::class,
+        AlarmRestoreEntity::class,
         AlarmRepeatDayEntity::class,
         StorageMigrationEntity::class,
         SavedDestinationEntity::class,
@@ -65,7 +70,7 @@ import kotlin.time.Clock
         CachedAlarmOccurrenceEntity::class,
         CachedAlarmRingingEntity::class,
     ],
-    version = 18,
+    version = 19,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -75,6 +80,8 @@ abstract class RingoutDatabase : RoomDatabase() {
     abstract fun missionHistoryDao(): MissionHistoryDao
 
     abstract fun alarmDao(): AlarmDao
+
+    abstract fun alarmSyncDao(): AlarmSyncDao
 
     abstract fun destinationDao(): SavedDestinationDao
 
@@ -124,6 +131,7 @@ internal fun buildRingoutDatabase(
         RingoutMigration15To16,
         RingoutMigration16To17,
         RingoutMigration17To18,
+        RingoutMigration18To19,
     )
     .build()
 
