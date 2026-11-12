@@ -26,8 +26,11 @@ class AndroidAlarmSchedulerTest {
 
         scheduler.schedule(request())
 
-        assertEquals("42", dataSource.getById("alarm-1")!!.request.ownerAccountId)
+        val stored = dataSource.getById("alarm-1")!!.request
+        assertEquals("42", stored.ownerAccountId)
         assertEquals("42", gateway.scheduled.getValue("alarm-1").ownerAccountId)
+        assertTrue(stored.remoteAlarmId?.let { it != stored.id } == true)
+        assertEquals(stored.remoteAlarmId, gateway.scheduled.getValue(stored.id).remoteAlarmId)
     }
 
     @Test
@@ -82,6 +85,49 @@ class AndroidAlarmSchedulerTest {
 
         assertTrue(didRing)
         assertEquals("42", delivered?.ownerAccountId)
+    }
+
+    @Test
+    fun `울리는 알람은 기존 예약 ID를 유지하고 종료 후 새 ID에 예약한다`() = runBlocking {
+        val request = request().copy(
+            ownerAccountId = "42",
+            remoteAlarmId = "legacy-alarm",
+            pendingReservationId = "new-device-id",
+        )
+        val dataSource = FakeAlarmDataSource(listOf(SavedAlarmSchedule(request, true)))
+        val gateway = FakeAndroidAlarmGateway(mapOf(request.id to request))
+        var ringing = true
+        val scheduler = AndroidAlarmScheduler(
+            dataSource,
+            gateway,
+            isReservationInUse = { ringing && it == request.id },
+        )
+
+        scheduler.rescheduleAll()
+        assertEquals(request.id, dataSource.getAll().single().request.id)
+        assertFalse("cancel:${request.id}" in gateway.events)
+
+        ringing = false
+        gateway.events.clear()
+        scheduler.rescheduleAll()
+        assertEquals(listOf("cancel:${request.id}", "schedule:new-device-id:${request.time}"), gateway.events)
+        assertEquals(setOf("new-device-id"), gateway.scheduled.keys)
+        assertEquals("legacy-alarm", dataSource.getAll().single().request.remoteAlarmId)
+    }
+
+    @Test
+    fun `서버 변경을 반영하지 못하면 활성 로컬 예약을 복원한다`() = runBlocking {
+        val request = request()
+        val previous = SavedAlarmSchedule(request, true)
+        val dataSource = FakeAlarmDataSource(listOf(previous))
+        val gateway = FakeAndroidAlarmGateway(mapOf(request.id to request))
+        val scheduler = AndroidAlarmScheduler(dataSource, gateway)
+
+        assertFalse(scheduler.applyServerChange(request.id) { false })
+
+        assertEquals(listOf("cancel:${request.id}", "schedule:${request.id}:${request.time}"), gateway.events)
+        assertEquals(previous, dataSource.getById(request.id))
+        assertEquals(request, gateway.scheduled[request.id])
     }
 
     @Test
@@ -430,6 +476,13 @@ private class FakeAlarmDataSource(
         val removed = alarms.remove(id) != null
         observed.value = alarms.values.toList()
         return removed
+    }
+
+    override suspend fun migrateId(oldId: String, newId: String): Boolean {
+        val previous = alarms.remove(oldId) ?: return false
+        alarms[newId] = previous.copy(request = previous.request.copy(id = newId, pendingReservationId = null))
+        observed.value = alarms.values.toList()
+        return true
     }
 
     override suspend fun hasStorageMigration(id: String): Boolean = false

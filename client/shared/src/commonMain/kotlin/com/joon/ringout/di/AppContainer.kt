@@ -31,6 +31,8 @@ interface AppContainer {
     val authRepository: AuthRepository
     val memberRepository: MemberRepository
     val roomRepository: RoomRepository
+    suspend fun prepareAlarmSync(forceRestore: Boolean) {}
+
     val destinationRepository: DestinationRepository
     val alarmActivityRepository: AlarmActivityRepository
     val missionHistoryRepository: MissionHistoryRepository

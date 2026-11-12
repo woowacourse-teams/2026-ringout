@@ -63,15 +63,27 @@ interface AlarmDao {
         WHERE owner_account_id IS NULL
             AND NOT EXISTS (
                 SELECT 1 FROM alarm_occurrence_sync e
-                WHERE e.alarm_id = alarms.id AND e.owner_account_id != :ownerAccountId
+                WHERE e.alarm_id IN (alarms.id, alarms.remote_alarm_id) AND e.owner_account_id != :ownerAccountId
             )
             AND NOT EXISTS (
                 SELECT 1 FROM ios_alarm_occurrence_recording d
-                WHERE d.alarm_id = alarms.id AND d.owner_account_id IS NOT NULL
+                WHERE d.alarm_id IN (alarms.id, alarms.remote_alarm_id) AND d.owner_account_id IS NOT NULL
                     AND d.owner_account_id != :ownerAccountId
             )
     """)
     suspend fun getEligibleUnownedLegacyAlarms(ownerAccountId: String): List<AlarmEntity>
+
+    @Transaction
+    @Query("SELECT * FROM alarms WHERE owner_account_id = :owner ORDER BY id")
+    suspend fun getOwnedWithRepeatDays(owner: String): List<AlarmWithRepeatDays>
+
+    @Transaction
+    @Query("""
+        SELECT * FROM alarms WHERE owner_account_id = :owner
+            AND (remote_alarm_id = :remoteId OR (remote_alarm_id IS NULL AND id = :remoteId))
+        LIMIT 1
+    """)
+    suspend fun getOwnedByRemoteId(owner: String, remoteId: String): AlarmWithRepeatDays?
 
     @Query("SELECT * FROM alarms WHERE owner_account_id = :ownerAccountId")
     suspend fun getAlarmsOwnedBy(ownerAccountId: String): List<AlarmEntity>
@@ -81,11 +93,11 @@ interface AlarmDao {
         WHERE id IN (:alarmIds) AND owner_account_id IS NULL
             AND NOT EXISTS (
                 SELECT 1 FROM alarm_occurrence_sync e
-                WHERE e.alarm_id = alarms.id AND e.owner_account_id != :ownerAccountId
+                WHERE e.alarm_id IN (alarms.id, alarms.remote_alarm_id) AND e.owner_account_id != :ownerAccountId
             )
             AND NOT EXISTS (
                 SELECT 1 FROM ios_alarm_occurrence_recording d
-                WHERE d.alarm_id = alarms.id AND d.owner_account_id IS NOT NULL
+                WHERE d.alarm_id IN (alarms.id, alarms.remote_alarm_id) AND d.owner_account_id IS NOT NULL
                     AND d.owner_account_id != :ownerAccountId
             )
     """)
@@ -117,6 +129,7 @@ interface AlarmDao {
     suspend fun migrateId(
         oldId: String,
         newId: String,
+        keepReservationMarker: Boolean = false,
     ): Boolean {
         require(oldId.isNotBlank()) { "Old alarm id must not be blank." }
         require(newId.isNotBlank()) { "New alarm id must not be blank." }
@@ -124,15 +137,25 @@ interface AlarmDao {
         val existing = getById(oldId) ?: return false
         check(getById(newId) == null) { "Alarm id already exists: $newId" }
 
-        insertAlarm(existing.alarm.copy(id = newId))
+        check(delete(oldId) == 1) { "Failed to remove migrated alarm: $oldId" }
+        insertAlarm(
+            existing.alarm.copy(
+                id = newId,
+                pendingReservationId = if (keepReservationMarker) newId else {
+                    existing.alarm.pendingReservationId?.takeUnless { it.equals(newId, ignoreCase = true) }
+                },
+            ),
+        )
         if (existing.repeatDays.isNotEmpty()) {
             insertRepeatDays(
                 existing.repeatDays.map { repeatDay -> repeatDay.copy(alarmId = newId) },
             )
         }
-        check(delete(oldId) == 1) { "Failed to remove migrated alarm: $oldId" }
         return true
     }
+
+    @Query("UPDATE alarms SET pending_reservation_id = NULL WHERE id = :id AND pending_reservation_id = :id")
+    suspend fun completeReservationIdMigration(id: String): Int
 
     @Transaction
     suspend fun importLegacyIfNeeded(

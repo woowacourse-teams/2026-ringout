@@ -1,7 +1,9 @@
 package com.joon.ringout.alarm
 
 import com.joon.ringout.data.alarm.AlarmDataSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSDate
 import platform.Foundation.NSDateFormatter
@@ -16,14 +18,20 @@ class IosAlarmReconciler(
     private val newAlarmId: () -> String = ::newAlarmId,
     private val recoveryInbox: IosAlarmMissionEventInbox? = null,
     private val currentMinuteOfDay: () -> Int = ::currentIosMinuteOfDay,
+    private val isReservationInUse: (String) -> Boolean = { false },
 ) {
-    suspend fun reconcile(): IosAlarmReconcileReport {
+    suspend fun reconcile(): IosAlarmReconcileReport = IosAlarmStoreMutationMutex.withLock {
+        reconcileLocked()
+    }
+
+    internal suspend fun reconcileLocked(): IosAlarmReconcileReport {
         // A failed authority read must prevent destructive orphan cleanup.
         val protectedIds = recoveryInbox?.protectedReservationUuidsAwait().orEmpty()
         val failures = mutableListOf<IosAlarmReconcileFailure>()
         val shouldMigratePresentation = !presentationMigrationState.isMigrationComplete(
             CurrentAlarmPresentationVersion,
         )
+        migrateReservationIds(failures, protectedIds, shouldMigratePresentation)
         migrateNonUuidAlarmIds(failures, shouldMigratePresentation)
         val roomAlarms = dataSource.getAll()
         roomAlarms.forEach { roomAlarm ->
@@ -48,7 +56,7 @@ class IosAlarmReconciler(
             }
         }
 
-        roomAlarms.filter(SavedAlarmSchedule::enabled).forEach { roomAlarm ->
+        roomAlarms.filter { it.enabled && !it.hasPendingReservationMigration() }.forEach { roomAlarm ->
             val scheduled = scheduledById[roomAlarm.request.id]
             if (scheduled == null) {
                 reconcileMissingScheduledAlarm(
@@ -70,12 +78,61 @@ class IosAlarmReconciler(
         return IosAlarmReconcileReport(failures)
     }
 
+    private suspend fun migrateReservationIds(
+        failures: MutableList<IosAlarmReconcileFailure>,
+        protectedIds: Set<String>,
+        shouldMarkPresentationMigrated: Boolean,
+    ) {
+        val alarms = dataSource.getAll().filter(SavedAlarmSchedule::hasPendingReservationMigration)
+        if (alarms.isEmpty()) return
+        val protectedSources = recoveryInbox?.recoveryAttemptsAwait()?.attempts.orEmpty()
+            .filter { it.nextReservationUuid in protectedIds }
+            .mapTo(mutableSetOf()) { it.snapshot.sourceAlarmId }
+        alarms.forEach { alarm ->
+            val request = alarm.request
+            val pendingId = checkNotNull(request.pendingReservationId)
+            val oldId = request.id
+            val nativeOldId = normalizeAlarmId(oldId)
+            if (isReservationInUse(oldId) || nativeOldId in protectedIds || oldId in protectedSources) {
+                return@forEach
+            }
+            failures.capture(oldId) {
+                val newId = requireNotNull(normalizeAlarmId(pendingId))
+                if (oldId != newId) {
+                    if (nativeOldId != null) {
+                        if (scheduler.isAlerting(nativeOldId)) return@capture
+                        scheduler.cancelFutureForLogoutAwait(nativeOldId)
+                        if (scheduler.isAlerting(nativeOldId)) return@capture
+                        recoveryInbox?.setSourceEligibilityAwait(
+                            oldId, request.scheduleVersion, IosAlarmRecoveryEligibility.DISABLED,
+                        )
+                    }
+                    check(dataSource.migrateIdForReservation(oldId, newId)) {
+                        "저장된 알람 예약 ID를 전환하지 못했습니다."
+                    }
+                }
+                if (alarm.enabled && scheduler.scheduledAlarmsAwait().none { it.alarmId == newId }) {
+                    scheduleWithCurrentPresentation(
+                        request = request.copy(id = newId, pendingReservationId = newId),
+                        shouldMarkPresentationMigrated = shouldMarkPresentationMigrated,
+                    )
+                }
+                check(dataSource.completeReservationIdMigration(newId)) {
+                    "저장된 알람 예약 ID 전환을 완료하지 못했습니다."
+                }
+            }
+        }
+    }
+
     private suspend fun migrateNonUuidAlarmIds(
         failures: MutableList<IosAlarmReconcileFailure>,
         shouldMarkPresentationMigrated: Boolean,
     ) {
         dataSource.getAll()
-            .filter { alarm -> normalizeAlarmId(alarm.request.id) == null }
+            .filter { alarm ->
+                alarm.request.pendingReservationId == null &&
+                    normalizeAlarmId(alarm.request.id) == null
+            }
             .forEach { alarm ->
                 val oldId = alarm.request.id
                 failures.capture(oldId) {
@@ -253,19 +310,23 @@ private suspend fun MutableList<IosAlarmReconcileFailure>.capture(
     try {
         block()
     } catch (error: Exception) {
+        if (error is CancellationException) throw error
         add(IosAlarmReconcileFailure(alarmId, error.message ?: "unknown failure"))
     }
 }
 
+private fun SavedAlarmSchedule.hasPendingReservationMigration(): Boolean =
+    request.pendingReservationId != null && request.ownerAccountId != null
+
 private fun AlarmScheduleRequest.isFutureOneTime(currentMinuteOfDay: Int): Boolean {
     val (hour, minute) = parseAlarmTime()
     val alarmMinuteOfDay = hour * MinutesPerHour + minute
-    return !repeatEnabled && selectedDays.isEmpty() && alarmMinuteOfDay > currentMinuteOfDay
+    return !repeatEnabled && alarmMinuteOfDay > currentMinuteOfDay
 }
 
 internal suspend fun IosAlarmReconciler.reconcileBestEffort() {
     withContext(NonCancellable) {
-        runCatching { reconcile() }
+        runCatching { reconcileLocked() }
     }
 }
 

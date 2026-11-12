@@ -175,7 +175,7 @@ private fun prepare(
     ringing: AlarmOccurrenceRingingLinkEntity?,
 ): Prepared {
     if (event.kind == AlarmOccurrenceOutboxKind.START) return Prepared.Start(AlarmOccurrenceStart(
-        execution.alarmId, execution.scheduledAtEpochMillis.requiredTime(), execution.startedAtEpochMillis.requiredTime(),
+        execution.remoteAlarmId ?: execution.alarmId, execution.scheduledAtEpochMillis.requiredTime(), execution.startedAtEpochMillis.requiredTime(),
     ))
     val id = AlarmOccurrenceId(checkNotNull(execution.serverOccurrenceId) { "POST가 완료되지 않았습니다." })
     val at = event.occurredAtEpochMillis.requiredTime()

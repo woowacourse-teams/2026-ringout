@@ -11,6 +11,7 @@ import com.joon.ringout.data.database.buildRingoutDatabase
 import com.joon.ringout.data.database.createMigrationTestDatabasePath
 import com.joon.ringout.data.database.createMigrationTestSQLiteDriver
 import com.joon.ringout.data.database.deleteMigrationTestDatabaseFiles
+import com.joon.ringout.data.database.removeAlarmSyncSchemaForVersion18
 import com.joon.ringout.data.missionhistory.MissionHistoryDto
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
@@ -267,7 +268,7 @@ class ForestDatabaseTestSuite {
             assertEquals(state.trees, state.pendingTrees)
             assertEquals(original, (1..12).map { arrivals.getResult("day-$it") })
             assertEquals(100L, database.arrivalResultDao().getGrowthActivation())
-            assertEquals(18L, databaseVersion())
+            assertEquals(19L, databaseVersion())
             reopen()
             assertEquals(state, forest.getForest())
             (13..15).forEach { recordDay(it) }
@@ -349,6 +350,7 @@ class ForestDatabaseTestSuite {
         suspend fun downgradeToVersion14() {
             forest.getForest() // Ensure a schema exists even for an empty installation.
             executeSql(
+                *removeAlarmSyncSchemaForVersion18(),
                 "DROP TABLE forest_trees",
                 "DROP TABLE forest_state",
                 "ALTER TABLE alarms DROP COLUMN owner_account_id",

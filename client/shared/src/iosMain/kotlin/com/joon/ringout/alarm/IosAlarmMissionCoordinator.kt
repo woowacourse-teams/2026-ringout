@@ -35,6 +35,7 @@ data class IosAlarmMissionEventDto(
     val ownerAccountId: String? = null,
     val ownerCaptured: Boolean = false,
     val chainId: String? = null,
+    val remoteAlarmId: String? = null,
 )
 
 data class IosAlarmMissionEventsResult(
@@ -1488,6 +1489,7 @@ internal fun IosAlarmRecoveryAttemptDto.toMissionEvent(): IosAlarmMissionEventDt
         ownerAccountId = snapshot.owner.accountId,
         ownerCaptured = snapshot.owner.kind != IosAlarmRecoveryOwnerKind.UNCAPTURED,
         chainId = chainId,
+        remoteAlarmId = snapshot.remoteAlarmId,
     )
 
 private fun IosAlarmRecoveryAttemptDto.toActiveAlarmMission(): ActiveAlarmMission {

@@ -17,6 +17,7 @@ internal sealed interface CapturedAlarmOccurrenceEvent {
         val ownerAccountId: String?,
         val sourceRingingId: String? = null,
         val eventId: String,
+        val remoteAlarmId: String? = null,
     ) : CapturedAlarmOccurrenceEvent
 
     @Serializable
@@ -44,6 +45,7 @@ internal class AlarmOccurrenceEventRecorder(private val dao: AlarmOccurrenceSync
                         scheduleVersion = event.scheduleVersion,
                         scheduledAtEpochMillis = event.scheduledAt,
                         startedAtEpochMillis = event.at,
+                        remoteAlarmId = event.remoteAlarmId,
                     ))
                     true
                 } else {

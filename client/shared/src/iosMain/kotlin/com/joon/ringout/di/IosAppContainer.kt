@@ -1,5 +1,11 @@
 package com.joon.ringout.di
 
+import com.joon.ringout.alarm.newAlarmId
+import com.joon.ringout.data.alarm.AlarmOutboxSyncer
+import com.joon.ringout.data.alarm.AlarmSyncCoordinator
+import com.joon.ringout.data.alarm.AlarmSyncStore
+import com.joon.ringout.data.alarm.KtorAlarmRemoteDataSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,6 +54,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class IosAppContainer(
     nativeServices: IosNativeServices,
+    applyAlarmServerChange: suspend (String, suspend () -> Boolean) -> Boolean,
+    private val reconcileAlarmReservations: suspend () -> Unit,
 ) : AppContainer {
     private val httpClient = getRingoutHttpClient()
     private val tokenStorage = createSecureTokenStorage()
@@ -133,11 +141,42 @@ class IosAppContainer(
         networkMonitor = networkMonitor,
     )
 
+    private val alarmSyncCoordinator = AlarmSyncCoordinator(
+        syncer = AlarmOutboxSyncer(
+            store = AlarmSyncStore(database, ::newAlarmId),
+            remoteDataSource = KtorAlarmRemoteDataSource(httpClient, tokenStorage),
+            accountProvider = destinationAccountProvider,
+            sessionGate = destinationSessionGate,
+            applyServerChange = applyAlarmServerChange,
+        ),
+        accountProvider = destinationAccountProvider,
+        authSession = authSession,
+        networkMonitor = networkMonitor,
+    )
+
     init {
         destinationSyncCoordinator.start(applicationScope)
+        alarmSyncCoordinator.start(applicationScope)
     }
 
-    override fun onAppResumed() = destinationSyncCoordinator.requestSync()
+    override suspend fun prepareAlarmSync(forceRestore: Boolean) {
+        val sessionIdentity = authSession.identity.value
+        try {
+            reconcileAlarmReservations()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            println("알람 예약을 복구하지 못했습니다: ${error.message}")
+        }
+        if (authSession.identity.value === sessionIdentity) {
+            alarmSyncCoordinator.prepareCurrentSession(forceRestore)
+        }
+    }
+
+    override fun onAppResumed() {
+        destinationSyncCoordinator.requestSync()
+        alarmSyncCoordinator.requestSync()
+    }
 
     override val alarmActivityRepository =
         RoomAlarmActivityRepository(

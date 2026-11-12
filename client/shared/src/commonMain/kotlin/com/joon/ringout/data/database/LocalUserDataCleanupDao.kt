@@ -39,6 +39,12 @@ interface LocalUserDataCleanupDao {
     @Query("DELETE FROM alarm_occurrence_times")
     suspend fun deleteAlarmOccurrenceTimes()
 
+    @Query("DELETE FROM alarm_outbox")
+    suspend fun deleteAlarmOutbox()
+
+    @Query("DELETE FROM alarm_restore")
+    suspend fun deleteAlarmRestore()
+
     @Query("DELETE FROM alarms")
     suspend fun deleteAlarms()
 
@@ -79,6 +85,8 @@ interface LocalUserDataCleanupDao {
         deleteAlarmActivityTracking()
         deleteAlarmOccurrenceTimes()
         // alarm_repeat_days is removed by its existing ON DELETE CASCADE foreign key.
+        deleteAlarmOutbox()
+        deleteAlarmRestore()
         deleteAlarms()
         deleteDestinationOutbox()
         deleteDestinationSyncState()

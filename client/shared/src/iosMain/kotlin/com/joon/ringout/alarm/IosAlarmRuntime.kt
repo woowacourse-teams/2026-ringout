@@ -4,6 +4,11 @@ import com.joon.ringout.analytics.IosAlarmAnalytics
 import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
+import com.joon.ringout.data.auth.local.createSecureTokenStorage
+import com.joon.ringout.data.destination.DestinationAccountProvider
+import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.data.alarmactivity.AlarmActivityDao
 import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
@@ -18,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +32,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import platform.Foundation.NSUUID
 
 class IosAlarmRuntime internal constructor(
@@ -108,6 +115,7 @@ class IosAlarmRuntime internal constructor(
     }
 
     suspend fun start() = startMutex.withLock {
+        runStartupStep { restoreMissionAccess() }
         // Bootstrap snapshots for OS configurations created before journal support.
         runStartupStep {
             dataSource.getEnabled().forEach { saved ->
@@ -121,7 +129,7 @@ class IosAlarmRuntime internal constructor(
                 failedChains
             },
             { nativeCleanup?.requestCleanup() },
-            { runStartupStep { reconciler.reconcile() } },
+            { runStartupStep { reconcileAfterLogin() } },
         )
         runStartupStep { missionCoordinator.processPendingRecordProjections() }
         scheduler.setStateListener(alarmStateListener)
@@ -148,13 +156,64 @@ class IosAlarmRuntime internal constructor(
             !missionCoordinator.hasPendingDeadlineAlarm() &&
             ringingAlarm.value == null
         ) {
-            runStartupStep { reconciler.reconcile() }
+            runStartupStep { reconcileAfterLogin() }
         }
         syncTracking()
         ensureDeadlineAlarmOrScheduleRecovery()
         scheduleRetryDeliveryRecoveryIfNeeded()
         runStartupStep { refreshRingingAlarmSnapshot() }
         nativeCleanup?.requestCleanup()
+    }
+
+    internal suspend fun reconcileAfterLogin() {
+        if (!isIosAlarmSchedulingBlocked() && restoreMissionAccess()) {
+            reconciler.reconcile()
+        }
+    }
+
+    internal suspend fun applyServerChange(
+        alarmId: String,
+        apply: suspend () -> Boolean,
+    ): Boolean = IosAlarmStoreMutationMutex.withLock {
+        if (isIosAlarmSchedulingBlocked() || ringingAlarm.value?.alarmId == alarmId ||
+            activeMissionFlow.value?.alarmId == alarmId
+        ) {
+            return@withLock false
+        }
+        val previous = dataSource.getById(alarmId) ?: return@withLock apply()
+        val protected = eventInbox.protectedReservationUuidsAwait()
+        if (alarmId in protected) return@withLock false
+        val hasActiveRecovery = eventInbox.recoveryAttemptsAwait().attempts.any { attempt ->
+            attempt.snapshot.sourceAlarmId == alarmId && attempt.nextReservationUuid in protected
+        }
+        if (hasActiveRecovery) return@withLock false
+        val native = scheduler.scheduledAlarmsAwait().firstOrNull { it.alarmId == alarmId }
+        if (native?.state == IosScheduledAlarmState.ALERTING) return@withLock false
+        if (native != null) {
+            scheduler.cancelFutureForLogoutAwait(alarmId)
+            if (scheduler.isAlerting(alarmId)) return@withLock false
+        }
+        if (!previous.enabled) return@withLock apply()
+
+        var applied = false
+        try {
+            eventInbox.setSourceEligibilityAwait(
+                alarmId, previous.request.scheduleVersion, IosAlarmRecoveryEligibility.DISABLED,
+            )
+            applied = apply()
+            applied
+        } finally {
+            if (!applied) {
+                withContext(NonCancellable) {
+                    if (dataSource.getById(alarmId) == previous) {
+                        eventInbox.setSourceEligibilityAwait(
+                            alarmId, previous.request.scheduleVersion, IosAlarmRecoveryEligibility.ENABLED,
+                        )
+                        scheduler.scheduleAwait(previous.request)
+                    }
+                }
+            }
+        }
     }
 
     internal suspend fun dismissRingingAlarm(expectedSystemAlarmId: String): Boolean =
@@ -783,9 +842,37 @@ class IosAlarmRuntime internal constructor(
     }
 }
 
+internal suspend fun IosAlarmScheduler.isAlerting(alarmId: String): Boolean =
+    scheduledAlarmsAwait().any {
+        it.alarmId == alarmId && it.state == IosScheduledAlarmState.ALERTING
+    }
+
+internal fun iosAlarmDataSource(): AlarmDataSource {
+    val session = getAuthSession()
+    val tokenStorage = createSecureTokenStorage()
+    val accountProvider = DestinationAccountProvider(session) {
+        captureAlarmOccurrenceAccount(tokenStorage, session)?.ownerAccountId
+    }
+    return RoomAlarmDataSource(getRingoutDatabase(), accountProvider)
+}
+
 fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
-    val dataSource = RoomAlarmDataSource(getRingoutDatabase().alarmDao())
+    val scopedAlarms = iosAlarmDataSource()
     val database = getRingoutDatabase()
+    val allAlarms = RoomAlarmDataSource(database)
+    val dataSource = object : AlarmDataSource by scopedAlarms {
+        // A native reservation can already be ringing while the original account reauthenticates.
+        // Only the exact reservation may be read during that interval.
+        override suspend fun getById(id: String): SavedAlarmSchedule? =
+            scopedAlarms.getById(id) ?: if (
+                !isIosAlarmSchedulingBlocked() &&
+                getAuthSession().state.value == AuthSessionState.ReauthenticationRequired
+            ) {
+                allAlarms.getById(id)?.takeIf {
+                    getAuthSession().state.value == AuthSessionState.ReauthenticationRequired
+                }
+            } else null
+    }
     val occurrenceRecorder = IosAlarmOccurrenceRecorder(database.alarmOccurrenceSyncDao(),
         database.alarmActivityDao(), dataSource)
     val analytics = IosAlarmAnalytics(nativeServices.analyticsTracker(), roomMembership = com.joon.ringout.analytics.createRoomMembershipAnalytics())
@@ -815,6 +902,7 @@ fun createIosAlarmRuntime(nativeServices: IosNativeServices): IosAlarmRuntime {
             normalizeAlarmId = nativeServices::normalizeAlarmId,
             presentationMigrationState = UserDefaultsIosAlarmPresentationMigrationState(),
             recoveryInbox = eventInbox,
+            isReservationInUse = { missionCoordinator.activeMissionFlow.value?.alarmId == it },
         ),
         locationService = nativeServices.missionLocationService(),
         activityDao = database.alarmActivityDao(),
