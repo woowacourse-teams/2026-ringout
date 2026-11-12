@@ -2,6 +2,7 @@ package com.ringout.api.notification.sender;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -38,10 +39,10 @@ class FcmPushSenderTest {
         given(firebaseMessaging.sendEach(anyList())).willReturn(response);
 
         // when
-        List<Boolean> results = fcmPushSender.send(messages(2));
+        List<SendResult> results = fcmPushSender.send(messages(2));
 
         // then
-        assertThat(results).containsExactly(true, false);
+        assertThat(results).containsExactly(SendResult.SENT, SendResult.PERMANENT);
     }
 
     @Test
@@ -53,23 +54,44 @@ class FcmPushSenderTest {
         });
 
         // when
-        List<Boolean> results = fcmPushSender.send(messages(501));
+        List<SendResult> results = fcmPushSender.send(messages(501));
 
         // then
-        assertThat(results).hasSize(501).containsOnly(true);
+        assertThat(results).hasSize(501).containsOnly(SendResult.SENT);
         then(firebaseMessaging).should(times(2)).sendEach(anyList());
     }
 
     @Test
-    void 일괄_발송_요청이_실패하면_모두_실패로_돌려준다() throws FirebaseMessagingException {
+    void 일괄_발송_요청이_실패하면_모두_재시도_대상으로_돌려준다() throws FirebaseMessagingException {
         // given
         given(firebaseMessaging.sendEach(anyList())).willThrow(mock(FirebaseMessagingException.class));
 
         // when
-        List<Boolean> results = fcmPushSender.send(messages(3));
+        List<SendResult> results = fcmPushSender.send(messages(3));
 
         // then
-        assertThat(results).containsExactly(false, false, false);
+        assertThat(results).containsExactly(SendResult.RETRYABLE, SendResult.RETRYABLE, SendResult.RETRYABLE);
+    }
+
+    @Test
+    void 메시지_생성에_실패한_건만_실패로_돌려주고_나머지는_보낸다() throws FirebaseMessagingException {
+        // given
+        given(firebaseMessaging.sendEach(anyList())).willAnswer(invocation -> {
+            List<Message> sent = invocation.getArgument(0);
+            return batchResponse(sent.stream().map(message -> successResponse()).toList());
+        });
+        List<PushMessage> messages = List.of(
+            new PushMessage("token-0", "제목", "본문", null, null),
+            new PushMessage(null, "제목", "본문", null, null),
+            new PushMessage("token-2", "제목", "본문", null, null)
+        );
+
+        // when
+        List<SendResult> results = fcmPushSender.send(messages);
+
+        // then
+        assertThat(results).containsExactly(SendResult.SENT, SendResult.PERMANENT, SendResult.SENT);
+        then(firebaseMessaging).should().sendEach(argThat(sent -> sent.size() == 2));
     }
 
     @Test
@@ -98,7 +120,7 @@ class FcmPushSenderTest {
 
     private List<PushMessage> messages(int count) {
         return IntStream.range(0, count)
-            .mapToObj(i -> new PushMessage("token-" + i, "제목", "본문", null))
+            .mapToObj(i -> new PushMessage("token-" + i, "제목", "본문", null, null))
             .toList();
     }
 

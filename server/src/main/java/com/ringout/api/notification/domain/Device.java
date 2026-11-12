@@ -64,4 +64,8 @@ public class Device extends BaseEntity {
     public void clearToken() {
         this.fcmToken = null;
     }
+
+    public boolean hasToken() {
+        return fcmToken != null;
+    }
 }

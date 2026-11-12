@@ -46,6 +46,10 @@ public class Notification extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private NotificationStatus status;
 
+    private String claimToken;
+
+    private LocalDateTime claimedAt;
+
     private boolean isRead;
 
     private LocalDateTime readAt;

@@ -16,10 +16,8 @@ import com.ringout.api.room.dto.response.RoomListResponse;
 import com.ringout.api.room.dto.response.RoomManagementMemberResponse;
 import com.ringout.api.room.dto.response.RoomMemberResponse;
 import com.ringout.api.room.dto.response.RoomMembersResponse;
-import com.ringout.api.room.dto.response.RoomSummaryResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
-import com.ringout.api.room.repository.RoomMemberStat;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
@@ -28,12 +26,11 @@ import com.ringout.api.user.repository.UserRepository;
 import com.ringout.api.user.status.UserErrorStatus;
 import java.net.URI;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -50,6 +47,8 @@ public class RoomService {
     private final RoomBlackListRepository roomBlackListRepository;
     private final UserRepository userRepository;
     private final ImageFileService imageFileService;
+    private final ActiveRoomsReader activeRoomsReader;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public RoomCreateResponse createRoom(Long userId, RoomCreateRequest request) {
@@ -65,6 +64,7 @@ public class RoomService {
 
         Room savedRoom = roomRepository.save(room);
         RoomUser roomUser = roomUserRepository.save(RoomUser.of(user, savedRoom));
+        eventPublisher.publishEvent(new RoomListChangedEvent());
 
         log.atInfo()
             .addKeyValue("event", "room_creation_succeeded")
@@ -76,32 +76,23 @@ public class RoomService {
         return RoomCreateResponse.from(savedRoom, toRoomMemberResponse(roomUser), null);
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * 트랜잭션을 걸지 않는다. 캐시가 빈 순간(sync) 다른 요청의 조회를 기다리는 동안
+     * DB 커넥션을 붙잡지 않도록, 캐시 조회와 참여 방 조회가 각자 짧은 트랜잭션을 쓴다.
+     */
     public RoomListResponse getRooms(Long userId) {
-        List<Room> rooms = roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc();
+        List<ActiveRoom> rooms = activeRoomsReader.read();
         if (rooms.isEmpty()) {
             return new RoomListResponse(List.of());
         }
 
-        List<Long> roomIds = rooms.stream().map(Room::getId).toList();
-        Map<Long, RoomMemberStat> statsByRoomId = roomUserRepository.findMemberStatsbyRoomIds(roomIds,
-                userId)
-            .stream()
-            .collect(Collectors.toMap(RoomMemberStat::roomId, Function.identity()));
+        Set<Long> joinedRoomIds = userId == null
+            ? Set.of()
+            : roomUserRepository.findActiveRoomIdsByUserId(userId);
 
-        List<RoomSummaryResponse> responses = rooms.stream()
-            .map(room -> {
-                RoomMemberStat stat = statsByRoomId.get(room.getId());
-                return RoomSummaryResponse.from(
-                    room,
-                    resolveRoomImageUrl(room),
-                    stat == null ? 0 : stat.memberCount().intValue(),
-                    stat != null && stat.isJoined()
-                );
-            })
-            .toList();
-
-        return new RoomListResponse(responses);
+        return new RoomListResponse(rooms.stream()
+            .map(room -> room.toResponse(joinedRoomIds.contains(room.roomId())))
+            .toList());
     }
 
     @Transactional(readOnly = true)
@@ -148,6 +139,7 @@ public class RoomService {
 
         roomUserRepository.findByRoomIdAndUserId(roomId, user.getId())
             .ifPresentOrElse(RoomUser::restore, () -> roomUserRepository.save(RoomUser.of(user, room)));
+        eventPublisher.publishEvent(new RoomListChangedEvent());
         List<RoomUser> roomUsers = roomUserRepository.findActiveByRoomId(roomId);
 
         log.atInfo()
@@ -189,6 +181,7 @@ public class RoomService {
 
         updateRoomInformation(room, request);
         updateRoomImage(room, request);
+        eventPublisher.publishEvent(new RoomListChangedEvent());
 
         log.atInfo()
             .addKeyValue("event", "room_update_succeeded")
@@ -221,6 +214,7 @@ public class RoomService {
         room.softDelete();
         roomBlackListRepository.findActiveByRoom(room)
             .forEach(RoomBlackList::softDelete);
+        eventPublisher.publishEvent(new RoomListChangedEvent());
 
         log.atInfo()
             .addKeyValue("event", "room_deletion_succeeded")
@@ -255,6 +249,7 @@ public class RoomService {
 
         roomUser.softDelete();
         roomBlackListRepository.save(RoomBlackList.of(room, target));
+        eventPublisher.publishEvent(new RoomListChangedEvent());
 
         log.atInfo()
             .addKeyValue("event", "room_member_kick_succeeded")
@@ -281,6 +276,7 @@ public class RoomService {
         RoomUser roomUser = roomUserRepository.findActiveByRoomIdAndUserId(roomId, user.getId())
             .orElseThrow(() -> new GeneralException(RoomErrorStatus.ROOM_MEMBER_NOT_JOINED));
         roomUser.softDelete();
+        eventPublisher.publishEvent(new RoomListChangedEvent());
 
         log.atInfo()
             .addKeyValue("event", "room_member_leave_succeeded")

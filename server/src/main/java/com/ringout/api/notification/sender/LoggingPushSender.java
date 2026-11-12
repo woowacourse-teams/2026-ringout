@@ -12,8 +12,8 @@ import org.springframework.stereotype.Component;
 public class LoggingPushSender implements PushSender {
 
     @Override
-    public List<Boolean> send(List<PushMessage> messages) {
+    public List<SendResult> send(List<PushMessage> messages) {
         log.info("Firebase 비활성화 - 푸시 {}건을 발송하지 않고 성공 처리", messages.size());
-        return Collections.nCopies(messages.size(), true);
+        return Collections.nCopies(messages.size(), SendResult.SENT);
     }
 }
