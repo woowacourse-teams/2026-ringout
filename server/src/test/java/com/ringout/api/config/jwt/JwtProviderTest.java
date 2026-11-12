@@ -1,7 +1,11 @@
 package com.ringout.api.config.jwt;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
+import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.user.domain.Role;
 import java.time.Clock;
 import java.time.Instant;
@@ -72,7 +76,10 @@ class JwtProviderTest {
   void 서명이_변조된_토큰은_유효하지_않다() {
     JwtProvider jwtProvider = createProvider(3_600_000L);
     String token = jwtProvider.createAccessToken(USER_ID, PROVIDER_ID, Role.USER);
-    String tamperedToken = token.substring(0, token.length() - 1) + "x";
+    int signatureStart = token.lastIndexOf('.') + 1;
+    char differentCharacter = token.charAt(signatureStart) == 'A' ? 'B' : 'A';
+    String tamperedToken = token.substring(0, signatureStart) + differentCharacter
+        + token.substring(signatureStart + 1);
 
     assertThat(jwtProvider.isValid(tamperedToken)).isFalse();
   }
@@ -84,6 +91,33 @@ class JwtProviderTest {
     String token = jwtProvider.createAccessToken(USER_ID, PROVIDER_ID, Role.USER);
 
     assertThat(jwtProvider.isValid(token)).isFalse();
+  }
+
+  @Test
+  void 같은_초에_발급한_액세스_토큰을_개별적으로_폐기할_수_있다() {
+    Clock clock = Clock.fixed(Instant.now(), ZoneOffset.UTC);
+    JwtProvider jwtProvider = new JwtProvider(SECRET, 60_000L, 60_000L, 60_000L, clock);
+    RedisTokenBlacklist blacklist = mock(RedisTokenBlacklist.class);
+    jwtProvider.setTokenBlacklist(blacklist);
+
+    String revoked = jwtProvider.createAccessToken(USER_ID, PROVIDER_ID, Role.USER);
+    String valid = jwtProvider.createAccessToken(USER_ID, PROVIDER_ID, Role.USER);
+    when(blacklist.contains(revoked)).thenReturn(true);
+
+    assertThat(jwtProvider.isValid(revoked)).isFalse();
+    assertThat(jwtProvider.isValid(valid)).isTrue();
+  }
+
+  @Test
+  void 회원가입_토큰은_블랙리스트를_조회하지_않는다() {
+    JwtProvider jwtProvider = createProvider(60_000L);
+    RedisTokenBlacklist blacklist = mock(RedisTokenBlacklist.class);
+    jwtProvider.setTokenBlacklist(blacklist);
+
+    String token = jwtProvider.createSignupToken(SocialProvider.KAKAO, PROVIDER_ID, null);
+
+    assertThat(jwtProvider.isValid(token)).isTrue();
+    verifyNoInteractions(blacklist);
   }
 
   private JwtProvider createProvider(long expirationMillis) {

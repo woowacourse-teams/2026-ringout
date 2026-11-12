@@ -3,6 +3,7 @@ package com.ringout.api.destination.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ringout.api.auth.social.SocialProvider;
+import com.ringout.api.config.ClockConfig;
 import com.ringout.api.config.JpaAuditingConfig;
 import com.ringout.api.destination.domain.Coordinate;
 import com.ringout.api.destination.domain.Destination;
@@ -34,7 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
     "spring.flyway.enabled=false",
     "spring.jpa.hibernate.ddl-auto=create-drop"
 })
-@Import({JpaAuditingConfig.class, DestinationService.class})
+@Import({JpaAuditingConfig.class, ClockConfig.class, DestinationService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class DestinationDeleteConcurrencyTest {
 
