@@ -28,7 +28,7 @@ import com.ringout.api.room.dto.response.RoomMemberResponse;
 import com.ringout.api.room.dto.response.RoomMembersResponse;
 import com.ringout.api.room.dto.response.RoomUpdateResponse;
 import com.ringout.api.room.repository.RoomBlackListRepository;
-import com.ringout.api.room.repository.RoomMemberStat;
+import com.ringout.api.room.repository.RoomMemberCount;
 import com.ringout.api.room.repository.RoomRepository;
 import com.ringout.api.room.repository.RoomUserRepository;
 import com.ringout.api.room.status.RoomErrorStatus;
@@ -41,12 +41,14 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -69,6 +71,9 @@ class RoomServiceTest {
     @Mock
     private ImageFileService imageFileService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private RoomService roomService;
 
     @BeforeEach
@@ -78,7 +83,9 @@ class RoomServiceTest {
             roomUserRepository,
             roomBlackListRepository,
             userRepository,
-            imageFileService
+            imageFileService,
+            new ActiveRoomsReader(roomRepository, roomUserRepository, imageFileService),
+            eventPublisher
         );
         ReflectionTestUtils.setField(roomService, "ROOM_IMAGE_DIRECTORY", "images/rooms");
     }
@@ -124,6 +131,7 @@ class RoomServiceTest {
             verify(roomRepository).save(any(Room.class));
             verify(roomUserRepository).save(any(RoomUser.class));
             verify(imageFileService).createReadUri(profileImage);
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
     }
 
@@ -164,11 +172,12 @@ class RoomServiceTest {
             given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(
                 roomWithAlarmOccurrence, roomWithMovementStatus, roomUpdated
             ));
-            given(roomUserRepository.findMemberStatsbyRoomIds(List.of(20L, 30L, 10L), userId)).willReturn(List.of(
-                new RoomMemberStat(10L, 12L, 1L),
-                new RoomMemberStat(20L, 5L, 0L),
-                new RoomMemberStat(30L, 3L, 0L)
+            given(roomUserRepository.countActiveMembersByRoom()).willReturn(List.of(
+                new RoomMemberCount(10L, 12L),
+                new RoomMemberCount(20L, 5L),
+                new RoomMemberCount(30L, 3L)
             ));
+            given(roomUserRepository.findActiveRoomIdsByUserId(userId)).willReturn(Set.of(10L));
             URI roomImageUri = URI.create("https://example.com/room-1.png?signature=test");
             given(imageFileService.createReadUri(roomUpdated.getImage())).willReturn(roomImageUri);
 
@@ -198,8 +207,8 @@ class RoomServiceTest {
                 LocalDateTime.of(2026, 9, 20, 10, 30)
             );
             given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(room));
-            given(roomUserRepository.findMemberStatsbyRoomIds(List.of(10L), null))
-                .willReturn(List.of(new RoomMemberStat(10L, 1L, 0L)));
+            given(roomUserRepository.countActiveMembersByRoom())
+                .willReturn(List.of(new RoomMemberCount(10L, 1L)));
 
             // when
             RoomListResponse response = roomService.getRooms(null);
@@ -207,6 +216,7 @@ class RoomServiceTest {
             // then
             assertThat(response.rooms()).singleElement().extracting("isJoined").isEqualTo(false);
             assertThat(response.rooms().get(0).memberCount()).isEqualTo(1);
+            verify(roomUserRepository, never()).findActiveRoomIdsByUserId(any());
         }
 
         @Test
@@ -223,7 +233,8 @@ class RoomServiceTest {
                 LocalDateTime.of(2026, 9, 20, 10, 30)
             );
             given(roomRepository.findAllActiveOrderByLatestActivityAtDescIdAsc()).willReturn(List.of(room));
-            given(roomUserRepository.findMemberStatsbyRoomIds(List.of(10L), userId)).willReturn(List.of());
+            given(roomUserRepository.countActiveMembersByRoom()).willReturn(List.of());
+            given(roomUserRepository.findActiveRoomIdsByUserId(userId)).willReturn(Set.of());
 
             // when
             RoomListResponse response = roomService.getRooms(userId);
@@ -245,7 +256,8 @@ class RoomServiceTest {
 
             // then
             assertThat(response.rooms()).isEmpty();
-            verify(roomUserRepository, never()).findMemberStatsbyRoomIds(any(), any());
+            verify(roomUserRepository, never()).countActiveMembersByRoom();
+            verify(roomUserRepository, never()).findActiveRoomIdsByUserId(any());
         }
     }
 
@@ -439,6 +451,7 @@ class RoomServiceTest {
             assertThat(room.getActivityTime()).isEqualTo(LocalTime.of(19, 30));
             assertThat(response.activityDays()).containsExactly("TUESDAY", "THURSDAY");
             assertThat(response.activityTime()).isEqualTo("19:30");
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
 
         @Test
@@ -461,6 +474,7 @@ class RoomServiceTest {
             assertThat(response.imageUrl()).isNull();
             assertThat(room.getActivityDays()).containsExactly(ActivityDay.MONDAY);
             assertThat(room.getActivityTime()).isEqualTo(LocalTime.of(8, 0));
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
 
         @Test
@@ -488,6 +502,7 @@ class RoomServiceTest {
             assertThat(room.getImage()).isSameAs(savedImage);
             verify(imageFileService).upload(image, "images/rooms");
             verify(imageFileService).createReadUri(savedImage);
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
 
         @Test
@@ -510,6 +525,7 @@ class RoomServiceTest {
             assertThat(room.getImage()).isNull();
             verify(imageFileService).delete(previousImage);
             verify(imageFileService, never()).upload(any(), any());
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
     }
 
@@ -674,6 +690,7 @@ class RoomServiceTest {
             assertThat(roomBlackList.getDeletedAt()).isNotNull();
             verify(roomRepository, never()).delete(room);
             verify(roomBlackListRepository, never()).delete(any(RoomBlackList.class));
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
     }
 
@@ -786,6 +803,7 @@ class RoomServiceTest {
             verify(roomBlackListRepository).save(argThat(blackList ->
                 blackList.getRoom().equals(room) && blackList.getUser().equals(target)));
             verify(roomUserRepository, never()).delete(roomUser);
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
     }
 
@@ -952,6 +970,7 @@ class RoomServiceTest {
             verify(roomUserRepository).save(argThat(roomUser ->
                 roomUser.getUser().equals(requester) && roomUser.getRoom().equals(room)));
             verify(roomUserRepository).findActiveByRoomId(roomId);
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
 
         @Test
@@ -1036,6 +1055,7 @@ class RoomServiceTest {
             // then
             assertThat(leftRoomUser.getDeletedAt()).isNull();
             verify(roomUserRepository, never()).save(any(RoomUser.class));
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
 
         @Test
@@ -1083,6 +1103,7 @@ class RoomServiceTest {
             assertThat(roomUser.getDeletedAt()).isNotNull();
             verify(roomUserRepository, never()).delete(roomUser);
             verify(roomBlackListRepository, never()).save(any(RoomBlackList.class));
+            verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
         }
 
         @Test

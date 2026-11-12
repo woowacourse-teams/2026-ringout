@@ -30,6 +30,8 @@ public class FirebaseConfig {
         byte[] credentials = Base64.getDecoder().decode(properties.credentialsBase64().trim());
         FirebaseOptions options = FirebaseOptions.builder()
             .setCredentials(GoogleCredentials.fromStream(new ByteArrayInputStream(credentials)))
+            .setConnectTimeout(5_000)
+            .setReadTimeout(10_000)
             .build();
 
         return FirebaseApp.getApps().isEmpty()

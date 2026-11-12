@@ -4,6 +4,7 @@ import com.ringout.api.room.domain.RoomUser;
 import com.ringout.api.room.domain.Room;
 import java.util.Optional;
 import java.util.List;
+import java.util.Set;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -58,6 +59,23 @@ public interface RoomUserRepository extends JpaRepository<RoomUser, Long> {
           and roomUser.room.deletedAt is null
         """)
     List<Room> findActiveRoomsByUserId(@Param("userId") Long userId);
+
+    @Query("""
+        select new com.ringout.api.room.repository.RoomMemberCount(roomUser.room.id, count(roomUser))
+        from RoomUser roomUser
+        where roomUser.deletedAt is null
+          and roomUser.room.deletedAt is null
+        group by roomUser.room.id
+        """)
+    List<RoomMemberCount> countActiveMembersByRoom();
+
+    @Query("""
+        select roomUser.room.id
+        from RoomUser roomUser
+        where roomUser.user.id = :userId
+          and roomUser.deletedAt is null
+        """)
+    Set<Long> findActiveRoomIdsByUserId(@Param("userId") Long userId);
 
     @Query("""                                                                                                                                                                      
       select new com.ringout.api.room.repository.RoomMemberStat(                                                                                                                  

@@ -8,14 +8,17 @@ import com.ringout.api.notification.domain.Campaign;
 import com.ringout.api.notification.domain.CampaignTargetType;
 import com.ringout.api.notification.domain.Device;
 import com.ringout.api.notification.domain.Notification;
+import com.ringout.api.notification.domain.SchedulerCheckpoint;
 import com.ringout.api.notification.domain.TargetType;
 import com.ringout.api.notification.repository.CampaignRepository;
 import com.ringout.api.notification.repository.DeviceTokenRepository;
 import com.ringout.api.notification.repository.NotificationRepository;
+import com.ringout.api.notification.repository.SchedulerCheckpointRepository;
 import com.ringout.api.notification.repository.dto.RoomMemberDevice;
 import com.ringout.api.room.domain.ActivityDay;
 import com.ringout.api.room.domain.Room;
 import com.ringout.api.room.repository.RoomRepository;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,11 +36,39 @@ public class RoomActivityNotificationService {
     private static final String BODY = "활동 시간이에요! 지금 참여해보세요.";
     private static final String ROOM_ID_KEY = "roomId";
     private static final String ACTIVITY_DATE_KEY = "activityDate";
+    private static final String CHECKPOINT_NAME = "roomActivityNotification";
+    // 이보다 오래된 분은 만들어도 만료 시한에 걸려 발송되지 않는다.
+    private static final Duration CATCH_UP_LIMIT = Duration.ofMinutes(10);
 
     private final RoomRepository roomRepository;
     private final DeviceTokenRepository deviceTokenRepository;
     private final CampaignRepository campaignRepository;
     private final NotificationRepository notificationRepository;
+    private final SchedulerCheckpointRepository checkpointRepository;
+
+    // 마지막으로 처리한 분 다음부터 now 까지 놓친 분을 모두 생성한다.
+    // 체크포인트 갱신이 알림 생성과 같은 트랜잭션이라 둘은 함께 커밋되거나 함께 롤백된다.
+    @Transactional
+    public List<Long> createSinceLastRun(LocalDateTime now) {
+        SchedulerCheckpoint checkpoint = checkpointRepository.findById(CHECKPOINT_NAME)
+            .orElseGet(() -> checkpointRepository.save(SchedulerCheckpoint.start(CHECKPOINT_NAME)));
+        LocalDateTime from = checkpoint.nextMinuteOr(now);
+        if (from.isAfter(now)) {
+            return List.of();
+        }
+        LocalDateTime catchUpLimit = now.minus(CATCH_UP_LIMIT);
+        if (from.isBefore(catchUpLimit)) {
+            log.warn("방 활동 알림 따라잡기 한도 초과 - {} ~ {} 건너뜀", from, catchUpLimit.minusMinutes(1));
+            from = catchUpLimit;
+        }
+
+        List<Long> notificationIds = new ArrayList<>();
+        for (LocalDateTime minute = from; !minute.isAfter(now); minute = minute.plusMinutes(1)) {
+            notificationIds.addAll(create(minute));
+        }
+        checkpoint.advanceTo(now);
+        return notificationIds;
+    }
 
     @Transactional
     public List<Long> create(LocalDateTime now) {
