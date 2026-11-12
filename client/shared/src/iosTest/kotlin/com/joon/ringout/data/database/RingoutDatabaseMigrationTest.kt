@@ -6,6 +6,14 @@ class RingoutDatabaseMigrationTest {
     private val suite = RingoutDatabaseMigrationTestSuite()
 
     @Test
+    fun `버전 십팔의 알람은 기존 서버 ID와 요일을 보존하고 기기 예약 ID를 따로 저장한다`() =
+        suite.`버전 십팔의 알람은 기존 서버 ID와 요일을 보존하고 기기 예약 ID를 따로 저장한다`()
+
+    @Test
+    fun `알람 변경과 삭제는 순서대로 남고 기기 설정만 바꾸면 전송하지 않는다`() =
+        suite.`알람 변경과 삭제는 순서대로 남고 기기 설정만 바꾸면 전송하지 않는다`()
+
+    @Test
     fun `응답이 유실된 upsert는 같은 목적지 ID로 안전하게 재전송한다`() =
         suite.`응답이 유실된 upsert는 같은 목적지 ID로 안전하게 재전송한다`()
 
