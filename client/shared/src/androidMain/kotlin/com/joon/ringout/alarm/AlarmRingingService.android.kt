@@ -76,8 +76,12 @@ class AlarmRingingService : Service() {
             }
             return START_NOT_STICKY
         }
-        if (isActivelyRinging && activeOccurrenceId == occurrenceId) return START_NOT_STICKY
+        if (isActivelyRinging && activeOccurrenceId == occurrenceId) {
+            AlarmRingingRuntime.clearStarting(occurrenceId)
+            return START_NOT_STICKY
+        }
         if (!ringingSessionStore.markRinging(occurrenceId)) {
+            AlarmRingingRuntime.clearStarting(occurrenceId)
             return START_NOT_STICKY
         }
 
@@ -121,6 +125,7 @@ class AlarmRingingService : Service() {
                     intent.getLongExtra(AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS, 0) else null,
                 sourceRingingId = intent.getStringExtra(AlarmRuntime.EXTRA_RETRY_SOURCE_OCCURRENCE_ID),
                 at = ringingStartedAt,
+                remoteAlarmId = intent.getStringExtra(AlarmRuntime.EXTRA_REMOTE_ALARM_ID),
             )
         }.onFailure { android.util.Log.e("AlarmOccurrence", "Could not record ringing", it) }
         runCatching {
