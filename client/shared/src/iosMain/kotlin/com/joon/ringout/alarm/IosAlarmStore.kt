@@ -24,6 +24,9 @@ internal class IosAlarmStore(
             val previous = dataSource.getById(request.id)
             val ownerPreservingRequest = request.copy(
                 ownerAccountId = previous?.request?.ownerAccountId ?: request.ownerAccountId,
+                remoteAlarmId = previous?.request?.remoteAlarmId
+                    ?: if (previous == null) newAlarmId() else null,
+                pendingReservationId = previous?.request?.pendingReservationId,
             )
             val scheduleRequest = ownerPreservingRequest.withScheduleVersion(previous?.request)
             // Each native configuration needs an immutable mission snapshot, including
@@ -83,7 +86,7 @@ internal class IosAlarmStore(
                 throw error
             }
             try {
-                dataSource.replace(replacement)
+                dataSource.replaceUserAlarm(replacement, previous)
             } catch (error: Exception) {
                 withContext(NonCancellable) {
                     scheduler.cancelBestEffort(request.id)
@@ -190,7 +193,7 @@ internal class IosAlarmStore(
             )
         }
         val deleted = try {
-            dataSource.delete(alarmId)
+            dataSource.deleteUserAlarm(alarmId)
         } catch (error: Exception) {
             withContext(NonCancellable) {
                 previous?.let { alarm ->
@@ -379,4 +382,5 @@ internal fun AlarmScheduleRequest.toRecoverySnapshot(): IosAlarmRecoverySourceSn
             ?.takeIf(String::isNotBlank)
             ?.let { IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.CAPTURED_ACCOUNT, it) }
             ?: IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.UNCAPTURED),
+        remoteAlarmId = remoteAlarmId,
     )

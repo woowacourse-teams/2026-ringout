@@ -49,6 +49,7 @@ data class IosAlarmScheduleDto(
     val originalTime: String? = null,
     val scheduleVersion: Long = 1,
     val ownerAccountId: String? = null,
+    val remoteAlarmId: String? = null,
 )
 
 data class IosAlarmRetryScheduleDto(
@@ -208,6 +209,7 @@ internal fun AlarmScheduleRequest.toIosAlarmScheduleDto(): IosAlarmScheduleDto {
         originalTime = time,
         scheduleVersion = scheduleVersion,
         ownerAccountId = ownerAccountId,
+        remoteAlarmId = remoteAlarmId,
     )
 }
 

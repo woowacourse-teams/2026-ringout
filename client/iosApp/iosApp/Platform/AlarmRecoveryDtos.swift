@@ -15,7 +15,8 @@ extension AlarmRecoveryAttempt {
             scheduleVersion: snapshot.scheduleVersion,
             ownerAccountId: snapshot.owner.dtoAccountId,
             ownerCaptured: snapshot.owner.dtoCaptured,
-            chainId: chainId
+            chainId: chainId,
+            remoteAlarmId: snapshot.remoteAlarmId
         )
     }
 
@@ -77,7 +78,8 @@ extension AlarmRecoverySourceSnapshot {
             title: title,
             soundName: soundName,
             soundUri: soundURI,
-            owner: owner.toDto()
+            owner: owner.toDto(),
+            remoteAlarmId: remoteAlarmId
         )
     }
 }
@@ -177,7 +179,8 @@ extension IosAlarmRecoverySourceSnapshotDto {
             title: title,
             soundName: soundName,
             soundURI: soundUri,
-            owner: owner.toRecoveryOwner()
+            owner: owner.toRecoveryOwner(),
+            remoteAlarmId: remoteAlarmId
         )
     }
 }
