@@ -15,6 +15,7 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 ## 2. 이벤트 계약
 
 이벤트 이름과 파라미터는 배포 후 의미를 바꾸지 않는다. 같은 의미의 이벤트를 새로 정의해야 한다면 기존 파라미터를 재해석하지 말고 계약 버전을 별도로 올린다.
+`force_end_hold_*` 이벤트는 #687 이전 버전에서만 기록한 구버전 UI 이벤트다. 이 버전부터는 새로 기록하지 않으며, 아래 정의는 과거 데이터 해석을 위해 보존한다.
 
 | 이벤트 | 발생 시점 | 필수 파라미터 | 중복 방지 단위 |
 | --- | --- | --- | --- |
@@ -24,9 +25,9 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 | `destination_mission_started` | 미션의 `Tracking` 상태가 영속 저장된 직후 | `use_index`, `retry_attempt` | 한 번의 미션 시작 시도 |
 | `destination_mission_completed` | 도착 판정이 성공으로 확정된 직후 | `use_index`, `retry_attempt`, `elapsed_bucket` | 한 번의 성공 상태 전이 |
 | `destination_mission_expired` | 제한 시간 안에 도착하지 못해 해당 시도가 만료된 직후 | `use_index`, `retry_attempt`, `elapsed_bucket` | 한 번의 만료 상태 전이 |
-| `force_end_hold_started` | 진행 중인 미션에서 사용자가 강제 종료 홀드 제스처를 시작한 직후 | `use_index`, `retry_attempt` | 한 번의 홀드 제스처 시작 |
-| `force_end_hold_cancelled` | 홀드 완료가 확정되기 전에 손을 떼거나 제스처·화면 수명주기가 중단된 직후 | `use_index`, `retry_attempt`, `hold_duration_ms` | 한 번의 홀드 제스처 취소 |
-| `force_end_hold_completed` | 홀드 임계 시간을 충족해 강제 종료 확인 다이얼로그가 표시되기 직전 | `use_index`, `retry_attempt`, `hold_duration_ms` | 한 번의 홀드 제스처 완료 |
+| `force_end_hold_started` (구버전) | 구버전에서 진행 중 미션의 30초 강제 종료 홀드 제스처를 시작한 직후 | `use_index`, `retry_attempt` | 한 번의 홀드 제스처 시작 |
+| `force_end_hold_cancelled` (구버전) | 구버전에서 홀드 완료 전 손을 떼거나 제스처·화면 수명주기가 중단된 직후 | `use_index`, `retry_attempt`, `hold_duration_ms` | 한 번의 홀드 제스처 취소 |
+| `force_end_hold_completed` (구버전) | 구버전에서 홀드 임계 시간을 채워 강제 종료 확인 다이얼로그가 표시되기 직전 | `use_index`, `retry_attempt`, `hold_duration_ms` | 한 번의 홀드 제스처 완료 |
 | `destination_mission_force_ended` | 사용자가 진행 중인 미션을 명시적으로 강제 종료한 직후 | `use_index`, `retry_attempt`, `elapsed_bucket` | 한 번의 강제 종료 상태 전이 |
 
 프로세스 재시작, 중복 브로드캐스트, Compose 재구성으로 같은 논리 이벤트를 다시 보내지 않는다. 로컬에서는 원시 식별자를 Analytics에 전송하지 않고도 동일한 상태 전이를 한 번만 claim하도록 처리한다.
@@ -51,13 +52,13 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 | `alarm_sound_list_size` | 정수(`int_value`, Android 전용) | `1` 이상 | 같은 화면에 표시된 전체 음원 수 |
 | `alarm_sound_selection_changed` | 정수(`int_value`, Android 전용) | `0`, `1` | 화면 진입 시 선택값과 저장 시 선택값이 달라졌는지 여부 |
 | `elapsed_bucket` | 문자열(`string_value`) | `under_5m`, `5_to_15m`, `15_to_30m`, `over_30m` | 해당 미션 시도가 시작된 뒤 결과 상태 전이까지의 경과 시간 구간. 경계는 각각 5분 미만, 5분 이상 15분 미만, 15분 이상 30분 미만, 30분 이상이다. |
-| `hold_duration_ms` | 정수(`int_value`) | 0 이상의 정수 | 단조 시계로 측정한 현재 홀드 제스처의 시작부터 취소 또는 완료까지의 경과 밀리초. 벽시계 시각이나 미션 진행 시간을 뜻하지 않는다. |
+| `hold_duration_ms` (구버전 전용) | 정수(`int_value`) | 0 이상의 정수 | #687 이전 버전에서 단조 시계로 측정한 현재 홀드 제스처의 시작부터 취소 또는 완료까지의 경과 밀리초. 벽시계 시각이나 미션 진행 시간을 뜻하지 않는다. |
 
 `destination_alarm_ringing_started`에는 `use_index`를 보내지 않는다. 울림은 미션 시작을 보장하지 않으므로 이 시점에 인덱스를 선점하면 실제 사용 순서에 빈 번호가 생긴다.
 
-### 2.2 강제 종료 홀드와 실제 결과의 경계
+### 2.2 구버전 강제 종료 홀드와 실제 결과의 경계
 
-홀드 이벤트 3개는 UI 제스처의 마찰을 측정하며 미션 결과를 뜻하지 않는다.
+구버전의 홀드 이벤트 3개는 UI 제스처의 마찰을 측정하며 미션 결과를 뜻하지 않는다. #687 이후 버전은 확인 다이얼로그를 사용하고 이 이벤트를 보내지 않는다.
 
 - `force_end_hold_started`에는 `hold_duration_ms`를 보내지 않는다. 아직 종료 시점이 없기 때문이다.
 - 한 번의 정상적인 홀드 시도는 `force_end_hold_started` 뒤 `force_end_hold_cancelled` 또는 `force_end_hold_completed` 중 하나로 끝난다. 사용자가 다시 시도하면 같은 `use_index`와 `retry_attempt`로 새 이벤트 묶음을 보낼 수 있다.
@@ -78,7 +79,7 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 - 원시 `alarmId`, `occurrenceId`, 로컬 데이터베이스 키 또는 이를 단순 해시한 값
 - 이메일, 전화번호, 닉네임, 소셜 로그인 토큰, JWT 원문, 광고 식별자. 서버 회원 ID는 아래의 SDK `user_id` 용도로만 허용한다.
 
-분석에는 Firebase가 제공하는 `user_pseudo_id`, `event_timestamp`, 위에서 승인한 이벤트 파라미터와 로그인 회원의 `user_id`를 사용한다. 미션 진행 시간은 정확한 값 대신 `elapsed_bucket`을 사용한다. `hold_duration_ms`는 위치나 벽시계 정보가 없는 짧은 UI 제스처 경과 시간에만 사용한다.
+분석에는 Firebase가 제공하는 `user_pseudo_id`, `event_timestamp`, 위에서 승인한 이벤트 파라미터와 로그인 회원의 `user_id`를 사용한다. 미션 진행 시간은 정확한 값 대신 `elapsed_bucket`을 사용한다. `hold_duration_ms`는 #687 이전 버전의 홀드 제스처 경과 시간에만 사용했으며 새 버전에서는 전송하지 않는다.
 
 ### 3.1 회원 ID 연동
 
@@ -193,6 +194,7 @@ Android와 iOS 각각 다음 순서를 DebugView 및 배포 후 BigQuery export�
 - 최초 울림만 있고 미션을 시작하지 않은 테스트에서 `use_index`가 증가하지 않는지 확인한다.
 - 결과 이벤트가 대응하는 시작 이벤트보다 먼저 발생하지 않는지 확인한다.
 - 같은 상태 전이를 중복 전달해도 Analytics 이벤트가 한 번만 기록되는지 확인한다.
+- 다음 홀드 이벤트 품질 점검은 #687 이전 버전 데이터를 검증할 때만 적용한다.
 - `force_end_hold_started`에는 `hold_duration_ms`가 없고, cancelled/completed에는 0 이상의 값이 있는지 확인한다.
 - 정상적인 한 번의 홀드 시도에서 cancelled와 completed가 동시에 기록되지 않는지 확인한다.
 - `force_end_hold_completed`만 있는 테스트 사용자가 강제 종료 경험률 분자에 포함되지 않는지 확인한다.
