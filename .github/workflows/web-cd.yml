@@ -75,7 +75,7 @@ jobs:
           set -euo pipefail
           case "$TARGET_ENV" in
             development) PREFIX="ringout/dev-forest-web" ;;
-            production)  PREFIX="ringout/forest-web" ;;
+            production)  PREFIX="ringout/prod-forest-web" ;;
             *) echo "unknown env: $TARGET_ENV"; exit 1 ;;
           esac
           DEST="s3://$BUCKET/$PREFIX"
