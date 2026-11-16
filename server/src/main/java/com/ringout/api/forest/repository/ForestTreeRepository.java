@@ -21,6 +21,14 @@ public interface ForestTreeRepository extends JpaRepository<ForestTree, Long> {
     );
 
     @Query("""
+        select tree
+        from ForestTree tree
+        where tree.user.id = :userId
+        order by tree.growthCycle asc
+        """)
+    List<ForestTree> findAllByUserIdOrderByGrowthCycle(@Param("userId") Long userId);
+
+    @Query("""
         select tree.slotIndex
         from ForestTree tree
         where tree.user.id = :userId

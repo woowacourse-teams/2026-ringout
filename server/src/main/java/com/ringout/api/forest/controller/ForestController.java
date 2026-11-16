@@ -7,6 +7,7 @@ import com.ringout.api.forest.dto.request.ForestOnboardingCompleteRequest;
 import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
 import com.ringout.api.forest.dto.response.ForestOnboardingCompleteResult;
 import com.ringout.api.forest.dto.response.ForestOnboardingResponse;
+import com.ringout.api.forest.dto.response.ForestResponse;
 import com.ringout.api.forest.dto.response.ForestTreePlantResult;
 import com.ringout.api.forest.dto.response.ForestTreeResponse;
 import com.ringout.api.forest.service.ForestService;
@@ -15,6 +16,7 @@ import com.ringout.api.forest.status.ForestSuccessStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,6 +30,16 @@ public class ForestController implements ForestControllerApi {
 
     private final ForestService forestService;
     private final ForestTreeService forestTreeService;
+
+    @Override
+    @GetMapping
+    public ResponseEntity<CustomResponse<ForestResponse>> findForest(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails
+    ) {
+        ForestResponse response = forestService.getForest(customUserDetails.getUserId());
+        return ResponseEntity.status(ForestSuccessStatus.FOREST_FOUND.getHttpStatus())
+            .body(CustomResponse.onSuccess(ForestSuccessStatus.FOREST_FOUND, response));
+    }
 
     @Override
     @PutMapping("/onboarding")

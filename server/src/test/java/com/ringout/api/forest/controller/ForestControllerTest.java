@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -20,8 +21,10 @@ import com.ringout.api.config.jwt.JwtProvider;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.config.security.JwtAuthenticationEntryPoint;
 import com.ringout.api.forest.dto.request.ForestOnboardingCompleteRequest;
+import com.ringout.api.forest.dto.response.ForestGrowthResponse;
 import com.ringout.api.forest.dto.response.ForestOnboardingCompleteResult;
 import com.ringout.api.forest.dto.response.ForestOnboardingResponse;
+import com.ringout.api.forest.dto.response.ForestResponse;
 import com.ringout.api.forest.domain.TreeKind;
 import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
 import com.ringout.api.forest.dto.response.ForestTreePlantResult;
@@ -31,6 +34,7 @@ import com.ringout.api.forest.service.ForestTreeService;
 import com.ringout.api.forest.status.ForestErrorStatus;
 import com.ringout.api.user.domain.Role;
 import java.time.OffsetDateTime;
+import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -328,6 +332,88 @@ class ForestControllerTest {
                 jsonPath("$.code").value("AUTH401")
             );
             verify(forestTreeService, never()).plantTree(any(), any(), any());
+        }
+    }
+
+    @Nested
+    class 숲_조회_응답 {
+
+        private static final String FOREST_URL = "/api/v1/forest";
+
+        @Test
+        void 씨앗_성장_상태와_온보딩_완료_시각과_나무_목록을_반환한다() throws Exception {
+            // given
+            given(forestService.getForest(1L)).willReturn(new ForestResponse(
+                new ForestGrowthResponse(23, 3, 2, false),
+                OffsetDateTime.parse("2026-11-10T08:00:00+09:00"),
+                List.of(
+                    new ForestTreeResponse(1, TreeKind.PINE, 7, OffsetDateTime.parse("2026-11-05T07:48:10+09:00"),
+                        OffsetDateTime.parse("2026-11-10T08:01:00+09:00")),
+                    new ForestTreeResponse(2, TreeKind.OAK, 12, OffsetDateTime.parse("2026-11-12T08:02:31+09:00"),
+                        null)
+                )
+            ));
+
+            // when
+            var result = mockMvc.perform(get(FOREST_URL)
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.isSuccess").value(true),
+                jsonPath("$.code").value("FOREST200"),
+                jsonPath("$.message").value("숲 조회에 성공했습니다."),
+                jsonPath("$.result.growth.successfulDayCount").value(23),
+                jsonPath("$.result.growth.filledSlots").value(3),
+                jsonPath("$.result.growth.remainingDays").value(2),
+                jsonPath("$.result.growth.isComplete").value(false),
+                jsonPath("$.result.growth.complete").doesNotExist(),
+                jsonPath("$.result.onboardingCompletedAt").value("2026-11-10T08:00:00+09:00"),
+                jsonPath("$.result.trees.length()").value(2),
+                jsonPath("$.result.trees[0].growthCycle").value(1),
+                jsonPath("$.result.trees[0].kind").value("pine"),
+                jsonPath("$.result.trees[0].slotIndex").value(7),
+                jsonPath("$.result.trees[0].plantedAt").value("2026-11-05T07:48:10+09:00"),
+                jsonPath("$.result.trees[0].acknowledgedAt").value("2026-11-10T08:01:00+09:00"),
+                jsonPath("$.result.trees[1].kind").value("oak"),
+                jsonPath("$.result.trees[1].acknowledgedAt").value(nullValue())
+            );
+        }
+
+        @Test
+        void 숲_기록이_없으면_빈_상태를_반환한다() throws Exception {
+            // given
+            given(forestService.getForest(1L)).willReturn(new ForestResponse(
+                new ForestGrowthResponse(0, 0, 5, false), null, List.of()));
+
+            // when
+            var result = mockMvc.perform(get(FOREST_URL)
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.code").value("FOREST200"),
+                jsonPath("$.result.growth.successfulDayCount").value(0),
+                jsonPath("$.result.growth.remainingDays").value(5),
+                jsonPath("$.result.growth.isComplete").value(false),
+                jsonPath("$.result.onboardingCompletedAt").value(nullValue()),
+                jsonPath("$.result.trees.length()").value(0)
+            );
+        }
+
+        @Test
+        void 인증_정보가_없으면_AUTH401을_반환한다() throws Exception {
+            // when
+            var result = mockMvc.perform(get(FOREST_URL));
+
+            // then
+            result.andExpectAll(
+                status().isUnauthorized(),
+                jsonPath("$.code").value("AUTH401")
+            );
+            verify(forestService, never()).getForest(any());
         }
     }
 }
