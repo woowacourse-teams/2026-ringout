@@ -1,0 +1,94 @@
+name: Forest Web CD
+
+on:
+  push:
+    branches: [ develop, main ]
+    paths:
+      - "web/**"
+      - ".github/workflows/web-cd.yml"
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Deployment environment
+        required: true
+        type: choice
+        options:
+          - development
+          - production
+
+concurrency:
+  group: forest-web-${{ inputs.target_environment || (github.ref_name == 'main' && 'production' || 'development') }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TARGET_ENV: ${{ inputs.target_environment || (github.ref_name == 'main' && 'production' || 'development') }}
+
+jobs:
+  build:
+    name: Build forest web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.12"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build   # tsc --noEmit 포함
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forest-web-dist
+          path: web/dist
+          retention-days: 7
+          if-no-files-found: error
+
+  deploy:
+    name: Upload to S3
+    needs: build
+    runs-on: [ self-hosted, Linux, ARM64, "ringout-${{ inputs.target_environment || (github.ref_name == 'main' && 'production' || 'development') }}" ]
+    environment: ${{ inputs.target_environment || (github.ref_name == 'main' && 'production' || 'development') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: forest-web-dist
+          path: dist
+
+      - name: Sync to S3
+        env:
+          BUCKET: techcourse-project-2026
+        run: |
+          set -euo pipefail
+          case "$TARGET_ENV" in
+            development) PREFIX="ringout/dev-forest-web" ;;
+            production)  PREFIX="ringout/forest-web" ;;
+            *) echo "unknown env: $TARGET_ENV"; exit 1 ;;
+          esac
+          DEST="s3://$BUCKET/$PREFIX"
+
+          # 1) 해시가 붙은 번들: 1년 캐시. 먼저 올려야 새 index.html이 참조할 때 이미 존재한다.
+          aws s3 sync dist/assets "$DEST/assets" \
+            --cache-control "public, max-age=31536000, immutable"
+
+          # 2) 해시 없는 파일(models/*.glb 등): 매번 재검증 (변경 없으면 304로 가볍게 응답)
+          aws s3 sync dist "$DEST" \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "no-cache"
+
+          # 3) 진입 문서는 마지막에: 항상 최신을 받도록 no-cache
+          aws s3 cp dist/index.html "$DEST/index.html" \
+            --cache-control "no-cache" --content-type "text/html; charset=utf-8"

@@ -1,0 +1,44 @@
+.flow-review {
+  max-width: 760px;
+  margin: auto;
+  padding: 48px 24px;
+}
+.review-intro {
+  color: var(--muted);
+  line-height: 1.8;
+  margin: 20px 0 30px;
+}
+.review-scenarios {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.review-scenarios a {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-decoration: none;
+  background: var(--surface);
+}
+.review-scenarios a:hover {
+  border-color: var(--orange);
+}
+.review-scenarios span {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.review-note {
+  margin: 28px 0 20px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+@media (max-width: 540px) {
+  .review-scenarios {
+    grid-template-columns: 1fr;
+  }
+}
