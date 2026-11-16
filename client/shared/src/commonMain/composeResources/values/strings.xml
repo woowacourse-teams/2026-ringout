@@ -4,6 +4,7 @@
     <string name="force_end_mission_button">강제 종료</string>
     <string name="force_end_mission_continue">미션하기</string>
     <string name="force_end_mission_end">종료하기</string>
+    <string name="force_end_mission_wait">종료하기 버튼을 기다리는 중</string>
     <string name="force_end_mission_dialog_title_1">종료하실 건가요?</string>
     <string name="force_end_mission_dialog_body_1">오늘 하루를 알차게 시작해봐요!</string>
     <string name="force_end_mission_dialog_title_2">진짜요?</string>

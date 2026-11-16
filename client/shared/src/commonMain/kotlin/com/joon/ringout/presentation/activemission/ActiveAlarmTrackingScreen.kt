@@ -130,14 +130,13 @@ fun ActiveAlarmTrackingScreen(
             onDismiss = { forceEndConfirmationStep = null },
             onContinueMission = { forceEndConfirmationStep = null },
             onConfirmForceEnd = {
-                val currentStep = forceEndConfirmationStep
-                if (!isForceEndEnabled || currentStep == null) {
-                    forceEndConfirmationStep = null
-                } else if (currentStep == ForceEndMissionConfirmationStepCount - 1) {
-                    forceEndConfirmationStep = null
-                    onForceEndClick(mission.occurrenceId)
-                } else {
-                    forceEndConfirmationStep = currentStep + 1
+                if (isForceEndEnabled && forceEndConfirmationStep == step) {
+                    if (step == ForceEndMissionConfirmationStepCount - 1) {
+                        forceEndConfirmationStep = null
+                        onForceEndClick(mission.occurrenceId)
+                    } else {
+                        forceEndConfirmationStep = step + 1
+                    }
                 }
             },
         )

@@ -3,9 +3,11 @@ package com.joon.ringout.presentation.common.component
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import com.joon.ringout.presentation.activemission.components.ForceEndMissionConfirmationDialog
 import com.joon.ringout.presentation.assertTextFits
 import com.joon.ringout.presentation.launchWithFontScale
 import org.junit.Rule
@@ -74,6 +76,32 @@ class ConfirmationDialogLargeTextTest {
             val confirm = compose.onNodeWithText("삭제").fetchSemanticsNode().boundsInRoot
             assertEquals(cancel.top, confirm.top, 1f)
             assertTrue(confirm.left > cancel.right)
+        }
+    }
+
+    @Test
+    fun `기본 글자와 큰 글자에서 카운트다운 후에도 미션하기 위치를 유지한다`() {
+        compose.mainClock.autoAdvance = false
+        listOf(1f, 2f).forEach { scale ->
+            launchWithFontScale(scale) {
+                ForceEndMissionConfirmationDialog(
+                    step = 0,
+                    isForceEndEnabled = true,
+                    onDismiss = {},
+                    onContinueMission = {},
+                    onConfirmForceEnd = {},
+                )
+            }.use {
+                compose.mainClock.advanceTimeBy(64)
+                val ring = compose.onNodeWithContentDescription("종료하기 버튼을 기다리는 중")
+                ring.assertIsDisplayed()
+                val continueButton = compose.onNodeWithText("미션하기")
+                val before = continueButton.fetchSemanticsNode().boundsInRoot
+                compose.mainClock.advanceTimeBy(3_040)
+                ring.assertDoesNotExist()
+                compose.onNodeWithText("종료하기").assertIsDisplayed()
+                assertEquals(before, continueButton.fetchSemanticsNode().boundsInRoot)
+            }
         }
     }
 

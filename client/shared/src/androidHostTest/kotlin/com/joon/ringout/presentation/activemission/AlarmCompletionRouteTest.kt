@@ -6,7 +6,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.material3.Text
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -26,6 +28,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -48,17 +51,25 @@ class AlarmCompletionRouteTest {
         RestrictedAlarmTestActivity.mission.value = mission("mission")
         val controller = Robolectric.buildActivity(RestrictedAlarmTestActivity::class.java).setup()
         try {
-            compose.onNodeWithText("강제 종료").performClick()
+            openConfirmation()
             val titles = listOf("종료하실 건가요?", "진짜요?", "정말??", "진짜 정말로??", "그래요...")
-            compose.onNodeWithText(titles.first()).assertIsDisplayed()
-
-            titles.drop(1).forEach { title ->
-                compose.onNodeWithText("종료하기").performClick()
+            titles.forEach { title ->
                 compose.onNodeWithText(title).assertIsDisplayed()
+                assertCountdown()
+                val ring = compose.onNodeWithContentDescription(CountdownDescription)
+                assertEquals(1f, ring.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current)
+                compose.mainClock.advanceTimeBy(1_504)
+                val halfway = ring.fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
+                assertTrue(halfway in 0.48f..0.53f)
+                compose.mainClock.advanceTimeBy(1_456)
+                assertCountdown()
                 assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
+                compose.mainClock.advanceTimeBy(80)
+                ring.assertDoesNotExist()
+                compose.onNodeWithText("종료하기").assertIsDisplayed().performClick()
+                compose.mainClock.advanceTimeByFrame()
             }
-
-            compose.onNodeWithText("종료하기").performClick()
+            compose.mainClock.autoAdvance = true
             compose.onNodeWithText("미션을 종료하고 있어요").assertIsDisplayed()
             compose.onNodeWithText(titles.last()).assertDoesNotExist()
             assertEquals(1, RestrictedAlarmTestActivity.stopCalls)
@@ -81,27 +92,33 @@ class AlarmCompletionRouteTest {
         RestrictedAlarmTestActivity.mission.value = mission("mission")
         val controller = Robolectric.buildActivity(RestrictedAlarmTestActivity::class.java).setup()
         try {
-            compose.onNodeWithText("강제 종료").performClick()
-            compose.onNodeWithText("종료하기").performClick()
+            openConfirmation()
+            finishCountdownAndClick()
             compose.onNodeWithText("진짜요?").assertIsDisplayed()
+            assertCountdown()
             compose.onNodeWithText("미션하기").performClick()
+            compose.mainClock.advanceTimeByFrame()
             compose.onNodeWithText("진짜요?").assertDoesNotExist()
             assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
 
-            compose.onNodeWithText("강제 종료").performClick()
+            openConfirmation()
             compose.onNodeWithText("종료하실 건가요?").assertIsDisplayed()
-            compose.onNodeWithText("종료하기").performClick()
+            assertCountdown()
             compose.runOnIdle { controller.get().onBackPressedDispatcher.onBackPressed() }
-            compose.onNodeWithText("진짜요?").assertDoesNotExist()
+            compose.mainClock.advanceTimeByFrame()
+            compose.onNodeWithText("종료하실 건가요?").assertDoesNotExist()
             assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
             assertEquals(0, RestrictedAlarmTestActivity.backgroundCalls)
 
-            compose.onNodeWithText("강제 종료").performClick()
+            openConfirmation()
             compose.onNodeWithText("종료하실 건가요?").assertIsDisplayed()
+            assertCountdown()
+            compose.mainClock.autoAdvance = true
             controller.recreate()
             compose.onNodeWithText("종료하실 건가요?").assertDoesNotExist()
-            compose.onNodeWithText("강제 종료").performClick()
+            openConfirmation()
             compose.onNodeWithText("종료하실 건가요?").assertIsDisplayed()
+            assertCountdown()
         } finally {
             controller.pause().stop().destroy()
         }
@@ -112,23 +129,27 @@ class AlarmCompletionRouteTest {
         RestrictedAlarmTestActivity.mission.value = mission("mission")
         val controller = Robolectric.buildActivity(RestrictedAlarmTestActivity::class.java).setup()
         try {
-            compose.onNodeWithText("강제 종료").performClick()
-            compose.onNodeWithText("종료하기").performClick()
+            openConfirmation()
+            finishCountdownAndClick()
             compose.onNodeWithText("진짜요?").assertIsDisplayed()
+            assertCountdown()
 
             compose.runOnIdle {
                 RestrictedAlarmTestActivity.mission.value = mission("mission-2")
             }
+            compose.mainClock.advanceTimeByFrame()
             compose.onNodeWithText("진짜요?").assertDoesNotExist()
-            compose.onNodeWithText("강제 종료").performClick()
+            openConfirmation()
             compose.onNodeWithText("종료하실 건가요?").assertIsDisplayed()
+            assertCountdown()
             assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
 
             repeat(4) {
-                compose.onNodeWithText("종료하기").performClick()
+                finishCountdownAndClick()
                 assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
             }
-            compose.onNodeWithText("종료하기").performClick()
+            finishCountdownAndClick()
+            compose.mainClock.autoAdvance = true
             compose.onNodeWithText("미션을 종료하고 있어요").assertIsDisplayed()
             assertEquals(listOf("mission-2"), RestrictedAlarmTestActivity.stoppedIds)
         } finally {
@@ -137,6 +158,25 @@ class AlarmCompletionRouteTest {
             }
             controller.pause().stop().destroy()
         }
+    }
+
+    private fun openConfirmation() {
+        compose.onNodeWithText("강제 종료").assertIsDisplayed()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithText("강제 종료").performClick()
+        compose.mainClock.advanceTimeByFrame()
+    }
+
+    private fun assertCountdown() {
+        compose.onNodeWithContentDescription(CountdownDescription).assertIsDisplayed()
+        compose.onNodeWithText("종료하기", useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithText("미션하기").assertIsDisplayed()
+    }
+
+    private fun finishCountdownAndClick() {
+        compose.mainClock.advanceTimeBy(3_040)
+        compose.onNodeWithText("종료하기").performClick()
+        compose.mainClock.advanceTimeByFrame()
     }
 
     @Test
@@ -242,6 +282,8 @@ class RestrictedAlarmTestActivity : ComponentActivity() {
         }
     }
 }
+
+private const val CountdownDescription = "종료하기 버튼을 기다리는 중"
 
 private fun mission(occurrenceId: String) = ActiveAlarmMission(
     alarmId = "alarm",
