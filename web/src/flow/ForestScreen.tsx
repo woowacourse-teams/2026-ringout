@@ -57,7 +57,10 @@ export function ForestScreen({ controller }: { controller: ForestController }) {
                 trees={visibleTrees(state)}
                 showGrid={false}
                 variant="app"
-                revealCycle={state.plantingCycle}
+                revealRequest={state.revealRequest}
+                hostActive={state.hostActive}
+                onRevealComplete={controller.completeReveal}
+                onRevealError={controller.failReveal}
               />
             </div>
             <GrowthCard

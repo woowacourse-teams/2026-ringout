@@ -2,39 +2,51 @@ import { useEffect, useRef, useState } from "react";
 import type { ForestTree } from "../bridge/protocol";
 import { ForestRenderer } from "./ForestRenderer";
 import type { SceneStatus } from "./ForestRenderer";
+import type { ForestRevealRequest } from "./motion";
 
 interface Props {
   trees: ForestTree[];
   showGrid: boolean;
   variant?: "preview" | "app";
-  revealCycle?: number | null;
+  revealRequest?: ForestRevealRequest | null;
+  hostActive?: boolean;
+  onRevealComplete?: (request: ForestRevealRequest) => void;
+  onRevealError?: (request: ForestRevealRequest) => void;
 }
 
 export function ForestCanvas({
   trees,
   showGrid,
   variant = "preview",
-  revealCycle = null,
+  revealRequest = null,
+  hostActive = true,
+  onRevealComplete,
+  onRevealError,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const renderer = useRef<ForestRenderer | null>(null);
+  const callbacks = useRef({ onRevealComplete, onRevealError });
+  callbacks.current = { onRevealComplete, onRevealError };
   const [status, setStatus] = useState<SceneStatus>({ phase: "loading" });
+  const currentStatus = useRef(status);
+  const lastRestartedReveal = useRef<number | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     if (!container.current) return;
-    setStatus({ phase: "loading" });
+    currentStatus.current = { phase: "loading" };
+    setStatus(currentStatus.current);
     let active = true;
     try {
       const scene = new ForestRenderer(
         container.current,
         (next) => {
-          if (active) setStatus(next);
+          if (active) { currentStatus.current = next; setStatus(next); }
         },
-        (next) => {
-          if (active) setZoom(next);
-        },
+        (next) => { if (active) setZoom(next); },
+        (request) => { if (active) callbacks.current.onRevealComplete?.(request); },
+        (request) => { if (active) callbacks.current.onRevealError?.(request); },
       );
       renderer.current = scene;
       return () => {
@@ -43,14 +55,12 @@ export function ForestCanvas({
         scene.dispose();
       };
     } catch {
-      setStatus({
+      currentStatus.current = {
         phase: "error",
-        message:
-          "이 환경에서 3D 화면을 시작하지 못했어요. WebGL을 지원하는 브라우저에서 다시 시도해 주세요.",
-      });
-      return () => {
-        active = false;
+        message: "이 환경에서 3D 화면을 시작하지 못했어요. WebGL을 지원하는 브라우저에서 다시 시도해 주세요.",
       };
+      setStatus(currentStatus.current);
+      return () => { active = false; };
     }
   }, [attempt]);
 
@@ -61,8 +71,18 @@ export function ForestCanvas({
     renderer.current?.setGrid(showGrid);
   }, [showGrid, attempt]);
   useEffect(() => {
-    renderer.current?.setRevealCycle(revealCycle);
-  }, [revealCycle, attempt]);
+    renderer.current?.setHostActive(hostActive);
+  }, [hostActive, attempt]);
+  useEffect(() => {
+    if (revealRequest && currentStatus.current.phase === "error" &&
+        lastRestartedReveal.current !== revealRequest.attemptId) {
+      lastRestartedReveal.current = revealRequest.attemptId;
+      setAttempt(value => value + 1);
+      return;
+    }
+    if (!renderer.current && revealRequest) callbacks.current.onRevealError?.(revealRequest);
+    else renderer.current?.setRevealRequest(revealRequest);
+  }, [revealRequest, attempt]);
   const ready = status.phase === "ready";
 
   return (

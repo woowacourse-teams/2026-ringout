@@ -22,4 +22,9 @@ interface ForestRepository {
 
     /** Acknowledges only this reveal; other unacknowledged trees remain pending. */
     suspend fun acknowledgeTree(growthCycle: Int, acknowledgedAtEpochMillis: Long)
+
+    fun observeTreeAcknowledgementSyncState(): Flow<ForestTreeAcknowledgementSyncState> =
+        flowOf(ForestTreeAcknowledgementSyncState.Idle)
+
+    suspend fun retryTreeAcknowledgementSync() = Unit
 }

@@ -118,16 +118,153 @@ class ForestConnectionTest {
         assertEquals(200L, f.repo.state.value.onboardingCompletedAtEpochMillis)
     }
 
+    @Test fun `숲 응답을 기다리는 동안에도 현재 페이지의 가시성을 먼저 전달한다`() = runTest {
+        val f = Fixture(this)
+        val gate = CompletableDeferred<Unit>()
+        f.repo.readGate = gate
+        f.request("forest.ready", "page-ready")
+        runCurrent()
+        assertTrue(f.messages.isEmpty())
+        assertEquals("page-ready", f.visibility.single()["requestId"]!!.jsonPrimitive.content)
+        assertTrue(f.visibility.single()["active"]!!.jsonPrimitive.boolean)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals("forest.visibility", f.sentMessages.first()["type"]!!.jsonPrimitive.content)
+        assertEquals(1, f.readyCount)
+    }
+
+    @Test fun `백그라운드에서 준비한 페이지에는 비활성을 알리고 복귀 후 숲을 전달한다`() = runTest {
+        val f = Fixture(this)
+        f.connection.setActive(false)
+        f.request("forest.ready", "hidden-page")
+        runCurrent()
+        assertFalse(f.visibility.single()["active"]!!.jsonPrimitive.boolean)
+        assertTrue(f.messages.isEmpty())
+        f.connection.setActive(true)
+        runCurrent()
+        assertEquals(listOf(false, true), f.visibility.map { it["active"]!!.jsonPrimitive.boolean })
+        assertEquals(1, f.readyCount)
+    }
+
+    @Test fun `가시성 변경은 현재 페이지에만 보내고 같은 활성 상태를 반복 전송하지 않는다`() = runTest {
+        val f = Fixture(this)
+        f.request("forest.ready", "page-ready")
+        runCurrent()
+        f.connection.setActive(false)
+        f.connection.setActive(false)
+        f.connection.setActive(true)
+        f.connection.setActive(true)
+        runCurrent()
+        assertEquals(listOf(true, false, true), f.visibility.map { it["active"]!!.jsonPrimitive.boolean })
+        assertTrue(f.visibility.all { it["requestId"]!!.jsonPrimitive.content == "page-ready" })
+    }
+
+    @Test fun `같은 문서의 새 브리지는 새 준비 번호로 가시성을 받고 이전 중복 요청은 번호를 되돌리지 않는다`() = runTest {
+        val f = Fixture(this)
+        f.request("forest.ready", "old-bridge")
+        runCurrent()
+        f.request("forest.ready", "new-bridge")
+        runCurrent()
+        val count = f.visibility.size
+        f.request("forest.ready", "old-bridge")
+        runCurrent()
+        assertEquals(count, f.visibility.size)
+        f.connection.setActive(false)
+        assertEquals("new-bridge", f.visibility.last()["requestId"]!!.jsonPrimitive.content)
+        assertFalse(f.visibility.last()["active"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test fun `같은 준비 요청의 재전송에는 현재 가시성을 다시 알린다`() = runTest {
+        val f = Fixture(this)
+        f.request("forest.ready", "same")
+        runCurrent()
+        f.connection.setActive(false)
+        f.request("forest.ready", "same")
+        runCurrent()
+        assertEquals(listOf(true, false, false), f.visibility.map { it["active"]!!.jsonPrimitive.boolean })
+        f.connection.setActive(true)
+        runCurrent()
+        assertEquals(1, f.readyCount)
+    }
+
+    @Test fun `페이지 초기화와 종료 뒤에는 이전 페이지의 가시성을 보내지 않는다`() = runTest {
+        val f = Fixture(this)
+        f.request("forest.ready", "old-page")
+        runCurrent()
+        f.connection.reset()
+        val count = f.visibility.size
+        f.connection.setActive(false)
+        f.connection.setActive(true)
+        assertEquals(count, f.visibility.size)
+        f.request("forest.ready", "new-page")
+        runCurrent()
+        assertEquals("new-page", f.visibility.last()["requestId"]!!.jsonPrimitive.content)
+        f.connection.close()
+        val closedCount = f.sentMessages.size
+        f.connection.setActive(false)
+        f.connection.setActive(true)
+        runCurrent()
+        assertEquals(closedCount, f.sentMessages.size)
+    }
+
+    @Test fun `계정이 바뀌면 이전 페이지에 가시성을 전달하지 않는다`() = runTest {
+        val f = Fixture(this)
+        f.request("forest.ready")
+        runCurrent()
+        val count = f.sentMessages.size
+        f.session.startNewSession()
+        f.connection.setActive(false)
+        f.connection.setActive(true)
+        runCurrent()
+        assertEquals(count, f.sentMessages.size)
+    }
+
+    @Test fun `나무 확인 시각은 활성화나 명령 잠금 대기 이전 수신 시각을 유지한다`() = runTest {
+        val f = Fixture(this)
+        f.repo.state.value = ForestState(ForestGrowth(5), listOf(tree), 1)
+        f.request("forest.ready")
+        runCurrent()
+        f.connection.setActive(false)
+        f.time = 200
+        f.request("forest.acknowledgeTree", "tree-confirmed", 1)
+        runCurrent()
+        f.time = 900
+        f.connection.setActive(true)
+        runCurrent()
+        assertEquals(200L, f.repo.state.value.trees.single().acknowledgedAtEpochMillis)
+        assertTrue(f.messages.single { it["requestId"]!!.jsonPrimitive.content == "tree-confirmed" }["success"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test fun `나무 확인의 로컬 저장 실패는 오류를 반환하고 재시도 전에는 미확인 상태를 유지한다`() = runTest {
+        val f = Fixture(this)
+        f.repo.state.value = ForestState(ForestGrowth(5), listOf(tree), 1)
+        f.request("forest.ready")
+        runCurrent()
+        f.repo.failWrite = true
+        f.request("forest.acknowledgeTree", "failed", 1)
+        runCurrent()
+        assertNull(f.repo.state.value.trees.single().acknowledgedAtEpochMillis)
+        assertEquals("storage", f.messages.last()["error"]!!.jsonPrimitive.content)
+        f.repo.failWrite = false
+        f.request("forest.acknowledgeTree", "retry", 1)
+        runCurrent()
+        assertEquals(100L, f.repo.state.value.trees.single().acknowledgedAtEpochMillis)
+        assertEquals(1, f.repo.treeWrites)
+    }
+
     private class Fixture(scope: TestScope) {
         val repo = FakeRepository()
-        val messages = mutableListOf<JsonObject>()
+        val sentMessages = mutableListOf<JsonObject>()
+        val messages get() = sentMessages.filter { it["type"]?.jsonPrimitive?.content != "forest.visibility" }
+        val visibility get() = sentMessages.filter { it["type"]?.jsonPrimitive?.content == "forest.visibility" }
         var readyCount = 0
         var backCount = 0
         private var id = 0
         var time = 100L
-        private val viewModel = ForestViewModel(repo, scope.backgroundScope, AuthSession().apply { markAuthenticated() }) { time }
+        val session = AuthSession().apply { markAuthenticated() }
+        private val viewModel = ForestViewModel(repo, scope.backgroundScope, session) { time }
         val connection = viewModel.connect(
-            send = { messages += Json.parseToJsonElement(it).jsonObject },
+            send = { sentMessages += Json.parseToJsonElement(it).jsonObject },
             onReady = { readyCount++ }, onBack = { backCount++ }, onError = {},
         )
         init { viewModel.setActive(true) }
@@ -149,6 +286,7 @@ class ForestConnectionTest {
             state.value = state.value.copy(onboardingCompletedAtEpochMillis = state.value.onboardingCompletedAtEpochMillis ?: completedAtEpochMillis)
         }
         override suspend fun acknowledgeTree(growthCycle: Int, acknowledgedAtEpochMillis: Long) {
+            if (failWrite) error("storage failure")
             treeWrites++
             state.value = state.value.copy(trees = state.value.trees.map { if (it.growthCycle == growthCycle) it.copy(acknowledgedAtEpochMillis = it.acknowledgedAtEpochMillis ?: acknowledgedAtEpochMillis) else it })
         }

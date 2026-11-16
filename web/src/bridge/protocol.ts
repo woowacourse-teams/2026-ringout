@@ -40,6 +40,7 @@ export type AppToWebMessage = Envelope &
     | { type: "forest.snapshot"; revision: number; payload: ForestSnapshot }
     | { type: "forest.result"; success: true; revision: number; payload: ForestSnapshot }
     | { type: "forest.navigateBack" }
+    | { type: "forest.visibility"; active: boolean }
     | {
         type: "forest.result";
         success: false;

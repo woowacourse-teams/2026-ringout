@@ -42,6 +42,9 @@ internal object ForestProtocol {
             body()
         }.toString()
 
+    fun visibility(requestId: String, active: Boolean): String =
+        message("forest.visibility", requestId) { put("active", active) }
+
     // Encode the entire message as a JSON string literal; never interpolate web input as code.
     fun deliveryScript(message: String): String =
         "window.RingoutForestBridge?.receive(JSON.parse(${Json.encodeToString(message)}));"

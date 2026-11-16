@@ -26,6 +26,7 @@ internal class ForestConnection(
     private var scope = CoroutineScope(parentScope.coroutineContext + pageJob)
     private var mutex = Mutex()
     private var ready = false
+    private var readyRequestId: String? = null
     private var revision = 0L
     private var observer: Job? = null
     private val active = MutableStateFlow(true)
@@ -41,13 +42,23 @@ internal class ForestConnection(
         replies.clear()
         revision = 0
         ready = false
+        readyRequestId = null
         reloadRequested = false
     }
-    fun close() { pageJob.cancel(); ready = false }
+    fun close() { pageJob.cancel(); ready = false; readyRequestId = null }
     fun setActive(value: Boolean) {
+        val changed = active.value != value
         active.value = value
+        // Visibility must reach the web even when ordinary background delivery is paused.
+        if (changed) sendVisibility()
         if (!value) { observer?.cancel(); observer = null }
         else if (ready) observe()
+    }
+
+    private fun sendVisibility() {
+        val requestId = readyRequestId ?: return
+        if (!pageJob.isActive || reloadRequested || !canDeliver()) return
+        send(ForestProtocol.visibility(requestId, active.value))
     }
     fun back(): Boolean {
         if (!ready || !active.value || !canDeliver()) return false
@@ -72,6 +83,7 @@ internal class ForestConnection(
         }
         if (type == "forest.ready") onWebReady()
         val completedAt = if (type == "forest.completeOnboarding") now() else null
+        val acknowledgedAt = if (type == "forest.acknowledgeTree") now() else null
         val fingerprint = "$type:$cycle"
         val pageMutex = mutex
         scope.launch {
@@ -79,6 +91,7 @@ internal class ForestConnection(
                 if (type != "forest.ready") active.first { it }
                 if (reloadRequested || !canDeliver()) return@withLock
                 replies[id]?.let { (previous, reply) ->
+                    if (previous == fingerprint && type == "forest.ready" && readyRequestId == id) sendVisibility()
                     active.first { it }
                     ensureActive()
                     if (!canDeliver()) return@withLock
@@ -86,6 +99,11 @@ internal class ForestConnection(
                     return@withLock
                 }
                 if (type != "forest.ready" && !ready) { send(error("invalidRequest")); return@withLock }
+                if (type == "forest.ready") {
+                    // A web retry can replace its bridge without replacing the native WebView.
+                    readyRequestId = id
+                    sendVisibility()
+                }
                 try {
                     val readyState = if (type == "forest.ready") {
                         // The web bridge expires its ready request after 10s. Never reveal a page
@@ -113,7 +131,7 @@ internal class ForestConnection(
                         "forest.acknowledgeTree" -> {
                             val state = repository.getForest()
                             require(state.isOnboardingCompleted && state.trees.any { it.growthCycle == cycle })
-                            repository.acknowledgeTree(checkNotNull(cycle), now())
+                            repository.acknowledgeTree(checkNotNull(cycle), checkNotNull(acknowledgedAt))
                         }
                         "forest.back" -> { onBack(); return@withLock }
                     }

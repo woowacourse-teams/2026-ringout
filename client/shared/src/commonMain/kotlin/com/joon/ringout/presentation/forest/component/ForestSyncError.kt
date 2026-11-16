@@ -21,7 +21,7 @@ import com.joon.ringout.RingoutTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun ForestOnboardingSyncError(
+internal fun ForestSyncError(
     message: String,
     isRetrying: Boolean,
     onRetry: () -> Unit,
@@ -41,6 +41,6 @@ internal fun ForestOnboardingSyncError(
 
 @Preview
 @Composable
-private fun ForestOnboardingSyncErrorPreview() {
-    RingoutTheme { ForestOnboardingSyncError("시작 기록을 서버에 저장하지 못했어요.", false, {}) }
+private fun ForestSyncErrorPreview() {
+    RingoutTheme { ForestSyncError("나무 확인 기록을 서버에 저장하지 못했어요.", false, {}) }
 }

@@ -22,10 +22,13 @@ function isSnapshot(value: unknown): value is ForestSnapshot {
       time(t.plantedAtEpochMillis) && time(t.acknowledgedAtEpochMillis));
 }
 
-/** Native Room is the sole source of progress, tree kind, slot, and acknowledgment timestamps. */
+/** Native supplies authoritative progress, tree placement, and persisted confirmations. */
 export class NativeForestBridge implements ForestCommands {
   private readonly pending = new Map<string, Pending>();
   private readonly listeners = new Set<(snapshot: ForestSnapshot) => void>();
+  private readonly visibilityListeners = new Set<(active: boolean) => void>();
+  private hostActive = true;
+  private readyRequestId: string | null = null;
   private readonly session = globalThis.crypto.randomUUID();
   private nextId = 0;
   private revision = -1;
@@ -38,6 +41,12 @@ export class NativeForestBridge implements ForestCommands {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
   }
+  subscribeVisibility(listener: (active: boolean) => void): () => void {
+    if (this.closed) return () => {};
+    this.visibilityListeners.add(listener);
+    listener(this.hostActive);
+    return () => { this.visibilityListeners.delete(listener); };
+  }
   ready = () => this.request("forest.ready");
   completeOnboarding = () => this.request("forest.completeOnboarding");
   acknowledgeTree = (growthCycle: number) => this.request("forest.acknowledgeTree", { growthCycle });
@@ -48,6 +57,7 @@ export class NativeForestBridge implements ForestCommands {
   private request(type: string, payload = {}): Promise<ForestSnapshot> {
     if (this.closed) return Promise.reject(new Error("Bridge closed"));
     const requestId = this.id();
+    if (type === "forest.ready" && this.readyRequestId === null) this.readyRequestId = requestId;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
@@ -66,6 +76,14 @@ export class NativeForestBridge implements ForestCommands {
     if (this.closed || !input || typeof input !== "object") return;
     const m = input as Record<string, unknown>;
     if (m.version !== 1 || typeof m.requestId !== "string") return;
+    if (m.type === "forest.visibility") {
+      if (m.requestId !== this.readyRequestId || typeof m.active !== "boolean") return;
+      if (m.active !== this.hostActive) {
+        this.hostActive = m.active;
+        this.visibilityListeners.forEach(listener => listener(this.hostActive));
+      }
+      return;
+    }
     if (m.type === "forest.navigateBack") { this.onBack?.(); return; }
     if (m.type !== "forest.result" && m.type !== "forest.snapshot") return;
     const pending = this.pending.get(m.requestId);
@@ -91,6 +109,8 @@ export class NativeForestBridge implements ForestCommands {
     this.pending.forEach(p => { clearTimeout(p.timer); p.reject(new Error("Bridge closed")); });
     this.pending.clear();
     this.listeners.clear();
+    this.visibilityListeners.clear();
+    this.readyRequestId = null;
     this.onBack = null;
   }
 }

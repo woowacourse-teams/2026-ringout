@@ -10,6 +10,14 @@ import {
 } from "../src/preview/flowScenarios";
 import type { ForestSnapshot } from "../src/bridge/protocol";
 
+async function finishPlant(controller: ForestController): Promise<void> {
+  const planting = controller.plant();
+  const request = controller.getSnapshot().revealRequest;
+  if (request) controller.completeReveal(request);
+  await planting;
+}
+
+
 describe("온보딩과 성장 상태", () => {
   it(`처음 입장하면 두 안내를 거치고 저장 성공 후 숲에 들어간다`, async () => {
     const snapshot = createFlowSnapshot("first");
@@ -132,7 +140,7 @@ describe("나무 완성 안내", () => {
       expect(pendingTree(controller.getSnapshot().snapshot)?.growthCycle).toBe(
         cycle,
       );
-      await controller.plant();
+      await finishPlant(controller);
       expect(visibleTrees(controller.getSnapshot())).toHaveLength(cycle);
     }
     expect(pendingTree(controller.getSnapshot().snapshot)).toBeUndefined();
@@ -150,15 +158,7 @@ describe("나무 완성 안내", () => {
     const snapshot = createFlowSnapshot("pine");
     const commands = createDemoCommands(snapshot, "pine", vi.fn());
     const ack = vi.spyOn(commands, "acknowledgeTree");
-    let finish!: () => void;
-    const controller = new ForestController(
-      snapshot,
-      commands,
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
-    );
+    const controller = new ForestController(snapshot, commands);
     const planting = controller.plant();
     await controller.plant();
     expect(controller.getSnapshot().plantingCycle).toBe(1);
@@ -166,7 +166,7 @@ describe("나무 완성 안내", () => {
     expect(ack).not.toHaveBeenCalled();
     controller.back();
     expect(commands.back).not.toHaveBeenCalled();
-    finish();
+    controller.completeReveal(controller.getSnapshot().revealRequest!);
     await planting;
     expect(ack).toHaveBeenCalledExactlyOnceWith(1);
     expect(controller.getSnapshot().snapshot.growth.remainingDays).toBe(5);
@@ -177,11 +177,11 @@ describe("나무 완성 안내", () => {
       snapshot,
       createDemoCommands(snapshot, "tree-error", vi.fn()),
     );
-    await controller.plant();
+    await finishPlant(controller);
     expect(controller.getSnapshot().error).not.toBeNull();
     expect(controller.getSnapshot().snapshot.trees).toEqual(snapshot.trees);
     expect(pendingTree(controller.getSnapshot().snapshot)?.growthCycle).toBe(1);
-    await controller.plant();
+    await finishPlant(controller);
     expect(controller.getSnapshot().error).toBeNull();
     expect(controller.getSnapshot().snapshot.trees).toHaveLength(1);
     expect(controller.getSnapshot().snapshot.trees[0]).toMatchObject({
@@ -194,7 +194,7 @@ describe("나무 완성 안내", () => {
     const commands = createDemoCommands(snapshot, "oak", vi.fn());
     commands.acknowledgeTree = async () => snapshot;
     const controller = new ForestController(snapshot, commands);
-    await controller.plant();
+    await finishPlant(controller);
     expect(controller.getSnapshot().error).not.toBeNull();
     expect(pendingTree(controller.getSnapshot().snapshot)).toBeDefined();
   });
@@ -205,7 +205,7 @@ describe("나무 완성 안내", () => {
       createDemoCommands(snapshot, "full", vi.fn()),
     );
     expect(pendingTree(snapshot)?.growthCycle).toBe(16);
-    await controller.plant();
+    await finishPlant(controller);
     controller.openSheet();
     expect(visibleTrees(controller.getSnapshot())).toHaveLength(16);
     expect(controller.getSnapshot().snapshot.growth).toMatchObject({
@@ -220,8 +220,93 @@ describe("나무 완성 안내", () => {
     const commands = createDemoCommands(snapshot, "last-seed", vi.fn());
     const ack = vi.spyOn(commands, "acknowledgeTree");
     const controller = new ForestController(snapshot, commands);
-    await controller.plant();
+    await finishPlant(controller);
     expect(ack).not.toHaveBeenCalled();
     await expect(commands.acknowledgeTree(16)).rejects.toThrow();
+  });
+});
+
+
+describe("렌더러 연출 확인 수명", () => {
+  it("연출 실패는 확인 요청을 보내지 않고 새 시도로만 재시도한다", async () => {
+    const snapshot = createFlowSnapshot("pine");
+    const commands = createDemoCommands(snapshot, "pine", vi.fn());
+    const ack = vi.spyOn(commands, "acknowledgeTree");
+    const controller = new ForestController(snapshot, commands);
+    const first = controller.plant();
+    const oldRequest = controller.getSnapshot().revealRequest!;
+    controller.failReveal(oldRequest);
+    await first;
+    expect(ack).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().busy).toBe(false);
+    expect(controller.getSnapshot().error).toContain("연출");
+    const retry = controller.plant();
+    const current = controller.getSnapshot().revealRequest!;
+    expect(current.attemptId).not.toBe(oldRequest.attemptId);
+    controller.completeReveal(oldRequest);
+    controller.failReveal(oldRequest);
+    expect(ack).not.toHaveBeenCalled();
+    controller.completeReveal(current);
+    controller.completeReveal(current);
+    await retry;
+    expect(ack).toHaveBeenCalledExactlyOnceWith(1);
+  });
+  it("페이지가 끝나면 대기 연출을 취소하고 늦은 완료는 저장하지 않는다", async () => {
+    const snapshot = createFlowSnapshot("pine");
+    const commands = createDemoCommands(snapshot, "pine", vi.fn());
+    const ack = vi.spyOn(commands, "acknowledgeTree");
+    const controller = new ForestController(snapshot, commands);
+    const planting = controller.plant();
+    const request = controller.getSnapshot().revealRequest!;
+    controller.dispose();
+    controller.completeReveal(request);
+    await planting;
+    await controller.plant();
+    expect(ack).not.toHaveBeenCalled();
+  });
+  it("최종 프레임 직후 페이지가 끝나도 확인 명령을 새로 시작하지 않는다", async () => {
+    const snapshot = createFlowSnapshot("pine");
+    const commands = createDemoCommands(snapshot, "pine", vi.fn());
+    const ack = vi.spyOn(commands, "acknowledgeTree");
+    const controller = new ForestController(snapshot, commands);
+    const planting = controller.plant();
+    controller.completeReveal(controller.getSnapshot().revealRequest!);
+    controller.dispose();
+    await planting;
+    expect(ack).not.toHaveBeenCalled();
+  });
+  it("다른 회차 완료 신호와 전송 중 중복 완료 신호는 무시한다", async () => {
+    const snapshot = createFlowSnapshot("pine");
+    const commands = createDemoCommands(snapshot, "pine", vi.fn());
+    let respond!: (value: ForestSnapshot) => void;
+    const ack = vi.spyOn(commands, "acknowledgeTree").mockImplementation(() => new Promise(resolve => { respond = resolve; }));
+    const controller = new ForestController(snapshot, commands);
+    const planting = controller.plant();
+    const request = controller.getSnapshot().revealRequest!;
+    controller.completeReveal({ ...request, growthCycle: 2 });
+    expect(ack).not.toHaveBeenCalled();
+    controller.completeReveal(request);
+    await Promise.resolve();
+    controller.completeReveal(request);
+    controller.failReveal(request);
+    expect(ack).toHaveBeenCalledTimes(1);
+    respond({ ...snapshot, trees: snapshot.trees.map(tree => ({ ...tree, acknowledgedAtEpochMillis: 42 })) });
+    await planting;
+    expect(controller.getSnapshot().error).toBeNull();
+  });
+  it("앱 활성 상태 변경은 연출 시도를 바꾸거나 확인을 보내지 않는다", async () => {
+    const snapshot = createFlowSnapshot("pine");
+    const commands = createDemoCommands(snapshot, "pine", vi.fn());
+    const ack = vi.spyOn(commands, "acknowledgeTree");
+    const controller = new ForestController(snapshot, commands);
+    const planting = controller.plant();
+    const request = controller.getSnapshot().revealRequest;
+    controller.setHostActive(false);
+    expect(controller.getSnapshot().hostActive).toBe(false);
+    controller.setHostActive(true);
+    expect(controller.getSnapshot().revealRequest).toBe(request);
+    expect(ack).not.toHaveBeenCalled();
+    controller.dispose();
+    await planting;
   });
 });
