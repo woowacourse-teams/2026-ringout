@@ -1,4 +1,17 @@
 <resources>
     <string name="terms_service_document_url">https://sheer-mimosa-20f.notion.site/3b858b8d8e6c80de9724e0cd32000093?source=copy_link</string>
     <string name="terms_privacy_document_url">https://sheer-mimosa-20f.notion.site/3b858b8d8e6c80d2be23f7e4c0ff23bd?source=copy_link</string>
+    <string name="force_end_mission_button">강제 종료</string>
+    <string name="force_end_mission_continue">미션하기</string>
+    <string name="force_end_mission_end">종료하기</string>
+    <string name="force_end_mission_dialog_title_1">종료하실 건가요?</string>
+    <string name="force_end_mission_dialog_body_1">오늘 하루를 알차게 시작해봐요!</string>
+    <string name="force_end_mission_dialog_title_2">진짜요?</string>
+    <string name="force_end_mission_dialog_body_2">포기하긴 아쉬운데...</string>
+    <string name="force_end_mission_dialog_title_3">정말??</string>
+    <string name="force_end_mission_dialog_body_3">아침 시간을 활용해봐요!!</string>
+    <string name="force_end_mission_dialog_title_4">진짜 정말로??</string>
+    <string name="force_end_mission_dialog_body_4">한번 다시 생각해봐요..</string>
+    <string name="force_end_mission_dialog_title_5">그래요...</string>
+    <string name="force_end_mission_dialog_body_5">하루는 그럴 수 있죠...</string>
 </resources>

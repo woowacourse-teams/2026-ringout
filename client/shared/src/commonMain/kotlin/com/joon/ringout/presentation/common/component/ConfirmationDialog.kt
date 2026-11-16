@@ -68,6 +68,7 @@ fun ConfirmationDialog(
     layout: ConfirmationDialogLayout = ConfirmationDialogLayout(),
     annotatedDescription: AnnotatedString? = null,
     cancelOnClick: (() -> Unit)? = null,
+    cancelEnabled: Boolean = true,
     confirmEnabled: Boolean = true,
     showConfirmButton: Boolean = true,
     dismissOnBackPress: Boolean = true,
@@ -169,7 +170,9 @@ fun ConfirmationDialog(
                                 if (cancelLabel != null) {
                                     ConfirmationDialogButton(
                                         text = cancelLabel, containerColor = colors.cancel,
-                                        onClick = cancelOnClick ?: onDismiss, modifier = cancelModifier,
+                                        onClick = cancelOnClick ?: onDismiss,
+                                        enabled = cancelEnabled,
+                                        modifier = cancelModifier,
                                     )
                                 }
                                 if (showConfirmButton) {

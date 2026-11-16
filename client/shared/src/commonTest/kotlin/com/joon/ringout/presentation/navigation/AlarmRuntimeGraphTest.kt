@@ -18,9 +18,6 @@ class AlarmRuntimeGraphTest {
                 onRingingAlarmDismiss = {},
                 onActiveAlarmMissionExpired = {},
                 onActiveAlarmMissionForceEnd = {},
-                onActiveAlarmMissionForceEndHoldStarted = {},
-                onActiveAlarmMissionForceEndHoldCancelled = { _, _ -> },
-                onActiveAlarmMissionForceEndHoldCompleted = { _, _ -> },
             )
         }
         val ringingRoute = AppRoute.AlarmRinging("alarm-1")

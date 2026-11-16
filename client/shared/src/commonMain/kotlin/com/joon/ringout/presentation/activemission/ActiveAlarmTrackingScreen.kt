@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +36,8 @@ import com.joon.ringout.presentation.activemission.components.ActiveAlarmLocatio
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmMapUnavailable
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingCard
 import com.joon.ringout.presentation.activemission.components.ActiveAlarmTrackingHeader
+import com.joon.ringout.presentation.activemission.components.ForceEndMissionConfirmationDialog
+import com.joon.ringout.presentation.activemission.components.ForceEndMissionConfirmationStepCount
 import com.joon.ringout.presentation.activemission.components.activeAlarmTrackingColors
 import com.joon.ringout.presentation.destination.PlatformBackHandler
 import com.joon.ringout.presentation.home.components.formatAlarmMissionRemainingTime
@@ -51,12 +54,10 @@ fun ActiveAlarmTrackingScreen(
     locationState: MissionLocationState = DefaultMissionLocationState,
     modifier: Modifier = Modifier,
     isForceEndEnabled: Boolean = true,
-    onForceEndHoldStarted: (occurrenceId: String) -> Unit = {},
-    onForceEndHoldCancelled:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
-    onForceEndHoldCompleted:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
 ) {
+    var forceEndConfirmationStep by remember(mission.occurrenceId) {
+        mutableStateOf<Int?>(null)
+    }
     val remainingSeconds = rememberActiveAlarmMissionRemainingSeconds(
         mission = mission,
         onExpired = onExpired,
@@ -75,7 +76,18 @@ fun ActiveAlarmTrackingScreen(
     var mapError by remember(mission.occurrenceId) {
         mutableStateOf<String?>(null)
     }
-    PlatformBackHandler(onBack = onBackClick)
+    LaunchedEffect(mission.occurrenceId, isForceEndEnabled) {
+        if (!isForceEndEnabled) forceEndConfirmationStep = null
+    }
+    PlatformBackHandler(
+        onBack = {
+            if (forceEndConfirmationStep != null) {
+                forceEndConfirmationStep = null
+            } else {
+                onBackClick()
+            }
+        },
+    )
 
     ActiveAlarmTrackingLayout(
         missionOccurrenceId = mission.occurrenceId,
@@ -94,27 +106,8 @@ fun ActiveAlarmTrackingScreen(
             else -> null
         },
         onBackClick = onBackClick,
-        onForceEndHoldStarted = {
-            if (isForceEndEnabled) {
-                onForceEndHoldStarted(mission.occurrenceId)
-            }
-        },
-        onForceEndHoldCancelled = { holdDurationMillis ->
-            if (isForceEndEnabled) {
-                onForceEndHoldCancelled(
-                    mission.occurrenceId,
-                    holdDurationMillis,
-                )
-            }
-        },
-        onForceEndHoldComplete = { holdDurationMillis ->
-            if (isForceEndEnabled) {
-                onForceEndHoldCompleted(
-                    mission.occurrenceId,
-                    holdDurationMillis,
-                )
-                onForceEndClick(mission.occurrenceId)
-            }
+        onForceEndClick = {
+            if (isForceEndEnabled) forceEndConfirmationStep = 0
         },
         isForceEndEnabled = isForceEndEnabled,
         modifier = modifier,
@@ -129,6 +122,26 @@ fun ActiveAlarmTrackingScreen(
             )
         },
     )
+
+    forceEndConfirmationStep?.let { step ->
+        ForceEndMissionConfirmationDialog(
+            step = step,
+            isForceEndEnabled = isForceEndEnabled,
+            onDismiss = { forceEndConfirmationStep = null },
+            onContinueMission = { forceEndConfirmationStep = null },
+            onConfirmForceEnd = {
+                val currentStep = forceEndConfirmationStep
+                if (!isForceEndEnabled || currentStep == null) {
+                    forceEndConfirmationStep = null
+                } else if (currentStep == ForceEndMissionConfirmationStepCount - 1) {
+                    forceEndConfirmationStep = null
+                    onForceEndClick(mission.occurrenceId)
+                } else {
+                    forceEndConfirmationStep = currentStep + 1
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -139,9 +152,7 @@ private fun ActiveAlarmTrackingLayout(
     trackingStatusMessage: String?,
     mapUnavailableMessage: String?,
     onBackClick: () -> Unit,
-    onForceEndHoldStarted: () -> Unit,
-    onForceEndHoldCancelled: (holdDurationMillis: Long) -> Unit,
-    onForceEndHoldComplete: (holdDurationMillis: Long) -> Unit,
+    onForceEndClick: () -> Unit,
     isForceEndEnabled: Boolean,
     modifier: Modifier = Modifier,
     mapContent: @Composable (Modifier) -> Unit,
@@ -189,9 +200,7 @@ private fun ActiveAlarmTrackingLayout(
                 ActiveAlarmTrackingCard(
                     destinationName = destinationName,
                     countdown = countdown,
-                    onForceEndHoldStarted = onForceEndHoldStarted,
-                    onForceEndHoldCancelled = onForceEndHoldCancelled,
-                    onForceEndHoldComplete = onForceEndHoldComplete,
+                    onForceEndClick = onForceEndClick,
                     modifier = Modifier.align(Alignment.BottomCenter),
                     isForceEndEnabled = isForceEndEnabled,
                 )
@@ -267,9 +276,7 @@ private fun ActiveAlarmTrackingScreenDarkPreview() {
             trackingStatusMessage = null,
             mapUnavailableMessage = null,
             onBackClick = {},
-            onForceEndHoldStarted = {},
-            onForceEndHoldCancelled = {},
-            onForceEndHoldComplete = {},
+            onForceEndClick = {},
             isForceEndEnabled = true,
             mapContent = { mapModifier ->
                 Box(
@@ -293,9 +300,7 @@ private fun ActiveAlarmTrackingScreenLightPreview() {
             trackingStatusMessage = null,
             mapUnavailableMessage = null,
             onBackClick = {},
-            onForceEndHoldStarted = {},
-            onForceEndHoldCancelled = {},
-            onForceEndHoldComplete = {},
+            onForceEndClick = {},
             isForceEndEnabled = true,
             mapContent = { mapModifier ->
                 Box(
@@ -319,9 +324,7 @@ private fun ActiveAlarmTrackingScreenProcessingPreview() {
             trackingStatusMessage = "정확한 위치가 꺼져 있어 도착 판정이 늦어질 수 있어요.",
             mapUnavailableMessage = null,
             onBackClick = {},
-            onForceEndHoldStarted = {},
-            onForceEndHoldCancelled = {},
-            onForceEndHoldComplete = {},
+            onForceEndClick = {},
             isForceEndEnabled = false,
             mapContent = { mapModifier ->
                 Box(

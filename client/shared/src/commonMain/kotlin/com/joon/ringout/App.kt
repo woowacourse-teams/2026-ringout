@@ -109,11 +109,6 @@ fun App(
     onRingingAlarmDismiss: (String) -> Unit = {},
     onActiveAlarmMissionExpired: () -> Unit = {},
     onActiveAlarmMissionForceEnd: suspend (occurrenceId: String) -> ForceEndMissionResult = { ForceEndMissionResult.Failed },
-    onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit = { _ -> },
-    onActiveAlarmMissionForceEndHoldCancelled:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
-    onActiveAlarmMissionForceEndHoldCompleted:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit = { _, _ -> },
     pendingRoomActivityPush: RoomActivityPushRequest? = null,
     onRoomActivityPushHandled: (requestId: String) -> Unit = {},
 ) {
@@ -199,12 +194,6 @@ fun App(
                         onRingingAlarmDismiss = onRingingAlarmDismiss,
                         onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
                         onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
-                        onActiveAlarmMissionForceEndHoldStarted =
-                            onActiveAlarmMissionForceEndHoldStarted,
-                        onActiveAlarmMissionForceEndHoldCancelled =
-                            onActiveAlarmMissionForceEndHoldCancelled,
-                        onActiveAlarmMissionForceEndHoldCompleted =
-                            onActiveAlarmMissionForceEndHoldCompleted,
                     )
 
                 appBootstrapUiState.destination == AppEntryDestination.LogoutCleaning ->
@@ -226,12 +215,6 @@ fun App(
                         onRingingAlarmDismiss = onRingingAlarmDismiss,
                         onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
                         onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
-                        onActiveAlarmMissionForceEndHoldStarted =
-                            onActiveAlarmMissionForceEndHoldStarted,
-                        onActiveAlarmMissionForceEndHoldCancelled =
-                            onActiveAlarmMissionForceEndHoldCancelled,
-                        onActiveAlarmMissionForceEndHoldCompleted =
-                            onActiveAlarmMissionForceEndHoldCompleted,
                     )
 
                 appBootstrapUiState.destination == AppEntryDestination.Onboarding ->
@@ -306,12 +289,6 @@ fun App(
                         onRingingAlarmDismiss = onRingingAlarmDismiss,
                         onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
                         onActiveAlarmMissionForceEnd = onActiveAlarmMissionForceEnd,
-                        onActiveAlarmMissionForceEndHoldStarted =
-                            onActiveAlarmMissionForceEndHoldStarted,
-                        onActiveAlarmMissionForceEndHoldCancelled =
-                            onActiveAlarmMissionForceEndHoldCancelled,
-                        onActiveAlarmMissionForceEndHoldCompleted =
-                            onActiveAlarmMissionForceEndHoldCompleted,
                         pendingRoomActivityPush = pendingRoomActivityPush,
                         onRoomActivityPushHandled = onRoomActivityPushHandled,
                         onThemeModeChange = appBootstrapViewModel::setThemeMode,
@@ -436,11 +413,6 @@ private fun LimitedRuntimeContent(
     onRingingAlarmDismiss: (String) -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     onActiveAlarmMissionForceEnd: suspend (occurrenceId: String) -> ForceEndMissionResult,
-    onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit,
-    onActiveAlarmMissionForceEndHoldCancelled:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit,
-    onActiveAlarmMissionForceEndHoldCompleted:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit,
 ) {
     val forceEndViewModel = viewModel { ForceEndMissionViewModel(createSavedStateHandle()) }
     val forceEndState by forceEndViewModel.uiState.collectAsStateWithLifecycle()
@@ -463,9 +435,6 @@ private fun LimitedRuntimeContent(
                 onForceEndClick = { forceEndViewModel.request(it, onActiveAlarmMissionForceEnd) },
                 onExpired = onActiveAlarmMissionExpired,
                 isForceEndEnabled = forceEndState.phase == ForceEndPhase.Idle,
-                onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
-                onForceEndHoldCancelled = onActiveAlarmMissionForceEndHoldCancelled,
-                onForceEndHoldCompleted = onActiveAlarmMissionForceEndHoldCompleted,
             )
 
             else -> StatusSurface(
@@ -519,11 +488,6 @@ private fun RingoutAppContent(
     onRingingAlarmDismiss: (String) -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     onActiveAlarmMissionForceEnd: suspend (occurrenceId: String) -> ForceEndMissionResult,
-    onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit,
-    onActiveAlarmMissionForceEndHoldCancelled:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit,
-    onActiveAlarmMissionForceEndHoldCompleted:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     pendingRoomActivityPush: RoomActivityPushRequest?,
     onRoomActivityPushHandled: (requestId: String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
@@ -823,12 +787,6 @@ private fun RingoutAppContent(
                     onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
                     onActiveAlarmMissionForceEnd = { forceEndViewModel.request(it, onActiveAlarmMissionForceEnd) },
                     isForceEndEnabled = forceEndState.phase == ForceEndPhase.Idle,
-                    onActiveAlarmMissionForceEndHoldStarted =
-                        onActiveAlarmMissionForceEndHoldStarted,
-                    onActiveAlarmMissionForceEndHoldCancelled =
-                        onActiveAlarmMissionForceEndHoldCancelled,
-                    onActiveAlarmMissionForceEndHoldCompleted =
-                        onActiveAlarmMissionForceEndHoldCompleted,
                 )
                 arrivalGraph(
                     storeProvider = viewModelScopes.storeProvider,

@@ -39,7 +39,104 @@ class AlarmCompletionRouteTest {
         RestrictedAlarmTestActivity.pending.value = false
         RestrictedAlarmTestActivity.result = CompletableDeferred()
         RestrictedAlarmTestActivity.stopCalls = 0
+        RestrictedAlarmTestActivity.stoppedIds.clear()
         RestrictedAlarmTestActivity.backgroundCalls = 0
+    }
+
+    @Test
+    fun `종료하기를 네 번 누를 때까지 요청하지 않고 다섯 번째 입력에서 한 번 종료한다`() {
+        RestrictedAlarmTestActivity.mission.value = mission("mission")
+        val controller = Robolectric.buildActivity(RestrictedAlarmTestActivity::class.java).setup()
+        try {
+            compose.onNodeWithText("강제 종료").performClick()
+            val titles = listOf("종료하실 건가요?", "진짜요?", "정말??", "진짜 정말로??", "그래요...")
+            compose.onNodeWithText(titles.first()).assertIsDisplayed()
+
+            titles.drop(1).forEach { title ->
+                compose.onNodeWithText("종료하기").performClick()
+                compose.onNodeWithText(title).assertIsDisplayed()
+                assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
+            }
+
+            compose.onNodeWithText("종료하기").performClick()
+            compose.onNodeWithText("미션을 종료하고 있어요").assertIsDisplayed()
+            compose.onNodeWithText(titles.last()).assertDoesNotExist()
+            assertEquals(1, RestrictedAlarmTestActivity.stopCalls)
+            assertEquals(listOf("mission"), RestrictedAlarmTestActivity.stoppedIds)
+
+            compose.runOnIdle {
+                RestrictedAlarmTestActivity.result.complete(ForceEndMissionResult.Completed)
+            }
+            compose.onNodeWithText("알람이 강제 종료되었습니다.").assertIsDisplayed()
+        } finally {
+            if (!RestrictedAlarmTestActivity.result.isCompleted) {
+                RestrictedAlarmTestActivity.result.complete(ForceEndMissionResult.Failed)
+            }
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `미션하기와 시스템 뒤로가기는 확인을 닫고 다음 진입을 첫 문구로 연다`() {
+        RestrictedAlarmTestActivity.mission.value = mission("mission")
+        val controller = Robolectric.buildActivity(RestrictedAlarmTestActivity::class.java).setup()
+        try {
+            compose.onNodeWithText("강제 종료").performClick()
+            compose.onNodeWithText("종료하기").performClick()
+            compose.onNodeWithText("진짜요?").assertIsDisplayed()
+            compose.onNodeWithText("미션하기").performClick()
+            compose.onNodeWithText("진짜요?").assertDoesNotExist()
+            assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
+
+            compose.onNodeWithText("강제 종료").performClick()
+            compose.onNodeWithText("종료하실 건가요?").assertIsDisplayed()
+            compose.onNodeWithText("종료하기").performClick()
+            compose.runOnIdle { controller.get().onBackPressedDispatcher.onBackPressed() }
+            compose.onNodeWithText("진짜요?").assertDoesNotExist()
+            assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
+            assertEquals(0, RestrictedAlarmTestActivity.backgroundCalls)
+
+            compose.onNodeWithText("강제 종료").performClick()
+            compose.onNodeWithText("종료하실 건가요?").assertIsDisplayed()
+            controller.recreate()
+            compose.onNodeWithText("종료하실 건가요?").assertDoesNotExist()
+            compose.onNodeWithText("강제 종료").performClick()
+            compose.onNodeWithText("종료하실 건가요?").assertIsDisplayed()
+        } finally {
+            controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `미션 교체는 이전 확인 단계를 버리고 새 미션의 다섯 번째 입력만 종료한다`() {
+        RestrictedAlarmTestActivity.mission.value = mission("mission")
+        val controller = Robolectric.buildActivity(RestrictedAlarmTestActivity::class.java).setup()
+        try {
+            compose.onNodeWithText("강제 종료").performClick()
+            compose.onNodeWithText("종료하기").performClick()
+            compose.onNodeWithText("진짜요?").assertIsDisplayed()
+
+            compose.runOnIdle {
+                RestrictedAlarmTestActivity.mission.value = mission("mission-2")
+            }
+            compose.onNodeWithText("진짜요?").assertDoesNotExist()
+            compose.onNodeWithText("강제 종료").performClick()
+            compose.onNodeWithText("종료하실 건가요?").assertIsDisplayed()
+            assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
+
+            repeat(4) {
+                compose.onNodeWithText("종료하기").performClick()
+                assertEquals(0, RestrictedAlarmTestActivity.stopCalls)
+            }
+            compose.onNodeWithText("종료하기").performClick()
+            compose.onNodeWithText("미션을 종료하고 있어요").assertIsDisplayed()
+            assertEquals(listOf("mission-2"), RestrictedAlarmTestActivity.stoppedIds)
+        } finally {
+            if (!RestrictedAlarmTestActivity.result.isCompleted) {
+                RestrictedAlarmTestActivity.result.complete(ForceEndMissionResult.Failed)
+            }
+            controller.pause().stop().destroy()
+        }
     }
 
     @Test
@@ -123,9 +220,6 @@ class RestrictedAlarmTestActivity : ComponentActivity() {
                     onBackground = { backgroundCalls++ },
                     onExpired = {},
                     onForceEnd = ::stop,
-                    onForceEndHoldStarted = {},
-                    onForceEndHoldCancelled = { _, _ -> },
-                    onForceEndHoldCompleted = { _, _ -> },
                     onReturnToRinging = null,
                 ) { Text("업데이트 차단") }
             }
@@ -137,12 +231,22 @@ class RestrictedAlarmTestActivity : ComponentActivity() {
         val pending = MutableStateFlow(false)
         lateinit var result: CompletableDeferred<ForceEndMissionResult>
         var stopCalls = 0
+        val stoppedIds = mutableListOf<String>()
         var backgroundCalls = 0
 
         suspend fun stop(id: String): ForceEndMissionResult {
-            check(id == "mission")
+            check(id in setOf("mission", "mission-2"))
             stopCalls++
+            stoppedIds += id
             return result.await()
         }
     }
 }
+
+private fun mission(occurrenceId: String) = ActiveAlarmMission(
+    alarmId = "alarm",
+    occurrenceId = occurrenceId,
+    destinationName = "학교",
+    limitMinutes = 12,
+    expiresAtEpochMillis = System.currentTimeMillis() + 720_000,
+)
