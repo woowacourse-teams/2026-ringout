@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.forest
 
 import com.joon.ringout.domain.forest.*
+import com.joon.ringout.domain.auth.AuthSession
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -109,10 +110,12 @@ class ForestConnectionTest {
         var readyCount = 0
         var backCount = 0
         private var id = 0
-        val connection = ForestViewModel(repo, scope.backgroundScope) { 100 }.connect(
+        private val viewModel = ForestViewModel(repo, scope.backgroundScope, AuthSession().apply { markAuthenticated() }) { 100 }
+        val connection = viewModel.connect(
             send = { messages += Json.parseToJsonElement(it).jsonObject },
             onReady = { readyCount++ }, onBack = { backCount++ }, onError = {},
         )
+        init { viewModel.setActive(true) }
         fun request(type: String, requestId: String = "id-${++id}", cycle: Int? = null) {
             connection.receive(ForestProtocol.message(type, requestId) { cycle?.let { put("growthCycle", it) } })
         }

@@ -2,6 +2,8 @@
 
 관련 이슈: [#651](https://github.com/woowacourse-teams/2026-ringout/issues/651)
 
+> 아래 내용은 1단계의 로컬 숲 저장 구현 기록이다. [#705](https://github.com/woowacourse-teams/2026-ringout/issues/705)부터 실제 숲 WebView는 서버 조회 결과를 사용하며 기존 로컬 나무와 병합하지 않는다. 현재 데이터 흐름과 온보딩·확인 상태의 임시 로컬 저장은 [숲 WebView 연결 문서](forest-web-bridge.md)를 따른다. 기존 Room 테이블과 도착 저장 트랜잭션은 유지한다.
+
 ## 저장 책임
 
 앱 로컬 Room DB가 숲의 원본이다. 웹 화면 없이도 미션 성공을 저장할 때 나무를 심는다.

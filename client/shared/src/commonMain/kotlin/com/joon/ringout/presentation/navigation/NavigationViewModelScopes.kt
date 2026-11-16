@@ -100,7 +100,12 @@ private fun navigationViewModelFactory(
 ): ViewModelProvider.Factory =
     viewModelFactory {
         initializer { HomeViewModel() }
-        initializer { com.joon.ringout.presentation.forest.ForestViewModel(container.forestRepository) }
+        initializer {
+            com.joon.ringout.presentation.forest.ForestViewModel(
+                repository = container.forestRepository,
+                authSession = container.authSession,
+            )
+        }
         initializer {
             RoomListViewModel(
                 analytics = container.productAnalyticsRecorder,
