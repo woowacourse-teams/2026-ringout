@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.joon.ringout.domain.auth.AuthDiagnostics
 import com.joon.ringout.domain.auth.AuthProbeResult
+import com.joon.ringout.domain.auth.AuthTokenStatuses
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -18,6 +21,7 @@ internal enum class AuthExperiment(val title: String) {
 
 internal data class AuthExperimentUiState(
     val running: Boolean = false,
+    val tokens: AuthTokenStatuses? = null,
     val revokeStatus: String? = null,
     val results: Map<AuthExperiment, AuthProbeResult> = emptyMap(),
     val retry: AuthProbeResult? = null,
@@ -27,6 +31,24 @@ internal data class AuthExperimentUiState(
 internal class AuthExperimentViewModel(private val diagnostics: AuthDiagnostics) : ViewModel() {
     private val mutableState = MutableStateFlow(AuthExperimentUiState())
     val state = mutableState.asStateFlow()
+
+    suspend fun observeTokenStatus() {
+        while (true) {
+            refreshTokenStatus()
+            delay(1_000)
+        }
+    }
+
+    private suspend fun refreshTokenStatus() {
+        val tokens = try {
+            diagnostics.readTokenStatus()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
+        mutableState.update { it.copy(tokens = tokens) }
+    }
 
     fun revoke(refresh: Boolean) = launch {
         diagnostics.revoke(refresh)
@@ -65,6 +87,7 @@ internal class AuthExperimentViewModel(private val diagnostics: AuthDiagnostics)
                 mutableState.value = mutableState.value.copy(error = "실험 준비에 실패했어요. 로그인 상태와 서버 연결을 확인해 주세요.")
             } finally {
                 mutableState.value = mutableState.value.copy(running = false)
+                refreshTokenStatus()
             }
         }
     }

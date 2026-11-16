@@ -2,11 +2,14 @@ package com.joon.ringout.data.auth
 
 import com.joon.ringout.data.network.ApiConfig
 import com.joon.ringout.data.network.ApiException
+import com.joon.ringout.data.network.ApiJson
 import com.joon.ringout.domain.auth.AuthDiagnostics
 import com.joon.ringout.domain.auth.AuthProbeResult
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.SecureTokenStorage
+import com.joon.ringout.domain.auth.AuthTokenStatus
+import com.joon.ringout.domain.auth.AuthTokenStatuses
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
@@ -25,6 +28,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.io.IOException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlin.io.encoding.Base64
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 internal class DevelopmentAuthDiagnostics(
     private val client: HttpClient,
@@ -41,13 +50,29 @@ internal class DevelopmentAuthDiagnostics(
         return tokens.read()?.userId == expected
     }
 
+    private val revokedAccessToken = MutableStateFlow<String?>(null)
+    private val revokedRefreshToken = MutableStateFlow<String?>(null)
+
+    override suspend fun readTokenStatus(): AuthTokenStatuses? {
+        val identity = session.identity.value ?: return null
+        val current = tokens.read() ?: return null
+        if (session.identity.value !== identity || session.state.value != AuthSessionState.Authenticated) return null
+        val now = Clock.System.now()
+        return AuthTokenStatuses(
+            access = current.accessToken.status(now, revokedAccessToken.value),
+            refresh = current.refreshToken.status(now, revokedRefreshToken.value),
+        )
+    }
+
     override suspend fun revoke(refresh: Boolean) {
         check(isAvailable)
         val current = checkNotNull(tokens.read()) { "로그인이 필요해요." }
+        val token = if (refresh) current.refreshToken else current.accessToken
         val response = client.post(ApiConfig.url("/api/v1/auth/revoke")) {
-            setBody(RevokeRequest(if (refresh) current.refreshToken else current.accessToken))
+            setBody(RevokeRequest(token))
         }
         check(response.status.isSuccess()) { "폐기 실패 (HTTP ${response.status.value})" }
+        if (refresh) revokedRefreshToken.value = token else revokedAccessToken.value = token
     }
 
     override suspend fun probe(
@@ -123,3 +148,14 @@ internal class DevelopmentAuthDiagnostics(
 
 @Serializable
 private data class RevokeRequest(val token: String)
+
+private fun String.status(now: Instant, revokedToken: String?): AuthTokenStatus {
+    val expiresAt = runCatching {
+        val parts = split('.')
+        if (parts.size != 3) return@runCatching null
+        val payload = parts[1].padEnd((parts[1].length + 3) / 4 * 4, '=')
+        val claims = ApiJson.parseToJsonElement(Base64.UrlSafe.decode(payload).decodeToString()).jsonObject
+        claims["exp"]?.jsonPrimitive?.longOrNull?.let { Instant.fromEpochSeconds(it) }
+    }.getOrNull()
+    return AuthTokenStatus(expiresAt, expiresAt?.let { now >= it }, this == revokedToken)
+}

@@ -41,6 +41,7 @@ fun DeveloperToolsRoute(
                 val experiments = viewModel { AuthExperimentViewModel(authDiagnostics) }
                 val state by experiments.state.collectAsState()
                 val session by authSession.state.collectAsState()
+                LaunchedEffect(experiments) { experiments.observeTokenStatus() }
                 LaunchedEffect(session) {
                     if (session == AuthSessionState.ReauthenticationRequired) onBack()
                 }

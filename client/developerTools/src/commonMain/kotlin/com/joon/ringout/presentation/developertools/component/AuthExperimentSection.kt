@@ -14,6 +14,7 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.domain.auth.AuthProbeResult
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.auth.AuthTokenStatus
 import com.joon.ringout.presentation.developertools.AuthExperiment
 import com.joon.ringout.presentation.developertools.AuthExperimentUiState
 
@@ -37,7 +38,9 @@ internal fun AuthExperimentSection(
         Text("인증 실험", style = MaterialTheme.typography.titleLarge)
         Text("세션 · $sessionLabel")
         OutlinedButton(onClick = { onRevoke(false) }, enabled = enabled) { Text("Access 토큰 폐기") }
+        Text(state.tokens?.access.expirationSummary(), style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = { onRevoke(true) }, enabled = enabled) { Text("Refresh 토큰 폐기") }
+        Text(state.tokens?.refresh.expirationSummary(), style = MaterialTheme.typography.bodySmall)
         state.revokeStatus?.let { Text(it) }
         if (state.running) Text("실험 진행 중")
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -52,6 +55,17 @@ internal fun AuthExperimentSection(
             }
         }
     }
+}
+
+private fun AuthTokenStatus?.expirationSummary(): String {
+    val time = this?.expiresAt?.toString()?.replace('T', ' ')?.removeSuffix("Z")
+    val expiration = when (this?.expired) {
+        true -> "만료됨"
+        false -> "만료 전"
+        null -> "확인할 수 없음"
+    }
+    val revocation = if (this?.revoked == true) " · 폐기됨" else ""
+    return "${time?.let { "만료 시각 $it UTC" } ?: "만료 시각 확인 불가"} · $expiration$revocation"
 }
 
 private fun AuthProbeResult.summary(): String =
