@@ -228,68 +228,6 @@ internal class AlarmAnalytics internal constructor(
         startedAtEpochMillis = startedAtEpochMillis,
     )
 
-    fun recordForceEndHoldStarted(
-        occurrenceId: String,
-        retryAttempt: Int,
-    ) = recordForceEndHoldInteraction(
-        eventName = AnalyticsEventName.ForceEndHoldStarted,
-        occurrenceId = occurrenceId,
-        retryAttempt = retryAttempt,
-    )
-
-    fun recordForceEndHoldCancelled(
-        occurrenceId: String,
-        retryAttempt: Int,
-        holdDurationMillis: Long,
-    ) = recordForceEndHoldInteraction(
-        eventName = AnalyticsEventName.ForceEndHoldCancelled,
-        occurrenceId = occurrenceId,
-        retryAttempt = retryAttempt,
-        holdDurationMillis = holdDurationMillis,
-    )
-
-    fun recordForceEndHoldCompleted(
-        occurrenceId: String,
-        retryAttempt: Int,
-        holdDurationMillis: Long,
-    ) = recordForceEndHoldInteraction(
-        eventName = AnalyticsEventName.ForceEndHoldCompleted,
-        occurrenceId = occurrenceId,
-        retryAttempt = retryAttempt,
-        holdDurationMillis = holdDurationMillis,
-    )
-
-    private fun recordForceEndHoldInteraction(
-        eventName: AnalyticsEventName,
-        occurrenceId: String,
-        retryAttempt: Int,
-        holdDurationMillis: Long? = null,
-    ) = safelyRecord {
-        val useIndex = usageStore.findUseIndex(occurrenceId)
-            ?: return@safelyRecord
-        tracker.log(
-            AnalyticsEvent(
-                name = eventName,
-                parameters = buildMap {
-                    put(
-                        AnalyticsParameterName.UseIndex,
-                        AnalyticsParameterValue.Number(useIndex),
-                    )
-                    put(
-                        AnalyticsParameterName.RetryAttempt,
-                        AnalyticsParameterValue.Number(retryAttempt.coerceAtLeast(0).toLong()),
-                    )
-                    holdDurationMillis?.let { durationMillis ->
-                        put(
-                            AnalyticsParameterName.HoldDurationMillis,
-                            AnalyticsParameterValue.Number(durationMillis.coerceAtLeast(0L)),
-                        )
-                    }
-                },
-            ),
-        )
-    }
-
     private fun recordMissionOutcome(
         eventName: AnalyticsEventName,
         occurrenceId: String,

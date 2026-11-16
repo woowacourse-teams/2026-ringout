@@ -14,8 +14,6 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import com.joon.ringout.analytics.AlarmAnalytics
-import com.joon.ringout.analytics.ForceEndHoldAnalyticsAttempt
-import com.joon.ringout.analytics.ForceEndHoldAnalyticsAttemptStore
 import com.joon.ringout.data.alarmactivity.currentAlarmActivityTimestamp
 import com.joon.ringout.shared.R
 import java.util.concurrent.atomic.AtomicBoolean
@@ -31,7 +29,6 @@ class AlarmMissionCoordinator(context: Context) {
     private val store = ActiveAlarmMissionStore(applicationContext)
     private val alarmManager = applicationContext.getSystemService(AlarmManager::class.java)
     private val outcomeRecorder by lazy { MissionOutcomeRecorder(applicationContext) }
-    private val forceEndHoldAnalyticsAttempts = ForceEndHoldAnalyticsAttemptStore()
     private val analytics by lazy {
         runCatching { AlarmAnalytics(applicationContext) }
             .onFailure { error ->
@@ -138,53 +135,6 @@ class AlarmMissionCoordinator(context: Context) {
                 }
             }
             ForceEndMissionResult.Completed
-        }
-
-    fun recordForceEndHoldStarted(expectedOccurrenceId: String) {
-        val mission = activeTrackingMission(expectedOccurrenceId) ?: return
-        if (
-            !forceEndHoldAnalyticsAttempts.begin(
-                ForceEndHoldAnalyticsAttempt(
-                    occurrenceId = mission.occurrenceId,
-                    retryAttempt = mission.retryAttempt,
-                ),
-            )
-        ) {
-            return
-        }
-        analytics?.recordForceEndHoldStarted(
-            occurrenceId = mission.occurrenceId,
-            retryAttempt = mission.retryAttempt,
-        )
-    }
-
-    fun recordForceEndHoldCancelled(
-        expectedOccurrenceId: String,
-        holdDurationMillis: Long,
-    ) {
-        val attempt = forceEndHoldAnalyticsAttempts.finish(expectedOccurrenceId) ?: return
-        analytics?.recordForceEndHoldCancelled(
-            occurrenceId = attempt.occurrenceId,
-            retryAttempt = attempt.retryAttempt,
-            holdDurationMillis = holdDurationMillis,
-        )
-    }
-
-    fun recordForceEndHoldCompleted(
-        expectedOccurrenceId: String,
-        holdDurationMillis: Long,
-    ) {
-        val attempt = forceEndHoldAnalyticsAttempts.finish(expectedOccurrenceId) ?: return
-        analytics?.recordForceEndHoldCompleted(
-            occurrenceId = attempt.occurrenceId,
-            retryAttempt = attempt.retryAttempt,
-            holdDurationMillis = holdDurationMillis,
-        )
-    }
-
-    private fun activeTrackingMission(expectedOccurrenceId: String): ActiveAlarmMission? =
-        store.read()?.takeIf { mission ->
-            mission.occurrenceId == expectedOccurrenceId
         }
 
     internal fun prepareDeadlineLocationCheck(

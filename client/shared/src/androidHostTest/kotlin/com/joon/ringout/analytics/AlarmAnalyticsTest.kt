@@ -185,21 +185,6 @@ class AlarmAnalyticsTest {
     }
 
     @Test
-    fun forceEndHoldAttemptAllowsOneTerminalEventBeforeTheNextAttempt() {
-        val store = ForceEndHoldAnalyticsAttemptStore()
-        val attempt = ForceEndHoldAnalyticsAttempt(
-            occurrenceId = "alarm-1:1000",
-            retryAttempt = 1,
-        )
-
-        assertTrue(store.begin(attempt))
-        assertFalse(store.begin(attempt))
-        assertEquals(attempt, store.finish(attempt.occurrenceId))
-        assertNull(store.finish(attempt.occurrenceId))
-        assertTrue(store.begin(attempt))
-    }
-
-    @Test
     fun retryOccurrencesReuseTheOriginalUseIndex() {
         val store = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences())
 
@@ -305,7 +290,7 @@ class AlarmAnalyticsTest {
     }
 
     @Test
-    fun outcomeWithoutMissionStartDoesNotCreateAUseIndex() {
+    fun `강제 종료 결과는 미션 시작 인덱스를 만들지 않는다`() {
         val tracker = RecordingAnalyticsTracker()
         val analytics = AlarmAnalytics(
             tracker = tracker,
@@ -318,86 +303,7 @@ class AlarmAnalyticsTest {
             retryAttempt = 0,
             startedAtEpochMillis = 0L,
         )
-        analytics.recordForceEndHoldStarted(
-            occurrenceId = "alarm-1:1000",
-            retryAttempt = 0,
-        )
-
         assertTrue(tracker.events.isEmpty())
-    }
-
-    @Test
-    fun forceEndHoldAttemptsRecordEveryStartAndOneTerminalEvent() {
-        val tracker = RecordingAnalyticsTracker()
-        val analytics = AlarmAnalytics(
-            tracker = tracker,
-            usageStore = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences()),
-            nowEpochMillis = { 0L },
-        )
-        val occurrenceId = "alarm-1:1000"
-        analytics.recordMissionStarted(
-            occurrenceId = occurrenceId,
-            retryAttempt = 2,
-        )
-
-        analytics.recordForceEndHoldStarted(
-            occurrenceId = occurrenceId,
-            retryAttempt = 2,
-        )
-        analytics.recordForceEndHoldCancelled(
-            occurrenceId = occurrenceId,
-            retryAttempt = 2,
-            holdDurationMillis = 1_234L,
-        )
-        analytics.recordForceEndHoldStarted(
-            occurrenceId = occurrenceId,
-            retryAttempt = 2,
-        )
-        analytics.recordForceEndHoldCompleted(
-            occurrenceId = occurrenceId,
-            retryAttempt = 2,
-            holdDurationMillis = 30_015L,
-        )
-
-        assertEquals(
-            listOf(
-                AnalyticsEventName.ForceEndHoldStarted,
-                AnalyticsEventName.ForceEndHoldCancelled,
-                AnalyticsEventName.ForceEndHoldStarted,
-                AnalyticsEventName.ForceEndHoldCompleted,
-            ),
-            tracker.events.drop(1).map(AnalyticsEvent::name),
-        )
-        val commonParameterNames = setOf(
-            AnalyticsParameterName.UseIndex,
-            AnalyticsParameterName.RetryAttempt,
-        )
-        assertEquals(
-            commonParameterNames,
-            tracker.events[1].parameters.keys,
-        )
-        assertEquals(
-            commonParameterNames + AnalyticsParameterName.HoldDurationMillis,
-            tracker.events[2].parameters.keys,
-        )
-        assertEquals(
-            commonParameterNames + AnalyticsParameterName.HoldDurationMillis,
-            tracker.events[4].parameters.keys,
-        )
-        assertEquals(
-            1_234L,
-            tracker.events[2].number(AnalyticsParameterName.HoldDurationMillis),
-        )
-        assertEquals(
-            30_015L,
-            tracker.events[4].number(AnalyticsParameterName.HoldDurationMillis),
-        )
-        assertTrue(
-            tracker.events.drop(1).all { event ->
-                event.number(AnalyticsParameterName.UseIndex) == 1L &&
-                    event.number(AnalyticsParameterName.RetryAttempt) == 2L
-            },
-        )
     }
 
     @Test
@@ -434,7 +340,6 @@ class AlarmAnalyticsTest {
             AnalyticsParameterName.ScheduleType,
             AnalyticsParameterName.RepeatDayCount,
             AnalyticsParameterName.ElapsedBucket,
-            AnalyticsParameterName.HoldDurationMillis,
             AnalyticsParameterName.AlarmSoundSource,
             AnalyticsParameterName.AlarmSoundListConfirmed,
         )
