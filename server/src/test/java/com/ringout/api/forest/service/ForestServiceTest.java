@@ -9,11 +9,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
+import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.forest.domain.ForestOnboarding;
+import com.ringout.api.forest.domain.ForestTree;
+import com.ringout.api.forest.domain.TreeKind;
 import com.ringout.api.forest.dto.request.ForestOnboardingCompleteRequest;
 import com.ringout.api.forest.dto.response.ForestOnboardingCompleteResult;
+import com.ringout.api.forest.dto.response.ForestResponse;
+import com.ringout.api.forest.dto.response.ForestTreeResponse;
 import com.ringout.api.forest.repository.ForestOnboardingRepository;
+import com.ringout.api.forest.repository.ForestTreeRepository;
 import com.ringout.api.forest.status.ForestErrorStatus;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
@@ -22,6 +29,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -40,13 +48,20 @@ class ForestServiceTest {
     private ForestOnboardingRepository forestOnboardingRepository;
 
     @Mock
+    private ForestTreeRepository forestTreeRepository;
+
+    @Mock
+    private AlarmOccurrenceRepository alarmOccurrenceRepository;
+
+    @Mock
     private UserRepository userRepository;
 
     private ForestService forestService;
 
     @BeforeEach
     void setUp() {
-        forestService = new ForestService(forestOnboardingRepository, userRepository, FIXED_CLOCK);
+        forestService = new ForestService(forestOnboardingRepository, forestTreeRepository,
+            alarmOccurrenceRepository, userRepository, FIXED_CLOCK);
     }
 
     @Nested
@@ -141,6 +156,75 @@ class ForestServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(ForestErrorStatus.FOREST_UNAUTHORIZED));
             verifyNoInteractions(forestOnboardingRepository);
+        }
+    }
+
+    @Nested
+    class 숲_조회 {
+
+        @Test
+        void 도착_성공_날짜로_씨앗_성장_상태를_계산하고_온보딩과_나무를_함께_반환한다() {
+            // given
+            Long userId = 1L;
+            given(userRepository.existsById(userId)).willReturn(true);
+            given(alarmOccurrenceRepository.findActiveEndedAtsByUserIdAndEndType(userId, OccurrenceEndType.ARRIVED))
+                .willReturn(List.of(
+                    LocalDateTime.of(2026, 11, 1, 7, 0),
+                    LocalDateTime.of(2026, 11, 1, 18, 0),
+                    LocalDateTime.of(2026, 11, 2, 7, 0),
+                    LocalDateTime.of(2026, 11, 4, 7, 0)
+                ));
+            given(forestOnboardingRepository.findByUserId(userId)).willReturn(Optional.of(
+                ForestOnboarding.complete(mock(User.class), LocalDateTime.of(2026, 11, 10, 8, 0))));
+            given(forestTreeRepository.findAllByUserIdOrderByGrowthCycle(userId)).willReturn(List.of(
+                ForestTree.plant(mock(User.class), 1, TreeKind.PINE, 7, LocalDateTime.of(2026, 11, 5, 7, 48, 10))));
+
+            // when
+            ForestResponse response = forestService.getForest(userId);
+
+            // then
+            assertThat(response.growth().successfulDayCount()).isEqualTo(3);
+            assertThat(response.growth().filledSlots()).isEqualTo(3);
+            assertThat(response.growth().remainingDays()).isEqualTo(2);
+            assertThat(response.growth().isComplete()).isFalse();
+            assertThat(response.onboardingCompletedAt())
+                .isEqualTo(OffsetDateTime.parse("2026-11-10T08:00:00+09:00"));
+            assertThat(response.trees()).containsExactly(new ForestTreeResponse(1, TreeKind.PINE, 7,
+                OffsetDateTime.parse("2026-11-05T07:48:10+09:00"), null));
+        }
+
+        @Test
+        void 숲_기록이_없으면_빈_상태를_반환한다() {
+            // given
+            Long userId = 1L;
+            given(userRepository.existsById(userId)).willReturn(true);
+            given(alarmOccurrenceRepository.findActiveEndedAtsByUserIdAndEndType(userId, OccurrenceEndType.ARRIVED))
+                .willReturn(List.of());
+            given(forestOnboardingRepository.findByUserId(userId)).willReturn(Optional.empty());
+            given(forestTreeRepository.findAllByUserIdOrderByGrowthCycle(userId)).willReturn(List.of());
+
+            // when
+            ForestResponse response = forestService.getForest(userId);
+
+            // then
+            assertThat(response.growth().successfulDayCount()).isZero();
+            assertThat(response.growth().filledSlots()).isZero();
+            assertThat(response.growth().remainingDays()).isEqualTo(5);
+            assertThat(response.growth().isComplete()).isFalse();
+            assertThat(response.onboardingCompletedAt()).isNull();
+            assertThat(response.trees()).isEmpty();
+        }
+
+        @Test
+        void 인증된_사용자가_존재하지_않으면_FOREST401을_던진다() {
+            // given
+            given(userRepository.existsById(1L)).willReturn(false);
+
+            // when // then
+            assertThatThrownBy(() -> forestService.getForest(1L))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(ForestErrorStatus.FOREST_UNAUTHORIZED));
+            verifyNoInteractions(forestOnboardingRepository, forestTreeRepository, alarmOccurrenceRepository);
         }
     }
 }

@@ -6,6 +6,7 @@ import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.forest.dto.request.ForestOnboardingCompleteRequest;
 import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
 import com.ringout.api.forest.dto.response.ForestOnboardingResponse;
+import com.ringout.api.forest.dto.response.ForestResponse;
 import com.ringout.api.forest.dto.response.ForestTreeResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -21,6 +22,109 @@ import org.springframework.web.bind.annotation.PathVariable;
 
 @Tag(name = "숲 (Forest)", description = "숲 키우기 API")
 public interface ForestControllerApi {
+
+    @Operation(
+        summary = "숲 조회",
+        description = """
+            인증된 사용자의 씨앗 성장 상태, 숲 온보딩 완료 시각, 심어진 나무 목록을 조회합니다.
+            씨앗 성장 상태는 저장하지 않고 조회 시점에 서버의 도착 성공 기록으로 계산합니다.
+            - 도착 성공은 삭제되지 않은 알람 실행 기록 중 종료 유형이 ARRIVED인 기록이며, 서버 시간대 날짜 기준으로 같은 날은 하루로 셉니다.
+            - 숲 성장은 최대 80일까지 반영합니다. successfulDayCount는 80일 이후에도 계속 증가합니다.
+            - filledSlots는 성장 일수 % 5, remainingDays는 5 - filledSlots이며, 숲이 완성되면 둘 다 0입니다.
+            온보딩을 완료하지 않았으면 onboardingCompletedAt은 null, 나무가 없으면 trees는 빈 배열입니다.
+            trees는 growthCycle 오름차순이며, 나무 저장 동기화 시점에 따라 successfulDayCount / 5보다 적을 수 있습니다.
+            """,
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "숲 조회 성공. 숲 기록이 없어도 빈 상태를 반환합니다.",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "forest", value = """
+                        {
+                          "isSuccess": true,
+                          "code": "FOREST200",
+                          "message": "숲 조회에 성공했습니다.",
+                          "result": {
+                            "growth": {
+                              "successfulDayCount": 23,
+                              "filledSlots": 3,
+                              "remainingDays": 2,
+                              "isComplete": false
+                            },
+                            "onboardingCompletedAt": "2026-11-10T08:00:00+09:00",
+                            "trees": [
+                              {
+                                "growthCycle": 1,
+                                "kind": "pine",
+                                "slotIndex": 7,
+                                "plantedAt": "2026-11-05T07:48:10+09:00",
+                                "acknowledgedAt": "2026-11-10T08:01:00+09:00"
+                              },
+                              {
+                                "growthCycle": 2,
+                                "kind": "oak",
+                                "slotIndex": 12,
+                                "plantedAt": "2026-11-12T08:02:31+09:00",
+                                "acknowledgedAt": null
+                              }
+                            ]
+                          }
+                        }
+                        """),
+                    @ExampleObject(name = "emptyForest", value = """
+                        {
+                          "isSuccess": true,
+                          "code": "FOREST200",
+                          "message": "숲 조회에 성공했습니다.",
+                          "result": {
+                            "growth": {
+                              "successfulDayCount": 0,
+                              "filledSlots": 0,
+                              "remainingDays": 5,
+                              "isComplete": false
+                            },
+                            "onboardingCompletedAt": null,
+                            "trees": []
+                          }
+                        }
+                        """)
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "invalidToken", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "AUTH401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "userNotFound", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "FOREST401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """)
+                }
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<ForestResponse>> findForest(
+        @Parameter(hidden = true)
+        CustomUserDetails customUserDetails
+    );
 
     @Operation(
         summary = "숲 온보딩 완료",
