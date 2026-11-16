@@ -1,0 +1,486 @@
+:root {
+  --forest-card: #f3f5ed;
+  --forest-text: #000;
+  --forest-grown: #53ae2c;
+  --forest-overlay: rgb(0 0 0 / 87%);
+}
+.forest-app {
+  position: relative;
+  width: min(100%, 402px);
+  min-height: 100svh;
+  height: var(--forest-host-height, 100dvh);
+  margin: auto;
+  color: var(--forest-text);
+  background: linear-gradient(
+    180deg,
+    var(--sky),
+    var(--sky-mid) 49.519%,
+    var(--sky-bottom)
+  );
+  isolation: isolate;
+  overflow: auto;
+}
+.forest-app-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  height: 100%;
+}
+.forest-app-bar {
+  height: calc(61px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 10px 0;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.forest-app-bar button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  width: 44px;
+  height: 44px;
+}
+.forest-app-bar img {
+  display: block;
+}
+.forest-app h1,
+.forest-app h2,
+.tree-completion h2,
+.growth-sheet h2 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 40px;
+  margin: 0;
+}
+.forest-main-scene {
+  position: relative;
+  flex: 1;
+  min-height: 290px;
+}
+.forest-viewport.forest-viewport-app {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  border-radius: 0;
+  background: transparent;
+}
+.forest-viewport-app .scene-message {
+  background: transparent;
+}
+.forest-viewport-app .scene-error {
+  background: var(--forest-card);
+}
+.scene-accessible-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+.scene-accessible-controls .camera-controls {
+  pointer-events: none;
+}
+.scene-accessible-controls:focus-within {
+  opacity: 1;
+}
+.scene-accessible-controls:focus-within .camera-controls {
+  pointer-events: auto;
+}
+.forest-cta {
+  width: min(100%, 343px);
+  min-height: 53px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  padding: 15px 12px;
+  background: var(--orange);
+  color: var(--surface);
+  font-size: 16px;
+  font-weight: 700;
+}
+.forest-app h1:focus {
+  outline: none;
+}
+.onboarding-guide {
+  padding-top: 10px;
+  gap: 10px;
+}
+.forest-onboarding {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 24px;
+}
+.onboarding-art {
+  width: 100%;
+  height: 425px;
+  max-height: 50dvh;
+  min-height: 270px;
+  display: grid;
+  place-items: center;
+}
+.onboarding-art img {
+  width: min(100%, 338px);
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+}
+.onboarding-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  padding: 10px 20px;
+  text-align: center;
+}
+.onboarding-guide h1 {
+  font-size: 26px;
+}
+.onboarding-start h1 {
+  font-size: 28px;
+}
+.onboarding-garden {
+  width: 100%;
+  height: 402px;
+  max-height: 48dvh;
+  min-height: 270px;
+}
+.forest-badge {
+  background: var(--forest-grown);
+  color: var(--surface);
+  padding: 0 17px;
+  border-radius: 20px;
+  line-height: 38px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.onboarding-start .onboarding-copy {
+  gap: 24px;
+  padding-top: 0;
+}
+.onboarding-start .forest-badge {
+  margin-bottom: -14px;
+}
+.growth-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  min-height: 184px;
+  flex-shrink: 0;
+  padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+  border: 0;
+  border-top: 3px solid var(--orange);
+  border-radius: 15px 15px 0 0;
+  background: var(--forest-card);
+  text-align: left;
+}
+.growth-card > .card-seed {
+  width: 85px;
+  height: 85px;
+  flex-shrink: 0;
+}
+.growth-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 16px;
+  line-height: 31px;
+}
+.growth-copy > strong {
+  font-size: 22px;
+  line-height: 40px;
+}
+.growth-remaining {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 24px;
+  white-space: nowrap;
+  letter-spacing: -0.03em;
+}
+.growth-remaining b {
+  font-size: 18px;
+  color: var(--orange);
+}
+.forest-complete {
+  border-color: var(--forest-grown);
+  justify-content: center;
+  text-align: center;
+}
+.forest-complete h2 {
+  font-size: 24px;
+  margin: 4px 0;
+}
+.forest-complete strong {
+  color: var(--forest-grown);
+}
+.growth-sheet {
+  position: fixed;
+  inset: auto 0 0;
+  margin: 0 auto;
+  width: min(100%, 402px);
+  max-width: none;
+  height: 607px;
+  max-height: calc(var(--forest-host-height, 100dvh) - 61px - env(safe-area-inset-top));
+  padding: 0 10px env(safe-area-inset-bottom);
+  color: var(--forest-text);
+  border: 0;
+  border-top: 3px solid var(--orange);
+  border-radius: 15px 15px 0 0;
+  background: var(--forest-card);
+  overflow-y: auto;
+  animation: sheet-rise 240ms ease-out;
+}
+.growth-sheet::backdrop {
+  background: transparent;
+}
+.growth-sheet-closing {
+  transform: translateY(calc(100% - var(--growth-collapsed-height, 0px)));
+  animation: sheet-drop 240ms ease-in forwards;
+}
+.forest-app:has(.growth-sheet[open]) .growth-card {
+  opacity: 0;
+  pointer-events: none;
+}
+.growth-sheet-closing .growth-sheet-content,
+.growth-sheet-closing .sheet-handle {
+  opacity: 0;
+  transition: opacity 240ms ease-in;
+}
+
+.sheet-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  touch-action: none;
+}
+.sheet-handle span {
+  width: 32px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--line);
+}
+.growth-sheet-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  gap: 10px;
+  padding: 12px 0 26px;
+}
+.sheet-seed {
+  width: 273px;
+  height: 273px;
+  max-width: 100%;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.growth-sheet h2 {
+  font-size: 28px;
+  text-align: center;
+}
+.growth-sheet em {
+  color: var(--orange);
+  font-style: normal;
+}
+.growth-stamps {
+  display: flex;
+  gap: 10px;
+  padding: 7px 0;
+  width: 100%;
+  max-width: 360px;
+  justify-content: center;
+}
+.stamp-slot {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+}
+.stamp-slot img {
+  display: block;
+}
+.tree-completion {
+  position: fixed;
+  inset: 0;
+  margin: 0 auto;
+  width: min(100%, 402px);
+  max-width: none;
+  height: var(--forest-host-height, 100dvh);
+  max-height: none;
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  border: 0;
+  color: var(--surface);
+  background: var(--forest-overlay);
+  overflow: auto;
+}
+.tree-completion::backdrop {
+  background: transparent;
+}
+.completion-content {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  text-align: center;
+}
+.completion-tree {
+  height: 324px;
+  max-height: calc(var(--forest-host-height, 100dvh) * 0.42);
+  object-fit: contain;
+}
+.completion-artwork {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.completion-artwork img {
+  display: block;
+}
+.artwork-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.tree-pine {
+  width: 205px;
+}
+.tree-oak {
+  width: 324px;
+  max-width: 100%;
+}
+.tree-big_tree {
+  width: 194px;
+}
+.tree-completion h2 {
+  font-size: 28px;
+}
+.forest-error {
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 343px;
+  word-break: keep-all;
+  text-align: center;
+}
+.planting-status {
+  position: absolute;
+  inset: 61px 0 auto;
+  padding: 14px;
+  text-align: center;
+  background: var(--forest-card);
+  font-size: 14px;
+  pointer-events: none;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@keyframes sheet-rise {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes sheet-drop {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(100% - var(--growth-collapsed-height, 0px)));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .growth-sheet,
+  .growth-sheet-closing {
+    animation-duration: 1ms;
+  }
+}
+@media (max-width: 380px) {
+  .onboarding-guide h1 {
+    font-size: 22px;
+  }
+  .onboarding-start h1 {
+    font-size: 25px;
+  }
+  .growth-card {
+    padding-left: 12px;
+    padding-right: 12px;
+    gap: 4px;
+  }
+  .growth-remaining {
+    font-size: 12px;
+    white-space: normal;
+  }
+  .growth-stamps {
+    gap: 0;
+  }
+  .stamp-slot {
+    width: 58px;
+    height: 58px;
+    position: relative;
+  }
+  .stamp-slot img {
+    transform: scale(0.90625);
+    transform-origin: top left;
+  }
+}
+@media (max-height: 700px) {
+  .forest-onboarding .onboarding-art,
+  .onboarding-garden {
+    height: 300px;
+    min-height: 220px;
+  }
+  .onboarding-art img {
+    max-height: 270px;
+  }
+  .onboarding-copy {
+    gap: 18px;
+  }
+  .growth-card {
+    min-height: 150px;
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+  .growth-sheet-content {
+    padding: 0 0 12px;
+  }
+  .sheet-seed {
+    width: 200px;
+    height: 200px;
+  }
+  .growth-sheet h2 {
+    font-size: 24px;
+    line-height: 34px;
+  }
+}
+
+.forest-connection { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 24px; text-align: center; }
+.forest-connection button { border: 0; border-radius: 12px; padding: 14px 24px; background: var(--forest-primary, #93d77b); color: #152411; font: inherit; cursor: pointer; }
+
+[data-native-forest="true"] .forest-app { width: 100%; height: var(--forest-host-height, 100vh); min-height: var(--forest-host-height, 100vh); }
+
+.seed-animation { display: block; position: relative; }
+.seed-animation img, .seed-animation canvas { display: block; width: 100%; height: 100%; }
+.seed-animation canvas { position: absolute; inset: 0; }
