@@ -10,8 +10,8 @@
 -- 진짜 첫 사용 코호트로 인정한다. 기존 설치처럼 first_open이 조회 범위 밖에
 -- 있는 사용자는 이벤트가 있어도 지표에서 제외한다.
 -- force_end_hold_started, force_end_hold_cancelled, force_end_hold_completed는
--- UI 제스처 진단 이벤트이므로 이 쿼리에서 제외한다. 강제 종료 경험은 실제 상태
--- 전이가 성공한 destination_mission_force_ended만으로 계산한다.
+-- #687 이전 버전의 UI 제스처 진단 이벤트이므로 이 쿼리에서 제외한다. 강제 종료
+-- 경험은 실제 상태 전이가 성공한 destination_mission_force_ended만으로 계산한다.
 
 DECLARE observation_start_suffix STRING DEFAULT '20260101'; -- REPLACE_ME_YYYYMMDD
 DECLARE observation_end_suffix STRING DEFAULT '20260131';   -- REPLACE_ME_YYYYMMDD

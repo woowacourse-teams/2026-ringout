@@ -124,12 +124,6 @@ class MainActivity : ComponentActivity() {
                                 activeAlarmMissionLocation = activeAlarmMissionLocation,
                                 onActiveAlarmMissionExpired = ::handleActiveAlarmMissionExpired,
                                 onActiveAlarmMissionForceEnd = { handleActiveAlarmMissionForceEnd(it) },
-                                onActiveAlarmMissionForceEndHoldStarted =
-                                    alarmMissionCoordinator::recordForceEndHoldStarted,
-                                onActiveAlarmMissionForceEndHoldCancelled =
-                                    alarmMissionCoordinator::recordForceEndHoldCancelled,
-                                onActiveAlarmMissionForceEndHoldCompleted =
-                                    alarmMissionCoordinator::recordForceEndHoldCompleted,
                                 pendingRoomActivityPush = roomActivityPushViewModel.pendingRequest,
                                 onRoomActivityPushHandled = roomActivityPushViewModel::acknowledge,
                             )
@@ -155,9 +149,6 @@ class MainActivity : ComponentActivity() {
                             onBackground = { moveTaskToBack(true) },
                             onExpired = ::handleActiveAlarmMissionExpired,
                             onForceEnd = { handleActiveAlarmMissionForceEnd(it) },
-                            onForceEndHoldStarted = alarmMissionCoordinator::recordForceEndHoldStarted,
-                            onForceEndHoldCancelled = alarmMissionCoordinator::recordForceEndHoldCancelled,
-                            onForceEndHoldCompleted = alarmMissionCoordinator::recordForceEndHoldCompleted,
                             onReturnToRinging = if (ringingOccurrenceId != null) {
                                 { AlarmRingingRuntime.openRingingActivity(this) }
                             } else {

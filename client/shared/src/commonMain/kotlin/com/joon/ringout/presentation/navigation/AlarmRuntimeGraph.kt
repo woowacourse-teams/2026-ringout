@@ -18,11 +18,6 @@ internal fun EntryProviderScope<AppRoute>.alarmRuntimeGraph(
     onRingingAlarmDismiss: (String) -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     onActiveAlarmMissionForceEnd: (occurrenceId: String) -> Unit,
-    onActiveAlarmMissionForceEndHoldStarted: (occurrenceId: String) -> Unit,
-    onActiveAlarmMissionForceEndHoldCancelled:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit,
-    onActiveAlarmMissionForceEndHoldCompleted:
-        (occurrenceId: String, holdDurationMillis: Long) -> Unit,
     isForceEndEnabled: Boolean = true,
 ) {
     entry<AppRoute.AlarmRinging>(clazzContentKey = AppRoute::viewModelStoreKey) {
@@ -51,9 +46,6 @@ internal fun EntryProviderScope<AppRoute>.alarmRuntimeGraph(
                 onBackClick = { navigationState.navigate(AppRoute.Home) },
                 onForceEndClick = onActiveAlarmMissionForceEnd,
                 isForceEndEnabled = isForceEndEnabled,
-                onForceEndHoldStarted = onActiveAlarmMissionForceEndHoldStarted,
-                onForceEndHoldCancelled = onActiveAlarmMissionForceEndHoldCancelled,
-                onForceEndHoldCompleted = onActiveAlarmMissionForceEndHoldCompleted,
                 onExpired = onActiveAlarmMissionExpired,
             )
         }

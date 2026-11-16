@@ -147,12 +147,6 @@ fun MainViewControllerWithContent(
                     onActiveAlarmMissionForceEnd = { occurrenceId ->
                         alarmRuntime.requestForceEndActiveMission(occurrenceId)
                     },
-                    onActiveAlarmMissionForceEndHoldStarted =
-                        alarmRuntime::recordForceEndHoldStarted,
-                    onActiveAlarmMissionForceEndHoldCancelled =
-                        alarmRuntime::recordForceEndHoldCancelled,
-                    onActiveAlarmMissionForceEndHoldCompleted =
-                        alarmRuntime::recordForceEndHoldCompleted,
                 )
             }
         }

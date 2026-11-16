@@ -366,24 +366,6 @@ class IosAlarmRuntime internal constructor(
         )
     }
 
-    fun recordForceEndHoldStarted(occurrenceId: String) {
-        missionCoordinator.recordForceEndHoldStarted(occurrenceId)
-    }
-
-    fun recordForceEndHoldCancelled(
-        occurrenceId: String,
-        holdDurationMillis: Long,
-    ) {
-        missionCoordinator.recordForceEndHoldCancelled(occurrenceId, holdDurationMillis)
-    }
-
-    fun recordForceEndHoldCompleted(
-        occurrenceId: String,
-        holdDurationMillis: Long,
-    ) {
-        missionCoordinator.recordForceEndHoldCompleted(occurrenceId, holdDurationMillis)
-    }
-
     private suspend fun handleLocation(
         occurrenceId: String,
         location: ActiveAlarmMissionLocation,

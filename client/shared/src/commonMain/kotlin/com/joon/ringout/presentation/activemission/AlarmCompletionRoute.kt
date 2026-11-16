@@ -21,9 +21,6 @@ fun AlarmCompletionRoute(
     onBackground: () -> Unit,
     onExpired: () -> Unit,
     onForceEnd: suspend (String) -> ForceEndMissionResult,
-    onForceEndHoldStarted: (String) -> Unit,
-    onForceEndHoldCancelled: (String, Long) -> Unit,
-    onForceEndHoldCompleted: (String, Long) -> Unit,
     onReturnToRinging: (() -> Unit)?,
     blockedContent: @Composable () -> Unit,
 ) {
@@ -42,9 +39,6 @@ fun AlarmCompletionRoute(
             onForceEndClick = { forceEndViewModel.request(it, onForceEnd) },
             onExpired = onExpired,
             isForceEndEnabled = forceEndState.phase == ForceEndPhase.Idle,
-            onForceEndHoldStarted = onForceEndHoldStarted,
-            onForceEndHoldCancelled = onForceEndHoldCancelled,
-            onForceEndHoldCompleted = onForceEndHoldCompleted,
         )
     } else if (hasPendingAlarm || forceEndState.phase != ForceEndPhase.Idle) {
         AlarmCompletionWaiting(onBackground, onReturnToRinging)
