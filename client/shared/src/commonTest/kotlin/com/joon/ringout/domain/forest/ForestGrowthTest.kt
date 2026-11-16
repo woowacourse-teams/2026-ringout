@@ -9,6 +9,18 @@ import kotlin.test.assertTrue
 
 class ForestGrowthTest {
     @Test
+    fun `다섯째 성공일부터 여든째 성공일까지 다섯 날 간격으로만 식재 회차를 반환한다`() {
+        val cases = mapOf(
+            0 to null, 4 to null, 5 to 1, 6 to null, 10 to 2,
+            79 to null, 80 to 16, 81 to null, 95 to null, Int.MAX_VALUE to null,
+        )
+        for ((days, cycle) in cases) {
+            assertEquals(cycle, ForestPlantingPolicy.growthCycleToPlant(days), "성공일 $days")
+        }
+        assertFailsWith<IllegalArgumentException> { ForestPlantingPolicy.growthCycleToPlant(-1) }
+    }
+
+    @Test
     fun `성공한 날짜 다섯 개마다 나무를 심고 다음 씨앗을 바로 시작한다`() {
         val cases = listOf(
             Triple(0, 0, 0), Triple(4, 0, 4), Triple(5, 1, 0),

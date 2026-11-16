@@ -15,6 +15,8 @@ import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.forest.ForestGrowth
 import com.joon.ringout.domain.forest.ForestOnboardingSyncState
+import com.joon.ringout.domain.forest.ForestPlantingPolicy
+import com.joon.ringout.domain.forest.ForestPlantingSyncState
 import com.joon.ringout.domain.forest.ForestRepository
 import com.joon.ringout.domain.forest.ForestState
 import com.joon.ringout.domain.forest.ForestTree
@@ -37,43 +39,50 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.io.IOException
 import kotlin.time.Instant
 
-/** Server growth and trees are authoritative. Only UI confirmations have a device-local overlay. */
+/** Server growth and placements are authoritative; durable work survives the displaying page. */
 class DefaultForestRepository(
     private val httpClient: HttpClient,
     private val tokenStorage: SecureTokenStorage,
     private val authSession: AuthSession,
     private val localProgressStore: ForestLocalProgressStore,
     private val observeSyncedArrivals: (String) -> Flow<Int>,
-) : ForestRepository {
+) : ForestRepository, ForestArrivalPlanting {
     private val requests = AuthenticatedRequestExecutor(httpClient, tokenStorage, authSession)
     private val onboardingRemote = ForestOnboardingRemoteDataSource(httpClient, tokenStorage, authSession)
     private val treeRemote = ForestTreeRemoteDataSource(httpClient, tokenStorage, authSession)
     private val snapshotMutex = Mutex()
     private val snapshot = MutableStateFlow<CachedForest?>(null)
     private var refreshSequence = 0L
+    private var remoteReadSequence = 0L
+    private var publishedReadSequence = 0L
+    private var arrivalSessionIdentity: Any? = null
+    private var arrivalMutex = Mutex()
     private var deliverySessionIdentity: Any? = null
     private var deliveryMutex = Mutex()
     private var unauthorizedSessionIdentity: Any? = null
     private val sendingOnboarding = MutableStateFlow<AlarmOccurrenceAccount?>(null)
     private val sendingTree = MutableStateFlow<AlarmOccurrenceAccount?>(null)
+    private val sendingPlanting = MutableStateFlow<AlarmOccurrenceAccount?>(null)
+    private val evaluatingArrival = MutableStateFlow<AlarmOccurrenceAccount?>(null)
 
     override suspend fun refreshForest(): ForestState {
         val account = currentAccount()
-        val (sequence, missingBeforeRequest) = snapshotMutex.withLock {
+        val (sequence, readSequence, missingBeforeRequest) = snapshotMutex.withLock {
             account.checkSession(authSession)
-            ++refreshSequence to missingTreeDeliveries(localProgressStore.read(account.ownerAccountId))
+            Triple(++refreshSequence, ++remoteReadSequence, missingTreeDeliveries(localProgressStore.read(account.ownerAccountId)))
         }
         val serverState = fetchRemoteForest(account)
         return snapshotMutex.withLock {
             account.checkSession(authSession)
             if (sequence != refreshSequence) throw CancellationException("더 최근의 숲 조회가 시작됐습니다.")
-            publish(account, serverState, missingBeforeRequest)
+            publishFresh(account, serverState, readSequence, missingBeforeRequest)
         }
     }
 
@@ -222,14 +231,238 @@ class DefaultForestRepository(
         return sessionDeliveryMutex(account).withLock {
             account.checkSession(authSession)
             if (unauthorizedSessionIdentity === account.sessionIdentity) return@withLock null
+            val plantingDeadline = syncPlantingLocked(account, now)
+            if (unauthorizedSessionIdentity === account.sessionIdentity) return@withLock plantingDeadline
             val onboardingDeadline = syncOnboardingLocked(account, now)
             val progress = readProgress(account)
             if (progress.onboardingSyncStatus != ForestOnboardingDeliveryStatus.Synced ||
                 progress.onboardingCompletedAtEpochMillis == null || unauthorizedSessionIdentity === account.sessionIdentity) {
-                return@withLock onboardingDeadline
+                return@withLock listOfNotNull(plantingDeadline, onboardingDeadline).minOrNull()
             }
-            syncTreesLocked(account, now)
+            listOfNotNull(plantingDeadline, onboardingDeadline, syncTreesLocked(account, now)).minOrNull()
         }
+    }
+
+    override suspend fun recordConfirmedArrival(account: AlarmOccurrenceAccount, occurrenceId: String, arrivedAtEpochMillis: Long) {
+        require(occurrenceId.isNotBlank() && arrivedAtEpochMillis >= 0)
+        snapshotMutex.withLock {
+            account.checkSession(authSession)
+            localProgressStore.update(account.ownerAccountId) { progress ->
+                account.checkSession(authSession)
+                val existing = progress.arrivalPlantingCheckpoints[occurrenceId]
+                require(existing == null || existing.arrivedAtEpochMillis == arrivedAtEpochMillis) {
+                    "이미 확인한 도착 시각과 일치하지 않습니다."
+                }
+                if (existing != null) progress else progress.copy(
+                    arrivalPlantingCheckpoints = progress.arrivalPlantingCheckpoints +
+                        (occurrenceId to ForestArrivalPlantingCheckpoint(occurrenceId, arrivedAtEpochMillis)),
+                )
+            }
+        }
+    }
+
+    override fun observeArrivalPlantingWork(): Flow<Unit> = observeOnboardingWork()
+        .map { it?.progress?.arrivalPlantingCheckpoints }.distinctUntilChanged().map { }
+
+    override suspend fun resolvePendingArrivals(account: AlarmOccurrenceAccount, now: () -> Long): ForestArrivalPlantingGate {
+        // PUT delivery has a different mutex: a slow tree response must not delay the next arrival's GET.
+        val mutex = snapshotMutex.withLock {
+            account.checkSession(authSession)
+            if (arrivalSessionIdentity !== account.sessionIdentity) {
+                arrivalSessionIdentity = account.sessionIdentity
+                arrivalMutex = Mutex()
+            }
+            arrivalMutex
+        }
+        return mutex.withLock {
+            while (true) {
+                account.checkSession(authSession)
+                if (unauthorizedSessionIdentity === account.sessionIdentity) return@withLock ForestArrivalPlantingGate(false)
+                val checkpoint = readProgress(account).arrivalPlantingCheckpoints.values
+                    .filter { it.status != ForestArrivalPlantingStatus.Resolved }
+                    .minWithOrNull(compareBy<ForestArrivalPlantingCheckpoint> { it.arrivedAtEpochMillis }.thenBy { it.occurrenceId })
+                    ?: return@withLock ForestArrivalPlantingGate(true)
+                if (checkpoint.status == ForestArrivalPlantingStatus.Blocked) return@withLock ForestArrivalPlantingGate(false)
+                checkpoint.nextRetryAtEpochMillis?.takeIf { it > now() }?.let {
+                    return@withLock ForestArrivalPlantingGate(false, it)
+                }
+                val claimed = checkpoint.copy(attemptCount = nextAttempt(checkpoint.attemptCount), nextRetryAtEpochMillis = null, lastErrorCode = null)
+                val (readSequence, missingBeforeRequest) = snapshotMutex.withLock {
+                    account.checkSession(authSession)
+                    localProgressStore.update(account.ownerAccountId) { progress ->
+                        account.checkSession(authSession)
+                        if (progress.arrivalPlantingCheckpoints[checkpoint.occurrenceId] != checkpoint) progress
+                        else progress.copy(arrivalPlantingCheckpoints = progress.arrivalPlantingCheckpoints + (checkpoint.occurrenceId to claimed))
+                    }
+                    ++remoteReadSequence to missingTreeDeliveries(localProgressStore.read(account.ownerAccountId))
+                }
+                if (readProgress(account).arrivalPlantingCheckpoints[checkpoint.occurrenceId] != claimed) continue
+                evaluatingArrival.value = account
+                var serverConfirmed = false
+                try {
+                    // Always starts after recordConfirmedArrival. A displayed/cached GET cannot prove this checkpoint.
+                    val remote = fetchRemoteForest(account)
+                    serverConfirmed = true
+                    snapshotMutex.withLock {
+                        account.checkSession(authSession)
+                        localProgressStore.update(account.ownerAccountId) { progress ->
+                            account.checkSession(authSession)
+                            if (progress.arrivalPlantingCheckpoints[checkpoint.occurrenceId] != claimed) progress
+                            else {
+                                val days = remote.growth.successfulDayCount
+                                val cycle = ForestPlantingPolicy.growthCycleToPlant(days)?.takeIf { candidate ->
+                                    remote.trees.none { it.growthCycle == candidate } && candidate !in progress.treePlantingDeliveries
+                                }
+                                progress.copy(
+                                    arrivalPlantingCheckpoints = progress.arrivalPlantingCheckpoints + (checkpoint.occurrenceId to claimed.copy(
+                                        status = ForestArrivalPlantingStatus.Resolved, successfulDayCount = days,
+                                    )),
+                                    treePlantingDeliveries = if (cycle == null) progress.treePlantingDeliveries else progress.treePlantingDeliveries +
+                                        (cycle to ForestTreePlantingDelivery(cycle, ForestPlantingPolicy.chooseKind().persistedValue, claimed.arrivedAtEpochMillis)),
+                                )
+                            }
+                        }
+                        publishFresh(account, remote, readSequence, missingBeforeRequest)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    account.checkSession(authSession)
+                    if (serverConfirmed) throw error
+                    val unauthorized = error is ApiException && error.statusCode == 401
+                    val retryable = isTransientForestFailure(error)
+                    val updated = snapshotMutex.withLock {
+                        account.checkSession(authSession)
+                        localProgressStore.update(account.ownerAccountId) { progress ->
+                            account.checkSession(authSession)
+                            if (progress.arrivalPlantingCheckpoints[checkpoint.occurrenceId] != claimed) progress
+                            else progress.copy(arrivalPlantingCheckpoints = progress.arrivalPlantingCheckpoints + (checkpoint.occurrenceId to claimed.copy(
+                                status = if (retryable || unauthorized) ForestArrivalPlantingStatus.Pending else ForestArrivalPlantingStatus.Blocked,
+                                nextRetryAtEpochMillis = if (retryable) now() + onboardingRetryDelayMillis(claimed.attemptCount) else null,
+                                lastErrorCode = forestFailureCode(error),
+                            )))
+                        }
+                    }
+                    if (unauthorized) unauthorizedSessionIdentity = account.sessionIdentity
+                    val remaining = updated.arrivalPlantingCheckpoints[checkpoint.occurrenceId]
+                    if (remaining?.status != ForestArrivalPlantingStatus.Resolved) {
+                        return@withLock ForestArrivalPlantingGate(false, remaining?.nextRetryAtEpochMillis)
+                    }
+                } finally {
+                    if (evaluatingArrival.value == account) evaluatingArrival.value = null
+                }
+            }
+            @Suppress("UNREACHABLE_CODE")
+            ForestArrivalPlantingGate(true)
+        }
+    }
+
+    override fun observePlantingSyncState(): Flow<ForestPlantingSyncState> = combine(
+        observeOnboardingWork(), sendingPlanting, evaluatingArrival,
+    ) { work, sending, evaluating ->
+        val checkpoints = work?.progress?.arrivalPlantingCheckpoints?.values.orEmpty()
+        val deliveries = work?.progress?.treePlantingDeliveries?.values.orEmpty()
+        when {
+            work == null || work.account.sessionIdentity !== authSession.identity.value ||
+                authSession.state.value != AuthSessionState.Authenticated -> ForestPlantingSyncState.Idle
+            checkpoints.any { it.status == ForestArrivalPlantingStatus.Blocked } ||
+                deliveries.any { it.status == ForestTreePlantingDeliveryStatus.Blocked } -> ForestPlantingSyncState.Blocked
+            sending == work.account || evaluating == work.account -> ForestPlantingSyncState.Syncing
+            checkpoints.isEmpty() && deliveries.isEmpty() -> ForestPlantingSyncState.Idle
+            checkpoints.any { it.status == ForestArrivalPlantingStatus.Pending } ||
+                deliveries.any { it.status == ForestTreePlantingDeliveryStatus.Pending } -> ForestPlantingSyncState.Pending
+            else -> ForestPlantingSyncState.Synced
+        }
+    }.distinctUntilChanged()
+
+    override suspend fun retryPlantingSync() {
+        val account = currentAccount()
+        val conflicts = snapshotMutex.withLock {
+            account.checkSession(authSession)
+            localProgressStore.update(account.ownerAccountId) { progress ->
+                account.checkSession(authSession)
+                progress.copy(
+                    arrivalPlantingCheckpoints = progress.arrivalPlantingCheckpoints.mapValues { (_, checkpoint) ->
+                        if (checkpoint.status == ForestArrivalPlantingStatus.Resolved) checkpoint else checkpoint.copy(
+                            status = ForestArrivalPlantingStatus.Pending, nextRetryAtEpochMillis = null, lastErrorCode = null,
+                        )
+                    },
+                    treePlantingDeliveries = progress.treePlantingDeliveries.mapValues { (_, delivery) ->
+                        if (delivery.status == ForestTreePlantingDeliveryStatus.Synced || delivery.lastErrorCode == "FOREST409") delivery
+                        else delivery.copy(status = ForestTreePlantingDeliveryStatus.Pending, nextRetryAtEpochMillis = null, lastErrorCode = null)
+                    },
+                )
+            }.treePlantingDeliveries.values.any { it.status == ForestTreePlantingDeliveryStatus.Blocked && it.lastErrorCode == "FOREST409" }
+        }
+        if (!conflicts) return
+        // A planting conflict is not an onboarding conflict. Only server existence can resolve it.
+        val readSequence = snapshotMutex.withLock { account.checkSession(authSession); ++remoteReadSequence }
+        val remote = fetchRemoteForest(account)
+        snapshotMutex.withLock {
+            account.checkSession(authSession)
+            publishFresh(account, remote, readSequence)
+        }
+    }
+
+    private suspend fun syncPlantingLocked(account: AlarmOccurrenceAccount, now: () -> Long): Long? {
+        val cycles = readProgress(account).treePlantingDeliveries.keys.sorted()
+        for (cycle in cycles) {
+            account.checkSession(authSession)
+            if (unauthorizedSessionIdentity === account.sessionIdentity) return null
+            val candidate = readProgress(account).treePlantingDeliveries[cycle] ?: continue
+            if (candidate.status != ForestTreePlantingDeliveryStatus.Pending || candidate.nextRetryAtEpochMillis?.let { it > now() } == true) continue
+            val claimed = candidate.copy(attemptCount = nextAttempt(candidate.attemptCount), nextRetryAtEpochMillis = null, lastErrorCode = null)
+            val progress = snapshotMutex.withLock {
+                account.checkSession(authSession)
+                localProgressStore.update(account.ownerAccountId) { current ->
+                    account.checkSession(authSession)
+                    if (current.treePlantingDeliveries[cycle] != candidate) current
+                    else current.copy(treePlantingDeliveries = current.treePlantingDeliveries + (cycle to claimed))
+                }
+            }
+            if (progress.treePlantingDeliveries[cycle] != claimed) continue
+            sendingPlanting.value = account
+            var serverConfirmed = false
+            try {
+                val tree = treeRemote.plant(account, claimed)
+                snapshotMutex.withLock {
+                    account.checkSession(authSession)
+                    val cached = snapshot.value?.takeIf { it.account == account }
+                    require(cached?.serverState?.trees.orEmpty().none { it.growthCycle != tree.growthCycle && it.slotIndex == tree.slotIndex }) {
+                        "서버 나무의 칸이 다른 나무와 겹칩니다."
+                    }
+                    serverConfirmed = true
+                    reconcileTrees(account, listOf(tree))
+                    cached?.let { publish(account, it.serverState) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
+                account.checkSession(authSession)
+                if (serverConfirmed) throw error
+                val unauthorized = error is ApiException && error.statusCode == 401
+                val retryable = isTransientForestFailure(error)
+                snapshotMutex.withLock {
+                    account.checkSession(authSession)
+                    localProgressStore.update(account.ownerAccountId) { current ->
+                        account.checkSession(authSession)
+                        if (current.treePlantingDeliveries[cycle] != claimed) current
+                        else current.copy(treePlantingDeliveries = current.treePlantingDeliveries + (cycle to claimed.copy(
+                            status = if (retryable || unauthorized) ForestTreePlantingDeliveryStatus.Pending else ForestTreePlantingDeliveryStatus.Blocked,
+                            nextRetryAtEpochMillis = if (retryable) now() + onboardingRetryDelayMillis(claimed.attemptCount) else null,
+                            lastErrorCode = if (error is ApiException && error.statusCode == 409) "FOREST409" else forestFailureCode(error),
+                        )))
+                    }
+                }
+                if (unauthorized) unauthorizedSessionIdentity = account.sessionIdentity
+            } finally {
+                if (sendingPlanting.value == account) sendingPlanting.value = null
+            }
+        }
+        return readProgress(account).treePlantingDeliveries.values.filter { it.status == ForestTreePlantingDeliveryStatus.Pending }
+            .minOfOrNull { it.nextRetryAtEpochMillis ?: now() }
     }
 
     private suspend fun syncOnboardingLocked(account: AlarmOccurrenceAccount, now: () -> Long): Long? {
@@ -518,7 +751,19 @@ class DefaultForestRepository(
         account.checkSession(authSession)
         val acknowledgements = progress.acknowledgedTrees.toMutableMap()
         val deliveries = progress.treeAcknowledgementDeliveries.toMutableMap()
+        val plantings = progress.treePlantingDeliveries.toMutableMap()
         for (tree in trees) {
+            plantings[tree.growthCycle]?.let { planting ->
+                val previous = planting.confirmedTree?.toDomain()
+                val canonical = previous?.copy(acknowledgedAtEpochMillis = previous.acknowledgedAtEpochMillis ?:
+                    tree.acknowledgedAtEpochMillis.takeIf { previous.localProgressKey() == tree.localProgressKey() }) ?: tree
+                plantings[tree.growthCycle] = planting.copy(
+                    status = ForestTreePlantingDeliveryStatus.Synced,
+                    nextRetryAtEpochMillis = null,
+                    lastErrorCode = null,
+                    confirmedTree = canonical.toStoredTree(),
+                )
+            }
             val key = tree.localProgressKey()
             val current = deliveries[key]
             val serverTime = tree.acknowledgedAtEpochMillis
@@ -541,7 +786,7 @@ class DefaultForestRepository(
                 )
             }
         }
-        progress.copy(acknowledgedTrees = acknowledgements, treeAcknowledgementDeliveries = deliveries)
+        progress.copy(acknowledgedTrees = acknowledgements, treeAcknowledgementDeliveries = deliveries, treePlantingDeliveries = plantings)
     }
 
     private suspend fun currentAccount(): AlarmOccurrenceAccount =
@@ -550,6 +795,23 @@ class DefaultForestRepository(
     private fun currentSnapshot(account: AlarmOccurrenceAccount): CachedForest {
         account.checkSession(authSession)
         return checkNotNull(snapshot.value?.takeIf { it.account == account }) { "숲 기록을 먼저 불러와 주세요." }
+    }
+
+    /** GET publication order is independent of the UI refresh cancellation sequence. */
+    private suspend fun publishFresh(
+        account: AlarmOccurrenceAccount,
+        serverState: ForestState,
+        readSequence: Long,
+        missingBeforeRequest: Map<String, ForestTreeAcknowledgementDelivery> = emptyMap(),
+    ): ForestState {
+        account.checkSession(authSession)
+        val latest = snapshot.value?.takeIf { it.account == account }
+        if (latest != null && readSequence < publishedReadSequence) {
+            serverState.onboardingCompletedAtEpochMillis?.let { confirmOnboarding(account, it) }
+            reconcileTrees(account, serverState.trees, missingBeforeRequest)
+            return publish(account, latest.serverState)
+        }
+        return publish(account, serverState, missingBeforeRequest).also { publishedReadSequence = readSequence }
     }
 
     /** Called under snapshotMutex so a completed UI action cannot be rolled back by a refresh. */
@@ -564,9 +826,16 @@ class DefaultForestRepository(
         val confirmedTime = progress.onboardingCompletedAtEpochMillis.takeIf {
             progress.onboardingSyncStatus == ForestOnboardingDeliveryStatus.Synced
         }
+        val trees = serverState.trees.associateBy { it.growthCycle }.toMutableMap()
+        for (planting in progress.treePlantingDeliveries.values) {
+            if (planting.status == ForestTreePlantingDeliveryStatus.Synced) {
+                planting.confirmedTree?.toDomain()?.let { trees[it.growthCycle] = it }
+            }
+        }
+        require(trees.values.map { it.slotIndex }.distinct().size == trees.size) { "서버 나무의 칸이 겹칩니다." }
         val confirmedServerState = serverState.copy(
             onboardingCompletedAtEpochMillis = confirmedTime ?: serverState.onboardingCompletedAtEpochMillis,
-            trees = serverState.trees.map { tree ->
+            trees = trees.values.sortedBy { it.growthCycle }.map { tree ->
                 val delivery = progress.treeAcknowledgementDeliveries[tree.localProgressKey()]
                 if (delivery?.status == ForestTreeAcknowledgementDeliveryStatus.Synced) {
                     tree.copy(acknowledgedAtEpochMillis = delivery.acknowledgedAtEpochMillis)
@@ -603,6 +872,18 @@ internal fun onboardingRetryDelayMillis(attemptCount: Int): Long {
 }
 
 private data class CachedForest(val account: AlarmOccurrenceAccount, val serverState: ForestState, val state: ForestState)
+
+private fun nextAttempt(attempt: Int): Int = (attempt.toLong() + 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+
+private fun isTransientForestFailure(error: Exception): Boolean = when (error) {
+    is ApiException -> error.statusCode in setOf(408, 429) || error.statusCode in 500..599
+    is IOException, is HttpRequestTimeoutException -> true
+    else -> false
+}
+
+private fun forestFailureCode(error: Exception): String =
+    if (error is ApiException && error.statusCode == 401) "AUTH_REQUIRED"
+    else (error as? ApiException)?.code ?: if (isTransientForestFailure(error)) "NETWORK_ERROR" else "INVALID_RESPONSE"
 
 private fun ForestTreeAcknowledgementDelivery.isDeliverable(): Boolean =
     status == ForestTreeAcknowledgementDeliveryStatus.Pending || status == ForestTreeAcknowledgementDeliveryStatus.NeedsOnboarding

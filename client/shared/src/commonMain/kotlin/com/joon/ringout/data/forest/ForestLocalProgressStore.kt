@@ -61,6 +61,8 @@ data class ForestLocalProgress(
     val onboardingLastErrorCode: String? = null,
     // Absence of tree metadata means a legacy local confirmation, never an implicit pending PATCH.
     val treeAcknowledgementDeliveries: Map<String, ForestTreeAcknowledgementDelivery> = emptyMap(),
+    val arrivalPlantingCheckpoints: Map<String, ForestArrivalPlantingCheckpoint> = emptyMap(),
+    val treePlantingDeliveries: Map<Int, ForestTreePlantingDelivery> = emptyMap(),
 )
 
 class DataStoreForestLocalProgressStore(

@@ -438,7 +438,10 @@ private class SyncRemote : AlarmOccurrenceRepository {
         }
         events += event
         beforeEvent()
-        return response(occurrenceId.value)
+        return response(occurrenceId.value).copy(
+            arrivedAt = (event as? AlarmOccurrenceEvent.Arrived)?.arrivedAt,
+            forceEndedAt = (event as? AlarmOccurrenceEvent.ForceEnded)?.forceEndedAt,
+        )
     }
 }
 

@@ -7,6 +7,7 @@ import com.joon.ringout.data.auth.restoreAuthSession
 import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.connectivity.IosNetworkMonitor
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.data.forest.IosForestSyncRuntime
 import com.joon.ringout.data.network.getRingoutHttpClient
 import com.joon.ringout.alarm.IosRecordProjectionReplayResult
 import com.joon.ringout.domain.auth.getAuthSession
@@ -82,7 +83,10 @@ internal object IosAlarmOccurrenceSyncRuntime {
             }
             tokens.restoreAuthSession(session)
             val dao = getRingoutDatabase().alarmOccurrenceSyncDao()
-            val syncer = AlarmOccurrenceSyncer(dao, getRingoutHttpClient(), tokens, session)
+            val syncer = AlarmOccurrenceSyncer(
+                dao, getRingoutHttpClient(), tokens, session,
+                forestPlanting = IosForestSyncRuntime.repository,
+            )
             AlarmOccurrenceSyncCoordinator(syncer, dao, session, IosNetworkMonitor(),
                 onStorageFailure = { NSLog("AlarmOccurrence: outbox persistence failed") },
                 flush = {

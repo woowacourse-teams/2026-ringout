@@ -70,6 +70,8 @@ class DataStoreForestLocalProgressStoreTest {
         assertNull(migrated.onboardingLastErrorCode)
         assertEquals(mapOf("1:pine:7:50" to 200L), migrated.acknowledgedTrees)
         assertTrue(migrated.treeAcknowledgementDeliveries.isEmpty())
+        assertTrue(migrated.arrivalPlantingCheckpoints.isEmpty())
+        assertTrue(migrated.treePlantingDeliveries.isEmpty())
         assertEquals(migrated, store.observe("1").first())
     }
 
@@ -273,6 +275,61 @@ class DataStoreForestLocalProgressStoreTest {
         assertEquals(200L, deliveries.getValue(original.localProgressKey()).acknowledgedAtEpochMillis)
         assertEquals(300L, deliveries.getValue(replaced.localProgressKey()).acknowledgedAtEpochMillis)
         assertTrue(!deliveries.getValue(original.localProgressKey()).matches(replaced))
+    }
+
+    @Test
+    fun `식재 판단과 전송 및 서버 확정 기록은 저장소 재생성 후에도 계정별로 복구된다`() = runTest {
+        val preferences = MemoryPreferences()
+        val store = DataStoreForestLocalProgressStore(preferences)
+        for (status in ForestArrivalPlantingStatus.entries) {
+            val checkpoint = ForestArrivalPlantingCheckpoint("arrival", 100, status, 3, 5_000, "NETWORK_ERROR", 5)
+            store.update("1") { it.copy(arrivalPlantingCheckpoints = mapOf(checkpoint.occurrenceId to checkpoint)) }
+            assertEquals(checkpoint, DataStoreForestLocalProgressStore(preferences).read("1").arrivalPlantingCheckpoints["arrival"])
+        }
+        for (status in ForestTreePlantingDeliveryStatus.entries) {
+            val delivery = ForestTreePlantingDelivery(1, "pine", 100, status, 4, 9_000, "FOREST409",
+                ForestStoredTree(1, "oak", 12, 90, 200))
+            store.update("1") { it.copy(treePlantingDeliveries = mapOf(1 to delivery)) }
+            val restored = DataStoreForestLocalProgressStore(preferences).read("1")
+            assertEquals(delivery, restored.treePlantingDeliveries[1])
+            assertEquals(ForestTree(1, ForestTreeKind.Oak, 12, 90, 200), restored.treePlantingDeliveries[1]?.confirmedTree?.toDomain())
+            assertEquals(ForestArrivalPlantingStatus.Resolved, restored.arrivalPlantingCheckpoints["arrival"]?.status)
+        }
+        assertEquals(ForestLocalProgress(), store.read("2"))
+    }
+
+    @Test
+    fun `식재 판단 완료와 전송 대기는 함께 저장되고 저장 실패하면 둘 다 남지 않는다`() = runTest {
+        val preferences = MemoryPreferences()
+        val store = DataStoreForestLocalProgressStore(preferences)
+        val checkpoint = ForestArrivalPlantingCheckpoint("arrival", 100)
+        store.update("1") { it.copy(arrivalPlantingCheckpoints = mapOf("arrival" to checkpoint)) }
+        val initial = store.read("1")
+        preferences.failUpdates = true
+        assertFailsWith<IllegalStateException> {
+            store.update("1") {
+                it.copy(
+                    arrivalPlantingCheckpoints = mapOf("arrival" to checkpoint.copy(status = ForestArrivalPlantingStatus.Resolved)),
+                    treePlantingDeliveries = mapOf(1 to ForestTreePlantingDelivery(1, "pine", 100)),
+                )
+            }
+        }
+        assertEquals(initial, store.read("1"))
+    }
+
+    @Test
+    fun `나무 확인과 식재 전송 정보를 동시에 저장해도 서로의 변경을 보존한다`() = runTest {
+        val store = DataStoreForestLocalProgressStore(MemoryPreferences())
+        val tree = ForestTree(1, ForestTreeKind.Pine, 7, 100)
+        coroutineScope {
+            launch { store.acknowledgeTree("1", tree, 200) }
+            launch { store.update("1") { it.copy(treePlantingDeliveries = mapOf(2 to ForestTreePlantingDelivery(2, "oak", 300))) } }
+            launch { store.update("1") { it.copy(arrivalPlantingCheckpoints = mapOf("arrival" to ForestArrivalPlantingCheckpoint("arrival", 300))) } }
+        }
+        val restored = store.read("1")
+        assertEquals(200L, restored.acknowledgedTrees[tree.localProgressKey()])
+        assertEquals("oak", restored.treePlantingDeliveries[2]?.kind)
+        assertEquals(300L, restored.arrivalPlantingCheckpoints["arrival"]?.arrivedAtEpochMillis)
     }
 }
 

@@ -7,6 +7,7 @@ import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.data.auth.restoreAuthSession
 import com.joon.ringout.data.connectivity.AndroidNetworkMonitor
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.data.forest.AndroidForestSyncRuntime
 import com.joon.ringout.alarm.isAlarmSchedulingBlocked
 import com.joon.ringout.data.network.getRingoutHttpClient
 import com.joon.ringout.domain.auth.getAuthSession
@@ -34,7 +35,10 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
         context.getSharedPreferences("alarm_occurrence_pending", Context.MODE_PRIVATE),
     )
     private val recorder = AlarmOccurrenceEventRecorder(dao)
-    private val syncer = AlarmOccurrenceSyncer(dao, getRingoutHttpClient(), tokenStorage, authSession)
+    private val syncer = AlarmOccurrenceSyncer(
+        dao, getRingoutHttpClient(), tokenStorage, authSession,
+        forestPlanting = AndroidForestSyncRuntime.get(context).repository,
+    )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val initializationMutex = Mutex()
     private var initialized = false
