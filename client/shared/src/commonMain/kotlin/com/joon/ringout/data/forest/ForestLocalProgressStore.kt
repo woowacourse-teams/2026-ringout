@@ -7,21 +7,37 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.joon.ringout.data.network.ApiJson
 import com.joon.ringout.domain.forest.ForestState
 import com.joon.ringout.domain.forest.ForestTree
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 
-/** Pending, device-local UI confirmations until the corresponding write APIs are connected. */
+/** Account-owned onboarding delivery state and device-local tree confirmations. */
 interface ForestLocalProgressStore {
     suspend fun read(ownerAccountId: String): ForestLocalProgress
+    fun observe(ownerAccountId: String): Flow<ForestLocalProgress>
+    suspend fun update(
+        ownerAccountId: String,
+        transform: (ForestLocalProgress) -> ForestLocalProgress,
+    ): ForestLocalProgress
     suspend fun completeOnboarding(ownerAccountId: String, completedAtEpochMillis: Long)
     suspend fun acknowledgeTree(ownerAccountId: String, tree: ForestTree, acknowledgedAtEpochMillis: Long)
 }
 
 @Serializable
+enum class ForestOnboardingDeliveryStatus { Pending, Synced, Blocked }
+
+@Serializable
 data class ForestLocalProgress(
     val onboardingCompletedAtEpochMillis: Long? = null,
     val acknowledgedTrees: Map<String, Long> = emptyMap(),
+    // Existing account-keyed records have no delivery fields and are restored as pending.
+    val onboardingSyncStatus: ForestOnboardingDeliveryStatus = ForestOnboardingDeliveryStatus.Pending,
+    val onboardingAttemptCount: Int = 0,
+    val onboardingNextRetryAtEpochMillis: Long? = null,
+    val onboardingLastErrorCode: String? = null,
 )
 
 class DataStoreForestLocalProgressStore(
@@ -30,10 +46,19 @@ class DataStoreForestLocalProgressStore(
     override suspend fun read(ownerAccountId: String): ForestLocalProgress =
         decode(dataStore.data.first()[key(ownerAccountId)])
 
+    override fun observe(ownerAccountId: String): Flow<ForestLocalProgress> =
+        dataStore.data.map { decode(it[key(ownerAccountId)]) }.distinctUntilChanged()
+
     override suspend fun completeOnboarding(ownerAccountId: String, completedAtEpochMillis: Long) {
         update(ownerAccountId) { progress ->
-            progress.copy(onboardingCompletedAtEpochMillis =
-                progress.onboardingCompletedAtEpochMillis ?: completedAtEpochMillis)
+            if (progress.onboardingCompletedAtEpochMillis != null) progress
+            else progress.copy(
+                onboardingCompletedAtEpochMillis = completedAtEpochMillis,
+                onboardingSyncStatus = ForestOnboardingDeliveryStatus.Pending,
+                onboardingAttemptCount = 0,
+                onboardingNextRetryAtEpochMillis = null,
+                onboardingLastErrorCode = null,
+            )
         }
     }
 
@@ -45,11 +70,15 @@ class DataStoreForestLocalProgressStore(
         }
     }
 
-    private suspend fun update(ownerAccountId: String, transform: (ForestLocalProgress) -> ForestLocalProgress) {
+    override suspend fun update(
+        ownerAccountId: String,
+        transform: (ForestLocalProgress) -> ForestLocalProgress,
+    ): ForestLocalProgress {
         val key = key(ownerAccountId)
-        dataStore.edit { preferences ->
+        val saved = dataStore.edit { preferences ->
             preferences[key] = ApiJson.encodeToString(transform(decode(preferences[key])))
         }
+        return decode(saved[key])
     }
 
     private fun key(ownerAccountId: String) = stringPreferencesKey("forest_pending_progress_$ownerAccountId")

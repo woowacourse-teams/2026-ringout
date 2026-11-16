@@ -444,6 +444,9 @@ private class ForestTestTokens : SecureTokenStorage {
 private class MemoryForestProgress : ForestLocalProgressStore {
     private val progress = mutableMapOf<String, ForestLocalProgress>()
     override suspend fun read(ownerAccountId: String) = progress[ownerAccountId] ?: ForestLocalProgress()
+    override fun observe(ownerAccountId: String) = kotlinx.coroutines.flow.flow { emit(read(ownerAccountId)) }
+    override suspend fun update(ownerAccountId: String, transform: (ForestLocalProgress) -> ForestLocalProgress): ForestLocalProgress =
+        transform(read(ownerAccountId)).also { progress[ownerAccountId] = it }
     override suspend fun completeOnboarding(ownerAccountId: String, completedAtEpochMillis: Long) {
         val old = read(ownerAccountId)
         progress[ownerAccountId] = old.copy(onboardingCompletedAtEpochMillis = old.onboardingCompletedAtEpochMillis ?: completedAtEpochMillis)

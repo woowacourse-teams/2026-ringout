@@ -39,6 +39,7 @@ import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.outbox.RoomOutboxReader
 import com.joon.ringout.data.forest.DataStoreForestLocalProgressStore
 import com.joon.ringout.data.forest.DefaultForestRepository
+import com.joon.ringout.data.forest.ForestOnboardingSyncCoordinator
 import com.joon.ringout.data.member.DefaultMemberRepository
 import com.joon.ringout.data.room.DefaultRoomRepository
 import com.joon.ringout.data.missionhistory.RoomRecordsHistoryRepository
@@ -186,6 +187,7 @@ class AndroidAppContainer(
     override fun onAppResumed() {
         destinationSyncCoordinator.requestSync()
         alarmSyncCoordinator.requestSync()
+        forestOnboardingSyncCoordinator.requestSync()
     }
 
     override val alarmActivityRepository =
@@ -236,6 +238,16 @@ class AndroidAppContainer(
             localProgressStore = DataStoreForestLocalProgressStore(getAppPreferencesDataStore(context)),
             observeSyncedArrivals = database.alarmOccurrenceSyncDao()::observeSuccessfulArrivalSyncs,
         )
+
+    private val forestOnboardingSyncCoordinator = ForestOnboardingSyncCoordinator(
+        repository = forestRepository,
+        authSession = authSession,
+        networkMonitor = networkMonitor,
+    )
+
+    init {
+        forestOnboardingSyncCoordinator.start(applicationScope)
+    }
 
     override val productAnalyticsRecorder =
         createProductAnalyticsRecorder(context)
