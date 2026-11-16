@@ -21,7 +21,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @DataJpaTest(properties = {
     "spring.test.database.replace=none",
-    "spring.datasource.url=jdbc:tc:mysql:8.4:///ringout",
+    "spring.datasource.url=jdbc:tc:mysql:8.4:///ringout_withdrawal",
     "spring.datasource.driver-class-name=org.testcontainers.jdbc.ContainerDatabaseDriver",
     "spring.datasource.username=test",
     "spring.datasource.password=test",
