@@ -756,30 +756,6 @@ class IosAlarmMissionCoordinator(
         }
     }
 
-    fun recordForceEndHoldStarted(occurrenceId: String) {
-        val mission = activeMission.value?.takeIf { it.occurrenceId == occurrenceId } ?: return
-        analytics?.recordForceEndHoldStarted(
-            occurrenceId = mission.occurrenceId,
-            retryAttempt = mission.retryAttempt,
-        )
-    }
-
-    fun recordForceEndHoldCancelled(
-        occurrenceId: String,
-        holdDurationMillis: Long,
-    ) {
-        if (activeMission.value?.occurrenceId != occurrenceId) return
-        analytics?.recordForceEndHoldCancelled(occurrenceId, holdDurationMillis)
-    }
-
-    fun recordForceEndHoldCompleted(
-        occurrenceId: String,
-        holdDurationMillis: Long,
-    ) {
-        if (activeMission.value?.occurrenceId != occurrenceId) return
-        analytics?.recordForceEndHoldCompleted(occurrenceId, holdDurationMillis)
-    }
-
     suspend fun ensureDeadlineAlarm() = mutex.withLock {
         activeMission.value?.let { mission -> ensureDeadlineAlarmLocked(mission) }
     }

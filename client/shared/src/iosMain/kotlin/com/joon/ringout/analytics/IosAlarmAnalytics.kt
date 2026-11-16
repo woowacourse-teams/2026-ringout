@@ -14,9 +14,6 @@ interface IosAlarmAnalyticsRecorder {
     fun recordMissionCompleted(occurrenceId: String, retryAttempt: Int, startedAtEpochMillis: Long)
     fun recordMissionExpired(occurrenceId: String, retryAttempt: Int, startedAtEpochMillis: Long)
     fun recordMissionForceEnded(occurrenceId: String, retryAttempt: Int, startedAtEpochMillis: Long)
-    fun recordForceEndHoldStarted(occurrenceId: String, retryAttempt: Int)
-    fun recordForceEndHoldCancelled(occurrenceId: String, holdDurationMillis: Long)
-    fun recordForceEndHoldCompleted(occurrenceId: String, holdDurationMillis: Long)
 }
 
 internal class IosAlarmAnalytics(
@@ -25,7 +22,6 @@ internal class IosAlarmAnalytics(
     private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val roomMembership: RoomMembershipAnalytics? = null,
 ) : IosAlarmAnalyticsRecorder {
-    private val forceEndHoldAttempts = mutableMapOf<String, Int>()
 
     fun recordAlarmCreated(
         request: AlarmScheduleRequest,
@@ -138,72 +134,6 @@ internal class IosAlarmAnalytics(
         retryAttempt = retryAttempt,
         startedAtEpochMillis = startedAtEpochMillis,
     )
-
-    override fun recordForceEndHoldStarted(
-        occurrenceId: String,
-        retryAttempt: Int,
-    ) = safelyRecord {
-        if (occurrenceId in forceEndHoldAttempts) return@safelyRecord
-        forceEndHoldAttempts[occurrenceId] = retryAttempt
-        recordForceEndHoldInteraction(
-            name = ForceEndHoldStarted,
-            occurrenceId = occurrenceId,
-            retryAttempt = retryAttempt,
-        )
-    }
-
-    override fun recordForceEndHoldCancelled(
-        occurrenceId: String,
-        holdDurationMillis: Long,
-    ) = finishForceEndHold(
-        name = ForceEndHoldCancelled,
-        occurrenceId = occurrenceId,
-        holdDurationMillis = holdDurationMillis,
-    )
-
-    override fun recordForceEndHoldCompleted(
-        occurrenceId: String,
-        holdDurationMillis: Long,
-    ) = finishForceEndHold(
-        name = ForceEndHoldCompleted,
-        occurrenceId = occurrenceId,
-        holdDurationMillis = holdDurationMillis,
-    )
-
-    private fun finishForceEndHold(
-        name: String,
-        occurrenceId: String,
-        holdDurationMillis: Long,
-    ) = safelyRecord {
-        val retryAttempt = forceEndHoldAttempts.remove(occurrenceId) ?: return@safelyRecord
-        recordForceEndHoldInteraction(
-            name = name,
-            occurrenceId = occurrenceId,
-            retryAttempt = retryAttempt,
-            holdDurationMillis = holdDurationMillis,
-        )
-    }
-
-    private fun recordForceEndHoldInteraction(
-        name: String,
-        occurrenceId: String,
-        retryAttempt: Int,
-        holdDurationMillis: Long? = null,
-    ) {
-        val useIndex = usageStore.findUseIndex(occurrenceId) ?: return
-        tracker.log(
-            analyticsEvent(
-                name = name,
-                numberParameters = buildMap {
-                    put(UseIndex, useIndex)
-                    put(RetryAttempt, retryAttempt.coerceAtLeast(0).toLong())
-                    holdDurationMillis?.let {
-                        put(HoldDurationMillis, it.coerceAtLeast(0L))
-                    }
-                },
-            ),
-        )
-    }
 
     private fun recordOccurrenceEvent(
         name: String,
@@ -355,9 +285,6 @@ private const val DestinationMissionStarted = "destination_mission_started"
 private const val DestinationMissionCompleted = "destination_mission_completed"
 private const val DestinationMissionExpired = "destination_mission_expired"
 private const val DestinationMissionForceEnded = "destination_mission_force_ended"
-private const val ForceEndHoldStarted = "force_end_hold_started"
-private const val ForceEndHoldCancelled = "force_end_hold_cancelled"
-private const val ForceEndHoldCompleted = "force_end_hold_completed"
 
 private const val CreationIndex = "creation_index"
 private const val SettingsSchemaVersion = "settings_schema_version"
@@ -369,7 +296,6 @@ private const val RetryAttempt = "retry_attempt"
 private const val ScheduleType = "schedule_type"
 private const val RepeatDayCount = "repeat_day_count"
 private const val ElapsedBucket = "elapsed_bucket"
-private const val HoldDurationMillis = "hold_duration_ms"
 
 private const val Once = "once"
 private const val Weekly = "weekly"

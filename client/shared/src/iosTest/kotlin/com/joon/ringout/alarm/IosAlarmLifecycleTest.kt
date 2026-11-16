@@ -2847,9 +2847,6 @@ private class ForceEndLifecycleAnalytics : com.joon.ringout.analytics.IosAlarmAn
     override fun recordMissionCompleted(occurrenceId: String, retryAttempt: Int, startedAtEpochMillis: Long) = Unit
     override fun recordMissionExpired(occurrenceId: String, retryAttempt: Int, startedAtEpochMillis: Long) = Unit
     override fun recordMissionForceEnded(occurrenceId: String, retryAttempt: Int, startedAtEpochMillis: Long) { forceEnds++ }
-    override fun recordForceEndHoldStarted(occurrenceId: String, retryAttempt: Int) = Unit
-    override fun recordForceEndHoldCancelled(occurrenceId: String, holdDurationMillis: Long) = Unit
-    override fun recordForceEndHoldCompleted(occurrenceId: String, holdDurationMillis: Long) = Unit
 }
 
 /** Native command boundary fake: it never inserts a legacy event or schedules through Kotlin. */
