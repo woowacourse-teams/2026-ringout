@@ -4,6 +4,7 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.SwaggerConfig;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.forest.dto.request.ForestOnboardingCompleteRequest;
+import com.ringout.api.forest.dto.request.ForestTreeAcknowledgeRequest;
 import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
 import com.ringout.api.forest.dto.response.ForestOnboardingResponse;
 import com.ringout.api.forest.dto.response.ForestResponse;
@@ -410,5 +411,169 @@ public interface ForestControllerApi {
             )
         )
         ForestTreePlantRequest request
+    );
+
+    @Operation(
+        summary = "나무 확인",
+        description = """
+            인증된 사용자와 경로의 growthCycle 조합으로 나무를 식별해 획득 연출을 확인한 시각을 저장합니다.
+            - 확인 시각이 없으면 요청 시각을 저장하고 "나무 확인에 성공했습니다."를 반환합니다.
+            - 이미 확인 시각이 있으면 요청 값을 반영하지 않고 처음 저장된 시각을 "나무 동기화에 성공했습니다."로 반환합니다.
+            두 경우 모두 200이며, result는 요청 값이 아니라 서버에 최종 저장된 나무 정보입니다.
+            acknowledgedAt만 수정하며 나무의 다른 필드와 다른 나무의 확인 상태는 바꾸지 않습니다.
+            해당 회차의 나무가 없으면 404, 숲 온보딩을 완료하지 않았으면 409를 반환하며 나무를 생성하지 않습니다.
+            acknowledgedAt은 서버 시간대로 변환해 초 단위까지 저장합니다.
+            같은 나무에 대한 동시 요청에서도 처음 처리된 요청의 시각만 저장됩니다.
+            나무 심기(PUT /api/v1/forest/trees/{growthCycle})와 숲 온보딩 완료(PUT /api/v1/forest/onboarding)가 먼저 완료되어야 합니다.
+            """,
+        security = @SecurityRequirement(name = SwaggerConfig.BEARER_AUTH)
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "확인 시각 저장 또는 이미 확인되어 변경 없음. 모두 서버에 최종 저장된 나무 정보를 반환합니다.",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "acknowledged", value = """
+                        {
+                          "isSuccess": true,
+                          "code": "FOREST200",
+                          "message": "나무 확인에 성공했습니다.",
+                          "result": {
+                            "growthCycle": 1,
+                            "kind": "pine",
+                            "slotIndex": 7,
+                            "plantedAt": "2026-11-05T07:48:10+09:00",
+                            "acknowledgedAt": "2026-11-10T08:01:00+09:00"
+                          }
+                        }
+                        """),
+                    @ExampleObject(name = "alreadyAcknowledged", value = """
+                        {
+                          "isSuccess": true,
+                          "code": "FOREST200",
+                          "message": "나무 동기화에 성공했습니다.",
+                          "result": {
+                            "growthCycle": 1,
+                            "kind": "pine",
+                            "slotIndex": 7,
+                            "plantedAt": "2026-11-05T07:48:10+09:00",
+                            "acknowledgedAt": "2026-11-10T08:01:00+09:00"
+                          }
+                        }
+                        """)
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = """
+                요청 오류.
+                JSON이 깨졌거나 acknowledgedAt이 ISO-8601 offset 시각 형식이 아니면 요청 바인딩 단계에서 COMMON400을 반환합니다.
+                growthCycle이 1~16의 정수가 아니거나, 요청 본문 또는 acknowledgedAt이 없으면 FOREST400을 반환합니다.
+                """,
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "malformedRequestBody", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "COMMON400",
+                          "message": "잘못된 요청입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "invalidAcknowledgeRequest", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "FOREST400",
+                          "message": "나무 확인 요청 정보가 올바르지 않습니다.",
+                          "result": null
+                        }
+                        """)
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "인증되지 않은 사용자",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(name = "invalidToken", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "AUTH401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """),
+                    @ExampleObject(name = "userNotFound", value = """
+                        {
+                          "isSuccess": false,
+                          "code": "FOREST401",
+                          "message": "인증되지 않은 사용자입니다.",
+                          "result": null
+                        }
+                        """)
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "해당 회차의 나무가 서버에 없음",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "FOREST404",
+                      "message": "나무를 찾을 수 없습니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "409",
+            description = "숲 온보딩을 완료하지 않음",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                    {
+                      "isSuccess": false,
+                      "code": "FOREST409",
+                      "message": "숲 온보딩을 완료하지 않았습니다.",
+                      "result": null
+                    }
+                    """)
+            )
+        )
+    })
+    ResponseEntity<CustomResponse<ForestTreeResponse>> acknowledgeTree(
+        @Parameter(hidden = true)
+        CustomUserDetails customUserDetails,
+        @Parameter(
+            description = "확인한 나무의 획득 회차 (1~16)",
+            required = true,
+            schema = @Schema(type = "integer", minimum = "1", maximum = "16", example = "1")
+        )
+        @PathVariable
+        String growthCycle,
+        @io.swagger.v3.oas.annotations.parameters.RequestBody(
+            required = true,
+            description = "나무 획득 연출을 확인한 시각",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ForestTreeAcknowledgeRequest.class),
+                examples = @ExampleObject(value = """
+                    {
+                      "acknowledgedAt": "2026-11-10T08:01:00+09:00"
+                    }
+                    """)
+            )
+        )
+        ForestTreeAcknowledgeRequest request
     );
 }

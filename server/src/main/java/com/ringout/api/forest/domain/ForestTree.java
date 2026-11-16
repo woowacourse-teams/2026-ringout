@@ -97,6 +97,17 @@ public class ForestTree extends BaseEntity {
         return growthCycle * DAYS_PER_TREE;
     }
 
+    public boolean acknowledge(LocalDateTime acknowledgedAt) {
+        if (acknowledgedAt == null) {
+            throw new GeneralException(ForestErrorStatus.FOREST_TREE_ACKNOWLEDGE_REQUEST_INVALID);
+        }
+        if (this.acknowledgedAt != null) {
+            return false;
+        }
+        this.acknowledgedAt = acknowledgedAt.truncatedTo(ChronoUnit.SECONDS);
+        return true;
+    }
+
     private static int parseInteger(String rawGrowthCycle) {
         if (rawGrowthCycle == null) {
             throw new GeneralException(ForestErrorStatus.FOREST_TREE_GROWTH_CYCLE_INVALID);

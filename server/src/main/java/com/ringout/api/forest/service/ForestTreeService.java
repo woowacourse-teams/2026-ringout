@@ -5,9 +5,12 @@ import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.forest.domain.ForestArrivalDays;
 import com.ringout.api.forest.domain.ForestTree;
+import com.ringout.api.forest.dto.request.ForestTreeAcknowledgeRequest;
 import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
+import com.ringout.api.forest.dto.response.ForestTreeAcknowledgeResult;
 import com.ringout.api.forest.dto.response.ForestTreePlantResult;
 import com.ringout.api.forest.dto.response.ForestTreeResponse;
+import com.ringout.api.forest.repository.ForestOnboardingRepository;
 import com.ringout.api.forest.repository.ForestTreeRepository;
 import com.ringout.api.forest.status.ForestErrorStatus;
 import com.ringout.api.user.domain.User;
@@ -28,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ForestTreeService {
 
     private final ForestTreeRepository forestTreeRepository;
+    private final ForestOnboardingRepository forestOnboardingRepository;
     private final AlarmOccurrenceRepository alarmOccurrenceRepository;
     private final UserRepository userRepository;
     private final ForestTreeSlotAllocator slotAllocator;
@@ -58,6 +62,56 @@ public class ForestTreeService {
             .log("숲 나무 심기");
 
         return new ForestTreePlantResult(toResponse(tree), true);
+    }
+
+    @Transactional
+    public ForestTreeAcknowledgeResult acknowledgeTree(Long userId, String rawGrowthCycle,
+        ForestTreeAcknowledgeRequest request) {
+        int growthCycle = parseAcknowledgeGrowthCycle(rawGrowthCycle);
+        validateAcknowledgeRequest(request);
+        validateAuthenticatedUserExists(userId);
+
+        ForestTree tree = forestTreeRepository.findByUserIdAndGrowthCycleForUpdate(userId, growthCycle)
+            .orElseThrow(() -> new GeneralException(ForestErrorStatus.FOREST_TREE_NOT_FOUND));
+        validateOnboardingCompleted(userId);
+
+        boolean acknowledged = tree.acknowledge(
+            request.acknowledgedAt().atZoneSameInstant(clock.getZone()).toLocalDateTime());
+        if (acknowledged) {
+            log.atInfo()
+                .addKeyValue("event", "forest_tree_acknowledged")
+                .addKeyValue("userId", userId)
+                .addKeyValue("growthCycle", growthCycle)
+                .log("숲 나무 확인");
+        }
+
+        return new ForestTreeAcknowledgeResult(toResponse(tree), acknowledged);
+    }
+
+    private int parseAcknowledgeGrowthCycle(String rawGrowthCycle) {
+        try {
+            return ForestTree.parseGrowthCycle(rawGrowthCycle);
+        } catch (GeneralException exception) {
+            throw new GeneralException(ForestErrorStatus.FOREST_TREE_ACKNOWLEDGE_REQUEST_INVALID);
+        }
+    }
+
+    private void validateAcknowledgeRequest(ForestTreeAcknowledgeRequest request) {
+        if (request == null || request.acknowledgedAt() == null) {
+            throw new GeneralException(ForestErrorStatus.FOREST_TREE_ACKNOWLEDGE_REQUEST_INVALID);
+        }
+    }
+
+    private void validateAuthenticatedUserExists(Long userId) {
+        if (userId == null || !userRepository.existsById(userId)) {
+            throw new GeneralException(ForestErrorStatus.FOREST_UNAUTHORIZED);
+        }
+    }
+
+    private void validateOnboardingCompleted(Long userId) {
+        if (forestOnboardingRepository.findByUserId(userId).isEmpty()) {
+            throw new GeneralException(ForestErrorStatus.FOREST_ONBOARDING_NOT_COMPLETED);
+        }
     }
 
     private void validatePlantRequest(ForestTreePlantRequest request) {

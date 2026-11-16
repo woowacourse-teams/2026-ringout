@@ -9,15 +9,20 @@ import com.ringout.api.alarmoccurrence.repository.AlarmRingingRepository;
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.config.ClockConfig;
 import com.ringout.api.config.JpaAuditingConfig;
+import com.ringout.api.forest.domain.ForestOnboarding;
 import com.ringout.api.forest.domain.TreeKind;
+import com.ringout.api.forest.dto.request.ForestTreeAcknowledgeRequest;
 import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
+import com.ringout.api.forest.dto.response.ForestTreeAcknowledgeResult;
 import com.ringout.api.forest.dto.response.ForestTreePlantResult;
+import com.ringout.api.forest.repository.ForestOnboardingRepository;
 import com.ringout.api.forest.repository.ForestTreeRepository;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.repository.UserRepository;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -59,6 +64,9 @@ class ForestTreeConcurrencyTest {
     private ForestTreeRepository forestTreeRepository;
 
     @Autowired
+    private ForestOnboardingRepository forestOnboardingRepository;
+
+    @Autowired
     private AlarmOccurrenceRepository alarmOccurrenceRepository;
 
     @Autowired
@@ -72,6 +80,7 @@ class ForestTreeConcurrencyTest {
 
     @AfterEach
     void tearDown() {
+        forestOnboardingRepository.deleteAll();
         forestTreeRepository.deleteAll();
         alarmRingingRepository.deleteAll();
         alarmOccurrenceRepository.deleteAll();
@@ -116,6 +125,34 @@ class ForestTreeConcurrencyTest {
         }
     }
 
+    @Test
+    void 같은_나무를_동시에_확인해도_처음_시각만_저장되고_한_요청만_확인으로_응답한다() throws Exception {
+        for (int repeat = 0; repeat < REPEAT_COUNT; repeat++) {
+            // given
+            User user = saveUserWithArrivedDays("forest-tree-acknowledge-" + repeat);
+            forestTreeService.plantTree(user.getId(), "1", request(1, TreeKind.PINE));
+            forestOnboardingRepository.save(ForestOnboarding.complete(user, LocalDateTime.now(clock)));
+            OffsetDateTime firstAcknowledgedAt = arrivedAt(10).toOffsetDateTime();
+
+            // when
+            List<ForestTreeAcknowledgeResult> results = getAll(runConcurrently(order ->
+                forestTreeService.acknowledgeTree(user.getId(), "1",
+                    new ForestTreeAcknowledgeRequest(firstAcknowledgedAt.plusMinutes(order)))));
+
+            // then
+            assertThat(results).filteredOn(ForestTreeAcknowledgeResult::acknowledged).hasSize(1);
+            OffsetDateTime savedAcknowledgedAt = results.stream()
+                .filter(ForestTreeAcknowledgeResult::acknowledged)
+                .findFirst()
+                .orElseThrow()
+                .response()
+                .acknowledgedAt();
+            assertThat(results)
+                .extracting(result -> result.response().acknowledgedAt())
+                .allMatch(acknowledgedAt -> acknowledgedAt.isEqual(savedAcknowledgedAt));
+        }
+    }
+
     private ForestTreePlantRequest request(int growthCycle, TreeKind kind) {
         return new ForestTreePlantRequest(kind, arrivedAt(growthCycle * 5 - 1).toOffsetDateTime());
     }
@@ -137,15 +174,15 @@ class ForestTreeConcurrencyTest {
         return user;
     }
 
-    private List<Future<ForestTreePlantResult>> runConcurrently(OrderedRequest request) throws Exception {
+    private <T> List<Future<T>> runConcurrently(OrderedRequest<T> request) throws Exception {
         CountDownLatch ready = new CountDownLatch(REQUEST_COUNT);
         CountDownLatch start = new CountDownLatch(1);
-        List<Future<ForestTreePlantResult>> results = new ArrayList<>();
+        List<Future<T>> results = new ArrayList<>();
 
         try (ExecutorService executor = Executors.newFixedThreadPool(REQUEST_COUNT)) {
             for (int order = 0; order < REQUEST_COUNT; order++) {
                 int requestOrder = order;
-                Callable<ForestTreePlantResult> task = () -> {
+                Callable<T> task = () -> {
                     ready.countDown();
                     start.await();
                     return request.run(requestOrder);
@@ -158,17 +195,17 @@ class ForestTreeConcurrencyTest {
         return results;
     }
 
-    private List<ForestTreePlantResult> getAll(List<Future<ForestTreePlantResult>> futures) throws Exception {
-        List<ForestTreePlantResult> results = new ArrayList<>();
-        for (Future<ForestTreePlantResult> future : futures) {
+    private <T> List<T> getAll(List<Future<T>> futures) throws Exception {
+        List<T> results = new ArrayList<>();
+        for (Future<T> future : futures) {
             results.add(future.get());
         }
         return results;
     }
 
     @FunctionalInterface
-    private interface OrderedRequest {
+    private interface OrderedRequest<T> {
 
-        ForestTreePlantResult run(int order);
+        T run(int order);
     }
 }
