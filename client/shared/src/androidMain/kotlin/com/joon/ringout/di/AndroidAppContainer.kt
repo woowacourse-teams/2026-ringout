@@ -1,6 +1,8 @@
 package com.joon.ringout.di
 
 import android.content.Context
+import com.joon.ringout.data.auth.DevelopmentAuthDiagnostics
+import com.joon.ringout.domain.auth.AuthDiagnostics
 import com.joon.ringout.alarm.AndroidAlarmScheduler
 import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
 import com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime
@@ -69,6 +71,9 @@ class AndroidAppContainer(
     }
 
     override val authSession = getAuthSession()
+    override val authDiagnostics: AuthDiagnostics by lazy {
+        DevelopmentAuthDiagnostics(httpClient, tokenStorage, authSession)
+    }
     override val currentVerifiedAlarmAccountId: suspend () -> String? = {
         captureAlarmOccurrenceAccount(tokenStorage, authSession)?.ownerAccountId
     }

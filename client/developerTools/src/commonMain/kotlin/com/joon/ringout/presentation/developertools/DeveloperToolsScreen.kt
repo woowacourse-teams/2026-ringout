@@ -29,6 +29,7 @@ internal fun DeveloperToolsScreen(
     modifier: Modifier = Modifier,
     onRefreshRemoteConfig: () -> Unit = {},
     onRefreshOutbox: () -> Unit = {},
+    authExperiments: @Composable () -> Unit = {},
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -43,6 +44,7 @@ internal fun DeveloperToolsScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
             BuildInfoSection(uiState = uiState)
+            authExperiments()
             PushTokenRegistrationSection(status = uiState.pushTokenRegistrationStatus)
             OutboxSection(
                 records = uiState.outboxRecords,

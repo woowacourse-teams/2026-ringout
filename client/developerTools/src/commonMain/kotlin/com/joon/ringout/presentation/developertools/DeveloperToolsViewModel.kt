@@ -28,10 +28,6 @@ internal class DeveloperToolsViewModel(
     )
     val uiState = mutableUiState.asStateFlow()
 
-    init {
-        refreshOutbox()
-    }
-
     fun refreshOutbox() {
         viewModelScope.launch {
             mutableUiState.update { it.copy(isOutboxLoading = true, outboxLoadError = null) }
