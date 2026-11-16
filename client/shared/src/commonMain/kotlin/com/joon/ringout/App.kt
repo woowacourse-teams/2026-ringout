@@ -10,6 +10,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -20,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.createSavedStateHandle
 import com.joon.ringout.alarm.ForceEndMissionResult
 import com.joon.ringout.alarm.rememberAlarmLogoutCleanup
@@ -113,6 +117,10 @@ fun App(
     pendingRoomActivityPush: RoomActivityPushRequest? = null,
     onRoomActivityPushHandled: (requestId: String) -> Unit = {},
 ) {
+    LifecycleResumeEffect(appContainer) {
+        appContainer.onAppResumed()
+        onPauseOrDispose { }
+    }
     val alarmLogoutCleanup = rememberAlarmLogoutCleanup()
     val currentRuntimeEvidence = rememberUpdatedState(ringingAlarm != null || activeAlarmMission != null)
     val appBootstrapViewModel = viewModel {
@@ -128,6 +136,8 @@ fun App(
             localUserDataCleanup = appContainer.localUserDataCleanup,
             currentVerifiedAlarmAccountId = appContainer.currentVerifiedAlarmAccountId,
             migrateLegacyAlarmData = appContainer.migrateLegacyAlarmData,
+            prepareAlarmSync = appContainer::prepareAlarmSync,
+            alarmOccurrenceMonthLoader = appContainer.alarmOccurrenceMonthLoader,
         )
     }
     val appBootstrapUiState = appBootstrapViewModel.uiState
@@ -135,6 +145,7 @@ fun App(
     val pendingArrivalViewModel = viewModel { PendingArrivalViewModel(appContainer.arrivalResultRepository) }
     val pendingArrival by pendingArrivalViewModel.uiState.collectAsStateWithLifecycle()
     val authSessionIdentity by appContainer.authSession.identity.collectAsStateWithLifecycle()
+    val experimentReturnStack = remember { mutableStateOf<List<AppRoute>?>(null) }
     val latestFcmToken by appContainer.pushTokenSource.latestFcmToken.collectAsStateWithLifecycle()
     LaunchedEffect(authSessionState, latestFcmToken, appContainer.pushTokenRegistrationReadiness) {
         appContainer.pushTokenRegistrationReadiness.updateAuthSession(authSessionState)
@@ -257,6 +268,7 @@ fun App(
                     appBootstrapUiState.destination == AppEntryDestination.Guide ->
                     RingoutAppContent(
                         appContainer = appContainer,
+                        experimentReturnStack = experimentReturnStack,
                         destinationCurrentLocationCache = checkNotNull(destinationCurrentLocationCache),
                         termsViewModel = termsViewModel,
                         authSessionState = authSessionState,
@@ -477,6 +489,7 @@ private fun LimitedRuntimeContent(
 @Composable
 private fun RingoutAppContent(
     appContainer: AppContainer,
+    experimentReturnStack: MutableState<List<AppRoute>?>,
     destinationCurrentLocationCache: DestinationCurrentLocationCache,
     termsViewModel: TermsReagreementViewModel,
     authSessionState: AuthSessionState,
@@ -524,6 +537,25 @@ private fun RingoutAppContent(
     }
     val productAnalyticsRecorder = appContainer.productAnalyticsRecorder
     val navigationState = rememberAppNavigationState(authSessionIdentity)
+    if (myPageExtraContent != null) {
+        val diagnostics = appContainer.authDiagnostics
+        DisposableEffect(navigationState, diagnostics) {
+            onDispose {
+                if (diagnostics?.hasPendingReturn == true &&
+                    appContainer.authSession.state.value == AuthSessionState.ReauthenticationRequired
+                ) {
+                    experimentReturnStack.value = navigationState.backStack.toList()
+                }
+            }
+        }
+        LaunchedEffect(navigationState, authSessionIdentity) {
+            val stack = experimentReturnStack.value ?: return@LaunchedEffect
+            experimentReturnStack.value = null
+            if (diagnostics?.consumeReturnForCurrentAccount() == true) {
+                navigationState.replaceBackStack(stack)
+            }
+        }
+    }
     // iOS 알람 울림 이동 정책 이전이 끝날 때까지 플랫폼 울림 상태를 현재 백스택보다 우선 표시한다.
     val displayedRoute = ringingAlarm
         ?.let { alarm -> AppRoute.AlarmRinging(alarm.id) }

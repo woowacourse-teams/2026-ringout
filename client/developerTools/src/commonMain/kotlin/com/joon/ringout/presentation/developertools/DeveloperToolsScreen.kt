@@ -20,6 +20,7 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.developertools.component.BuildInfoSection
 import com.joon.ringout.presentation.developertools.component.PushTokenRegistrationSection
 import com.joon.ringout.presentation.developertools.component.RemoteConfigSection
+import com.joon.ringout.presentation.developertools.component.OutboxSection
 
 @Composable
 internal fun DeveloperToolsScreen(
@@ -27,6 +28,8 @@ internal fun DeveloperToolsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onRefreshRemoteConfig: () -> Unit = {},
+    onRefreshOutbox: () -> Unit = {},
+    authExperiments: @Composable () -> Unit = {},
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -41,7 +44,14 @@ internal fun DeveloperToolsScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
             BuildInfoSection(uiState = uiState)
+            authExperiments()
             PushTokenRegistrationSection(status = uiState.pushTokenRegistrationStatus)
+            OutboxSection(
+                records = uiState.outboxRecords,
+                isLoading = uiState.isOutboxLoading,
+                error = uiState.outboxLoadError,
+                onRefresh = onRefreshOutbox,
+            )
             uiState.remoteConfig?.let { remoteConfig ->
                 RemoteConfigSection(state = remoteConfig, onRefresh = onRefreshRemoteConfig)
             }

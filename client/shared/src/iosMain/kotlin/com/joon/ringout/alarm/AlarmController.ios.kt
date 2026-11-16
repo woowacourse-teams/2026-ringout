@@ -4,8 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import com.joon.ringout.data.alarm.RoomAlarmDataSource
-import com.joon.ringout.data.database.getRingoutDatabase
 import com.joon.ringout.analytics.IosAlarmAnalytics
 import com.joon.ringout.analytics.AlarmSettingsAnalyticsContext
 import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
@@ -27,7 +25,7 @@ actual fun rememberAlarmController(
 ): AlarmController {
     val nativeServices = LocalIosNativeServices.current
     val dataSource = remember {
-        RoomAlarmDataSource(getRingoutDatabase().alarmDao())
+        iosAlarmDataSource()
     }
     val tokenStorage = remember { createSecureTokenStorage() }
     val authSession = remember { getAuthSession() }

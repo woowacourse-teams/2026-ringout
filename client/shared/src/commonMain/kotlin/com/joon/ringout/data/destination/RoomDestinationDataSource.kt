@@ -7,22 +7,20 @@ import kotlinx.coroutines.flow.map
 class RoomDestinationDataSource(
     private val destinationDao: SavedDestinationDao,
 ) : DestinationDataSource {
-    override fun observeAll(): Flow<List<SavedDestination>> =
-        destinationDao.observeAll().map { destinations ->
+    override fun observeAll(ownerAccountId: String?): Flow<List<SavedDestination>> =
+        destinationDao.observeAll(ownerAccountId).map { destinations ->
             destinations.map(SavedDestinationEntity::toDomain)
         }
 
-    override suspend fun save(destination: SavedDestination): SavedDestination {
+    override suspend fun save(destination: SavedDestination, ownerAccountId: String?): SavedDestination {
         val entity = destination.toEntity()
         return if (entity.id == 0L) {
-            destination.copy(id = destinationDao.insert(entity))
+            destinationDao.saveNew(entity, ownerAccountId).toDomain()
         } else {
             error("Saved destinations are immutable once created: ${entity.id}")
         }
     }
 
-    override suspend fun delete(id: Long): Boolean {
-        require(id >= 0L) { "Saved destination id must not be negative: $id" }
-        return destinationDao.delete(id) == 1
-    }
+    override suspend fun delete(id: Long, ownerAccountId: String?): Boolean =
+        destinationDao.deleteLocal(id, ownerAccountId)
 }

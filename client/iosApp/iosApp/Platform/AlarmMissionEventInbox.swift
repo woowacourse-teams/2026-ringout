@@ -929,15 +929,8 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                   ), try AlarmRecoveryDriver.journal.recoveryState().sources[
                     AlarmRecoverySourceKey(sourceAlarmId: event.alarmId, scheduleVersion: event.scheduleVersion ?? 1)
                   ] == .enabled else { continue }
-            snapshot = AlarmRecoverySourceSnapshot(
-                sourceAlarmId: snapshot.sourceAlarmId, scheduleVersion: snapshot.scheduleVersion,
-                destination: snapshot.destination, limitSeconds: snapshot.limitSeconds,
-                scheduledAtEpochMillis: snapshot.scheduledAtEpochMillis, originalTime: snapshot.originalTime,
-                arrivalRadiusMeters: snapshot.arrivalRadiusMeters, repeatRule: snapshot.repeatRule,
-                title: snapshot.title, soundName: snapshot.soundName, soundURI: snapshot.soundURI,
-                owner: event.ownerCaptured == true
-                    ? event.ownerAccountId.map(AlarmRecoveryOwner.capturedAccount) ?? .capturedGuest : .uncaptured
-            )
+            snapshot.owner = event.ownerCaptured == true
+                ? event.ownerAccountId.map(AlarmRecoveryOwner.capturedAccount) ?? .capturedGuest : .uncaptured
             do {
                 _ = try AlarmRecoveryDriver.journal.importLegacy(
                     occurrenceId: event.occurrenceId, snapshot: snapshot,
@@ -1175,7 +1168,8 @@ private extension AlarmMissionEvent {
             scheduleVersion: scheduleVersion ?? 1,
             ownerAccountId: ownerAccountId,
             ownerCaptured: ownerCaptured ?? false,
-            chainId: chainId
+            chainId: chainId,
+            remoteAlarmId: nil
         )
     }
 }

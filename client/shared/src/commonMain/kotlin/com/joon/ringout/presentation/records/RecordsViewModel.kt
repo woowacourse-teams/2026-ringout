@@ -4,11 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.joon.ringout.domain.alarmactivity.AlarmActivityRepository
 import com.joon.ringout.domain.alarmactivity.AlarmActivitySummary
+import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceMonthLoader
+import com.joon.ringout.domain.alarmoccurrence.currentAlarmOccurrenceMonth
 import com.joon.ringout.domain.missionhistory.GetRecordsHistory
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.AlarmUsageRecord
 import com.joon.ringout.domain.missionhistory.groupByAlarm
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
+import com.joon.ringout.domain.missionhistory.RecordsHistorySnapshot
 import com.joon.ringout.domain.missionhistory.calendarDates
 import com.joon.ringout.domain.missionhistory.plusDays
 import com.joon.ringout.domain.missionhistory.weekDates
@@ -17,11 +20,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
@@ -32,10 +37,12 @@ import kotlin.time.TimeSource
 class RecordsViewModel(
     private val getRecordsHistory: GetRecordsHistory,
     initialDate: MissionDate,
-    private val activityRepository: AlarmActivityRepository,
+    private val activityRepository: AlarmActivityRepository? = null,
     private val currentDate: () -> MissionDate = { initialDate },
     coroutineScope: CoroutineScope? = null,
     private val timeSource: TimeSource = TimeSource.Monotonic,
+    private val monthLoader: AlarmOccurrenceMonthLoader? = null,
+    private val currentCacheMonth: () -> MissionYearMonth = { currentAlarmOccurrenceMonth() },
 ) : ViewModel() {
     private val mutableUiState = MutableStateFlow(RecordsUiState(today = initialDate, isLoading = true, isSummaryLoading = true))
     val uiState: StateFlow<RecordsUiState> = mutableUiState.asStateFlow()
@@ -49,6 +56,9 @@ class RecordsViewModel(
     private var weekRequestId = 0L
     private var calendarLoadJob: Job? = null
     private var calendarRequestId = 0L
+    private val weekCacheJobs = mutableMapOf<MissionYearMonth, Job>()
+    private var calendarCacheJob: Job? = null
+    private var failedWeekMonths = emptySet<MissionYearMonth>()
     private var weekHistory: List<AlarmUsageRecord> = emptyList()
     private var requestedDate: MissionDate = initialDate
     private var weekChangeRetryDate: MissionDate? = null
@@ -56,6 +66,12 @@ class RecordsViewModel(
     fun selectDate(date: MissionDate) {
         val previous = uiState.value
         closeCalendar()
+        val today = currentDate()
+        if (today != previous.today) {
+            mutableUiState.update { it.copy(today = today) }
+            changeWeek(date)
+            return
+        }
         if (date == requestedDate && (previous.isWeekChanging || date == previous.selectedDate)) return
         if (previous.isWeekChanging && date.weekDates() == requestedDate.weekDates()) {
             requestedDate = date
@@ -71,6 +87,7 @@ class RecordsViewModel(
             state.copy(
                 selectedDate = date,
                 weekDays = date.weekDates().map { recordsDayUiState(it, state.today, date) },
+                activitySummary = weekSummaries[date] ?: AlarmActivitySummary(),
             )
         }
         observeWeekSummaries()
@@ -99,6 +116,7 @@ class RecordsViewModel(
         calendarRequestId++
         calendarLoadJob?.cancel()
         calendarLoadJob = null
+        calendarCacheJob?.cancel()
         mutableUiState.update { it.copy(isCalendarVisible = false, isCalendarLoading = false) }
     }
 
@@ -112,12 +130,22 @@ class RecordsViewModel(
             changeWeek(retryDate ?: requestedDate)
             return
         }
+        if (uiState.value.errorMessage == null && uiState.value.summaryErrorMessage == null && failedWeekMonths.isNotEmpty()) {
+            loadWeekCache(failedWeekMonths, retryOnly = true)
+            return
+        }
         observeWeekSummaries(forceReload = true)
         loadWeek()
+        loadWeekCache(uiState.value.selectedDate.weekDates().cacheMonths())
     }
 
     fun retryCalendar() {
-        if (uiState.value.isCalendarVisible) loadCalendar()
+        if (!uiState.value.isCalendarVisible) return
+        if (uiState.value.calendarErrorMessage == null && uiState.value.calendarCacheErrorMessage != null) {
+            loadCalendarCache(uiState.value.calendarMonth)
+        } else {
+            loadCalendar()
+        }
     }
 
     /** Called whenever the screen becomes visible, including after a background mission finishes. */
@@ -132,6 +160,7 @@ class RecordsViewModel(
         mutableUiState.update { it.copy(weekChangeErrorMessage = null) }
         observeWeekSummaries(forceReload = true)
         loadWeek()
+        loadWeekCache(uiState.value.selectedDate.weekDates().cacheMonths())
         if (uiState.value.isCalendarVisible) loadCalendar()
     }
 
@@ -143,6 +172,7 @@ class RecordsViewModel(
         requestedDate = date
         weekChangeRetryDate = null
         val dates = date.weekDates()
+        loadWeekCache(dates.cacheMonths())
         val startedAt = timeSource.markNow()
         mutableUiState.update {
             it.copy(
@@ -163,10 +193,7 @@ class RecordsViewModel(
             }
             var hasDisplayedWeek = false
             try {
-                combine(
-                    getRecordsHistory.observe(dates, uiState.value.today),
-                    activityRepository.observeSummaries(dates),
-                ) { history, summaries -> history to summaries }.collectLatest { (history, summaries) ->
+                observeWeekSnapshot(dates, uiState.value.today).collectLatest { (history, summaries) ->
                     if (requestId != weekRequestId) return@collectLatest
                     if (!hasDisplayedWeek) awaitWeekLoadingMinimum(startedAt)
                     if (requestId != weekRequestId) return@collectLatest
@@ -182,9 +209,9 @@ class RecordsViewModel(
                             selectedDate = selectedDate,
                             records = historyByDate[selectedDate].orEmpty().groupByAlarm(),
                             weekDays = dates.map { day ->
-                                recordsDayUiState(day, state.today, selectedDate, historyByDate[day].orEmpty())
+                                recordsDayUiState(day, state.today, selectedDate, historyByDate[day].orEmpty(), summaries[day])
                             },
-                            activitySummary = summaries.getValue(selectedDate),
+                            activitySummary = summaries[selectedDate] ?: AlarmActivitySummary(),
                             isLoading = false,
                             errorMessage = null,
                             isSummaryLoading = false,
@@ -224,6 +251,7 @@ class RecordsViewModel(
     }
 
     private fun observeWeekSummaries(forceReload: Boolean = false) {
+        val activityRepository = activityRepository ?: return
         val dates = uiState.value.selectedDate.weekDates()
         if (summaryDates == dates && !forceReload) {
             mutableUiState.update {
@@ -292,20 +320,26 @@ class RecordsViewModel(
         weekLoadJob?.cancel()
         val state = uiState.value
         val dates = state.selectedDate.weekDates()
-        weekHistory = emptyList()
+        val hasDisplayedWeek = !state.isLoading && state.errorMessage == null &&
+            state.weekDays.map(RecordsDayUiState::date) == dates
+        if (!hasDisplayedWeek) weekHistory = emptyList()
         mutableUiState.update {
             it.copy(
-                isLoading = true,
+                isLoading = !hasDisplayedWeek,
                 errorMessage = null,
-                records = emptyList(),
-                weekDays = dates.map { date -> recordsDayUiState(date, it.today, it.selectedDate) },
             )
         }
         weekLoadJob = scope.launch {
             try {
-                getRecordsHistory.observe(dates, state.today).collect { history ->
+                val snapshots = if (activityRepository == null) {
+                    getRecordsHistory.observeSnapshot(dates, state.today)
+                } else {
+                    getRecordsHistory.observe(dates, state.today).map { RecordsHistorySnapshot(it) }
+                }
+                snapshots.collect { (history, summaries) ->
                     if (requestId != weekRequestId) return@collect
                     weekHistory = history
+                    if (activityRepository == null) weekSummaries = summaries
                     showWeekHistory(history)
                 }
             } catch (error: CancellationException) {
@@ -313,7 +347,11 @@ class RecordsViewModel(
             } catch (_: Exception) {
                 if (requestId != weekRequestId) return@launch
                 mutableUiState.update {
-                    it.copy(isLoading = false, errorMessage = RecordsLoadErrorMessage)
+                    it.copy(
+                        isLoading = false,
+                        isSummaryLoading = activityRepository != null && it.isSummaryLoading,
+                        errorMessage = RecordsLoadErrorMessage,
+                    )
                 }
             }
         }
@@ -326,8 +364,14 @@ class RecordsViewModel(
                 isLoading = false,
                 errorMessage = null,
                 records = historyByDate[state.selectedDate].orEmpty().groupByAlarm(),
+                activitySummary = if (activityRepository == null) {
+                    weekSummaries[state.selectedDate] ?: AlarmActivitySummary()
+                } else {
+                    state.activitySummary
+                },
+                isSummaryLoading = activityRepository != null && state.isSummaryLoading,
                 weekDays = state.selectedDate.weekDates().map { date ->
-                    recordsDayUiState(date, state.today, state.selectedDate, historyByDate[date].orEmpty())
+                    recordsDayUiState(date, state.today, state.selectedDate, historyByDate[date].orEmpty(), weekSummaries[date])
                 },
             )
         }
@@ -338,34 +382,39 @@ class RecordsViewModel(
         calendarLoadJob?.cancel()
         val state = uiState.value
         val dates = state.calendarMonth.calendarDates()
+        loadCalendarCache(state.calendarMonth)
+        val hasDisplayedMonth = state.calendarDays.map { it?.date } == dates &&
+            state.calendarDays.any { day -> day != null && (day.recordCount != 0 || day.ringingCount != null) }
         mutableUiState.update {
             it.copy(
-                isCalendarLoading = true,
+                isCalendarLoading = !hasDisplayedMonth,
                 calendarErrorMessage = null,
-                calendarDays = dates.map { date ->
+                calendarDays = if (hasDisplayedMonth) it.calendarDays else dates.map { date ->
                     date?.let { recordsDayUiState(it, state.today, state.selectedDate) }
                 },
             )
         }
         calendarLoadJob = scope.launch {
             try {
-                val historyByDate = getRecordsHistory(dates.filterNotNull(), state.today)
-                    .groupBy(AlarmUsageRecord::date)
-                if (requestId != calendarRequestId) return@launch
-                mutableUiState.update { current ->
-                    current.copy(
-                        isCalendarLoading = false,
-                        calendarDays = dates.map { date ->
-                            date?.let {
-                                recordsDayUiState(
-                                    date = it,
-                                    today = current.today,
-                                    selectedDate = current.selectedDate,
-                                    records = historyByDate[it].orEmpty(),
-                                )
-                            }
-                        },
-                    )
+                getRecordsHistory.observeSnapshot(dates.filterNotNull(), state.today).collect { (history, summaries) ->
+                    if (requestId != calendarRequestId) return@collect
+                    val historyByDate = history.groupBy(AlarmUsageRecord::date)
+                    mutableUiState.update { current ->
+                        current.copy(
+                            isCalendarLoading = false,
+                            calendarDays = dates.map { date ->
+                                date?.let {
+                                    recordsDayUiState(
+                                        date = it,
+                                        today = current.today,
+                                        selectedDate = current.selectedDate,
+                                        records = historyByDate[it].orEmpty(),
+                                        summary = summaries[it],
+                                    )
+                                }
+                            },
+                        )
+                    }
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -377,8 +426,57 @@ class RecordsViewModel(
             }
         }
     }
+
+    private fun observeWeekSnapshot(dates: List<MissionDate>, today: MissionDate) =
+        if (activityRepository == null) {
+            getRecordsHistory.observeSnapshot(dates, today)
+        } else {
+            combine(getRecordsHistory.observe(dates, today), activityRepository.observeSummaries(dates)) { history, summaries ->
+                RecordsHistorySnapshot(history, summaries)
+            }
+        }
+
+    private fun List<MissionDate>.cacheMonths() = map(MissionDate::yearMonth).toSet()
+
+    private fun MissionYearMonth.isFutureCacheMonth(): Boolean {
+        val current = currentCacheMonth()
+        return year > current.year || (year == current.year && month > current.month)
+    }
+
+    private fun loadWeekCache(months: Set<MissionYearMonth>, retryOnly: Boolean = false) {
+        val loader = monthLoader ?: return
+        if (!retryOnly) {
+            weekCacheJobs.values.forEach { it.cancel() }
+            weekCacheJobs.clear()
+        }
+        failedWeekMonths = emptySet()
+        mutableUiState.update { it.copy(weekCacheErrorMessage = null) }
+        months.filterNot { it.isFutureCacheMonth() }.forEach { month ->
+            weekCacheJobs[month] = scope.launch {
+                val loaded = loader.ensure(month)
+                ensureActive()
+                if (!loaded) {
+                    failedWeekMonths = failedWeekMonths + month
+                    mutableUiState.update { it.copy(weekCacheErrorMessage = RecordsCacheErrorMessage) }
+                }
+            }
+        }
+    }
+
+    private fun loadCalendarCache(month: MissionYearMonth) {
+        val loader = monthLoader ?: return
+        calendarCacheJob?.cancel()
+        mutableUiState.update { it.copy(calendarCacheErrorMessage = null) }
+        if (month.isFutureCacheMonth()) return
+        calendarCacheJob = scope.launch {
+            val loaded = loader.ensure(month)
+            ensureActive()
+            if (!loaded) mutableUiState.update { it.copy(calendarCacheErrorMessage = RecordsCacheErrorMessage) }
+        }
+    }
 }
 
 internal const val RecordsLoadErrorMessage = "저장된 알람 사용 기록을 불러오지 못했어요."
+internal const val RecordsCacheErrorMessage = "서버에서 알람 사용 기록을 가져오지 못했어요."
 private const val SummaryLoadingIndicatorDelayMillis = 500L
 private const val WeekLoadingMinimumEndMillis = 750L

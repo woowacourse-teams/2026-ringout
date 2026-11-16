@@ -52,13 +52,14 @@ abstract class AlarmOccurrenceSyncDao {
     @Query("""
         SELECT EXISTS(
             SELECT 1 FROM alarms
-            WHERE id = :alarmId AND owner_account_id IS NOT NULL AND owner_account_id != :ownerAccountId
+            WHERE (id = :alarmId OR remote_alarm_id = :alarmId)
+                AND owner_account_id IS NOT NULL AND owner_account_id != :ownerAccountId
         ) OR EXISTS(
             SELECT 1 FROM alarm_occurrence_sync
-            WHERE alarm_id = :alarmId AND owner_account_id != :ownerAccountId
+            WHERE (alarm_id = :alarmId OR remote_alarm_id = :alarmId) AND owner_account_id != :ownerAccountId
         ) OR EXISTS(
             SELECT 1 FROM ios_alarm_occurrence_recording
-            WHERE alarm_id = :alarmId AND owner_account_id IS NOT NULL
+            WHERE (alarm_id = :alarmId OR remote_alarm_id = :alarmId) AND owner_account_id IS NOT NULL
                 AND owner_account_id != :ownerAccountId
         )
     """)
@@ -195,6 +196,7 @@ abstract class AlarmOccurrenceSyncDao {
                 scheduleVersion = current.scheduleVersion,
                 scheduledAtEpochMillis = scheduledAt,
                 startedAtEpochMillis = startedAt,
+                remoteAlarmId = current.remoteAlarmId,
             ))
             replaceIosRecordDecision(current.copy(
                 state = IosAlarmOccurrenceRecordState.SERVER,

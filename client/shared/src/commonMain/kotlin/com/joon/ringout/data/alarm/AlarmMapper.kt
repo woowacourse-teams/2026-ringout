@@ -59,6 +59,8 @@ internal fun AlarmScheduleRequest.toAlarmWithRepeatDays(
             enabled = enabled,
             scheduleVersion = scheduleVersion,
             ownerAccountId = ownerAccountId,
+            remoteAlarmId = remoteAlarmId,
+            pendingReservationId = pendingReservationId,
         ),
         repeatDays = repeatDays,
     )
@@ -96,6 +98,8 @@ internal fun AlarmWithRepeatDays.toSavedAlarmSchedule(): SavedAlarmSchedule {
         alarmSoundUri = alarm.alarmSoundUri,
         scheduleVersion = alarm.scheduleVersion,
         ownerAccountId = alarm.ownerAccountId,
+        remoteAlarmId = alarm.remoteAlarmId,
+        pendingReservationId = alarm.pendingReservationId,
     ).validateForStorage()
 
     return SavedAlarmSchedule(

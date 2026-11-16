@@ -1,6 +1,7 @@
 package com.joon.ringout.presentation.developertools
 
 import com.joon.ringout.domain.push.PushTokenRegistrationStatus
+import com.joon.ringout.domain.outbox.OutboxRecord
 
 internal data class DeveloperToolsUiState(
     val versionName: String,
@@ -10,6 +11,9 @@ internal data class DeveloperToolsUiState(
     val apiBaseUrl: String,
     val pushTokenRegistrationStatus: PushTokenRegistrationStatus,
     val remoteConfig: RemoteConfigUiState? = null,
+    val outboxRecords: List<OutboxRecord> = emptyList(),
+    val isOutboxLoading: Boolean = false,
+    val outboxLoadError: String? = null,
 )
 
 internal val DeveloperToolsPreviewState = DeveloperToolsUiState(

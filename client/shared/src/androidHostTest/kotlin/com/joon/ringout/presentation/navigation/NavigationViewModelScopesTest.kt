@@ -319,8 +319,6 @@ internal class HomeTestDestinationRepository : DestinationRepository {
         return MutableStateFlow(emptyList())
     }
 
-    override suspend fun fetchAll(): List<SavedDestination> = error("Unused dependency")
-    override suspend fun sync(): List<SavedDestination> = error("Unused dependency")
     override suspend fun save(destination: SavedDestination): SavedDestination = error("Unused dependency")
     override suspend fun delete(id: Long): Boolean = error("Unused dependency")
 }

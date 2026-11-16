@@ -12,14 +12,23 @@ import com.joon.ringout.data.alarmactivity.AlarmActivityDao
 import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTrackingEntity
 import com.joon.ringout.data.alarmactivity.AlarmRingingObservationEntity
+import com.joon.ringout.data.alarm.AlarmOutboxEntity
+import com.joon.ringout.data.alarm.AlarmRestoreEntity
+import com.joon.ringout.data.alarm.AlarmSyncDao
 import com.joon.ringout.data.alarm.AlarmDao
 import com.joon.ringout.data.alarm.AlarmEntity
 import com.joon.ringout.data.alarm.AlarmRepeatDayEntity
 import com.joon.ringout.data.alarm.StorageMigrationEntity
 import com.joon.ringout.data.destination.SavedDestinationDao
 import com.joon.ringout.data.destination.SavedDestinationEntity
+import com.joon.ringout.data.destination.DestinationOutboxEntity
+import com.joon.ringout.data.destination.DestinationSyncStateEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryDao
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceCacheDao
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmOccurrenceEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmOccurrenceMonthEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmRingingEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceRingingLinkEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxEntity
@@ -41,9 +50,13 @@ import kotlin.time.Clock
         AlarmRingingObservationEntity::class,
         MissionHistoryEntity::class,
         AlarmEntity::class,
+        AlarmOutboxEntity::class,
+        AlarmRestoreEntity::class,
         AlarmRepeatDayEntity::class,
         StorageMigrationEntity::class,
         SavedDestinationEntity::class,
+        DestinationOutboxEntity::class,
+        DestinationSyncStateEntity::class,
         AlarmOccurrenceSyncEntity::class,
         AlarmOccurrenceRingingLinkEntity::class,
         AlarmOccurrenceOutboxEntity::class,
@@ -53,8 +66,11 @@ import kotlin.time.Clock
         ArrivalGrowthActivationEntity::class,
         ForestStateEntity::class,
         ForestTreeEntity::class,
+        CachedAlarmOccurrenceMonthEntity::class,
+        CachedAlarmOccurrenceEntity::class,
+        CachedAlarmRingingEntity::class,
     ],
-    version = 16,
+    version = 19,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -65,9 +81,13 @@ abstract class RingoutDatabase : RoomDatabase() {
 
     abstract fun alarmDao(): AlarmDao
 
+    abstract fun alarmSyncDao(): AlarmSyncDao
+
     abstract fun destinationDao(): SavedDestinationDao
 
     abstract fun alarmOccurrenceSyncDao(): AlarmOccurrenceSyncDao
+
+    abstract fun alarmOccurrenceCacheDao(): AlarmOccurrenceCacheDao
 
     abstract fun localUserDataCleanupDao(): LocalUserDataCleanupDao
     abstract fun arrivalResultDao(): ArrivalResultDao
@@ -109,6 +129,9 @@ internal fun buildRingoutDatabase(
         createRingoutMigration13To14(arrivalGrowthActivatedAtEpochMillis),
         RingoutMigration14To15,
         RingoutMigration15To16,
+        RingoutMigration16To17,
+        RingoutMigration17To18,
+        RingoutMigration18To19,
     )
     .build()
 

@@ -11,6 +11,8 @@ import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmOccurrenceEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmRingingEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordState
 import com.joon.ringout.data.arrival.ArrivalGrowthActivationEntity
@@ -27,7 +29,7 @@ import kotlin.test.assertTrue
 
 class LocalUserDataCleanupDatabaseTest {
     @Test
-    fun `사용자 데이터를 모두 원자적으로 비우고 설치 마이그레이션 표식은 보존한다`() = runBlocking {
+    fun `로그아웃 정리는 목적지와 동기화 대기열을 지우고 설치 표식은 보존한다`() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder<RingoutDatabase>()
             .setDriver(BundledSQLiteDriver())
             .build()
@@ -55,7 +57,12 @@ class LocalUserDataCleanupDatabaseTest {
             alarmDao.insertRepeatDays(listOf(AlarmRepeatDayEntity("alarm-1", 1)))
             alarmDao.insertStorageMigration(StorageMigrationEntity("legacy-import", 1L))
             assertEquals(listOf(1), alarmDao.getById("alarm-1")?.repeatDays?.map { it.dayOfWeek })
-            database.destinationDao().insert(SavedDestinationEntity(label = "회사", latitude = 37.5, longitude = 127.0))
+            val destinationDao = database.destinationDao()
+            destinationDao.saveNew(
+                SavedDestinationEntity(label = "회사", latitude = 37.5, longitude = 127.0),
+                ownerAccountId = "account-1",
+            )
+            destinationDao.prepareAccount("account-1")
 
             occurrenceDao.recordStart(
                 AlarmOccurrenceSyncEntity(
@@ -104,12 +111,31 @@ class LocalUserDataCleanupDatabaseTest {
                 ),
             )
 
+            val cache = database.alarmOccurrenceCacheDao()
+            cache.saveMonth(
+                ownerAccountId = "account-1",
+                month = "2026-11",
+                occurrences = listOf(
+                    CachedAlarmOccurrenceEntity(
+                        "account-1", "2026-11", "remote-1", "alarm-1", "2026-11-09", "07:05", null, null,
+                    ),
+                ),
+                ringings = listOf(
+                    CachedAlarmRingingEntity("account-1", "remote-1", "INITIAL", null, 1_100, 1_200),
+                ),
+            )
+            cache.saveMonth("account-1", "2026-10", emptyList(), emptyList())
+
             val cleanup = RoomLocalUserDataCleanup(database.localUserDataCleanupDao())
             cleanup.clear()
             cleanup.clear()
 
+            assertTrue(cache.getCompleteMonths("account-1").isEmpty())
+            assertTrue(cache.getOccurrences("account-1").isEmpty())
             assertTrue(alarmDao.getAll().isEmpty())
-            assertTrue(database.destinationDao().observeAll().first().isEmpty())
+            assertTrue(destinationDao.observeAll(ownerAccountId = null).first().isEmpty())
+            assertTrue(destinationDao.observeOutbox().first().isEmpty())
+            assertNull(destinationDao.getSyncState("account-1"))
             assertEquals(0, activityDao.observeCounts("2026-11-09").first().ringingCount)
             assertNull(activityDao.observeCounts("2026-11-09").first().trackingStartDate)
             assertNull(activityDao.getOccurrenceTimes("execution-1"))
@@ -126,6 +152,10 @@ class LocalUserDataCleanupDatabaseTest {
             assertTrue(alarmDao.hasStorageMigration("legacy-import"))
             database.useReaderConnection { connection ->
                 connection.usePrepared("SELECT COUNT(*) FROM alarm_repeat_days") { statement ->
+                    assertTrue(statement.step())
+                    assertEquals(0L, statement.getLong(0))
+                }
+                connection.usePrepared("SELECT COUNT(*) FROM alarm_occurrence_cache_ringings") { statement ->
                     assertTrue(statement.step())
                     assertEquals(0L, statement.getLong(0))
                 }

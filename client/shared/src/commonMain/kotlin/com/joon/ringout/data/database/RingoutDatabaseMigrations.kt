@@ -287,3 +287,126 @@ internal fun createRingoutMigration13To14(activatedAtEpochMillis: Long): Migrati
 internal val RingoutMigration15To16 = Migration(15, 16) { connection ->
     connection.executeSQL("ALTER TABLE alarms ADD COLUMN owner_account_id TEXT DEFAULT NULL")
 }
+
+/** Saved destinations keep their local row IDs while gaining per-account server identity and a durable outbox. */
+internal val RingoutMigration16To17 = Migration(16, 17) { connection ->
+    connection.executeSQL("ALTER TABLE saved_destinations ADD COLUMN owner_account_id TEXT DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE saved_destinations ADD COLUMN remote_destination_id TEXT DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE saved_destinations ADD COLUMN destination_version INTEGER NOT NULL DEFAULT 1")
+    connection.executeSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS index_saved_destinations_owner_account_id_remote_destination_id " +
+            "ON saved_destinations (owner_account_id, remote_destination_id)",
+    )
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS destination_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            owner_account_id TEXT NOT NULL,
+            local_destination_id INTEGER NOT NULL,
+            remote_destination_id TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            payload_alias TEXT,
+            payload_latitude REAL,
+            payload_longitude REAL,
+            destination_version INTEGER,
+            state TEXT NOT NULL,
+            attempt_count INTEGER NOT NULL,
+            next_attempt_at INTEGER,
+            last_error_code TEXT,
+            last_error_message TEXT
+        )
+    """.trimIndent())
+    connection.executeSQL(
+        "CREATE INDEX IF NOT EXISTS index_destination_outbox_owner_account_id_remote_destination_id_id " +
+            "ON destination_outbox (owner_account_id, remote_destination_id, id)",
+    )
+    connection.executeSQL(
+        "CREATE INDEX IF NOT EXISTS index_destination_outbox_owner_account_id_state_next_attempt_at " +
+            "ON destination_outbox (owner_account_id, state, next_attempt_at)",
+    )
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS destination_sync_state (
+            owner_account_id TEXT NOT NULL PRIMARY KEY,
+            restore_complete INTEGER NOT NULL,
+            restore_attempt_count INTEGER NOT NULL,
+            restore_next_attempt_at INTEGER,
+            last_restore_error_code TEXT,
+            last_restore_error_message TEXT
+        )
+    """.trimIndent())
+}
+
+internal val RingoutMigration17To18 = Migration(17, 18) { connection ->
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_occurrence_cache_months (
+            owner_account_id TEXT NOT NULL,
+            month TEXT NOT NULL,
+            PRIMARY KEY (owner_account_id, month)
+        )
+    """.trimIndent())
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_occurrence_cache (
+            owner_account_id TEXT NOT NULL,
+            month TEXT NOT NULL,
+            occurrence_id TEXT NOT NULL,
+            alarm_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            alarm_time TEXT NOT NULL,
+            end_type TEXT,
+            ended_at INTEGER,
+            PRIMARY KEY (owner_account_id, occurrence_id)
+        )
+    """.trimIndent())
+    connection.executeSQL(
+        "CREATE INDEX IF NOT EXISTS index_alarm_occurrence_cache_owner_account_id_date " +
+            "ON alarm_occurrence_cache (owner_account_id, date)",
+    )
+    connection.executeSQL("""
+        CREATE TABLE IF NOT EXISTS alarm_occurrence_cache_ringings (
+            owner_account_id TEXT NOT NULL,
+            occurrence_id TEXT NOT NULL,
+            ringing_key TEXT NOT NULL,
+            event_id TEXT,
+            ringing_at INTEGER NOT NULL,
+            dismissed_at INTEGER,
+            PRIMARY KEY (owner_account_id, occurrence_id, ringing_key),
+            FOREIGN KEY (owner_account_id, occurrence_id)
+                REFERENCES alarm_occurrence_cache (owner_account_id, occurrence_id)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+    """.trimIndent())
+}
+
+internal val RingoutMigration18To19 = Migration(18, 19) { connection ->
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN remote_alarm_id TEXT DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN alarm_version INTEGER NOT NULL DEFAULT 0")
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN confirmed_alarm_version INTEGER DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN remote_repeat_time INTEGER DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE alarms ADD COLUMN pending_reservation_id TEXT DEFAULT NULL")
+    connection.executeSQL("""
+        UPDATE alarms SET remote_alarm_id = id,
+            pending_reservation_id = upper(hex(randomblob(4)) || '-' || hex(randomblob(2)) ||
+                '-4' || substr(hex(randomblob(2)), 2) || '-8' || substr(hex(randomblob(2)), 2) ||
+                '-' || hex(randomblob(6)))
+    """.trimIndent())
+    connection.executeSQL(
+        "CREATE UNIQUE INDEX index_alarms_owner_account_id_remote_alarm_id ON alarms (owner_account_id, remote_alarm_id)",
+    )
+    connection.executeSQL("""
+        CREATE TABLE alarm_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            owner_account_id TEXT NOT NULL,
+            remote_alarm_id TEXT NOT NULL,
+            payload TEXT,
+            attempt_count INTEGER NOT NULL,
+            next_attempt_at INTEGER,
+            state TEXT NOT NULL,
+            last_error TEXT
+        )
+    """.trimIndent())
+    connection.executeSQL(
+        "CREATE INDEX index_alarm_outbox_owner_account_id_remote_alarm_id_id ON alarm_outbox (owner_account_id, remote_alarm_id, id)",
+    )
+    connection.executeSQL("CREATE TABLE alarm_restore (owner_account_id TEXT NOT NULL PRIMARY KEY)")
+    connection.executeSQL("ALTER TABLE alarm_occurrence_sync ADD COLUMN remote_alarm_id TEXT DEFAULT NULL")
+    connection.executeSQL("ALTER TABLE ios_alarm_occurrence_recording ADD COLUMN remote_alarm_id TEXT DEFAULT NULL")
+}

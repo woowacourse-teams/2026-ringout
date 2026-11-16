@@ -40,40 +40,76 @@ internal fun RecordHistoryCard(
     val last = record.entries.last()
     val firstTimes = first.recordTimes()
     val lastTimes = last.recordTimes()
+    val firstRinging = record.entries.firstOrNull {
+        it.ringingCount > 0 || it.result == null
+    }
+    val lastRowCenter = when (last.result) {
+        MissionResult.FAILURE -> 29.dp
+        MissionResult.SUCCESS -> 24.dp
+        null -> 28.dp
+    }
+
     Column(
-        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(colors.card)
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(colors.card)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 role = Role.Button,
                 onClickLabel = "알람 기록 자세히 보기",
                 onClick = onClick,
-            ).padding(10.dp),
+            )
+            .padding(10.dp),
     ) {
         Text(
-            firstTimes.title,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            text = firstTimes.title,
+            modifier = Modifier.padding(
+                horizontal = 10.dp,
+                vertical = 5.dp,
+            ),
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
             color = colors.text,
         )
+
         Column(
             modifier = Modifier.drawBehind {
-                if (last.result != null) {
+                if (firstRinging != null && last.result != null) {
                     drawLine(
                         color = colors.secondaryText,
-                        start = Offset(19.dp.toPx(), 28.dp.toPx()),
-                        end = Offset(19.dp.toPx(), size.height - 24.dp.toPx()),
+                        start = Offset(
+                            x = 19.dp.toPx(),
+                            y = 28.dp.toPx(),
+                        ),
+                        end = Offset(
+                            x = 19.dp.toPx(),
+                            y = size.height - lastRowCenter.toPx(),
+                        ),
                         strokeWidth = 2.dp.toPx(),
                     )
                 }
             },
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            RecordRingingRow(firstTimes)
+            firstRinging?.let {
+                RecordRingingRow(it.recordTimes())
+            }
+
             when (last.result) {
-                MissionResult.SUCCESS -> RecordArrivalRow(lastTimes.completedTime)
-                MissionResult.FAILURE -> RecordForceEndRow(lastTimes.completedTime)
+                MissionResult.SUCCESS -> {
+                    RecordArrivalRow(
+                        completedTime = lastTimes.completedTime,
+                    )
+                }
+
+                MissionResult.FAILURE -> {
+                    RecordForceEndRow(
+                        completedTime = lastTimes.completedTime,
+                    )
+                }
+
                 null -> Unit
             }
         }
@@ -87,7 +123,9 @@ private fun RecordHistoryCardPreview() {
         RecordHistoryCard(
             record = listOf(
                 AlarmUsageRecord(
-                    key = "preview", date = MissionDate.of(2026, 9, 28), result = MissionResult.SUCCESS,
+                    key = "preview",
+                    date = MissionDate.of(2026, 9, 28),
+                    result = MissionResult.SUCCESS,
                     ringingStartedAtEpochMillis = 1790546400000L,
                     ringingStoppedAtEpochMillis = 1790546700000L,
                     missionCompletedAtEpochMillis = 1790547480000L,

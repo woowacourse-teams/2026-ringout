@@ -205,7 +205,7 @@ internal class AppNavigationState(
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
 
-    private fun replaceBackStack(destinationStack: List<AppRoute>) {
+    internal fun replaceBackStack(destinationStack: List<AppRoute>) {
         lastBackTransition = null
         // 공통 백스택 항목과 화면 상태는 유지하고 달라진 뒷부분만 교체한다.
         val sharedSize = routes.zip(destinationStack).takeWhile { (a, b) -> a == b }.size

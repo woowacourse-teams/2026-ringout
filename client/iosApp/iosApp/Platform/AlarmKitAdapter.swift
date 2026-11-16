@@ -102,7 +102,8 @@ final class AlarmKitAdapter: @MainActor IosAlarmScheduler {
                 soundURI: request.soundUri,
                 owner: request.ownerAccountId
                     .flatMap { $0.isEmpty ? nil : AlarmRecoveryOwner.capturedAccount($0) }
-                    ?? .uncaptured
+                    ?? .uncaptured,
+                remoteAlarmId: request.remoteAlarmId
             )
             _ = try AlarmRecoveryDriver.journal.upsertSourceSnapshot(snapshot)
             try AlarmRecoveryDriver.journal.setSourceEligibility(

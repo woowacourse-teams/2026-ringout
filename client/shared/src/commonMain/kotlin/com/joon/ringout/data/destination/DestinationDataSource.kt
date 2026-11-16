@@ -4,9 +4,9 @@ import com.joon.ringout.domain.destination.SavedDestination
 import kotlinx.coroutines.flow.Flow
 
 interface DestinationDataSource {
-    fun observeAll(): Flow<List<SavedDestination>>
+    fun observeAll(ownerAccountId: String? = null): Flow<List<SavedDestination>>
 
-    suspend fun save(destination: SavedDestination): SavedDestination
+    suspend fun save(destination: SavedDestination, ownerAccountId: String? = null): SavedDestination
 
-    suspend fun delete(id: Long): Boolean
+    suspend fun delete(id: Long, ownerAccountId: String? = null): Boolean
 }

@@ -41,7 +41,12 @@ fun MainViewControllerWithContent(
     nativeServices: IosNativeServices,
     appHost: @Composable (AppContainer, @Composable ((@Composable (ThemeMode) -> Unit)?) -> Unit) -> Unit,
 ): UIViewController {
-    val appContainer = IosAppContainer(nativeServices)
+    val alarmRuntime = createIosAlarmRuntime(nativeServices)
+    val appContainer = IosAppContainer(
+        nativeServices,
+        applyAlarmServerChange = alarmRuntime::applyServerChange,
+        reconcileAlarmReservations = alarmRuntime::reconcileAfterLogin,
+    )
 
     return ComposeUIViewController {
         var pendingRoomActivityPush by remember(nativeServices) {
@@ -74,9 +79,6 @@ fun MainViewControllerWithContent(
         DisposableEffect(nativeServices, roomActivityPushListener) {
             val observerId = nativeServices.observeRoomActivityPush(roomActivityPushListener)
             onDispose { nativeServices.removeRoomActivityPushObserver(observerId) }
-        }
-        val alarmRuntime = remember(nativeServices) {
-            createIosAlarmRuntime(nativeServices)
         }
         val ringingAlarm by alarmRuntime.ringingAlarmFlow.collectAsState()
         val dismissError by alarmRuntime.dismissErrorFlow.collectAsState()

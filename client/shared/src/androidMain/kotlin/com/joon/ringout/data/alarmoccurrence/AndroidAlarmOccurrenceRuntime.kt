@@ -62,12 +62,13 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
         scheduledAt: Long?,
         sourceRingingId: String?,
         at: Long,
+        remoteAlarmId: String? = null,
     ) {
         // Reservation ownership was read from the Room schedule after validating the PendingIntent.
         // Retry ringings inherit the root execution through sourceRingingId in the recorder.
         val owner = ownerAccountId.takeIf { sourceRingingId == null }
         append(CapturedAlarmOccurrenceEvent.Rang(ringingId, alarmId, scheduleVersion,
-            scheduledAt, at, owner, sourceRingingId, UUID.randomUUID().toString()))
+            scheduledAt, at, owner, sourceRingingId, UUID.randomUUID().toString(), remoteAlarmId))
     }
 
     fun recordDismissal(ringingId: String, at: Long) =
@@ -114,8 +115,9 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
         }.toSet()
         journal.bindUnownedRoots(
             ownerAccountId = ownerAccountId,
-            assignedSchedules = ownedSchedules.mapTo(mutableSetOf()) { alarm -> alarm.id to alarm.scheduleVersion } +
-                journalSchedules,
+            assignedSchedules = ownedSchedules.flatMap { alarm ->
+                listOfNotNull(alarm.id, alarm.remoteAlarmId).map { it to alarm.scheduleVersion }
+            }.toSet() + journalSchedules,
         )
         journal.drain(recorder::record)
 

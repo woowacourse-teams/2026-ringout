@@ -20,6 +20,7 @@ data class AlarmOccurrenceSyncEntity(
     // 로컬에서는 미확인 시각을 보관할 수 있지만 API의 startedAt 필수 조건은 유지한다.
     @ColumnInfo(name = "started_at") val startedAtEpochMillis: Long?,
     @ColumnInfo(name = "server_occurrence_id") val serverOccurrenceId: String? = null,
+    @ColumnInfo(name = "remote_alarm_id", defaultValue = "NULL") val remoteAlarmId: String? = null,
 )
 
 /** iOS recovery 체인의 서버 귀속 결정을 앱 재실행 뒤에도 보존한다. */
@@ -36,6 +37,7 @@ data class IosAlarmOccurrenceRecordEntity(
     @ColumnInfo(name = "schedule_version") val scheduleVersion: Long,
     @ColumnInfo(name = "scheduled_at") val scheduledAtEpochMillis: Long?,
     @ColumnInfo(name = "started_at") val startedAtEpochMillis: Long?,
+    @ColumnInfo(name = "remote_alarm_id", defaultValue = "NULL") val remoteAlarmId: String? = null,
 )
 
 enum class IosAlarmOccurrenceRecordState { AUTH_PENDING, LOCAL_ONLY, SERVER }

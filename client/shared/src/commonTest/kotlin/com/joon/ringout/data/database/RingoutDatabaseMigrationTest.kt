@@ -10,24 +10,265 @@ import com.joon.ringout.data.alarmactivity.AlarmActivityTimestamp
 import com.joon.ringout.data.alarmactivity.AlarmOccurrenceTimesEntity
 import com.joon.ringout.data.arrival.RoomArrivalResultRepository
 import com.joon.ringout.data.destination.DefaultDestinationRepository
+import com.joon.ringout.data.destination.DestinationAccountProvider
+import com.joon.ringout.data.destination.DestinationOutboxSyncer
+import com.joon.ringout.data.destination.DestinationOutboxOperation
+import com.joon.ringout.data.destination.DestinationRemoteDataSource
+import com.joon.ringout.data.destination.DestinationSyncSessionGate
+import com.joon.ringout.data.destination.RemoteSavedDestination
 import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordState
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmOccurrenceEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmRingingEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryDto
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
+import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.destination.SavedDestination
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.io.IOException
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RingoutDatabaseMigrationTestSuite {
+    fun `버전 십팔의 알람은 기존 서버 ID와 요일을 보존하고 기기 예약 ID를 따로 저장한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val builder = { buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path)) }
+        try {
+            val original = savedAlarm().let { it.copy(request = it.request.copy(ownerAccountId = "account-1")) }
+            builder().useDatabase { RoomAlarmDataSource(it).replace(original) }
+            createMigrationTestSQLiteDriver().open(path).use { connection ->
+                setDatabaseVersion(connection, 18, "f1f45244a66bb260740b78fbe0e3d855")
+            }
+
+            val pending = builder().useDatabase { database ->
+                val restored = assertNotNull(RoomAlarmDataSource(database).getById(original.request.id))
+                assertEquals(original.request.id, restored.request.remoteAlarmId)
+                assertEquals(original.request.selectedDays, restored.request.selectedDays)
+                assertTrue(restored.enabled)
+                assertNotNull(restored.request.pendingReservationId)
+            }
+            builder().useDatabase { database ->
+                val source = RoomAlarmDataSource(database)
+                val stored = assertNotNull(source.getById(original.request.id))
+                assertEquals(pending, stored.request.pendingReservationId)
+                assertTrue(source.migrateId(stored.request.id, pending))
+                assertNull(source.getById(stored.request.id))
+                val migrated = assertNotNull(source.getById(pending))
+                assertEquals(original.request.id, migrated.request.remoteAlarmId)
+                assertNull(migrated.request.pendingReservationId)
+                assertEquals(original.request.selectedDays, migrated.request.selectedDays)
+                assertTrue(migrated.enabled)
+            }
+            assertDatabaseVersion(path, expectedVersion = 19)
+        } finally {
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `알람 변경과 삭제는 순서대로 남고 기기 설정만 바꾸면 전송하지 않는다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val builder = { buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path)) }
+        try {
+            builder().useDatabase { database ->
+                val source = RoomAlarmDataSource(database)
+                val draft = savedAlarm().let {
+                    it.copy(request = it.request.copy(ownerAccountId = "account-1", remoteAlarmId = "server-id"))
+                }
+                source.replaceUserAlarm(draft, previous = null)
+                val changed = draft.copy(request = draft.request.copy(time = "08:30"))
+                source.replaceUserAlarm(changed, previous = draft)
+                source.replaceUserAlarm(changed.copy(request = changed.request.copy(alarmSoundName = "다른 소리")), changed)
+                source.setEnabled(changed.request.id, false)
+                assertTrue(source.deleteUserAlarm(changed.request.id))
+            }
+            builder().useDatabase { database ->
+                val queued = database.alarmSyncDao().getOutbox("account-1")
+                assertEquals(listOf("server-id", "server-id", "server-id"), queued.map { it.remoteAlarmId })
+                val puts = queued.take(2).map {
+                    kotlinx.serialization.json.Json.decodeFromString<com.joon.ringout.data.alarm.RemoteAlarm>(
+                        assertNotNull(it.payload),
+                    )
+                }
+                assertEquals(listOf(1L, 2L), puts.map { it.alarmVersion })
+                assertEquals(listOf("07:05", "08:30"), puts.map { it.time })
+                assertNull(queued.last().payload)
+                assertTrue(database.alarmDao().getAll().isEmpty())
+                database.alarmSyncDao().setRestoreComplete("account-1")
+                database.localUserDataCleanupDao().clear()
+                assertTrue(database.alarmSyncDao().getOutbox("account-1").isEmpty())
+                assertFalse(database.alarmSyncDao().getRestoreComplete("account-1"))
+            }
+        } finally {
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    private suspend fun <T> RingoutDatabase.useDatabase(block: suspend (RingoutDatabase) -> T): T =
+        try {
+            block(this)
+        } finally {
+            close()
+        }
+
+    fun `응답이 유실된 upsert는 같은 목적지 ID로 안전하게 재전송한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val session = AuthSession().apply { startNewSession() }
+            val accountProvider = DestinationAccountProvider(session) { "account-1" }
+            val dao = database.destinationDao()
+            val remote = TestDestinationRemoteDataSource()
+            val attempts = mutableListOf<RemoteSavedDestination>()
+            remote.upsertBlock = { _, destination ->
+                attempts += destination
+                if (attempts.size == 1) throw IOException("temporary network failure")
+                destination
+            }
+            var now = 1_000L
+            val syncer = DestinationOutboxSyncer(
+                dao = dao,
+                remoteDataSource = remote,
+                accountProvider = accountProvider,
+                sessionGate = DestinationSyncSessionGate(),
+                authSession = session,
+                now = { now },
+            )
+            val saved = RoomDestinationDataSource(dao).save(destination("집"), "account-1")
+            val queued = dao.getDueOutbox("account-1", now).single()
+
+            assertEquals(2_000L, syncer.flush())
+            assertTrue(dao.getDueOutbox("account-1", now).isEmpty())
+            assertEquals(2_000L, syncer.flush())
+            assertEquals(1, attempts.size)
+            assertEquals(queued.remoteDestinationId, attempts[0].id)
+            assertEquals(saved.label, attempts[0].alias)
+            now = 2_000L
+            assertNull(syncer.flush())
+            assertEquals(2, attempts.size)
+            assertEquals(attempts[0].id, attempts[1].id)
+            assertEquals(attempts[0].version, attempts[1].version)
+            assertTrue(dao.observeOutbox().first().isEmpty())
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `조회 중 추가한 로컬 변경은 늦은 서버 스냅샷에 덮이지 않는다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val session = AuthSession().apply { startNewSession() }
+            val accountProvider = DestinationAccountProvider(session) { "account-1" }
+            val gate = DestinationSyncSessionGate()
+            val dao = database.destinationDao()
+            val dataSource = RoomDestinationDataSource(dao)
+            val repository = DefaultDestinationRepository(dataSource, accountProvider, gate)
+            val remote = TestDestinationRemoteDataSource()
+            val requestStarted = CompletableDeferred<Unit>()
+            val returnSnapshot = CompletableDeferred<List<RemoteSavedDestination>>()
+            remote.fetchAllBlock = {
+                requestStarted.complete(Unit)
+                returnSnapshot.await()
+            }
+            remote.upsertBlock = { _, destination -> destination }
+            val syncer = DestinationOutboxSyncer(
+                dao = dao,
+                remoteDataSource = remote,
+                accountProvider = accountProvider,
+                sessionGate = gate,
+                authSession = session,
+            )
+            val syncing = async { syncer.flush() }
+            requestStarted.await()
+
+            val saved = repository.save(destination("내가 저장한 집"))
+            val entity = dao.observeAll("account-1").first().single()
+            returnSnapshot.complete(
+                listOf(
+                    RemoteSavedDestination(
+                        id = checkNotNull(entity.remoteDestinationId),
+                        alias = "오래된 서버 값",
+                        latitude = 0.0,
+                        longitude = 0.0,
+                        version = 99L,
+                    ),
+                ),
+            )
+
+            assertNull(syncing.await())
+            assertEquals(saved.id, dao.observeAll("account-1").first().single().id)
+            assertEquals("내가 저장한 집", dataSource.observeAll("account-1").first().single().label)
+            val synced = dao.observeAll("account-1").first().single()
+            assertEquals(entity.remoteDestinationId, synced.remoteDestinationId)
+            assertEquals(1L, synced.destinationVersion)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `전송 중에도 로컬 저장은 끝나고 로그아웃 뒤 늦은 응답은 Room을 채우지 않는다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val session = AuthSession().apply { startNewSession() }
+            val identity = checkNotNull(session.identity.value)
+            val accountProvider = DestinationAccountProvider(session) { "account-1" }
+            val gate = DestinationSyncSessionGate()
+            val dao = database.destinationDao()
+            val dataSource = RoomDestinationDataSource(dao)
+            val repository = DefaultDestinationRepository(dataSource, accountProvider, gate)
+            repository.save(destination("전송 중인 목적지"))
+
+            val remote = TestDestinationRemoteDataSource()
+            val requestStarted = CompletableDeferred<RemoteSavedDestination>()
+            val allowResponse = CompletableDeferred<Unit>()
+            remote.upsertBlock = { _, destination ->
+                requestStarted.complete(destination)
+                allowResponse.await()
+                destination
+            }
+            val syncer = DestinationOutboxSyncer(
+                dao = dao,
+                remoteDataSource = remote,
+                accountProvider = accountProvider,
+                sessionGate = gate,
+                authSession = session,
+            )
+            val syncing = async { syncer.flush() }
+            requestStarted.await()
+
+            val savedDuringRequest = repository.save(destination("네트워크 응답 전 저장"))
+            assertTrue(repository.observeAll().first().any { it.id == savedDuringRequest.id })
+            RoomLocalUserDataCleanup(
+                dao = database.localUserDataCleanupDao(),
+                destinationSessionGate = gate,
+                currentSessionIdentity = { identity },
+            ).clear()
+            allowResponse.complete(Unit)
+
+            syncing.await()
+            assertTrue(dao.observeAll("account-1").first().isEmpty())
+            assertTrue(dao.observeOutbox().first().isEmpty())
+            assertNull(dao.getSyncState("account-1"))
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
     fun `과거 Android 기록은 확인된 시각만 한 번 전송 대기로 옮긴다`() = runBlocking {
         val path = temporaryDatabasePath()
         val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
@@ -227,6 +468,8 @@ class RingoutDatabaseMigrationTestSuite {
                     original.close()
                 }
                 createMigrationTestSQLiteDriver().open(path).use { connection ->
+                    removeDestinationSyncSchemaForVersion16(connection)
+                    connection.execSQL("DROP INDEX IF EXISTS index_alarms_owner_account_id_remote_alarm_id")
                     connection.execSQL("ALTER TABLE alarms DROP COLUMN owner_account_id")
                     if (version == 14) {
                         connection.execSQL("DROP TABLE forest_trees")
@@ -246,7 +489,7 @@ class RingoutDatabaseMigrationTestSuite {
                     val alarm = assertNotNull(RoomAlarmDataSource(database.alarmDao()).getById("alarm-1"))
                     assertEquals(savedAlarm().request.time, alarm.request.time)
                     assertNull(alarm.request.ownerAccountId)
-                    assertDatabaseVersion(path, expectedVersion = 16)
+                    assertDatabaseVersion(path, expectedVersion = 19)
                     createMigrationTestSQLiteDriver().open(path).use { connection ->
                         connection.prepare("SELECT onboarding_completed_at_epoch_millis FROM forest_state WHERE id = 1")
                             .use { statement ->
@@ -272,6 +515,177 @@ class RingoutDatabaseMigrationTestSuite {
         }
     }
 
+    fun `버전 십칠의 전송 대기 이벤트를 보존하고 월별 캐시는 원자적으로 저장한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        var database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            database.alarmOccurrenceSyncDao().recordStart(
+                AlarmOccurrenceSyncEntity("local", "account-1", "alarm", 1, 1_000, 1_100),
+            )
+            database.close()
+            createMigrationTestSQLiteDriver().open(path).use { connection ->
+                connection.execSQL("DROP TABLE alarm_occurrence_cache_ringings")
+                connection.execSQL("DROP TABLE alarm_occurrence_cache")
+                connection.execSQL("DROP TABLE alarm_occurrence_cache_months")
+                setDatabaseVersion(connection, 17, "e3680293be6b815b3a9c83012e23b3c2")
+            }
+
+            database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+            val cache = database.alarmOccurrenceCacheDao()
+            val occurrence = CachedAlarmOccurrenceEntity(
+                "account-1", "2026-11", "remote", "alarm", "2026-11-30", "23:59", null, null,
+            )
+            val ringing = CachedAlarmRingingEntity("account-1", "remote", "INITIAL", null, 1_200, null)
+            assertFails {
+                cache.saveMonth("account-1", "2026-11", listOf(occurrence), listOf(ringing, ringing))
+            }
+            assertFalse(cache.isComplete("account-1", "2026-11"))
+            assertTrue(cache.getOccurrences("account-1").isEmpty())
+
+            cache.saveMonth("account-1", "2026-11", listOf(occurrence), listOf(ringing))
+            cache.saveMonth("account-2", "2026-11", emptyList(), emptyList())
+            assertEquals(1, database.alarmOccurrenceSyncDao().getUnsentEvents("account-1").size)
+            assertEquals(0, database.arrivalResultDao().getSuccessfulDayCount())
+            assertDatabaseVersion(path, expectedVersion = 19)
+            database.close()
+
+            database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+            val reopenedCache = database.alarmOccurrenceCacheDao()
+            assertTrue(reopenedCache.isComplete("account-1", "2026-11"))
+            assertTrue(reopenedCache.isComplete("account-2", "2026-11"))
+            assertTrue(reopenedCache.getOccurrences("account-2").isEmpty())
+            val row = reopenedCache.getOccurrences("account-1").single()
+            assertEquals(occurrence, row.occurrence)
+            assertEquals(listOf(ringing), row.ringings)
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `버전 십육의 저장 목적지를 보존하고 목적지 동기화 테이블을 추가한다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val original = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        val saved = try {
+            destinationRepository(original).save(destination("기존 목적지"))
+        } finally {
+            original.close()
+        }
+
+        try {
+            createMigrationTestSQLiteDriver().open(path).use { connection ->
+                connection.execSQL(
+                    "DROP INDEX index_saved_destinations_owner_account_id_remote_destination_id",
+                )
+                connection.execSQL("DROP TABLE destination_outbox")
+                connection.execSQL("DROP TABLE destination_sync_state")
+                connection.execSQL("ALTER TABLE saved_destinations DROP COLUMN owner_account_id")
+                connection.execSQL("ALTER TABLE saved_destinations DROP COLUMN remote_destination_id")
+                connection.execSQL("ALTER TABLE saved_destinations DROP COLUMN destination_version")
+                setDatabaseVersion(connection, version = 16, identityHash = "4c3fbe33696f952425fc0510f29f39c3")
+            }
+
+            val migrated = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+            try {
+                assertEquals(listOf(saved), destinationRepository(migrated).observeAll().first())
+                assertTrue(migrated.destinationDao().getDueOutbox("account-1", 0L).isEmpty())
+                assertDatabaseVersion(path, expectedVersion = 19)
+                createMigrationTestSQLiteDriver().open(path).use { connection ->
+                    connection.prepare(
+                        "SELECT owner_account_id, remote_destination_id, destination_version " +
+                            "FROM saved_destinations WHERE id = ${saved.id}",
+                    ).use { statement ->
+                        assertTrue(statement.step())
+                        assertTrue(statement.isNull(0))
+                        assertTrue(statement.isNull(1))
+                        assertEquals(1L, statement.getLong(2))
+                    }
+                }
+            } finally {
+                migrated.close()
+            }
+        } finally {
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `저장과 삭제는 outbox와 원자화하고 전송 시도한 upsert 뒤에 삭제를 보낸다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val dao = database.destinationDao()
+            val dataSource = RoomDestinationDataSource(dao)
+
+            val neverSent = dataSource.save(destination("미전송"), ownerAccountId = "account-1")
+            val cancelledUpsert = dao.getDueOutbox("account-1", 0L).single()
+            assertEquals(DestinationOutboxOperation.UPSERT, cancelledUpsert.operation)
+            assertEquals(neverSent.id, cancelledUpsert.localDestinationId)
+            assertEquals(neverSent.label, cancelledUpsert.payloadAlias)
+            assertEquals(1L, cancelledUpsert.destinationVersion)
+            assertTrue(dataSource.delete(neverSent.id, ownerAccountId = "account-1"))
+            assertTrue(dao.getDueOutbox("account-1", 0L).isEmpty())
+
+            val attempted = dataSource.save(destination("전송 시도"), ownerAccountId = "account-1")
+            val upsert = dao.getDueOutbox("account-1", 0L).single()
+            dao.recordOutboxAttempt("account-1", upsert.id)
+            assertTrue(dataSource.delete(attempted.id, ownerAccountId = "account-1"))
+            assertEquals(
+                listOf(DestinationOutboxOperation.UPSERT, DestinationOutboxOperation.DELETE),
+                dao.observeOutbox().first().map { it.operation },
+            )
+
+            dao.acknowledgeUpsertOutbox(
+                ownerAccountId = "account-1",
+                outboxId = upsert.id,
+                remoteDestinationId = upsert.remoteDestinationId,
+                serverDestination = RemoteSavedDestination(
+                    id = upsert.remoteDestinationId,
+                    alias = checkNotNull(upsert.payloadAlias),
+                    latitude = checkNotNull(upsert.payloadLatitude),
+                    longitude = checkNotNull(upsert.payloadLongitude),
+                    version = checkNotNull(upsert.destinationVersion),
+                ),
+            )
+            assertEquals(
+                DestinationOutboxOperation.DELETE,
+                dao.getDueOutbox("account-1", 0L).single().operation,
+            )
+            assertEquals(upsert.remoteDestinationId, dao.getDueOutbox("account-1", 0L).single().remoteDestinationId)
+            assertTrue(dataSource.observeAll("account-1").first().isEmpty())
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
+    fun `서버 목적지 복원을 반복해도 로컬 ID를 유지하고 행을 중복 생성하지 않는다`() = runBlocking {
+        val path = temporaryDatabasePath()
+        val database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
+        try {
+            val dao = database.destinationDao()
+            val first = com.joon.ringout.data.destination.RemoteSavedDestination(
+                id = "server-id",
+                alias = "집",
+                latitude = 37.5,
+                longitude = 127.0,
+                version = 2,
+            )
+            dao.applyRemoteSnapshot("account-1", listOf(first))
+            val original = dao.observeAll("account-1").first().single()
+
+            dao.applyRemoteSnapshot("account-1", listOf(first.copy(alias = "새 집", version = 3)))
+            val restored = dao.observeAll("account-1").first().single()
+
+            assertEquals(original.id, restored.id)
+            assertEquals("새 집", restored.label)
+            assertEquals(3L, restored.destinationVersion)
+            assertTrue(dao.getDueOutbox("account-1", 0L).isEmpty())
+        } finally {
+            database.close()
+            deleteDatabaseFiles(path)
+        }
+    }
+
     fun `버전 십삼의 성공과 실패 기록을 보존하고 도착 성장은 빈 상태로 시작한다`() = runBlocking {
         val path = temporaryDatabasePath()
         createVersionThirteenDatabase(path)
@@ -288,7 +702,7 @@ class RingoutDatabaseMigrationTestSuite {
             assertNull(arrivals.observeLatestUnacknowledgedResult().first())
             assertNull(RoomAlarmDataSource(database.alarmDao()).getById("alarm-1")?.request?.ownerAccountId)
             assertTrue(growthActivationAt(path) > 0)
-            assertDatabaseVersion(path, expectedVersion = 16)
+            assertDatabaseVersion(path, expectedVersion = 19)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -311,7 +725,7 @@ class RingoutDatabaseMigrationTestSuite {
             database = buildMigrationTestDatabase(Room.databaseBuilder<RingoutDatabase>(name = path))
             assertEquals(0, RoomArrivalResultRepository(database.arrivalResultDao()).getGrowth().successfulDayCount)
             assertEquals(123_456L, growthActivationAt(path))
-            assertDatabaseVersion(path, expectedVersion = 16)
+            assertDatabaseVersion(path, expectedVersion = 19)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -483,7 +897,7 @@ class RingoutDatabaseMigrationTestSuite {
             ))
             assertEquals(IosAlarmOccurrenceRecordState.LOCAL_ONLY, dao.getIosRecordDecision("local-chain")?.state)
             assertTrue(dao.getPendingIosRecordDecisions().isEmpty())
-            assertDatabaseVersion(path, expectedVersion = 16)
+            assertDatabaseVersion(path, expectedVersion = 19)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -515,7 +929,7 @@ class RingoutDatabaseMigrationTestSuite {
             migrated.recordTerminal("1", "existing", com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
             assertEquals(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.ARRIVE,
                 migrated.getUnsentMovements("1").single().action)
-            assertDatabaseVersion(path, expectedVersion = 16)
+            assertDatabaseVersion(path, expectedVersion = 19)
         } finally {
             database.close()
             deleteDatabaseFiles(path)
@@ -796,6 +1210,8 @@ class RingoutDatabaseMigrationTestSuite {
         }
         createMigrationTestSQLiteDriver().open(databasePath).use { connection ->
             removeArrivalTables(connection)
+            removeDestinationSyncSchemaForVersion16(connection)
+            connection.execSQL("DROP INDEX IF EXISTS index_alarms_owner_account_id_remote_alarm_id")
             connection.execSQL("ALTER TABLE alarms DROP COLUMN owner_account_id")
             // Identity hash from the committed Room schema 13.json.
             setDatabaseVersion(connection, 13, "311bb99f2c095756c5ded6fc1066d941")
@@ -1068,6 +1484,8 @@ class RingoutDatabaseMigrationTestSuite {
         connection: androidx.sqlite.SQLiteConnection,
     ) {
         removeArrivalTables(connection)
+        removeDestinationSyncSchemaForVersion16(connection)
+        connection.execSQL("DROP INDEX IF EXISTS index_alarms_owner_account_id_remote_alarm_id")
         connection.execSQL("ALTER TABLE alarms DROP COLUMN owner_account_id")
         connection.execSQL("ALTER TABLE saved_destinations ADD COLUMN address TEXT NOT NULL DEFAULT ''")
         connection.execSQL("ALTER TABLE saved_destinations RENAME COLUMN label TO name")
@@ -1082,11 +1500,23 @@ class RingoutDatabaseMigrationTestSuite {
         connection.execSQL("DROP TABLE arrival_growth_activation")
     }
 
+    private fun removeDestinationSyncSchemaForVersion16(
+        connection: androidx.sqlite.SQLiteConnection,
+    ) {
+        connection.execSQL("DROP INDEX index_saved_destinations_owner_account_id_remote_destination_id")
+        connection.execSQL("DROP TABLE destination_outbox")
+        connection.execSQL("DROP TABLE destination_sync_state")
+        connection.execSQL("ALTER TABLE saved_destinations DROP COLUMN owner_account_id")
+        connection.execSQL("ALTER TABLE saved_destinations DROP COLUMN remote_destination_id")
+        connection.execSQL("ALTER TABLE saved_destinations DROP COLUMN destination_version")
+    }
+
     private fun setDatabaseVersion(
         connection: androidx.sqlite.SQLiteConnection,
         version: Int,
         identityHash: String,
     ) {
+        removeAlarmSyncSchemaForVersion18(hasIosRecordTable = version >= 12).forEach(connection::execSQL)
         connection.execSQL("UPDATE room_master_table SET identity_hash = '$identityHash' WHERE id = 42")
         connection.execSQL("PRAGMA user_version = $version")
     }
@@ -1113,4 +1543,23 @@ class RingoutDatabaseMigrationTestSuite {
             builder = builder,
             driver = createMigrationTestSQLiteDriver(),
         )
+}
+
+private class TestDestinationRemoteDataSource : DestinationRemoteDataSource {
+    var fetchAllBlock: suspend (String) -> List<RemoteSavedDestination> = { emptyList() }
+    var upsertBlock: suspend (String, RemoteSavedDestination) -> RemoteSavedDestination = { _, destination ->
+        destination
+    }
+    var deleteBlock: suspend (String, String) -> Unit = { _, _ -> }
+
+    override suspend fun fetchAll(ownerAccountId: String): List<RemoteSavedDestination> =
+        fetchAllBlock(ownerAccountId)
+
+    override suspend fun upsert(
+        ownerAccountId: String,
+        destination: RemoteSavedDestination,
+    ): RemoteSavedDestination = upsertBlock(ownerAccountId, destination)
+
+    override suspend fun delete(ownerAccountId: String, destinationId: String) =
+        deleteBlock(ownerAccountId, destinationId)
 }

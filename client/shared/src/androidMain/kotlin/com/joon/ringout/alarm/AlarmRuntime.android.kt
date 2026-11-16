@@ -23,6 +23,7 @@ internal object AlarmRuntime {
     const val ACTION_STOP = "com.joon.ringout.action.STOP_ALARM"
 
     const val EXTRA_ALARM_ID = "alarm_id"
+    const val EXTRA_REMOTE_ALARM_ID = "remote_alarm_id"
     const val EXTRA_OWNER_ACCOUNT_ID = "owner_account_id"
     const val EXTRA_OCCURRENCE_ID = "occurrence_id"
     const val EXTRA_RETRY_SOURCE_OCCURRENCE_ID = "retry_source_occurrence_id"
@@ -44,6 +45,7 @@ internal object AlarmRuntime {
 internal fun Intent.putAlarmExtras(request: AlarmScheduleRequest): Intent = apply {
     data = Uri.parse("ringout://alarm/${Uri.encode(request.id)}")
     putExtra(AlarmRuntime.EXTRA_ALARM_ID, request.id)
+    putExtra(AlarmRuntime.EXTRA_REMOTE_ALARM_ID, request.remoteAlarmId)
     removeExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID)
     request.ownerAccountId?.let { putExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID, it) }
     putExtra(AlarmRuntime.EXTRA_ALARM_TIME, request.time)
@@ -136,15 +138,14 @@ class AlarmReceiver : BroadcastReceiver() {
                         ),
                         legacySnapshotMatches = sourceIntent::matchesLegacyAlarmScheduleSnapshot,
                     ) { request ->
+                        val triggerAt = sourceIntent.getLongExtra(
+                            AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS,
+                            System.currentTimeMillis(),
+                        )
+                        val occurrenceId = "$alarmId:$triggerAt"
                         val runtimeIntent = sourceIntent.apply {
                             putAlarmExtras(request)
-                            putExtra(
-                                AlarmRuntime.EXTRA_OCCURRENCE_ID,
-                                "$alarmId:${sourceIntent.getLongExtra(
-                                    AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS,
-                                    System.currentTimeMillis(),
-                                )}",
-                            )
+                            putExtra(AlarmRuntime.EXTRA_OCCURRENCE_ID, occurrenceId)
                             putExtra(AlarmRuntime.EXTRA_RETRY_ATTEMPT, 0)
                         }
                         withContext(Dispatchers.Main.immediate) {
@@ -155,7 +156,13 @@ class AlarmReceiver : BroadcastReceiver() {
                                 action = AlarmRuntime.ACTION_RING
                                 replaceExtras(runtimeIntent)
                             }
-                            applicationContext.startForegroundService(serviceIntent)
+                            AlarmRingingRuntime.markStarting(alarmId, occurrenceId)
+                            try {
+                                applicationContext.startForegroundService(serviceIntent)
+                            } catch (error: Exception) {
+                                AlarmRingingRuntime.clearStarting(occurrenceId)
+                                throw error
+                            }
                             if (Settings.canDrawOverlays(applicationContext)) {
                                 runCatching {
                                     applicationContext.startActivity(

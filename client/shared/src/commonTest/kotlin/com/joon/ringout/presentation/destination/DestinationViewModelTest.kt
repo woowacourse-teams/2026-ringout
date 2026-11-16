@@ -14,12 +14,10 @@ import com.joon.ringout.presentation.app.AppLocationCacheViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -257,44 +255,26 @@ class DestinationViewModelTest {
         }
 
     @Test
-    fun loggingOutReplacesTheServerDestinationListWithTheLocalDestinationList() =
+    fun `화면 진입은 서버 조회 없이 Room 목록을 유지한다`() =
         withViewModel { viewModel, repository, _ ->
             val localDestination = NewDestination.copy(id = 1L, label = "로컬 집")
-            val serverDestination = NewDestination.copy(id = 101L, label = "서버 집")
             repository.localDestinations.value = listOf(localDestination)
-            repository.fetchAllResult = listOf(serverDestination)
 
             viewModel.onScreenEntered()
-
-            assertEquals(listOf(serverDestination), viewModel.uiState.destinations)
-
-            repository.fetchAllResult = listOf(localDestination)
-            viewModel.onLoggedOut()
 
             assertEquals(listOf(localDestination), viewModel.uiState.destinations)
         }
 
     @Test
-    fun loggingOutIgnoresALateServerDestinationResponse() =
+    fun `로그아웃 이벤트가 오면 이전 계정 목적지를 화면에서 비운다`() =
         withViewModel { viewModel, repository, _ ->
-            val localDestination = NewDestination.copy(id = 1L, label = "로컬 집")
-            val serverDestination = NewDestination.copy(id = 101L, label = "서버 집")
-            val serverFetchGate = CompletableDeferred<Unit>()
-            repository.localDestinations.value = listOf(localDestination)
-            repository.fetchAllResult = listOf(serverDestination)
-            repository.nextFetchGate = serverFetchGate
-            repository.ignoreNextFetchCancellation = true
+            val accountDestination = NewDestination.copy(id = 1L, label = "계정 집")
+            repository.localDestinations.value = listOf(accountDestination)
+            assertEquals(listOf(accountDestination), viewModel.uiState.destinations)
 
-            viewModel.onScreenEntered()
-
-            repository.fetchAllResult = listOf(localDestination)
             viewModel.onLoggedOut()
 
-            assertEquals(listOf(localDestination), viewModel.uiState.destinations)
-
-            serverFetchGate.complete(Unit)
-
-            assertEquals(listOf(localDestination), viewModel.uiState.destinations)
+            assertTrue(viewModel.uiState.destinations.isEmpty())
         }
 }
 
@@ -328,35 +308,12 @@ private class FakeDestinationRepository : DestinationRepository {
     val deleteRequests = mutableListOf<Long>()
     var deleteResult = false
     val saveRequests = mutableListOf<SavedDestination>()
-    var fetchAllResult: List<SavedDestination> = emptyList()
-    var nextFetchGate: CompletableDeferred<Unit>? = null
-    var ignoreNextFetchCancellation = false
     var saveResult: SavedDestination = NewDestination.copy(id = 1L)
     var saveGate: CompletableDeferred<Unit>? = null
     var saveFailure: Throwable? = null
     var order: MutableList<String>? = null
 
     override fun observeAll(): Flow<List<SavedDestination>> = localDestinations
-
-    override suspend fun fetchAll(): List<SavedDestination> {
-        val result = fetchAllResult
-        val gate = nextFetchGate
-        val ignoreCancellation = ignoreNextFetchCancellation
-        nextFetchGate = null
-        ignoreNextFetchCancellation = false
-        if (gate != null) {
-            if (ignoreCancellation) {
-                withContext(NonCancellable) {
-                    gate.await()
-                }
-            } else {
-                gate.await()
-            }
-        }
-        return result
-    }
-
-    override suspend fun sync(): List<SavedDestination> = localDestinations.value
 
     override suspend fun save(destination: SavedDestination): SavedDestination {
         saveRequests += destination

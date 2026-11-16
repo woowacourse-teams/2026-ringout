@@ -262,20 +262,7 @@ final class AlarmRecoveryCommand {
         }
         let observation = parent == nil ? observation(systemAlarmId, now) : nil
         if let observation, observation.ownerCaptured == true {
-            snapshot = AlarmRecoverySourceSnapshot(
-                sourceAlarmId: snapshot.sourceAlarmId,
-                scheduleVersion: snapshot.scheduleVersion,
-                destination: snapshot.destination,
-                limitSeconds: snapshot.limitSeconds,
-                scheduledAtEpochMillis: snapshot.scheduledAtEpochMillis,
-                originalTime: snapshot.originalTime,
-                arrivalRadiusMeters: snapshot.arrivalRadiusMeters,
-                repeatRule: snapshot.repeatRule,
-                title: snapshot.title,
-                soundName: snapshot.soundName,
-                soundURI: snapshot.soundURI,
-                owner: observation.ownerAccountId.map(AlarmRecoveryOwner.capturedAccount) ?? .capturedGuest
-            )
+            snapshot.owner = observation.ownerAccountId.map(AlarmRecoveryOwner.capturedAccount) ?? .capturedGuest
         }
         let accepted: AlarmRecoveryAcceptedStop
         do {

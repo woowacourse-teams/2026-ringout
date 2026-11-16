@@ -55,6 +55,7 @@ struct AlarmRecoverySourceSnapshot: Codable, Equatable {
     let soundName: String?
     let soundURI: String?
     var owner: AlarmRecoveryOwner
+    let remoteAlarmId: String?
 
     private enum CodingKeys: String, CodingKey {
         case sourceAlarmId
@@ -69,6 +70,7 @@ struct AlarmRecoverySourceSnapshot: Codable, Equatable {
         case soundName
         case soundURI
         case owner
+        case remoteAlarmId
     }
 
     init(
@@ -83,7 +85,8 @@ struct AlarmRecoverySourceSnapshot: Codable, Equatable {
         title: String?,
         soundName: String?,
         soundURI: String?,
-        owner: AlarmRecoveryOwner
+        owner: AlarmRecoveryOwner,
+        remoteAlarmId: String? = nil
     ) {
         self.sourceAlarmId = sourceAlarmId
         self.scheduleVersion = scheduleVersion
@@ -97,6 +100,7 @@ struct AlarmRecoverySourceSnapshot: Codable, Equatable {
         self.soundName = soundName
         self.soundURI = soundURI
         self.owner = owner
+        self.remoteAlarmId = remoteAlarmId
     }
 
     init(from decoder: Decoder) throws {
@@ -113,6 +117,7 @@ struct AlarmRecoverySourceSnapshot: Codable, Equatable {
         soundName = try container.decodeIfPresent(String.self, forKey: .soundName)
         soundURI = try container.decodeIfPresent(String.self, forKey: .soundURI)
         owner = try container.decodeIfPresent(AlarmRecoveryOwner.self, forKey: .owner) ?? .uncaptured
+        remoteAlarmId = try container.decodeIfPresent(String.self, forKey: .remoteAlarmId)
     }
 }
 

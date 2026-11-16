@@ -743,6 +743,63 @@ class IosAlarmLifecycleTest {
     }
 
     @Test
+    fun `이관 중 예약 실패 뒤 재실행하면 지난 시각의 단발도 새 ID로 한 번만 복구한다`() = runBlocking {
+        val original = savedAlarm(
+            id = CanonicalUuid,
+            repeatEnabled = false,
+            selectedDays = emptyList(),
+            ownerAccountId = "account",
+        )
+        val pending = original.copy(request = original.request.copy(
+            remoteAlarmId = "legacy-server-id",
+            pendingReservationId = EarlierSortingUuid,
+        ))
+        val dataSource = LifecycleAlarmDataSource(listOf(pending))
+        val scheduler = LifecycleScheduler(
+            alarms = listOf(IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.SCHEDULED)),
+        )
+        scheduler.failNextSchedules()
+        val reconciler = IosAlarmReconciler(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            normalizeAlarmId = ::canonicalUuid,
+            currentMinuteOfDay = { 23 * 60 + 59 },
+        )
+
+        assertFalse(reconciler.reconcile().isSuccess)
+        assertEquals(null, dataSource.getById(CanonicalUuid))
+        assertEquals(EarlierSortingUuid, dataSource.getById(EarlierSortingUuid)?.request?.pendingReservationId)
+        assertEquals(listOf("cancel:$CanonicalUuid", "schedule:$EarlierSortingUuid"), scheduler.events)
+
+        scheduler.events.clear()
+        assertTrue(reconciler.reconcile().isSuccess)
+        assertTrue(reconciler.reconcile().isSuccess)
+        assertEquals(listOf("schedule:$EarlierSortingUuid"), scheduler.events)
+        assertEquals("legacy-server-id", dataSource.getById(EarlierSortingUuid)?.request?.remoteAlarmId)
+        assertEquals(null, dataSource.getById(EarlierSortingUuid)?.request?.pendingReservationId)
+        assertTrue(dataSource.getById(EarlierSortingUuid)?.enabled == true)
+    }
+
+    @Test
+    fun `AlarmKit이 울리는 기존 알람은 예약 ID 전환을 미룬다`() = runBlocking {
+        val original = savedAlarm(id = CanonicalUuid, ownerAccountId = "account")
+        val pending = original.copy(request = original.request.copy(
+            remoteAlarmId = CanonicalUuid,
+            pendingReservationId = EarlierSortingUuid,
+        ))
+        val dataSource = LifecycleAlarmDataSource(listOf(pending))
+        val scheduler = LifecycleScheduler(
+            alarms = listOf(IosScheduledAlarmDto(CanonicalUuid, IosScheduledAlarmState.ALERTING)),
+        )
+        val reconciler = IosAlarmReconciler(dataSource, scheduler, ::canonicalUuid)
+
+        assertTrue(reconciler.reconcile().isSuccess)
+
+        assertEquals(pending, dataSource.getById(CanonicalUuid))
+        assertTrue(scheduler.events.isEmpty())
+    }
+
+    @Test
     fun presentationMigrationReschedulesIdleScheduledAlarmOnlyOnce() = runBlocking {
         val migrationState = LifecyclePresentationMigrationState()
         val dataSource = LifecycleAlarmDataSource(listOf(savedAlarm(id = CanonicalUuid)))
@@ -2320,6 +2377,16 @@ private class LifecycleAlarmDataSource(initial: List<SavedAlarmSchedule>) : Alar
         val alarm = alarms.remove(oldId) ?: return false
         alarms[newId] = alarm.copy(request = alarm.request.copy(id = newId))
         events += "migrate:$oldId:$newId"
+        return true
+    }
+    override suspend fun migrateIdForReservation(oldId: String, newId: String): Boolean {
+        val alarm = alarms.remove(oldId) ?: return false
+        alarms[newId] = alarm.copy(request = alarm.request.copy(id = newId, pendingReservationId = newId))
+        return true
+    }
+    override suspend fun completeReservationIdMigration(id: String): Boolean {
+        val alarm = alarms[id] ?: return false
+        alarms[id] = alarm.copy(request = alarm.request.copy(pendingReservationId = null))
         return true
     }
     override suspend fun hasStorageMigration(id: String) = false

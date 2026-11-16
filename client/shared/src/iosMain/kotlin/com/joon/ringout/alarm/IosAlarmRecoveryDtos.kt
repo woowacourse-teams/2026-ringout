@@ -30,6 +30,7 @@ data class IosAlarmRecoverySourceSnapshotDto(
     val soundName: String? = null,
     val soundUri: String? = null,
     val owner: IosAlarmRecoveryOwnerDto,
+    val remoteAlarmId: String? = null,
 )
 
 enum class IosAlarmRecoveryEligibility {

@@ -26,9 +26,13 @@ import com.joon.ringout.data.alarm.RoomAlarmDataSource
 import com.joon.ringout.data.alarm.validateForStorage
 import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
 import com.joon.ringout.data.auth.local.createSecureTokenStorage
+import com.joon.ringout.data.auth.restoreAuthSession
+import com.joon.ringout.data.destination.DestinationAccountProvider
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.getAuthSession
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -38,10 +42,12 @@ import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
+import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
 @Composable
@@ -403,19 +409,25 @@ internal class AndroidAlarmScheduler(
     private val analytics: AndroidAlarmCreationAnalytics? = null,
     private val isSchedulingAllowed: () -> Boolean = { true },
     private val captureOwnerAccountId: suspend () -> String? = { null },
+    private val isReservationInUse: (String) -> Boolean = { false },
+    private val getAllForMaintenance: (suspend () -> List<SavedAlarmSchedule>)? = null,
+    private val getForReauthentication: suspend (String) -> SavedAlarmSchedule? = { null },
 ) {
 
     constructor(
         context: Context,
-        dataSource: AlarmDataSource = RoomAlarmDataSource(
-            getRingoutDatabase(context).alarmDao(),
-        ),
+        dataSource: AlarmDataSource = androidAlarmDataSource(context),
         legacyMigrator: LegacyAlarmPreferencesMigrator =
             LegacyAlarmPreferencesMigrator(context, dataSource),
     ) : this(
         dataSource = dataSource,
         alarmGateway = AndroidAlarmManagerGateway(context),
-        ensureMigrated = { legacyMigrator.ensureMigrated() },
+        ensureMigrated = {
+            if (!isAlarmSchedulingBlocked(context) && getAuthSession().identity.value == null) {
+                createSecureTokenStorage(context).restoreAuthSession(getAuthSession())
+            }
+            legacyMigrator.ensureMigrated()
+        },
         analytics = runCatching { AndroidAlarmAnalyticsAdapter(AlarmAnalytics(context)) }
             .getOrNull(),
         isSchedulingAllowed = { !isAlarmSchedulingBlocked(context) },
@@ -424,6 +436,23 @@ internal class AndroidAlarmScheduler(
                 createSecureTokenStorage(context),
                 getAuthSession(),
             )?.ownerAccountId
+        },
+        isReservationInUse = { id ->
+            AlarmRingingRuntime.isRinging(id) ||
+                ActiveAlarmMissionStore(context).readStoredMission()?.let { stored ->
+                    stored.mission.alarmId == id &&
+                        (stored.phase == AlarmMissionPhase.Tracking || stored.phase == AlarmMissionPhase.RetryPendingRing)
+                } == true
+        },
+        getAllForMaintenance = {
+            RoomAlarmDataSource(getRingoutDatabase(context).alarmDao()).getAll()
+        },
+        getForReauthentication = { id ->
+            val session = getAuthSession()
+            if (session.state.value == AuthSessionState.ReauthenticationRequired) {
+                RoomAlarmDataSource(getRingoutDatabase(context).alarmDao()).getById(id)
+                    ?.takeIf { session.state.value == AuthSessionState.ReauthenticationRequired }
+            } else null
         },
     )
 
@@ -437,7 +466,12 @@ internal class AndroidAlarmScheduler(
         val previous = dataSource.getById(request.id)
         val ownerAccountId = previous?.request?.ownerAccountId
             ?: if (previous == null) captureOwnerAccountId() else null
-        val versionedRequest = request.copy(ownerAccountId = ownerAccountId)
+        val versionedRequest = request.copy(
+            ownerAccountId = ownerAccountId,
+            remoteAlarmId = previous?.request?.remoteAlarmId
+                ?: if (previous == null) UUID.randomUUID().toString() else null,
+            pendingReservationId = previous?.request?.pendingReservationId,
+        )
             .withScheduleVersion(previous?.request)
         val replacement = SavedAlarmSchedule(
             request = versionedRequest,
@@ -448,7 +482,7 @@ internal class AndroidAlarmScheduler(
         }
         try {
             scheduleNext(versionedRequest, afterMillis = alarmGateway.currentTimeMillis())
-            dataSource.replace(replacement)
+            dataSource.replaceUserAlarm(replacement, previous)
         } catch (error: Exception) {
             restorePreviousAlarm(previous, request.id, error)
             throw error
@@ -491,7 +525,7 @@ internal class AndroidAlarmScheduler(
         val storedAlarm = dataSource.getById(alarmId)
         cancel(alarmId)
         try {
-            dataSource.delete(alarmId)
+            dataSource.deleteUserAlarm(alarmId)
         } catch (error: Exception) {
             if (storedAlarm?.enabled == true) {
                 runCatching {
@@ -510,7 +544,7 @@ internal class AndroidAlarmScheduler(
     ): Boolean = AlarmSchedulerMutationMutex.withLock {
         ensureMigrated()
         if (!isSchedulingAllowed()) return@withLock false
-        val storedAlarm = dataSource.getById(alarmId)
+        val storedAlarm = (dataSource.getById(alarmId) ?: getForReauthentication(alarmId))
             ?.takeIf(SavedAlarmSchedule::enabled)
             ?: return@withLock false
         val request = storedAlarm.request
@@ -521,6 +555,7 @@ internal class AndroidAlarmScheduler(
         ) {
             return@withLock false
         }
+        if (!isSchedulingAllowed()) return@withLock false
         startRinging(request)
         if (request.repeatEnabled && request.selectedDays.isNotEmpty()) {
             scheduleNext(request, afterMillis = alarmGateway.currentTimeMillis() + 60_000L)
@@ -536,13 +571,33 @@ internal class AndroidAlarmScheduler(
         ensureMigrated()
         if (!isSchedulingAllowed()) return@withLock
         var firstFailure: Exception? = null
+        val ownerAccountId = captureOwnerAccountId()
+        if (ownerAccountId != null) {
+            getAllForMaintenance?.invoke()?.forEach { stored ->
+                val owner = stored.request.ownerAccountId
+                if (owner != null && owner != ownerAccountId) cancel(stored.request.id)
+            }
+        }
         dataSource.getAll().forEach { stored ->
             coroutineContext.ensureActive()
             try {
-                if (stored.enabled) {
-                    scheduleNext(stored.request, afterMillis = alarmGateway.currentTimeMillis())
+                val request = stored.request
+                val pendingId = request.pendingReservationId
+                val scheduledRequest = if (
+                    pendingId != null && request.ownerAccountId != null && !isReservationInUse(request.id)
+                ) {
+                    cancel(request.id)
+                    check(dataSource.migrateId(request.id, pendingId)) {
+                        "저장된 알람 예약 ID를 전환하지 못했습니다."
+                    }
+                    request.copy(id = pendingId, pendingReservationId = null)
                 } else {
-                    cancel(stored.request.id)
+                    request
+                }
+                if (stored.enabled) {
+                    scheduleNext(scheduledRequest, afterMillis = alarmGateway.currentTimeMillis())
+                } else {
+                    cancel(scheduledRequest.id)
                 }
             } catch (error: CancellationException) {
                 throw error
@@ -560,9 +615,33 @@ internal class AndroidAlarmScheduler(
         }
     }
 
+    suspend fun applyServerChange(
+        alarmId: String,
+        apply: suspend () -> Boolean,
+    ): Boolean = AlarmSchedulerMutationMutex.withLock {
+        if (!isSchedulingAllowed() || isReservationInUse(alarmId)) return@withLock false
+        val previous = dataSource.getById(alarmId) ?: return@withLock apply()
+        cancel(alarmId)
+        if (!previous.enabled) return@withLock apply()
+
+        var applied = false
+        try {
+            applied = apply()
+            applied
+        } finally {
+            if (!applied) {
+                withContext(NonCancellable) {
+                    if (isSchedulingAllowed() && dataSource.getById(alarmId) == previous) {
+                        scheduleNext(previous.request, afterMillis = alarmGateway.currentTimeMillis())
+                    }
+                }
+            }
+        }
+    }
+
     suspend fun cancelAllForLogout(): Unit = AlarmSchedulerMutationMutex.withLock {
         ensureMigrated()
-        val alarms = dataSource.getAll()
+        val alarms = getAllForMaintenance?.invoke() ?: dataSource.getAll()
         // One SQL update in Room. Never restore enabled snapshots after cancellation failures.
         dataSource.disableAll()
         var firstFailure: Exception? = null
@@ -673,6 +752,15 @@ internal class AndroidAlarmScheduler(
             "일" to DayOfWeek.SUNDAY,
         )
     }
+}
+
+private fun androidAlarmDataSource(context: Context): AlarmDataSource {
+    val session = getAuthSession()
+    val tokenStorage = createSecureTokenStorage(context)
+    val accountProvider = DestinationAccountProvider(session) {
+        captureAlarmOccurrenceAccount(tokenStorage, session)?.ownerAccountId
+    }
+    return RoomAlarmDataSource(getRingoutDatabase(context), accountProvider)
 }
 
 internal interface AndroidAlarmGateway {
