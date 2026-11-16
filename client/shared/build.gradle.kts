@@ -60,8 +60,10 @@ abstract class GenerateForestConfig : DefaultTask() {
     }
 }
 val generateForestConfig = tasks.register<GenerateForestConfig>("generateForestConfig") {
-    webUrl.set(providers.gradleProperty("ringoutForestWebUrl")
-        .orElse(providers.environmentVariable("RINGOUT_FOREST_WEB_URL")).orElse(""))
+    webUrl.set(providers.environmentVariable("RINGOUT_FOREST_WEB_URL")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .orElse(providers.gradleProperty("ringoutForestWebUrl")).orElse(""))
     outputDirectory.set(layout.buildDirectory.dir("generated/forestConfig/commonMain/kotlin"))
 }
 
