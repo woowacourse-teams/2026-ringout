@@ -74,8 +74,8 @@ class LocalUserDataCleanupDatabaseTest {
                     startedAtEpochMillis = 1_100,
                 ),
             )
-            occurrenceDao.recordDismissal("account-1", "execution-1", 1_200)
-            occurrenceDao.recordTerminal("account-1", "execution-1", AlarmOccurrenceOutboxKind.ARRIVED, 1_300)
+            occurrenceDao.recordDismissal("account-1", "execution-1", 1_200, roomsEnabled = true)
+            occurrenceDao.recordTerminal("account-1", "execution-1", AlarmOccurrenceOutboxKind.ARRIVED, 1_300, roomsEnabled = true)
             occurrenceDao.recordIosStart(
                 decision = IosAlarmOccurrenceRecordEntity(
                     chainId = "ios-chain-1",

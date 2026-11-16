@@ -22,7 +22,7 @@ import kotlin.test.assertNull
 class ActiveMissionPushNavigationEffectTest {
     @Test
     fun `인증 복원 중 푸시를 보류하고 활성 미션 이동 뒤 푸시 목적지를 반영한다`() = runTest {
-        val navigationState = AppNavigationState()
+        val navigationState = AppNavigationState(roomsEnabled = true)
         var authSessionState by mutableStateOf(AuthSessionState.Restoring)
         var activeMissionOccurrenceId by mutableStateOf<String?>("occurrence-1")
         var pendingRequest by mutableStateOf<RoomActivityPushRequest?>(
@@ -76,7 +76,7 @@ class ActiveMissionPushNavigationEffectTest {
 
     @Test
     fun `알람 울림 중에는 푸시 요청을 보존하고 울림 종료 후에 처리한다`() = runTest {
-        val navigationState = AppNavigationState()
+        val navigationState = AppNavigationState(roomsEnabled = true)
         var isRingingAlarm by mutableStateOf(true)
         var pendingRequest by mutableStateOf<RoomActivityPushRequest?>(
             pushRequest("click-b", "42", "2026-10-08"),
@@ -112,7 +112,7 @@ class ActiveMissionPushNavigationEffectTest {
 
     @Test
     fun `비로그인과 재인증 상태에서는 푸시를 이동 없이 폐기한다`() = runTest {
-        val navigationState = AppNavigationState()
+        val navigationState = AppNavigationState(roomsEnabled = true)
         var authSessionState by mutableStateOf(AuthSessionState.Unauthenticated)
         var pendingRequest by mutableStateOf<RoomActivityPushRequest?>(
             pushRequest("click-c", "43", "2026-10-09"),
@@ -144,6 +144,28 @@ class ActiveMissionPushNavigationEffectTest {
             assertEquals(listOf("click-c", "click-d"), handledRequestIds)
             assertNull(pendingRequest)
             assertEquals(listOf(AppRoute.Home), navigationState.backStack.toList())
+        }
+    }
+
+    @Test
+    fun `모임이 비활성화되면 인증 복원 중 받은 알림도 소비하고 개인 미션을 유지한다`() = runTest {
+        val navigationState = AppNavigationState()
+        var pendingRequest by mutableStateOf<RoomActivityPushRequest?>(pushRequest("old-click", "41", "2026-10-07"))
+        val handled = mutableListOf<String>()
+        withEffectComposition(content = {
+            ActiveMissionNavigationEffect(
+                activeMissionOccurrenceId = "active",
+                navigationState = navigationState,
+                authSessionState = AuthSessionState.Restoring,
+                pendingRoomActivityPush = pendingRequest,
+                canHandleRoomActivityPush = false,
+                onRoomActivityPushHandled = { handled += it; pendingRequest = null },
+            )
+        }) { drain ->
+            drain()
+            assertEquals(listOf("old-click"), handled)
+            assertNull(pendingRequest)
+            assertEquals(AppRoute.ActiveAlarmTracking("active"), navigationState.requestedRoute)
         }
     }
 

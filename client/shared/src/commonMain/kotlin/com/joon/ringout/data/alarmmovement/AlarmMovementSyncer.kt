@@ -1,5 +1,6 @@
 package com.joon.ringout.data.alarmmovement
 
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxState
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
 import com.joon.ringout.data.network.ApiException
@@ -18,10 +19,12 @@ internal class AlarmMovementSyncer(
     private val now: () -> Long,
     private val checkAccount: suspend () -> Unit,
     private val onUnauthorized: () -> Nothing,
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) {
     private var joinedRoomIds: List<Long>? = null
 
     suspend fun flush(owner: String): Long? {
+        if (!roomsEnabled) return null
         var nextRetry: Long? = null
         fun include(retry: Long?) { if (retry != null) nextRetry = nextRetry?.let { minOf(it, retry) } ?: retry }
         val executions = dao.getUnsentMovements(owner).map { it.localExecutionId }.distinct()

@@ -12,7 +12,7 @@ class MainNavigationTabTest {
 
     @Test
     fun `탭을 반복 전환해도 이전 탭을 쌓지 않고 뒤로 가면 홈으로 돌아간다`() {
-        val state = AppNavigationState(guestOnlyMode = true)
+        val state = AppNavigationState(guestOnlyMode = true, roomsEnabled = true)
         repeat(3) {
             listOf(AppRoute.Social, AppRoute.Records, AppRoute.MyPage).forEach { route ->
                 state.navigate(route)

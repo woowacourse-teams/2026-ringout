@@ -1,5 +1,7 @@
 package com.joon.ringout.analytics
 
+import com.joon.ringout.domain.room.RoomFeature
+
 import com.joon.ringout.platform.IosAnalyticsEventDto
 import com.joon.ringout.platform.IosAnalyticsParameterDto
 import com.joon.ringout.platform.IosAnalyticsTracker
@@ -24,6 +26,7 @@ internal class IosAlarmAnalytics(
     private val usageStore: IosAnalyticsUsageStore = IosAnalyticsUsageStore(),
     private val nowEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val roomMembership: RoomMembershipAnalytics? = null,
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) : IosAlarmAnalyticsRecorder {
     private val forceEndHoldAttempts = mutableMapOf<String, Int>()
 
@@ -91,8 +94,10 @@ internal class IosAlarmAnalytics(
     ) = safelyRecord {
         val existingUse = usageStore.findUseIndex(occurrenceId)
         val useIndex = usageStore.getOrCreateUseIndex(occurrenceId) ?: return@safelyRecord
-        val roomSnapshot = roomMembership?.startMission(useIndex, existingUse == null && retryAttempt == 0)
-            ?: RoomMembershipSnapshot()
+        val roomSnapshot = if (roomsEnabled) {
+            roomMembership?.startMission(useIndex, existingUse == null && retryAttempt == 0)
+                ?: RoomMembershipSnapshot()
+        } else null
         if (!usageStore.claimEvent(DestinationMissionStarted, occurrenceId)) return@safelyRecord
         tracker.log(
             analyticsEvent(
@@ -230,7 +235,9 @@ internal class IosAlarmAnalytics(
         val useIndex = usageStore.findUseIndex(occurrenceId) ?: return@safelyRecord
         if (!usageStore.claimEvent(name, occurrenceId)) return@safelyRecord
         val elapsedMillis = (nowEpochMillis() - startedAtEpochMillis).coerceAtLeast(0L)
-        val roomSnapshot = roomMembership?.mission(useIndex) ?: RoomMembershipSnapshot()
+        val roomSnapshot = if (roomsEnabled) {
+            roomMembership?.mission(useIndex) ?: RoomMembershipSnapshot()
+        } else null
         tracker.log(
             analyticsEvent(
                 name = name,

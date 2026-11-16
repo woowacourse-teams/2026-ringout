@@ -41,7 +41,7 @@ class AuthSessionCoordinatorTest {
         runCurrent()
         assertEquals(listOf("이전 회원"), roomActivityViewModel.uiState.value.members.map { it.nickname })
 
-        val handler = RoomSessionStateHandler(null, emptyList(), listOf(roomActivityViewModel))
+        val handler = RoomSessionStateHandler(null, emptyList(), listOf(roomActivityViewModel), roomsEnabled = true)
         authSession.startNewSession()
         handler.onSessionStateChanged(authSession.state.value, authSession.identity.value)
 
@@ -66,7 +66,7 @@ class AuthSessionCoordinatorTest {
                 areMembersLoaded = true,
             ),
         )
-        val handler = RoomSessionStateHandler(roomListViewModel, listOf(roomHomeViewModel))
+        val handler = RoomSessionStateHandler(roomListViewModel, listOf(roomHomeViewModel), roomsEnabled = true)
 
         handler.onSessionStateChanged(AuthSessionState.Authenticated, Any())
         runCurrent()
@@ -77,6 +77,19 @@ class AuthSessionCoordinatorTest {
         assertEquals(listOf(previewRoom), roomListViewModel.uiState.allRooms)
         assertNull(roomHomeViewModel.uiState.value.room)
         assertEquals(emptyList(), roomHomeViewModel.uiState.value.members)
+    }
+
+    @Test
+    fun `모임 비활성화 상태의 인증 변경은 모임 목록을 조회하지 않는다`() = runTest {
+        var requests = 0
+        val viewModel = RoomListViewModel(
+            loadRooms = { requests += 1; Result.success(emptyList()) },
+            coroutineScope = this,
+        )
+        val handler = RoomSessionStateHandler(viewModel, emptyList())
+        handler.onSessionStateChanged(AuthSessionState.Authenticated, Any())
+        runCurrent()
+        assertEquals(0, requests)
     }
 
     private companion object {

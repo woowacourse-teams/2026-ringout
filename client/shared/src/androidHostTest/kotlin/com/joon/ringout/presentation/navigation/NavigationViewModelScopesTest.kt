@@ -266,7 +266,7 @@ class NavigationViewModelScopesTest {
 
     private class Fixture : NavigationEventDispatcherOwner {
         override val navigationEventDispatcher = NavigationEventDispatcher()
-        val navigation = AppNavigationState()
+        val navigation = AppNavigationState(roomsEnabled = true)
         val container = HomeTestContainer()
         val locationCache = DestinationCurrentLocationCache()
         val sessionIdentity = mutableStateOf<Any?>(Any())

@@ -69,6 +69,7 @@ internal fun RingoutNavHost(
                 route.mainNavigationTab()?.let { selectedTab ->
                     MainNavigationBar(
                         selectedTab = selectedTab,
+                        roomsEnabled = navigationState.roomsEnabled,
                         onTabSelected = { if (isActive) navigationState.navigate(it.route) },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)

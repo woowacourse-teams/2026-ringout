@@ -16,6 +16,7 @@ import com.google.firebase.messaging.RemoteMessage
 import com.joon.ringout.MainActivity
 import com.joon.ringout.R
 import com.joon.ringout.data.push.AndroidFcmTokenSource
+import com.joon.ringout.domain.room.RoomFeature
 import java.util.UUID
 
 internal object PushNotifications {
@@ -38,6 +39,9 @@ internal object PushNotifications {
         payload: RemoteMessage.Notification,
         data: Map<String, String>,
     ) {
+        if (!RoomFeature.isEnabled &&
+            (RoomActivityPushTarget.RoomIdKey in data || RoomActivityPushTarget.ActivityDateKey in data)
+        ) return
         val manager = context.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=

@@ -1,5 +1,6 @@
 package com.joon.ringout.data.room
 
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.data.auth.AuthenticatedRequestExecutor
 import com.joon.ringout.data.network.ApiConfig
 import com.joon.ringout.data.network.ApiErrorResponse
@@ -48,10 +49,12 @@ class DefaultRoomRepository(
     private val httpClient: HttpClient,
     private val tokenStorage: SecureTokenStorage,
     private val authSession: AuthSession,
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) : RoomRepository {
     private val authenticatedRequests = AuthenticatedRequestExecutor(httpClient, tokenStorage, authSession)
 
     override suspend fun getRooms(): List<RoomSummary> {
+        ensureRoomsEnabled()
         val accessToken = if (authSession.state.value == AuthSessionState.Authenticated) {
             tokenStorage.read()?.accessToken?.takeIf(String::isNotBlank)
         } else {
@@ -67,6 +70,7 @@ class DefaultRoomRepository(
     }
 
     override suspend fun getRoom(roomId: Long): RoomMembershipDetails {
+        ensureRoomsEnabled()
         if (roomId <= 0L) {
             throw RoomRepositoryException(
                 statusCode = HttpStatusCode.BadRequest.value,
@@ -102,6 +106,7 @@ class DefaultRoomRepository(
     }
 
     override suspend fun getMembersForManagement(roomId: Long): List<RoomManagementMember> {
+        ensureRoomsEnabled()
         if (roomId <= 0L) {
             throw RoomRepositoryException(
                 statusCode = HttpStatusCode.BadRequest.value,
@@ -151,6 +156,7 @@ class DefaultRoomRepository(
     }
 
     override suspend fun getMemberMovements(roomId: Long): List<RoomMemberMovement> {
+        ensureRoomsEnabled()
         if (roomId <= 0L) {
             throw RoomRepositoryException(
                 statusCode = HttpStatusCode.BadRequest.value,
@@ -200,6 +206,7 @@ class DefaultRoomRepository(
     }
 
     override suspend fun kickMember(roomId: Long, userId: Long) {
+        ensureRoomsEnabled()
         if (roomId <= 0L || userId <= 0L) {
             throw RoomRepositoryException(
                 statusCode = HttpStatusCode.BadRequest.value,
@@ -224,6 +231,7 @@ class DefaultRoomRepository(
     }
     
     override suspend fun getRoomRecords(roomId: Long, date: MissionDate): RoomRecords {
+        ensureRoomsEnabled()
         require(roomId > 0L) { "모임 ID를 확인해 주세요." }
         ensureGetAuthenticated()
         val identity = authSession.identity.value
@@ -249,6 +257,7 @@ class DefaultRoomRepository(
     }
 
     override suspend fun createRoom(input: RoomCreateInput): RoomMembershipDetails {
+        ensureRoomsEnabled()
         ensurePostAuthenticated()
         try {
             val response = authenticatedRequests.execute { accessToken ->
@@ -267,6 +276,7 @@ class DefaultRoomRepository(
     }
 
     override suspend fun joinRoom(roomId: Long): RoomMembershipDetails {
+        ensureRoomsEnabled()
         require(roomId > 0L) { "모임 ID를 확인해 주세요." }
         ensurePostAuthenticated()
         try {
@@ -287,6 +297,7 @@ class DefaultRoomRepository(
     }
 
     override suspend fun updateRoom(roomId: Long, input: RoomUpdateInput): RoomUpdateResult {
+        ensureRoomsEnabled()
         if (roomId <= 0L) {
             throw RoomRepositoryException(
                 statusCode = HttpStatusCode.BadRequest.value,
@@ -346,11 +357,21 @@ class DefaultRoomRepository(
 
 
     override suspend fun deleteRoom(roomId: Long) {
+        ensureRoomsEnabled()
         performRoomDeleteAction(roomId, path = "/api/v1/rooms/$roomId")
     }
 
     override suspend fun leaveRoom(roomId: Long) {
+        ensureRoomsEnabled()
         performRoomDeleteAction(roomId, path = "/api/v1/rooms/$roomId/members")
+    }
+
+    private fun ensureRoomsEnabled() {
+        if (!roomsEnabled) throw RoomRepositoryException(
+            statusCode = 503,
+            code = "ROOM_DISABLED",
+            message = "모임 기능이 현재 비활성화되어 있어요.",
+        )
     }
 
     private suspend fun performRoomDeleteAction(roomId: Long, path: String) {

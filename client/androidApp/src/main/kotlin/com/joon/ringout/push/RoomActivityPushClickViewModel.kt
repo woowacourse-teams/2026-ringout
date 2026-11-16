@@ -10,11 +10,13 @@ import androidx.lifecycle.ViewModel
 import com.joon.ringout.domain.push.RoomActivityPushRequest
 import com.joon.ringout.domain.push.RoomActivityPushRequestState
 import com.joon.ringout.domain.push.RoomActivityPushTarget
+import com.joon.ringout.domain.room.RoomFeature
 import java.util.UUID
 
 /** Holds a notification click through bootstrap, Activity recreation, and navigation readiness. */
 internal class RoomActivityPushClickViewModel(
     private val savedState: SavedStateHandle,
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) : ViewModel() {
     private val restoredRequest = restoredRequest()
     private val requestState = RoomActivityPushRequestState(
@@ -28,6 +30,7 @@ internal class RoomActivityPushClickViewModel(
 
     /** Accepts both app-created notification intents and FCM's launcher extras. */
     fun receive(intent: Intent, isNewIntent: Boolean, preservePendingRequest: Boolean = false) {
+        if (!roomsEnabled) return
         val extras = intent.extras
         val customRequestId = extras.string(PushNotifications.EXTRA_REQUEST_ID)
         val hasRoomData = extras?.let {
@@ -83,6 +86,12 @@ internal class RoomActivityPushClickViewModel(
     }
 
     private fun restoredRequest(): RoomActivityPushRequest? {
+        if (!roomsEnabled) {
+            savedState.remove<String>(PendingRequestIdKey)
+            savedState.remove<String>(PendingRoomIdKey)
+            savedState.remove<String>(PendingActivityDateKey)
+            return null
+        }
         val requestId = savedState.get<String>(PendingRequestIdKey) ?: return null
         val target = RoomActivityPushTarget.parse(
             mapOf(

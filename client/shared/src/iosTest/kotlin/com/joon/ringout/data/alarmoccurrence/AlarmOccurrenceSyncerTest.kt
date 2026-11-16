@@ -32,13 +32,34 @@ import kotlin.time.Clock
 
 class AlarmOccurrenceSyncerTest {
     @Test
+    fun `모임 비활성화 시 기존 대기열을 보존하고 개인 이벤트만 전송한다`() = withFixture { f ->
+        f.start()
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
+        val parent = f.dao.getUnsentMovements("1").single()
+        f.dao.completeMovementTargets("1", parent.id, listOf(7))
+        val child = f.dao.getUnsentMovements("1").single()
+        f.dao.saveMovementDelivery("1", child.id, AlarmOccurrenceOutboxState.PENDING, 2, 9_000, "NETWORK_ERROR")
+        val preserved = f.dao.getMovements("1", "root")
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+
+        assertNull(f.newSyncer(roomsEnabled = false).flush())
+        assertNull(f.newSyncer(roomsEnabled = false).flush())
+
+        assertEquals(listOf("POST", "InitialDismissed", "Arrived"), f.remote.calls)
+        assertEquals(preserved, f.dao.getMovements("1", "root"))
+        assertEquals(0, f.movements.roomLookups)
+        assertTrue(f.movements.calls.isEmpty())
+        assertTrue(f.dao.getUnsentEvents("1").isEmpty())
+    }
+
+    @Test
     fun `반복 해제는 이동 시작을 중복하지 않고 가입한 각 모임에 시작과 도착을 순서대로 전송한다`() = withFixture { f ->
         f.movements.rooms = listOf(7, 8)
         f.start()
-        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
         f.dao.recordRepeat("1", "root", "retry", "event", 3_000)
-        f.dao.recordDismissal("1", "retry", 4_000)
-        f.dao.recordTerminal("1", "retry", AlarmOccurrenceOutboxKind.ARRIVED, 5_000)
+        f.dao.recordDismissal("1", "retry", 4_000, roomsEnabled = true)
+        f.dao.recordTerminal("1", "retry", AlarmOccurrenceOutboxKind.ARRIVED, 5_000, roomsEnabled = true)
         f.syncer.flush()
         f.newSyncer().flush()
         assertEquals(listOf(7L to AlarmMovementAction.START_MOVEMENT, 8L to AlarmMovementAction.START_MOVEMENT,
@@ -52,11 +73,11 @@ class AlarmOccurrenceSyncerTest {
     fun `모임 이동 실패에도 기존 알람 PATCH를 완료하고 실패한 모임만 재시도한다`() = withFixture { f ->
         f.movements.rooms = listOf(7, 8)
         f.start()
-        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
         f.movements.beforeChange = { room, _ -> if (room == 8L) throw ApiException(500, "MOVEMENT500", "실패") }
         assertEquals(15_000L, f.syncer.flush())
         assertTrue(f.dao.getUnsentEvents("1").isEmpty())
-        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000, roomsEnabled = true)
         f.syncer.flush()
         assertEquals(listOf("POST", "InitialDismissed", "ForceEnded"), f.remote.calls)
         assertEquals(listOf(7L to AlarmMovementAction.START_MOVEMENT, 8L to AlarmMovementAction.START_MOVEMENT,
@@ -73,7 +94,7 @@ class AlarmOccurrenceSyncerTest {
     fun `알람 POST가 실패하면 UUID가 생기기 전까지 모임 요청을 보내지 않는다`() = withFixture { f ->
         f.movements.rooms = listOf(7)
         f.start()
-        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
         f.remote.beforeStart = { throw IOException("연결 끊김") }
         assertEquals(15_000L, f.syncer.flush())
         assertEquals(0, f.movements.roomLookups)
@@ -88,8 +109,8 @@ class AlarmOccurrenceSyncerTest {
     fun `가입 모임 조회 실패는 종료 요청을 앞서 보내지 않고 조회부터 재시도한다`() = withFixture { f ->
         f.movements.rooms = listOf(7)
         f.start()
-        f.dao.recordDismissal("1", "root", 2_000)
-        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000, roomsEnabled = true)
         f.movements.beforeRooms = { throw IOException("오프라인") }
         assertEquals(15_000L, f.syncer.flush())
         assertEquals(1, f.movements.roomLookups)
@@ -104,7 +125,7 @@ class AlarmOccurrenceSyncerTest {
     @Test
     fun `가입한 모임이 없으면 이동 POST 없이 완료한다`() = withFixture { f ->
         f.start()
-        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
         f.syncer.flush()
         assertEquals(1, f.movements.roomLookups)
         assertTrue(f.movements.calls.isEmpty())
@@ -115,7 +136,7 @@ class AlarmOccurrenceSyncerTest {
     fun `이동 응답 중 계정이 바뀌면 이전 계정의 완료 상태를 변경하지 않는다`() = withFixture { f ->
         f.movements.rooms = listOf(7)
         f.start()
-        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
         f.movements.beforeChange = { _, _ ->
             f.tokens.tokens = AuthTokens(token(2), "refresh")
             f.session.startNewSession()
@@ -136,7 +157,7 @@ class AlarmOccurrenceSyncerTest {
     fun `이동 인증 실패는 같은 세션에서 반복하지 않고 재로그인하면 재개한다`() = withFixture { f ->
         f.movements.rooms = listOf(7)
         f.start()
-        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000, roomsEnabled = true)
         f.movements.beforeChange = { _, _ -> throw ApiException(401, "AUTH401", "인증 필요") }
         f.syncer.flush()
         f.syncer.flush()
@@ -152,7 +173,7 @@ class AlarmOccurrenceSyncerTest {
     fun `이동 영구 오류는 다른 모임 전송을 막지 않고 자동 재전송하지 않는다`() = withFixture { f ->
         f.movements.rooms = listOf(7, 8)
         f.start()
-        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000, roomsEnabled = true)
         f.movements.beforeChange = { room, _ -> if (room == 7L) throw ApiException(403, "MOVEMENT403", "탈퇴한 모임") }
         assertNull(f.syncer.flush())
         f.newSyncer().flush()
@@ -165,9 +186,9 @@ class AlarmOccurrenceSyncerTest {
     fun `종료 후 늦게 저장된 해제는 이동을 다시 시작하지 않는다`() = withFixture { f ->
         f.movements.rooms = listOf(7)
         f.start()
-        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000, roomsEnabled = true)
         f.syncer.flush()
-        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
         f.syncer.flush()
         assertEquals(listOf(7L to AlarmMovementAction.ARRIVE), f.movements.calls)
         assertEquals("ALREADY_ENDED", f.dao.getUnsentMovements("1").single().lastErrorCode)
@@ -212,10 +233,10 @@ class AlarmOccurrenceSyncerTest {
     @Test
     fun `POST와 해제 재울림 도착을 순서대로 보내고 완료 이벤트를 다시 보내지 않는다`() = withFixture { f ->
         f.start()
-        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
         f.dao.recordRepeat("1", "root", "retry", "repeat-id", 3_000)
-        f.dao.recordDismissal("1", "retry", 4_000)
-        f.dao.recordTerminal("1", "retry", AlarmOccurrenceOutboxKind.ARRIVED, 5_000)
+        f.dao.recordDismissal("1", "retry", 4_000, roomsEnabled = true)
+        f.dao.recordTerminal("1", "retry", AlarmOccurrenceOutboxKind.ARRIVED, 5_000, roomsEnabled = true)
         assertNull(f.syncer.flush())
         assertEquals(listOf("POST", "InitialDismissed", "RepeatRang", "RepeatDismissed", "Arrived"), f.remote.calls)
         assertEquals(ServerId, f.dao.getExecution("1", "root")?.serverOccurrenceId)
@@ -230,7 +251,7 @@ class AlarmOccurrenceSyncerTest {
     @Test
     fun `POST 응답을 잃으면 같은 본문으로 재전송한 뒤에만 PATCH를 보낸다`() = withFixture { f ->
         f.start()
-        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
         f.remote.beforeStart = { if (f.remote.starts.size == 1) throw IOException("응답 유실") }
         assertEquals(15_000L, f.syncer.flush())
         assertEquals(listOf("POST"), f.remote.calls)
@@ -248,8 +269,8 @@ class AlarmOccurrenceSyncerTest {
     @Test
     fun `PATCH 실패 시 후속 이벤트를 보류하고 같은 시각으로 재시도한다`() = withFixture { f ->
         f.start()
-        f.dao.recordDismissal("1", "root", 2_000)
-        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000, roomsEnabled = true)
         f.remote.beforeEvent = { if (f.remote.events.size == 1) throw ApiException(503, "UNAVAILABLE", "재시도") }
         assertEquals(15_000L, f.syncer.flush())
         assertEquals(listOf("POST", "InitialDismissed"), f.remote.calls)
@@ -344,8 +365,8 @@ class AlarmOccurrenceSyncerTest {
     @Test
     fun `종료 전 대기 중인 해제를 먼저 보내고 종료 이후 추가 이벤트는 보류한다`() = withFixture { f ->
         f.start()
-        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
-        f.dao.recordDismissal("1", "root", 2_000)
+        f.dao.recordTerminal("1", "root", AlarmOccurrenceOutboxKind.ARRIVED, 3_000, roomsEnabled = true)
+        f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
         f.syncer.flush()
         assertEquals(listOf("POST", "InitialDismissed", "Arrived"), f.remote.calls)
         f.dao.recordRepeat("1", "root", "late", "repeat-id", 4_000)
@@ -366,7 +387,7 @@ class AlarmOccurrenceSyncerTest {
                 assertTrue(f.remote.calls.isEmpty())
                 status.value = NetworkStatus.Online
                 withTimeout(5_000) { f.dao.observeUnsentEvents().first { it.isEmpty() } }
-                f.dao.recordDismissal("1", "root", 2_000)
+                f.dao.recordDismissal("1", "root", 2_000, roomsEnabled = true)
                 withTimeout(5_000) { f.dao.observeUnsentEvents().first { it.isEmpty() } }
                 assertEquals(listOf("POST", "InitialDismissed"), f.remote.calls)
             } finally { job.cancelAndJoin() }
@@ -390,7 +411,7 @@ private class SyncFixture {
     var time = 10_000L
     var readTime: () -> Long = { time }
     val syncer = newSyncer()
-    fun newSyncer() = AlarmOccurrenceSyncer(dao, client, tokens, session, { readTime() }, { remote }, { movements })
+    fun newSyncer(roomsEnabled: Boolean = true) = AlarmOccurrenceSyncer(dao, client, tokens, session, { readTime() }, { remote }, roomsEnabled, { movements })
     suspend fun start(id: String = "root", startedAt: Long? = 1_000) =
         dao.recordStart(AlarmOccurrenceSyncEntity(id, "1", "alarm-$id", 1, 900, startedAt))
 }

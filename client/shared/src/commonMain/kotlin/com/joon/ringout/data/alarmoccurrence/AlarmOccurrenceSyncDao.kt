@@ -1,5 +1,6 @@
 package com.joon.ringout.data.alarmoccurrence
 
+import com.joon.ringout.domain.room.RoomFeature
 import androidx.room3.Dao
 import androidx.room3.Insert
 import androidx.room3.OnConflictStrategy
@@ -331,6 +332,7 @@ abstract class AlarmOccurrenceSyncDao {
     @Transaction
     open suspend fun evaluateIosAlarmCleanup(
         request: IosAlarmCleanupReadinessRequest,
+        roomsEnabled: Boolean = RoomFeature.isEnabled,
     ): IosAlarmCleanupReadiness {
         require(request.chainId.isNotBlank() && request.rootOccurrenceId.isNotBlank())
         val decision = getIosRecordDecision(request.chainId)
@@ -400,28 +402,30 @@ abstract class AlarmOccurrenceSyncDao {
             return IosAlarmCleanupReadiness(reason, owner)
         }
 
-        val storedMovements = getMovements(owner, request.rootOccurrenceId)
-        for (expected in request.expectedMovements) {
-            val parent = storedMovements.firstOrNull { it.deduplicationKey == expected.deduplicationKey && it.roomId == null }
-                ?: return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, owner)
-            if (parent.action != expected.action || parent.occurredAtEpochMillis != expected.occurredAtEpochMillis) {
-                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_PROJECTION, owner)
+        if (roomsEnabled) {
+            val storedMovements = getMovements(owner, request.rootOccurrenceId)
+            for (expected in request.expectedMovements) {
+                val parent = storedMovements.firstOrNull { it.deduplicationKey == expected.deduplicationKey && it.roomId == null }
+                    ?: return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, owner)
+                if (parent.action != expected.action || parent.occurredAtEpochMillis != expected.occurredAtEpochMillis) {
+                    return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.MISSING_PROJECTION, owner)
+                }
+                val children = storedMovements.filter { it.deduplicationKey.startsWith("${expected.deduplicationKey}:room:") }
+                val movementStates = listOf(parent.state) + children.map { it.state }
+                if (movementStates.any { it == AlarmOccurrenceOutboxState.BLOCKED }) {
+                    return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.BLOCKED, owner)
+                }
+                if (movementStates.any { it != AlarmOccurrenceOutboxState.SENT }) {
+                    return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.PENDING, owner)
+                }
             }
-            val children = storedMovements.filter { it.deduplicationKey.startsWith("${expected.deduplicationKey}:room:") }
-            val movementStates = listOf(parent.state) + children.map { it.state }
-            if (movementStates.any { it == AlarmOccurrenceOutboxState.BLOCKED }) {
-                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.BLOCKED, owner)
-            }
-            if (movementStates.any { it != AlarmOccurrenceOutboxState.SENT }) {
-                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.PENDING, owner)
-            }
-        }
-        if (request.requireAllMovementRowsSent) {
-            if (storedMovements.any { it.state == AlarmOccurrenceOutboxState.BLOCKED }) {
-                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.BLOCKED, owner)
-            }
-            if (storedMovements.any { it.state != AlarmOccurrenceOutboxState.SENT }) {
-                return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.PENDING, owner)
+            if (request.requireAllMovementRowsSent) {
+                if (storedMovements.any { it.state == AlarmOccurrenceOutboxState.BLOCKED }) {
+                    return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.BLOCKED, owner)
+                }
+                if (storedMovements.any { it.state != AlarmOccurrenceOutboxState.SENT }) {
+                    return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.PENDING, owner)
+                }
             }
         }
         return IosAlarmCleanupReadiness(IosAlarmCleanupReadinessReason.READY, owner)
@@ -582,10 +586,16 @@ abstract class AlarmOccurrenceSyncDao {
     }
 
     @Transaction
-    open suspend fun recordDismissal(ownerAccountId: String, localRingingId: String, dismissedAtEpochMillis: Long) {
+    open suspend fun recordDismissal(
+        ownerAccountId: String,
+        localRingingId: String,
+        dismissedAtEpochMillis: Long,
+        roomsEnabled: Boolean = RoomFeature.isEnabled,
+    ) {
         val ringing = checkNotNull(getRinging(ownerAccountId, localRingingId))
         val kind = if (ringing.eventId == null) AlarmOccurrenceOutboxKind.INITIAL_DISMISSED else AlarmOccurrenceOutboxKind.REPEAT_DISMISSED
         insertEvent(event(ringing.localExecutionId, localRingingId, "dismiss:$localRingingId", kind, dismissedAtEpochMillis))
+        if (!roomsEnabled) return
         // 재울림 해제도 같은 실행의 이동 시작으로 묶어 최초 한 번만 전송한다.
         insertMovement(AlarmMovementOutboxEntity(localExecutionId = ringing.localExecutionId,
             deduplicationKey = "start", action = AlarmMovementAction.START_MOVEMENT, occurredAtEpochMillis = dismissedAtEpochMillis))
@@ -598,10 +608,12 @@ abstract class AlarmOccurrenceSyncDao {
         localRingingId: String,
         kind: AlarmOccurrenceOutboxKind,
         occurredAtEpochMillis: Long,
+        roomsEnabled: Boolean = RoomFeature.isEnabled,
     ) {
         require(kind == AlarmOccurrenceOutboxKind.ARRIVED || kind == AlarmOccurrenceOutboxKind.FORCE_ENDED)
         val ringing = checkNotNull(getRinging(ownerAccountId, localRingingId))
         insertEvent(event(ringing.localExecutionId, localRingingId, "terminal", kind, occurredAtEpochMillis))
+        if (!roomsEnabled) return
         val terminal = getEvents(ownerAccountId, ringing.localExecutionId).first { it.deduplicationKey == "terminal" }
         insertMovement(AlarmMovementOutboxEntity(localExecutionId = ringing.localExecutionId,
             deduplicationKey = "terminal", occurredAtEpochMillis = checkNotNull(terminal.occurredAtEpochMillis),

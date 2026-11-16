@@ -26,6 +26,12 @@ internal fun ActiveMissionNavigationEffect(
         mutableStateOf<String?>(null)
     }
 
+    LaunchedEffect(navigationState.roomsEnabled, pendingRoomActivityPush?.requestId) {
+        if (!navigationState.roomsEnabled) {
+            pendingRoomActivityPush?.let { onRoomActivityPushHandled(it.requestId) }
+        }
+    }
+
     // 도착 결과는 확인 전까지 다시 표시하되, 같은 활성 미션에서 홈으로 나온 선택은 유지한다.
     LaunchedEffect(
         activeMissionOccurrenceId,
@@ -70,7 +76,7 @@ internal fun ActiveMissionNavigationEffect(
             return@LaunchedEffect
         }
 
-        if (!canHandleRoomActivityPush) return@LaunchedEffect
+        if (!navigationState.roomsEnabled || !canHandleRoomActivityPush) return@LaunchedEffect
         val pushRequest = pendingRoomActivityPush ?: return@LaunchedEffect
         when (authSessionState) {
             AuthSessionState.Restoring -> return@LaunchedEffect

@@ -206,6 +206,8 @@ Android와 iOS 각각 다음 순서를 DebugView 및 배포 후 BigQuery export�
 
 ## 모임 이용과 미션 참여 상태 (#440)
 
+현재 모임 기능은 `RoomFeature.isEnabled=false`로 비활성화되어 있다. 아래 이벤트와 분석 구현은 재도입 검토를 위해 보존하지만, 모임 이벤트 9종과 미션의 `room_membership_state`, `joined_room_count`, `room_list_checked_at_ms`, `room_membership_observed_at_ms`는 수집·전송하지 않는다. 참여 캐시와 미션 스냅샷도 읽거나 갱신하지 않으며 기존 로컬 저장값은 보존한다. 개인 미션 이벤트의 사용 인덱스·재시도·경과 시간 및 분석 사용자 식별은 기존대로 유지한다. 아래 계약은 기능이 활성화된 버전에 해당하며, 구버전 데이터와 비활성화 버전 데이터는 앱 버전으로 구분한다.
+
 ### 모임 이벤트
 
 | 이벤트 | 시점 | 파라미터 |
