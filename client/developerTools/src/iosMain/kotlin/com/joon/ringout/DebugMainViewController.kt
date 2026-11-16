@@ -13,6 +13,8 @@ fun DebugMainViewController(nativeServices: IosNativeServices): UIViewController
                     buildInfo = currentIosAppBuildInfo(),
                     pushTokenRegistrationReadiness = appContainer.pushTokenRegistrationReadiness,
                     outboxReader = appContainer.outboxReader,
+                    authDiagnostics = appContainer.authDiagnostics,
+                    authSession = appContainer.authSession,
                     onBack = onBack,
                 )
             },

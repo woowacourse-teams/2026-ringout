@@ -1,5 +1,7 @@
 package com.joon.ringout.di
 
+import com.joon.ringout.data.auth.DevelopmentAuthDiagnostics
+import com.joon.ringout.domain.auth.AuthDiagnostics
 import com.joon.ringout.alarm.newAlarmId
 import com.joon.ringout.data.alarm.AlarmOutboxSyncer
 import com.joon.ringout.data.alarm.AlarmSyncCoordinator
@@ -66,6 +68,9 @@ class IosAppContainer(
     )
 
     override val authSession = getAuthSession()
+    override val authDiagnostics: AuthDiagnostics by lazy {
+        DevelopmentAuthDiagnostics(httpClient, tokenStorage, authSession)
+    }
     override val currentVerifiedAlarmAccountId: suspend () -> String? = {
         captureAlarmOccurrenceAccount(tokenStorage, authSession)?.ownerAccountId
     }

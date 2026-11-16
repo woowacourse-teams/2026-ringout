@@ -33,6 +33,7 @@ internal class AuthenticatedRequestExecutor(
     private val httpClient: HttpClient,
     private val tokenStorage: SecureTokenStorage,
     private val authSession: AuthSession = getAuthSession(),
+    private val beforeReissue: () -> Unit = {},
 ) {
     suspend fun execute(
         request: suspend (accessToken: String) -> HttpResponse,
@@ -136,6 +137,7 @@ internal class AuthenticatedRequestExecutor(
     ) {
         tokenRefreshScope.launch {
             try {
+                beforeReissue()
                 val response = KtorAuthApi(httpClient).reissue(
                     ReissueRequest(refreshToken = attempt.rejectedTokens.refreshToken),
                 )

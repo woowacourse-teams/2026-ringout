@@ -3,6 +3,7 @@ package com.joon.ringout.di
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.domain.alarmactivity.AlarmActivityRepository
 import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceMonthLoader
+import com.joon.ringout.domain.auth.AuthDiagnostics
 import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.destination.DestinationRepository
@@ -24,6 +25,7 @@ interface AppContainer {
     val networkMonitor: com.joon.ringout.domain.connectivity.NetworkMonitor
     val appPreferencesRepository: AppPreferencesRepository
     val systemThemeModeReader: SystemThemeModeReader
+    val authDiagnostics: AuthDiagnostics? get() = null
     val authSession: AuthSession
     val pushTokenSource: PushTokenSource
     val pushTokenRegistrationReadiness: PushTokenRegistrationReadiness
