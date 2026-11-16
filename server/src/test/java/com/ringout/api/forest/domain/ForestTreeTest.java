@@ -92,4 +92,65 @@ class ForestTreeTest {
                 .isInstanceOf(IllegalArgumentException.class);
         }
     }
+
+    @Nested
+    class 나무_확인 {
+
+        private static final LocalDateTime ACKNOWLEDGED_AT = LocalDateTime.of(2026, 11, 10, 8, 1, 0);
+
+        @Test
+        void 확인_시각이_없으면_초_단위로_저장하고_확인했다고_알린다() {
+            // given
+            ForestTree tree = ForestTree.plant(mock(User.class), 1, TreeKind.PINE, 7, PLANTED_AT);
+
+            // when
+            boolean acknowledged = tree.acknowledge(ACKNOWLEDGED_AT.plusNanos(734_000_000));
+
+            // then
+            assertThat(acknowledged).isTrue();
+            assertThat(tree.getAcknowledgedAt()).isEqualTo(ACKNOWLEDGED_AT);
+        }
+
+        @Test
+        void 이미_확인한_나무는_처음_확인한_시각을_유지한다() {
+            // given
+            ForestTree tree = ForestTree.plant(mock(User.class), 1, TreeKind.PINE, 7, PLANTED_AT);
+            tree.acknowledge(ACKNOWLEDGED_AT);
+
+            // when
+            boolean acknowledged = tree.acknowledge(ACKNOWLEDGED_AT.plusDays(1));
+
+            // then
+            assertThat(acknowledged).isFalse();
+            assertThat(tree.getAcknowledgedAt()).isEqualTo(ACKNOWLEDGED_AT);
+        }
+
+        @Test
+        void 확인해도_나무의_다른_정보는_바뀌지_않는다() {
+            // given
+            ForestTree tree = ForestTree.plant(mock(User.class), 1, TreeKind.PINE, 7, PLANTED_AT);
+
+            // when
+            tree.acknowledge(ACKNOWLEDGED_AT);
+
+            // then
+            assertThat(tree.getGrowthCycle()).isEqualTo(1);
+            assertThat(tree.getKind()).isEqualTo(TreeKind.PINE);
+            assertThat(tree.getSlotIndex()).isEqualTo(7);
+            assertThat(tree.getPlantedAt()).isEqualTo(PLANTED_AT);
+        }
+
+        @Test
+        void 확인_시각이_없으면_FOREST400을_던진다() {
+            // given
+            ForestTree tree = ForestTree.plant(mock(User.class), 1, TreeKind.PINE, 7, PLANTED_AT);
+
+            // when // then
+            assertThatThrownBy(() -> tree.acknowledge(null))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode())
+                        .isEqualTo(ForestErrorStatus.FOREST_TREE_ACKNOWLEDGE_REQUEST_INVALID));
+            assertThat(tree.getAcknowledgedAt()).isNull();
+        }
+    }
 }

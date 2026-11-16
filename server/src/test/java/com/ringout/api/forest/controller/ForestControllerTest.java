@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,7 +27,9 @@ import com.ringout.api.forest.dto.response.ForestOnboardingCompleteResult;
 import com.ringout.api.forest.dto.response.ForestOnboardingResponse;
 import com.ringout.api.forest.dto.response.ForestResponse;
 import com.ringout.api.forest.domain.TreeKind;
+import com.ringout.api.forest.dto.request.ForestTreeAcknowledgeRequest;
 import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
+import com.ringout.api.forest.dto.response.ForestTreeAcknowledgeResult;
 import com.ringout.api.forest.dto.response.ForestTreePlantResult;
 import com.ringout.api.forest.dto.response.ForestTreeResponse;
 import com.ringout.api.forest.service.ForestService;
@@ -332,6 +335,164 @@ class ForestControllerTest {
                 jsonPath("$.code").value("AUTH401")
             );
             verify(forestTreeService, never()).plantTree(any(), any(), any());
+        }
+    }
+
+    @Nested
+    class 나무_확인_응답 {
+
+        private static final String TREE_URL = "/api/v1/forest/trees/1";
+        private static final String ACKNOWLEDGE_REQUEST_BODY = """
+            {"acknowledgedAt":"2026-11-10T08:01:00+09:00"}
+            """;
+        private static final ForestTreeResponse ACKNOWLEDGED_TREE = new ForestTreeResponse(1, TreeKind.PINE, 7,
+            OffsetDateTime.parse("2026-11-05T07:48:10+09:00"), OffsetDateTime.parse("2026-11-10T08:01:00+09:00"));
+
+        @Test
+        void 확인_시각을_새로_저장하면_200과_나무_확인_메시지를_반환한다() throws Exception {
+            // given
+            given(forestTreeService.acknowledgeTree(any(), any(), any()))
+                .willReturn(new ForestTreeAcknowledgeResult(ACKNOWLEDGED_TREE, true));
+
+            // when
+            var result = mockMvc.perform(patch(TREE_URL)
+                .with(user(new CustomUserDetails(1L, Role.USER)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(ACKNOWLEDGE_REQUEST_BODY));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.isSuccess").value(true),
+                jsonPath("$.code").value("FOREST200"),
+                jsonPath("$.message").value("나무 확인에 성공했습니다."),
+                jsonPath("$.result.growthCycle").value(1),
+                jsonPath("$.result.kind").value("pine"),
+                jsonPath("$.result.slotIndex").value(7),
+                jsonPath("$.result.plantedAt").value("2026-11-05T07:48:10+09:00"),
+                jsonPath("$.result.acknowledgedAt").value("2026-11-10T08:01:00+09:00")
+            );
+            verify(forestTreeService).acknowledgeTree(eq(1L), eq("1"),
+                argThat((ForestTreeAcknowledgeRequest request) ->
+                    request.acknowledgedAt().isEqual(OffsetDateTime.parse("2026-11-10T08:01:00+09:00"))));
+        }
+
+        @Test
+        void 이미_확인한_나무면_200과_나무_동기화_메시지를_반환한다() throws Exception {
+            // given
+            given(forestTreeService.acknowledgeTree(any(), any(), any()))
+                .willReturn(new ForestTreeAcknowledgeResult(ACKNOWLEDGED_TREE, false));
+
+            // when
+            var result = mockMvc.perform(patch(TREE_URL)
+                .with(user(new CustomUserDetails(1L, Role.USER)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"acknowledgedAt":"2026-11-11T09:00:00+09:00"}
+                    """));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.code").value("FOREST200"),
+                jsonPath("$.message").value("나무 동기화에 성공했습니다."),
+                jsonPath("$.result.acknowledgedAt").value("2026-11-10T08:01:00+09:00")
+            );
+        }
+
+        @Test
+        void 요청_정보가_올바르지_않으면_FOREST400을_반환한다() throws Exception {
+            // given
+            given(forestTreeService.acknowledgeTree(any(), any(), any()))
+                .willThrow(new GeneralException(ForestErrorStatus.FOREST_TREE_ACKNOWLEDGE_REQUEST_INVALID));
+
+            // when
+            var result = mockMvc.perform(patch("/api/v1/forest/trees/17")
+                .with(user(new CustomUserDetails(1L, Role.USER)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(ACKNOWLEDGE_REQUEST_BODY));
+
+            // then
+            result.andExpectAll(
+                status().isBadRequest(),
+                jsonPath("$.code").value("FOREST400"),
+                jsonPath("$.message").value("나무 확인 요청 정보가 올바르지 않습니다."),
+                jsonPath("$.result").value(nullValue())
+            );
+            verify(forestTreeService).acknowledgeTree(eq(1L), eq("17"), any());
+        }
+
+        @Test
+        void 나무가_없으면_404와_FOREST404를_반환한다() throws Exception {
+            // given
+            given(forestTreeService.acknowledgeTree(any(), any(), any()))
+                .willThrow(new GeneralException(ForestErrorStatus.FOREST_TREE_NOT_FOUND));
+
+            // when
+            var result = mockMvc.perform(patch(TREE_URL)
+                .with(user(new CustomUserDetails(1L, Role.USER)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(ACKNOWLEDGE_REQUEST_BODY));
+
+            // then
+            result.andExpectAll(
+                status().isNotFound(),
+                jsonPath("$.code").value("FOREST404"),
+                jsonPath("$.message").value("나무를 찾을 수 없습니다.")
+            );
+        }
+
+        @Test
+        void 숲_온보딩을_완료하지_않았으면_409와_FOREST409를_반환한다() throws Exception {
+            // given
+            given(forestTreeService.acknowledgeTree(any(), any(), any()))
+                .willThrow(new GeneralException(ForestErrorStatus.FOREST_ONBOARDING_NOT_COMPLETED));
+
+            // when
+            var result = mockMvc.perform(patch(TREE_URL)
+                .with(user(new CustomUserDetails(1L, Role.USER)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(ACKNOWLEDGE_REQUEST_BODY));
+
+            // then
+            result.andExpectAll(
+                status().isConflict(),
+                jsonPath("$.code").value("FOREST409"),
+                jsonPath("$.message").value("숲 온보딩을 완료하지 않았습니다.")
+            );
+        }
+
+        @Test
+        void 확인_시각_형식이_올바르지_않으면_COMMON400을_반환한다() throws Exception {
+            // when
+            var result = mockMvc.perform(patch(TREE_URL)
+                .with(user(new CustomUserDetails(1L, Role.USER)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"acknowledgedAt":"2026-11-10 08:01"}
+                    """));
+
+            // then
+            result.andExpectAll(
+                status().isBadRequest(),
+                jsonPath("$.code").value("COMMON400")
+            );
+            verify(forestTreeService, never()).acknowledgeTree(any(), any(), any());
+        }
+
+        @Test
+        void 인증_정보가_없으면_AUTH401을_반환한다() throws Exception {
+            // when
+            var result = mockMvc.perform(patch(TREE_URL)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(ACKNOWLEDGE_REQUEST_BODY));
+
+            // then
+            result.andExpectAll(
+                status().isUnauthorized(),
+                jsonPath("$.code").value("AUTH401")
+            );
+            verify(forestTreeService, never()).acknowledgeTree(any(), any(), any());
         }
     }
 

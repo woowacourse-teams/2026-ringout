@@ -4,7 +4,9 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.forest.controller.docs.ForestControllerApi;
 import com.ringout.api.forest.dto.request.ForestOnboardingCompleteRequest;
+import com.ringout.api.forest.dto.request.ForestTreeAcknowledgeRequest;
 import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
+import com.ringout.api.forest.dto.response.ForestTreeAcknowledgeResult;
 import com.ringout.api.forest.dto.response.ForestOnboardingCompleteResult;
 import com.ringout.api.forest.dto.response.ForestOnboardingResponse;
 import com.ringout.api.forest.dto.response.ForestResponse;
@@ -17,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -63,6 +66,20 @@ public class ForestController implements ForestControllerApi {
     ) {
         ForestTreePlantResult result = forestTreeService.plantTree(customUserDetails.getUserId(), growthCycle,
             request);
+        ForestSuccessStatus status = result.status();
+        return ResponseEntity.status(status.getHttpStatus())
+            .body(CustomResponse.onSuccess(status, result.response()));
+    }
+
+    @Override
+    @PatchMapping("/trees/{growthCycle}")
+    public ResponseEntity<CustomResponse<ForestTreeResponse>> acknowledgeTree(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @PathVariable String growthCycle,
+        @RequestBody(required = false) ForestTreeAcknowledgeRequest request
+    ) {
+        ForestTreeAcknowledgeResult result = forestTreeService.acknowledgeTree(customUserDetails.getUserId(),
+            growthCycle, request);
         ForestSuccessStatus status = result.status();
         return ResponseEntity.status(status.getHttpStatus())
             .body(CustomResponse.onSuccess(status, result.response()));

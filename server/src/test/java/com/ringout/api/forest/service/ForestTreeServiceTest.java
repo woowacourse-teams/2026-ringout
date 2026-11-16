@@ -12,10 +12,14 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.forest.domain.ForestOnboarding;
 import com.ringout.api.forest.domain.ForestTree;
 import com.ringout.api.forest.domain.TreeKind;
+import com.ringout.api.forest.dto.request.ForestTreeAcknowledgeRequest;
 import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
+import com.ringout.api.forest.dto.response.ForestTreeAcknowledgeResult;
 import com.ringout.api.forest.dto.response.ForestTreePlantResult;
+import com.ringout.api.forest.repository.ForestOnboardingRepository;
 import com.ringout.api.forest.repository.ForestTreeRepository;
 import com.ringout.api.forest.status.ForestErrorStatus;
 import com.ringout.api.user.domain.User;
@@ -50,6 +54,9 @@ class ForestTreeServiceTest {
     private ForestTreeRepository forestTreeRepository;
 
     @Mock
+    private ForestOnboardingRepository forestOnboardingRepository;
+
+    @Mock
     private AlarmOccurrenceRepository alarmOccurrenceRepository;
 
     @Mock
@@ -62,8 +69,8 @@ class ForestTreeServiceTest {
 
     @BeforeEach
     void setUp() {
-        forestTreeService = new ForestTreeService(forestTreeRepository, alarmOccurrenceRepository, userRepository,
-            slotAllocator, FIXED_CLOCK);
+        forestTreeService = new ForestTreeService(forestTreeRepository, forestOnboardingRepository,
+            alarmOccurrenceRepository, userRepository, slotAllocator, FIXED_CLOCK);
     }
 
     @Nested
@@ -217,6 +224,153 @@ class ForestTreeServiceTest {
                 .isInstanceOfSatisfying(GeneralException.class, exception ->
                     assertThat(exception.getCode()).isEqualTo(ForestErrorStatus.FOREST_UNAUTHORIZED));
             verifyNoInteractions(forestTreeRepository, alarmOccurrenceRepository);
+        }
+    }
+
+    @Nested
+    class 나무_확인 {
+
+        private static final OffsetDateTime ACKNOWLEDGED_AT = OffsetDateTime.parse("2026-11-10T08:01:00+09:00");
+
+        @Test
+        void 확인_시각이_없는_나무면_요청_시각을_저장하고_확인으로_응답한다() {
+            // given
+            Long userId = 1L;
+            ForestTree tree = plantedTree();
+            given(userRepository.existsById(userId)).willReturn(true);
+            given(forestTreeRepository.findByUserIdAndGrowthCycleForUpdate(userId, 1)).willReturn(Optional.of(tree));
+            given(forestOnboardingRepository.findByUserId(userId)).willReturn(Optional.of(completedOnboarding()));
+
+            // when
+            ForestTreeAcknowledgeResult result = forestTreeService.acknowledgeTree(userId, "1",
+                new ForestTreeAcknowledgeRequest(ACKNOWLEDGED_AT));
+
+            // then
+            assertThat(result.acknowledged()).isTrue();
+            assertThat(result.response().acknowledgedAt()).isEqualTo(ACKNOWLEDGED_AT);
+            assertThat(result.response().slotIndex()).isEqualTo(7);
+            assertThat(tree.getAcknowledgedAt()).isEqualTo(LocalDateTime.of(2026, 11, 10, 8, 1, 0));
+        }
+
+        @Test
+        void 다른_시간대의_확인_시각을_서버_시간대로_변환해_저장한다() {
+            // given
+            Long userId = 1L;
+            ForestTree tree = plantedTree();
+            given(userRepository.existsById(userId)).willReturn(true);
+            given(forestTreeRepository.findByUserIdAndGrowthCycleForUpdate(userId, 1)).willReturn(Optional.of(tree));
+            given(forestOnboardingRepository.findByUserId(userId)).willReturn(Optional.of(completedOnboarding()));
+
+            // when
+            ForestTreeAcknowledgeResult result = forestTreeService.acknowledgeTree(userId, "1",
+                new ForestTreeAcknowledgeRequest(OffsetDateTime.parse("2026-11-09T23:01:00Z")));
+
+            // then
+            assertThat(result.response().acknowledgedAt()).isEqualTo(ACKNOWLEDGED_AT);
+        }
+
+        @Test
+        void 이미_확인한_나무면_변경하지_않고_저장된_시각을_반환한다() {
+            // given
+            Long userId = 1L;
+            ForestTree tree = plantedTree();
+            tree.acknowledge(LocalDateTime.of(2026, 11, 10, 8, 1, 0));
+            given(userRepository.existsById(userId)).willReturn(true);
+            given(forestTreeRepository.findByUserIdAndGrowthCycleForUpdate(userId, 1)).willReturn(Optional.of(tree));
+            given(forestOnboardingRepository.findByUserId(userId)).willReturn(Optional.of(completedOnboarding()));
+
+            // when
+            ForestTreeAcknowledgeResult result = forestTreeService.acknowledgeTree(userId, "1",
+                new ForestTreeAcknowledgeRequest(OffsetDateTime.parse("2026-11-11T09:00:00+09:00")));
+
+            // then
+            assertThat(result.acknowledged()).isFalse();
+            assertThat(result.response().acknowledgedAt()).isEqualTo(ACKNOWLEDGED_AT);
+        }
+
+        @Test
+        void 해당_회차의_나무가_없으면_FOREST404를_던진다() {
+            // given
+            Long userId = 1L;
+            given(userRepository.existsById(userId)).willReturn(true);
+            given(forestTreeRepository.findByUserIdAndGrowthCycleForUpdate(userId, 2)).willReturn(Optional.empty());
+
+            // when // then
+            assertThatThrownBy(() -> forestTreeService.acknowledgeTree(userId, "2",
+                new ForestTreeAcknowledgeRequest(ACKNOWLEDGED_AT)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(ForestErrorStatus.FOREST_TREE_NOT_FOUND));
+            verify(forestTreeRepository, never()).save(any());
+        }
+
+        @Test
+        void 숲_온보딩을_완료하지_않았으면_FOREST409를_던지고_확인하지_않는다() {
+            // given
+            Long userId = 1L;
+            ForestTree tree = plantedTree();
+            given(userRepository.existsById(userId)).willReturn(true);
+            given(forestTreeRepository.findByUserIdAndGrowthCycleForUpdate(userId, 1)).willReturn(Optional.of(tree));
+            given(forestOnboardingRepository.findByUserId(userId)).willReturn(Optional.empty());
+
+            // when // then
+            assertThatThrownBy(() -> forestTreeService.acknowledgeTree(userId, "1",
+                new ForestTreeAcknowledgeRequest(ACKNOWLEDGED_AT)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(ForestErrorStatus.FOREST_ONBOARDING_NOT_COMPLETED));
+            assertThat(tree.getAcknowledgedAt()).isNull();
+        }
+
+        @Test
+        void 회차가_올바르지_않으면_나무_확인_요청_FOREST400을_던진다() {
+            // when // then
+            assertThatThrownBy(() -> forestTreeService.acknowledgeTree(1L, "17",
+                new ForestTreeAcknowledgeRequest(ACKNOWLEDGED_AT)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode())
+                        .isEqualTo(ForestErrorStatus.FOREST_TREE_ACKNOWLEDGE_REQUEST_INVALID));
+            verifyNoInteractions(userRepository, forestTreeRepository, forestOnboardingRepository);
+        }
+
+        @Test
+        void 요청_본문이_없으면_FOREST400을_던진다() {
+            // when // then
+            assertThatThrownBy(() -> forestTreeService.acknowledgeTree(1L, "1", null))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode())
+                        .isEqualTo(ForestErrorStatus.FOREST_TREE_ACKNOWLEDGE_REQUEST_INVALID));
+            verifyNoInteractions(userRepository, forestTreeRepository, forestOnboardingRepository);
+        }
+
+        @Test
+        void 확인_시각이_없으면_FOREST400을_던진다() {
+            // when // then
+            assertThatThrownBy(() -> forestTreeService.acknowledgeTree(1L, "1",
+                new ForestTreeAcknowledgeRequest(null)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode())
+                        .isEqualTo(ForestErrorStatus.FOREST_TREE_ACKNOWLEDGE_REQUEST_INVALID));
+            verifyNoInteractions(userRepository, forestTreeRepository, forestOnboardingRepository);
+        }
+
+        @Test
+        void 인증된_사용자가_존재하지_않으면_FOREST401을_던진다() {
+            // given
+            given(userRepository.existsById(1L)).willReturn(false);
+
+            // when // then
+            assertThatThrownBy(() -> forestTreeService.acknowledgeTree(1L, "1",
+                new ForestTreeAcknowledgeRequest(ACKNOWLEDGED_AT)))
+                .isInstanceOfSatisfying(GeneralException.class, exception ->
+                    assertThat(exception.getCode()).isEqualTo(ForestErrorStatus.FOREST_UNAUTHORIZED));
+            verifyNoInteractions(forestTreeRepository, forestOnboardingRepository);
+        }
+
+        private ForestTree plantedTree() {
+            return ForestTree.plant(mock(User.class), 1, TreeKind.PINE, 7, LocalDateTime.of(2026, 11, 5, 7, 48, 10));
+        }
+
+        private ForestOnboarding completedOnboarding() {
+            return ForestOnboarding.complete(mock(User.class), LocalDateTime.of(2026, 11, 10, 8, 0));
         }
     }
 
