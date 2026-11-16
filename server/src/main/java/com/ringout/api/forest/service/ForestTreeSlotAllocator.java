@@ -2,6 +2,7 @@ package com.ringout.api.forest.service;
 
 import com.ringout.api.forest.domain.ForestTree;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.random.RandomGenerator;
 import java.util.stream.IntStream;
@@ -13,7 +14,7 @@ public class ForestTreeSlotAllocator {
     private final RandomGenerator random;
 
     public ForestTreeSlotAllocator() {
-        this(RandomGenerator.getDefault());
+        this(new Random());
     }
 
     ForestTreeSlotAllocator(RandomGenerator random) {
