@@ -14,11 +14,14 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.joon.ringout.domain.arrival.ArrivalResultRepository
+import com.joon.ringout.domain.missionhistory.GetAlarmRecordGroup
+import com.joon.ringout.domain.missionhistory.MissionHistoryRepository
 
 /** Only permits acknowledging a local arrival while normal app entry remains restricted. */
 @Composable
 fun RestrictedArrivalHost(
     repository: ArrivalResultRepository,
+    missionHistoryRepository: MissionHistoryRepository? = null,
     hasActiveRuntime: Boolean,
     isEnabled: Boolean = true,
     content: @Composable () -> Unit,
@@ -45,7 +48,9 @@ fun RestrictedArrivalHost(
                 ArrivalViewModel(result.occurrenceId, repository)
             }
             var editing by remember { mutableStateOf(false) }
-            val editor = viewModel(viewModelStoreOwner = owner) { ArrivalShareViewModel(result.occurrenceId, repository) }
+            val editor = viewModel(viewModelStoreOwner = owner) {
+                ArrivalShareViewModel(result.occurrenceId, repository, recordLookup = missionHistoryRepository?.let(::GetAlarmRecordGroup))
+            }
             if (hasActiveRuntime) content()
             else if (editing) ArrivalShareRoute(editor, onBack = { editing = false })
             else ArrivalRoute(

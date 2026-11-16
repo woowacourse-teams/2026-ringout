@@ -34,6 +34,9 @@ class DefaultMissionHistoryRepository(
     override fun observeLocalRecords(month: MissionYearMonth): Flow<List<AlarmUsageRecord>> =
         dataSource.observeRecords(month)
 
+    override suspend fun getLocalRecordsOnOccurrenceDate(occurrenceId: String): List<AlarmUsageRecord> =
+        dataSource.getRecordsOnOccurrenceDate(occurrenceId)
+
     override suspend fun record(entry: MissionHistoryEntry): Boolean {
         require(!entry.occurrenceId.isNullOrBlank()) {
             "Mission occurrence ID must not be blank."

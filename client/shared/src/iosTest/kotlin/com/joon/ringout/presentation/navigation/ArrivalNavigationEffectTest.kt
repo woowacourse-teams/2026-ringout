@@ -6,6 +6,10 @@ class ArrivalNavigationEffectTest {
     private val suite = ArrivalNavigationEffectTestSuite()
 
     @Test
+    fun `기록 공유는 미확인 도착이 없으면 유지하고 새 미션과 도착을 우선한다`() =
+        suite.`기록 공유는 미확인 도착이 없으면 유지하고 새 미션과 도착을 우선한다`()
+
+    @Test
     fun `미션이 먼저 사라져도 성공 결과가 저장되기 전에는 도착 화면을 열지 않는다`() =
         suite.`미션이 먼저 사라져도 성공 결과가 저장되기 전에는 도착 화면을 열지 않는다`()
 

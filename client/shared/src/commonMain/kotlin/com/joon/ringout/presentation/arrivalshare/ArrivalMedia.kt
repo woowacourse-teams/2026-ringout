@@ -17,4 +17,15 @@ internal interface ArrivalDraftStore {
 }
 @Composable internal expect fun rememberArrivalDraftStore(): ArrivalDraftStore
 @kotlinx.serialization.Serializable
-internal data class ArrivalDraft(val photoPath: String? = null, val showTime: Boolean = true, val showDate: Boolean = true, val date: String = "", val time: String? = null, val useBlackText: Boolean = false)
+internal data class ArrivalDraft(
+    val photoPath: String? = null,
+    val showTime: Boolean = true,
+    val showDate: Boolean = true,
+    val date: String = "",
+    val time: String? = null,
+    val useBlackText: Boolean = false,
+    val wakeEpochMillis: Long? = null,
+    val wakeLabel: String? = null,
+    val arrivalEpochMillis: Long? = null,
+    val arrivalLabel: String? = null,
+)

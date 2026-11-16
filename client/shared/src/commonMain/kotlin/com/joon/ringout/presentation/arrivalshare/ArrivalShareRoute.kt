@@ -26,9 +26,14 @@ import kotlinx.serialization.encodeToString
         viewModel.restoreDraft(draft)
         draftLoaded = true
     }
-    LaunchedEffect(draftLoaded, state.photoPath, state.showDate, state.showTime, state.date, state.time, state.useBlackText) {
+    LaunchedEffect(draftLoaded, state.photoPath, state.showDate, state.showTime, state.date, state.time, state.arrivalTime, state.wakeEpochMillis, state.arrivalEpochMillis, state.useBlackText) {
         if (draftLoaded && !state.isLoading && state.error == null) {
-            runCatching { store.write(viewModel.occurrenceId, Json.encodeToString(ArrivalDraft(state.photoPath, state.showTime, state.showDate, state.date, state.time, state.useBlackText))) }
+            runCatching { store.write(viewModel.occurrenceId, Json.encodeToString(ArrivalDraft(
+                photoPath = state.photoPath, showTime = state.showTime, showDate = state.showDate,
+                date = state.date, useBlackText = state.useBlackText,
+                wakeEpochMillis = state.wakeEpochMillis, wakeLabel = state.time,
+                arrivalEpochMillis = state.arrivalEpochMillis, arrivalLabel = state.arrivalTime,
+            ))) }
                 .onFailure { viewModel.finishMedia(ArrivalMediaResult.Failed("편집 내용을 보관하지 못했어요.")) }
         }
     }

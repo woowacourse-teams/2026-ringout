@@ -14,6 +14,26 @@ import kotlin.test.assertNull
 /** The same effect contract runs with Android and iOS Compose runtimes. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ArrivalNavigationEffectTestSuite {
+    fun `기록 공유는 미확인 도착이 없으면 유지하고 새 미션과 도착을 우선한다`() = runTest {
+        val navigation = AppNavigationState()
+        val share = AppRoute.RecordShare("2026-09-30", "group", "success", "occurrence")
+        navigation.navigate(share)
+        var mission by mutableStateOf<String?>(null)
+        var arrival by mutableStateOf<String?>(null)
+        withEffectComposition(content = {
+            ActiveMissionNavigationEffect(mission, navigation, pendingArrivalOccurrenceId = arrival)
+        }) { drain ->
+            assertEquals(share, navigation.requestedRoute)
+            mission = "new-mission"
+            drain()
+            assertEquals(AppRoute.ActiveAlarmTracking("new-mission"), navigation.requestedRoute)
+            mission = null
+            arrival = "new-arrival"
+            drain()
+            assertEquals(AppRoute.Arrival("new-arrival"), navigation.requestedRoute)
+        }
+    }
+
     fun `미션이 먼저 사라져도 성공 결과가 저장되기 전에는 도착 화면을 열지 않는다`() = runTest {
         val navigation = AppNavigationState()
         var mission by mutableStateOf<String?>("mission-a")
