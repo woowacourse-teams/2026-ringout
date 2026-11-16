@@ -11,7 +11,10 @@ import org.springframework.http.HttpStatus;
 public enum ForestErrorStatus implements BaseErrorCode {
 
     FOREST_UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "FOREST401", "인증되지 않은 사용자입니다."),
-    FOREST_ONBOARDING_REQUEST_INVALID(HttpStatus.BAD_REQUEST, "FOREST400", "온보딩 요청 정보가 올바르지 않습니다.");
+    FOREST_ONBOARDING_REQUEST_INVALID(HttpStatus.BAD_REQUEST, "FOREST400", "온보딩 요청 정보가 올바르지 않습니다."),
+    FOREST_TREE_GROWTH_CYCLE_INVALID(HttpStatus.BAD_REQUEST, "FOREST400", "나무 회차가 올바르지 않습니다."),
+    FOREST_TREE_REQUEST_INVALID(HttpStatus.BAD_REQUEST, "FOREST400", "나무 요청 정보가 올바르지 않습니다."),
+    FOREST_TREE_RECORD_MISMATCH(HttpStatus.CONFLICT, "FOREST409", "나무 획득 기록이 서버 기록과 일치하지 않습니다.");
 
     private final HttpStatus httpStatus;
     private final String code;

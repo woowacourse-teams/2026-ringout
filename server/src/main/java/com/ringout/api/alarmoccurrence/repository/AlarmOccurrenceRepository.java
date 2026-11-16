@@ -1,6 +1,7 @@
 package com.ringout.api.alarmoccurrence.repository;
 
 import com.ringout.api.alarmoccurrence.domain.AlarmOccurrence;
+import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -79,6 +80,20 @@ public interface AlarmOccurrenceRepository extends JpaRepository<AlarmOccurrence
         @Param("userId") Long userId,
         @Param("clientAlarmId") String clientAlarmId,
         @Param("scheduledAt") LocalDateTime scheduledAt
+    );
+
+    @Query("""
+        select alarmOccurrence.endedAt
+        from AlarmOccurrence alarmOccurrence
+        where alarmOccurrence.user.id = :userId
+          and alarmOccurrence.endType = :endType
+          and alarmOccurrence.endedAt is not null
+          and alarmOccurrence.deletedAt is null
+        order by alarmOccurrence.endedAt asc
+        """)
+    List<LocalDateTime> findActiveEndedAtsByUserIdAndEndType(
+        @Param("userId") Long userId,
+        @Param("endType") OccurrenceEndType endType
     );
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

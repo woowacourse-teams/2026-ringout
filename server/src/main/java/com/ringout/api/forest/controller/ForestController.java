@@ -4,13 +4,18 @@ import com.ringout.api.common.response.CustomResponse;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.forest.controller.docs.ForestControllerApi;
 import com.ringout.api.forest.dto.request.ForestOnboardingCompleteRequest;
+import com.ringout.api.forest.dto.request.ForestTreePlantRequest;
 import com.ringout.api.forest.dto.response.ForestOnboardingCompleteResult;
 import com.ringout.api.forest.dto.response.ForestOnboardingResponse;
+import com.ringout.api.forest.dto.response.ForestTreePlantResult;
+import com.ringout.api.forest.dto.response.ForestTreeResponse;
 import com.ringout.api.forest.service.ForestService;
+import com.ringout.api.forest.service.ForestTreeService;
 import com.ringout.api.forest.status.ForestSuccessStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ForestController implements ForestControllerApi {
 
     private final ForestService forestService;
+    private final ForestTreeService forestTreeService;
 
     @Override
     @PutMapping("/onboarding")
@@ -31,15 +37,22 @@ public class ForestController implements ForestControllerApi {
     ) {
         ForestOnboardingCompleteResult result = forestService.completeOnboarding(customUserDetails.getUserId(),
             request);
-        ForestSuccessStatus status = toOnboardingStatus(result);
+        ForestSuccessStatus status = result.status();
         return ResponseEntity.status(status.getHttpStatus())
             .body(CustomResponse.onSuccess(status, result.response()));
     }
 
-    private ForestSuccessStatus toOnboardingStatus(ForestOnboardingCompleteResult result) {
-        if (result.created()) {
-            return ForestSuccessStatus.FOREST_ONBOARDING_COMPLETED;
-        }
-        return ForestSuccessStatus.FOREST_ONBOARDING_SYNCED;
+    @Override
+    @PutMapping("/trees/{growthCycle}")
+    public ResponseEntity<CustomResponse<ForestTreeResponse>> plantTree(
+        @AuthenticationPrincipal CustomUserDetails customUserDetails,
+        @PathVariable String growthCycle,
+        @RequestBody(required = false) ForestTreePlantRequest request
+    ) {
+        ForestTreePlantResult result = forestTreeService.plantTree(customUserDetails.getUserId(), growthCycle,
+            request);
+        ForestSuccessStatus status = result.status();
+        return ResponseEntity.status(status.getHttpStatus())
+            .body(CustomResponse.onSuccess(status, result.response()));
     }
 }
