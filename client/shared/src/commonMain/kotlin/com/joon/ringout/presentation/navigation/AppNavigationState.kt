@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavBackStack
 import com.joon.ringout.LocalAppNavigationStoreProviders
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.domain.push.RoomActivityPushTarget
 
 @Composable
@@ -49,8 +50,13 @@ internal class AppNavigationState(
     private val routes: NavBackStack<AppRoute> = NavBackStack(AppRoute.Home),
     private val guestOnlyMode: Boolean = false,
     private val authenticationOnlyMode: Boolean = false,
+    val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) {
     init {
+        if (!roomsEnabled) {
+            routes.removeAll { it.isRoomRoute() }
+            if (routes.isEmpty()) routes.add(AppRoute.Home)
+        }
         check(
             authenticationOnlyMode || routes.none {
                 it == AppRoute.Login || it == AppRoute.TermsAgreement
@@ -75,6 +81,7 @@ internal class AppNavigationState(
      * 경로의 식별자가 다르면 같은 화면 유형이어도 최상위 항목을 교체한다.
      */
     fun navigate(route: AppRoute) {
+        if (!roomsEnabled && route.isRoomRoute()) return
         if (authenticationOnlyMode) {
             val destinationStack = when (route) {
                 AppRoute.Login -> listOf(AppRoute.Login)
@@ -152,6 +159,7 @@ internal class AppNavigationState(
 
     /** 성공한 생성/가입 화면만 RoomHome으로 바꾸며, 이미 나간 화면의 완료는 무시한다. */
     fun navigateToRoomHomeFrom(sourceRoute: AppRoute, roomId: String): Boolean {
+        if (!roomsEnabled) return false
         if (!isCurrentRoute(sourceRoute)) return false
         if (sourceRoute != AppRoute.RoomCreate && sourceRoute !is AppRoute.RoomDetail) return false
         val expectedStack = listOf(AppRoute.Home, AppRoute.Social, sourceRoute)
@@ -164,6 +172,7 @@ internal class AppNavigationState(
 
     /** Builds the complete room activity stack for an explicit notification click. */
     fun openRoomActivityFromPush(target: RoomActivityPushTarget): Boolean {
+        if (!roomsEnabled) return false
         val activityRoute = AppRoute.RoomActivity(target.roomId, target.activityDate)
         if (!activityRoute.isValid()) return false
 
@@ -233,4 +242,11 @@ internal class AppNavigationState(
         isCurrentRoute(displayedRoute) -> routes.toList()
         else -> null
     }
+}
+
+internal fun AppRoute.isRoomRoute(): Boolean = when (this) {
+    AppRoute.Social, AppRoute.RoomCreate,
+    is AppRoute.RoomDetail, is AppRoute.RoomHome, is AppRoute.RoomActivity,
+    is AppRoute.RoomEdit, is AppRoute.RoomMemberManagement -> true
+    else -> false
 }

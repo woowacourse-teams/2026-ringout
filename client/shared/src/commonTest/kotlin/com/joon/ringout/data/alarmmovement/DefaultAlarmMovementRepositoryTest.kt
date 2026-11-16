@@ -29,6 +29,24 @@ import kotlin.test.assertFailsWith
 
 class DefaultAlarmMovementRepositoryTest {
     @Test
+    fun `모임 비활성화 시 가입 조회와 이동 변경은 HTTP 요청을 보내지 않는다`() = runTest {
+        var requests = 0
+        val client = HttpClient(MockEngine { requests++; error("HTTP 요청이 발생하면 안 됩니다.") })
+        val tokens = Tokens()
+        val session = AuthSession().apply { startNewSession() }
+        val repository = DefaultAlarmMovementRepository(
+            client, tokens, session, checkNotNull(captureAlarmOccurrenceAccount(tokens, session)),
+        )
+        try {
+            assertFailsWith<IllegalStateException> { repository.getJoinedRoomIds() }
+            AlarmMovementAction.entries.forEach { action ->
+                assertFailsWith<IllegalStateException> { repository.changeMovement(7, Id, action) }
+            }
+            assertEquals(0, requests)
+        } finally { client.close() }
+    }
+
+    @Test
     fun `세 가지 이동 행동은 서버 실행 UUID를 새 필드 이름으로 전송한다`() = runTest {
         for ((action, status) in listOf(
             AlarmMovementAction.START_MOVEMENT to "MOVEMENT_STARTED",
@@ -138,7 +156,7 @@ class DefaultAlarmMovementRepositoryTest {
 
 private suspend fun repository(client: HttpClient, tokens: Tokens = Tokens(),
     session: AuthSession = AuthSession().apply { startNewSession() }) =
-    DefaultAlarmMovementRepository(client, tokens, session, checkNotNull(captureAlarmOccurrenceAccount(tokens, session)))
+    DefaultAlarmMovementRepository(client, tokens, session, checkNotNull(captureAlarmOccurrenceAccount(tokens, session)), roomsEnabled = true)
 
 private class Tokens : SecureTokenStorage {
     private var value: AuthTokens? = AuthTokens(token(1), "refresh")

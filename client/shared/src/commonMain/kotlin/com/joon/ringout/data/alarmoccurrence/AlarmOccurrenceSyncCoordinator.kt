@@ -1,5 +1,6 @@
 package com.joon.ringout.data.alarmoccurrence
 
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.connectivity.NetworkMonitor
 import com.joon.ringout.domain.connectivity.NetworkStatus
@@ -27,7 +28,9 @@ internal class AlarmOccurrenceSyncCoordinator(
         val network = MutableStateFlow(NetworkStatus.Unknown)
         val observers = listOf(
             launch { dao.observeUnsentEvents().collect { wakeups.trySend(Unit) } },
-            launch { dao.observeUnsentMovements().collect { wakeups.trySend(Unit) } },
+            launch {
+                if (RoomFeature.isEnabled) dao.observeUnsentMovements().collect { wakeups.trySend(Unit) }
+            },
             launch { authSession.identity.collect { wakeups.trySend(Unit) } },
             launch { authSession.state.collect { wakeups.trySend(Unit) } },
             launch { networkMonitor.status.collect { network.value = it; wakeups.trySend(Unit) } },

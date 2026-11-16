@@ -36,6 +36,7 @@ import com.joon.ringout.di.AppContainer
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.firstlaunch.AppEntryDestination
 import com.joon.ringout.domain.firstlaunch.shouldShowLimitedRuntimeControls
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.domain.push.RoomActivityPushRequest
 import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideRoute
 import com.joon.ringout.presentation.alarmguide.AlarmCreationGuideSurface
@@ -550,18 +551,18 @@ private fun RingoutAppContent(
         explicitLogout = onExplicitLogout,
     )
     val homeViewModel = viewModelScopes.get(AppRoute.Home, HomeViewModel::class)
-    val socialRoomListViewModel = if (AppRoute.Social in retainedRoutes) {
+    val socialRoomListViewModel = if (RoomFeature.isEnabled && AppRoute.Social in retainedRoutes) {
         viewModelScopes.get(AppRoute.Social, RoomListViewModel::class)
     } else {
         null
     }
     val roomHomeViewModels = remember(retainedRoutes, viewModelScopes) {
-        retainedRoutes.filterIsInstance<AppRoute.RoomHome>().map { route ->
+        retainedRoutes.filterIsInstance<AppRoute.RoomHome>().filter { RoomFeature.isEnabled }.map { route ->
             viewModelScopes.get(route, RoomHomeViewModel::class)
         }
     }
     val roomActivityViewModels = remember(retainedRoutes, viewModelScopes) {
-        retainedRoutes.filterIsInstance<AppRoute.RoomActivity>().map { route ->
+        retainedRoutes.filterIsInstance<AppRoute.RoomActivity>().filter { RoomFeature.isEnabled }.map { route ->
             viewModelScopes.get(route, RoomActivityViewModel::class)
         }
     }
@@ -580,7 +581,7 @@ private fun RingoutAppContent(
     } else {
         null
     }
-    val roomEditRoute = displayedRoute as? AppRoute.RoomEdit
+    val roomEditRoute = (displayedRoute as? AppRoute.RoomEdit)?.takeIf { RoomFeature.isEnabled }
     val roomEditViewModel = roomEditRoute?.let {
         viewModelScopes.get(it, RoomEditViewModel::class)
     }
@@ -669,7 +670,7 @@ private fun RingoutAppContent(
         onRequestTemporaryFullAccuracy = onRequestTemporaryFullAccuracy,
     )
 
-    val roomHomeMenuAction = if (displayedRoute is AppRoute.RoomHome) {
+    val roomHomeMenuAction = if (RoomFeature.isEnabled && displayedRoute is AppRoute.RoomHome) {
         viewModelScopes
             .get(displayedRoute, RoomHomeViewModel::class)
             .uiState

@@ -143,7 +143,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `모임 수정 화면은 현재 호출부 위에 쌓고 뒤로 가면 같은 상세로 돌아온다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.Social)
         state.navigate(AppRoute.RoomDetail("room-1"))
         val callerStack = state.backStack.toList()
@@ -161,7 +161,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `다른 모임 수정으로 전환하면 호출부를 유지하고 편집 경로를 교체한다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.Social)
         state.navigate(AppRoute.RoomDetail("room-1"))
         val callerStack = state.backStack.toList()
@@ -174,7 +174,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `다른 회원 관리로 전환하면 호출부를 유지하고 회원 관리 경로를 교체한다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.Social)
         state.navigate(AppRoute.RoomHome("room-1"))
         val callerStack = state.backStack.toList()
@@ -187,7 +187,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `RoomHome에서 활동 경로를 한 번만 쌓고 종료 후 같은 화면으로 돌아온다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.Social)
         val roomHome = AppRoute.RoomHome("41")
         state.navigate(roomHome)
@@ -206,7 +206,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `같은 모임의 활동 날짜 변경은 경로를 교체하고 늦거나 잘못된 경로는 무시한다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.Social)
         val roomHome = AppRoute.RoomHome("41")
         state.navigate(roomHome)
@@ -226,7 +226,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `RoomHome이 최상위가 아니면 활동 화면 진입을 무시한다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.Social)
         state.navigate(AppRoute.RoomHome("41"))
         state.navigate(AppRoute.RoomMemberManagement("41"))
@@ -238,7 +238,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `푸시 클릭은 정확한 활동 백스택을 만들고 뒤로 가면 모임 목록과 홈으로 돌아온다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.MyPage)
         state.navigate(AppRoute.Social)
         val target = requireNotNull(
@@ -265,7 +265,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `푸시 클릭은 기존 모임 스택을 대상 모임으로 바꾸고 같은 스택은 중복하지 않는다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.Social)
         state.navigate(AppRoute.RoomHome("12"))
         state.navigate(AppRoute.RoomActivity("12", "2026-10-06"))
@@ -376,7 +376,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `생성 성공은 RoomHome을 열고 뒤로 가면 Social로 돌아온다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.Social)
         state.navigate(AppRoute.RoomCreate)
 
@@ -394,7 +394,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `가입 성공은 상세 경로를 RoomHome으로 바꾸고 이전 상세 콜백은 무시한다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         val roomDetail = AppRoute.RoomDetail("7")
         state.navigate(roomDetail)
 
@@ -408,7 +408,7 @@ class AppNavigationStateTest {
 
     @Test
     fun `가입 모임 바로가기는 상세 경유 없이 RoomHome으로 이동하고 뒤로 가면 Social로 돌아온다`() {
-        val state = AppNavigationState()
+        val state = AppNavigationState(roomsEnabled = true)
         state.navigate(AppRoute.Social)
 
         state.navigate(AppRoute.RoomHome("7"))
@@ -438,7 +438,7 @@ class AppNavigationStateTest {
         val backStack = NavBackStack<AppRoute>(AppRoute.Home, AppRoute.Social, roomDetail)
         val serializer = NavBackStackSerializer(AppRoute.serializer())
         val restored = Json.decodeFromString(serializer, Json.encodeToString(serializer, backStack))
-        val state = AppNavigationState(restored)
+        val state = AppNavigationState(restored, roomsEnabled = true)
 
         assertEquals(backStack.toList(), state.backStack.toList())
         assertEquals(roomDetail, state.requestedRoute)

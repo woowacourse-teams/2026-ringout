@@ -8,6 +8,28 @@ import kotlin.test.assertFalse
 
 class RoomAnalyticsTest {
     @Test
+    fun `모임 비활성화는 아홉 모임 이벤트를 막고 개인 로그인 이벤트는 유지한다`() {
+        val events = mutableListOf<AnalyticsEvent>()
+        val recorder = DefaultProductAnalyticsRecorder(
+            tracker = AnalyticsTracker { events += it },
+            usageStore = object : ProductAnalyticsUsageStore {
+                override fun claimOnboardingEvent(eventName: AnalyticsEventName) = true
+                override fun claimDestinationCreation(destinationKey: String) = 1L
+            },
+        )
+        listOf(
+            RoomAnalyticsEvent.ListViewed(AuthSessionState.Authenticated),
+            RoomAnalyticsEvent.DetailViewed(3), RoomAnalyticsEvent.Created(2),
+            RoomAnalyticsEvent.Joined(4), RoomAnalyticsEvent.HomeViewed(4, RoomMembershipRole.MEMBER),
+            RoomAnalyticsEvent.RecordsViewed(null), RoomAnalyticsEvent.Left(RoomMembershipRole.MEMBER),
+            RoomAnalyticsEvent.Deleted(RoomMembershipRole.OWNER),
+            RoomAnalyticsEvent.Updated(RoomMembershipRole.OWNER),
+        ).forEach(recorder::recordRoomEvent)
+        recorder.recordLoginStarted(AnalyticsAuthProvider.Google)
+        assertEquals(listOf(AnalyticsEventName.LoginStarted), events.map { it.name })
+    }
+
+    @Test
     fun `모임 이벤트 아홉 종류는 정의된 이름과 범주형 값만 전송한다`() {
         val events = listOf(
             RoomAnalyticsEvent.ListViewed(AuthSessionState.Authenticated),

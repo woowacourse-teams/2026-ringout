@@ -1,5 +1,6 @@
 package com.joon.ringout.analytics
 
+import com.joon.ringout.domain.room.RoomFeature
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.time.Clock
@@ -30,6 +31,7 @@ internal class RoomMembershipAnalytics(
     private val storage: RoomAnalyticsStorage,
     private val currentOwner: () -> String?,
     private val now: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) {
     fun revision(owner: String): Long = safely(0L) { cache(owner)?.revision ?: 0L }
 
@@ -94,7 +96,7 @@ internal class RoomMembershipAnalytics(
     private fun save(owner: String, cache: MembershipCache) = storage.write("account:$owner", Json.encodeToString(cache))
     private inline fun <reified T> read(key: String): T? = storage.read(key)?.let { Json.decodeFromString<T>(it) }
     private inline fun <T> safely(fallback: T, crossinline block: () -> T): T =
-        runCatching { storage.locked { block() } }.getOrDefault(fallback)
+        if (roomsEnabled) runCatching { storage.locked { block() } }.getOrDefault(fallback) else fallback
 
     companion object {
         const val GuestOwner = "guest"

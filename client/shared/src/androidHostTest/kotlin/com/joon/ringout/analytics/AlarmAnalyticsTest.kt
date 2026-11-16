@@ -9,15 +9,51 @@ import kotlin.test.assertTrue
 
 class AlarmAnalyticsTest {
     @Test
+    fun `모임 비활성화는 미션 이벤트를 유지하며 모임 속성과 스냅샷 수집을 생략한다`() {
+        val tracker = RecordingAnalyticsTracker()
+        val storage = MemoryRoomAnalyticsStorage()
+        val membership = RoomMembershipAnalytics(storage, { "a" }, { 0 }, roomsEnabled = true)
+        membership.replace("a", 0, setOf(7))
+        val before = storage.snapshot()
+        val reads = storage.reads
+        val writes = storage.writes
+        val analytics = AlarmAnalytics(
+            tracker, AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences()), { 360_000 }, membership,
+        )
+        analytics.recordMissionStarted("root", 0)
+        analytics.recordMissionCompleted("root", 0, 0)
+        analytics.recordMissionExpired("root", 0, 0)
+        analytics.recordMissionForceEnded("root", 0, 0)
+
+        assertEquals(listOf(
+            AnalyticsEventName.DestinationMissionStarted, AnalyticsEventName.DestinationMissionCompleted,
+            AnalyticsEventName.DestinationMissionExpired, AnalyticsEventName.DestinationMissionForceEnded,
+        ), tracker.events.map { it.name })
+        val roomParameters = setOf(
+            AnalyticsParameterName.RoomMembershipState, AnalyticsParameterName.JoinedRoomCount,
+            AnalyticsParameterName.RoomListCheckedAtMillis, AnalyticsParameterName.RoomMembershipObservedAtMillis,
+        )
+        tracker.events.forEach {
+            assertTrue(it.parameters.keys.none(roomParameters::contains))
+            assertEquals(1L, it.number(AnalyticsParameterName.UseIndex))
+            assertEquals(0L, it.number(AnalyticsParameterName.RetryAttempt))
+        }
+        tracker.events.drop(1).forEach { assertEquals("5_to_15m", it.text(AnalyticsParameterName.ElapsedBucket)) }
+        assertEquals(before, storage.snapshot())
+        assertEquals(reads, storage.reads)
+        assertEquals(writes, storage.writes)
+    }
+
+    @Test
     fun `모든 미션 결과는 시작 당시 전체 및 부분 확인 시각을 전송한다`() {
         val usage = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences())
         var now = 100L
         val tracker = RecordingAnalyticsTracker()
-        val membership = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { now })
+        val membership = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { now }, roomsEnabled = true)
         membership.replace("a", 0, setOf(1))
         now = 200
         membership.update("a", 2, true)
-        val analytics = AlarmAnalytics(tracker, usage, { now }, membership)
+        val analytics = AlarmAnalytics(tracker, usage, { now }, membership, roomsEnabled = true)
         listOf("completed", "expired", "force_ended").forEach { id ->
             analytics.recordMissionStarted(id, 0)
         }
@@ -37,13 +73,13 @@ class AlarmAnalyticsTest {
     fun `미션 재시도와 완료 이벤트는 시작 당시 모임 참여 수를 공유한다`() {
         val tracker = RecordingAnalyticsTracker()
         val storage = MemoryRoomAnalyticsStorage()
-        val membership = RoomMembershipAnalytics(storage, { "a" }, { 0 })
+        val membership = RoomMembershipAnalytics(storage, { "a" }, { 0 }, roomsEnabled = true)
         membership.replace("a", 0, setOf(1, 2))
         val usage = AnalyticsUsageStore(InMemoryAnalyticsUsagePreferences())
-        AlarmAnalytics(tracker, usage, { 0 }, membership).recordMissionStarted("root", 0)
+        AlarmAnalytics(tracker, usage, { 0 }, membership, roomsEnabled = true).recordMissionStarted("root", 0)
         membership.update("a", 1, false)
         val recreated = AlarmAnalytics(tracker, usage, { 1000 },
-            RoomMembershipAnalytics(storage, { "b" }, { 0 }))
+            RoomMembershipAnalytics(storage, { "b" }, { 0 }, roomsEnabled = true), roomsEnabled = true)
         recreated.recordMissionStarted("root:retry-1", 1)
         recreated.recordMissionCompleted("root:retry-1", 1, 0)
         assertEquals(3, tracker.events.size)

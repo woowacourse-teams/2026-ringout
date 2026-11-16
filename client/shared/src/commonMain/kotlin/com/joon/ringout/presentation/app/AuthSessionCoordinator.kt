@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.joon.ringout.diagnostics.AuthDiagnosticLogger
 import com.joon.ringout.domain.auth.AuthSession
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
 import com.joon.ringout.domain.push.PushTokenRegistrar
@@ -88,8 +89,10 @@ internal class RoomSessionStateHandler(
     private val roomListViewModel: RoomListViewModel?,
     private val roomHomeViewModels: List<RoomHomeViewModel>,
     private val roomActivityViewModels: List<RoomActivityViewModel> = emptyList(),
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) {
     fun onSessionStateChanged(authSessionState: AuthSessionState, sessionIdentity: Any?) {
+        if (!roomsEnabled) return
         roomListViewModel?.onAuthSessionChanged(authSessionState, sessionIdentity)
         roomHomeViewModels.forEach { it.onAuthSessionChanged(authSessionState, sessionIdentity) }
         roomActivityViewModels.forEach { it.onAuthSessionChanged(authSessionState, sessionIdentity) }

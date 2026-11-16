@@ -821,7 +821,7 @@ class RingoutDatabaseMigrationTestSuite {
                     1_010,
                 ),
             )
-            sync.recordDismissal("migration-account", "migration-execution", 2_000)
+            sync.recordDismissal("migration-account", "migration-execution", 2_000, roomsEnabled = true)
             database.close()
 
             createMigrationTestSQLiteDriver().open(path).use { connection ->
@@ -912,7 +912,7 @@ class RingoutDatabaseMigrationTestSuite {
             sync.recordStart(com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity(
                 "existing", "1", "alarm", 1, 1_000, 1_001,
             ))
-            sync.recordDismissal("1", "existing", 2_000)
+            sync.recordDismissal("1", "existing", 2_000, roomsEnabled = true)
             database.close()
             // 현재 버전에서 v12의 열 구조와 v10에 없던 테이블을 되돌려 실제 v10 저장 파일을 구성한다.
             createMigrationTestSQLiteDriver().open(path).use { connection ->
@@ -926,7 +926,7 @@ class RingoutDatabaseMigrationTestSuite {
             assertEquals(2, migrated.getUnsentEvents("1").size)
             assertEquals(2_000L, migrated.getEvents("1", "existing").last().occurredAtEpochMillis)
             assertTrue(migrated.getUnsentMovements("1").isEmpty())
-            migrated.recordTerminal("1", "existing", com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+            migrated.recordTerminal("1", "existing", com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind.ARRIVED, 3_000, roomsEnabled = true)
             assertEquals(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.ARRIVE,
                 migrated.getUnsentMovements("1").single().action)
             assertDatabaseVersion(path, expectedVersion = 19)
@@ -968,7 +968,7 @@ class RingoutDatabaseMigrationTestSuite {
             sync.recordStart(com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity(
                 "new-execution", "account-1", "alarm-v2", 1, 5_000, 5_010,
             ))
-            sync.recordDismissal("account-1", "new-execution", 6_000)
+            sync.recordDismissal("account-1", "new-execution", 6_000, roomsEnabled = true)
             database.alarmDao().delete("alarm-v2")
             assertEquals(2, sync.getUnsentEvents("account-1").size)
             assertNotNull(database.alarmActivityDao().getOccurrenceTimes("one"))

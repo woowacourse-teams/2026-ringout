@@ -141,7 +141,7 @@ class RoomListNavigationTest {
             loadRooms = { Result.success(rooms) },
             coroutineScope = scope,
         )
-        val navigation = AppNavigationState().apply { navigate(AppRoute.Social) }
+        val navigation = AppNavigationState(roomsEnabled = true).apply { navigate(AppRoute.Social) }
     }
 }
 

@@ -1,5 +1,6 @@
 package com.joon.ringout.data.alarmmovement
 
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceAccount
 import com.joon.ringout.data.alarmoccurrence.checkSession
 import com.joon.ringout.data.alarmoccurrence.checkToken
@@ -34,10 +35,12 @@ internal class DefaultAlarmMovementRepository(
     tokens: SecureTokenStorage,
     private val session: AuthSession,
     private val account: AlarmOccurrenceAccount,
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) : AlarmMovementRepository {
     private val requests = AuthenticatedRequestExecutor(client, tokens, session)
 
     override suspend fun getJoinedRoomIds(): List<Long> {
+        check(roomsEnabled) { "모임 기능이 비활성화되어 있습니다." }
         val response = requests.execute { token ->
             account.checkToken(session, token)
             client.get(ApiConfig.url("/api/v1/rooms")) { bearerAuth(token) }
@@ -48,6 +51,7 @@ internal class DefaultAlarmMovementRepository(
     }
 
     override suspend fun changeMovement(roomId: Long, occurrenceId: AlarmOccurrenceId, action: AlarmMovementAction) {
+        check(roomsEnabled) { "모임 기능이 비활성화되어 있습니다." }
         require(roomId > 0)
         try {
             val response = requests.execute { token ->

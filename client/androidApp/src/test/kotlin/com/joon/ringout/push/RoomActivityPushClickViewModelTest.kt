@@ -14,9 +14,31 @@ import org.junit.Test
 @Config(sdk = [35])
 class RoomActivityPushClickViewModelTest {
     @Test
+    fun `모임 비활성화 상태는 이전 대기 알림을 복원하지 않고 새 클릭도 무시한다`() {
+        val savedState = SavedStateHandle(mapOf(
+            "roomActivityPush.pendingRequestId" to "old-request",
+            "roomActivityPush.pendingRoomId" to "41",
+            "roomActivityPush.pendingActivityDate" to "2026-10-07",
+        ))
+        val viewModel = RoomActivityPushClickViewModel(savedState)
+        assertNull(viewModel.pendingRequest)
+        assertNull(savedState.get<String>("roomActivityPush.pendingRequestId"))
+
+        listOf(false, true).forEach { isNewIntent ->
+            viewModel.receive(
+                Intent().putExtra(RoomActivityPushTarget.RoomIdKey, "41")
+                    .putExtra(RoomActivityPushTarget.ActivityDateKey, "2026-10-07"),
+                isNewIntent = isNewIntent,
+                preservePendingRequest = true,
+            )
+            assertNull(viewModel.pendingRequest)
+        }
+    }
+
+    @Test
     fun `업데이트 차단 중 알람에서 앱으로 돌아와도 대기 중인 알림 요청을 보존한다`() {
         val savedState = SavedStateHandle()
-        val viewModel = RoomActivityPushClickViewModel(savedState)
+        val viewModel = RoomActivityPushClickViewModel(savedState, roomsEnabled = true)
         viewModel.receive(
             Intent()
                 .putExtra(RoomActivityPushTarget.RoomIdKey, "41")
@@ -30,6 +52,7 @@ class RoomActivityPushClickViewModelTest {
         viewModel.receive(Intent(Intent.ACTION_MAIN), isNewIntent = true, preservePendingRequest = true)
         val restored = RoomActivityPushClickViewModel(
             SavedStateHandle(savedState.keys().associateWith { savedState.get<Any?>(it) }),
+            roomsEnabled = true,
         )
 
         assertEquals("fcm:waiting-message", pending?.requestId)
@@ -45,7 +68,7 @@ class RoomActivityPushClickViewModelTest {
             .putExtra(RoomActivityPushTarget.ActivityDateKey, "2026-10-07")
             .putExtra("google.message_id", "message-a")
         val savedState = SavedStateHandle()
-        val firstViewModel = RoomActivityPushClickViewModel(savedState)
+        val firstViewModel = RoomActivityPushClickViewModel(savedState, roomsEnabled = true)
 
         firstViewModel.receive(intent, isNewIntent = false)
 
@@ -57,7 +80,7 @@ class RoomActivityPushClickViewModelTest {
         val restoredState = SavedStateHandle(
             savedState.keys().associateWith { key -> savedState.get<Any?>(key) },
         )
-        val restoredViewModel = RoomActivityPushClickViewModel(restoredState)
+        val restoredViewModel = RoomActivityPushClickViewModel(restoredState, roomsEnabled = true)
         restoredViewModel.receive(intent, isNewIntent = false)
 
         assertEquals(request, restoredViewModel.pendingRequest)
@@ -69,14 +92,14 @@ class RoomActivityPushClickViewModelTest {
         val afterConsumption = SavedStateHandle(
             restoredState.keys().associateWith { key -> restoredState.get<Any?>(key) },
         )
-        val consumedViewModel = RoomActivityPushClickViewModel(afterConsumption)
+        val consumedViewModel = RoomActivityPushClickViewModel(afterConsumption, roomsEnabled = true)
         consumedViewModel.receive(intent, isNewIntent = false)
         assertNull(consumedViewModel.pendingRequest)
     }
 
     @Test
     fun `마지막 클릭이 우선하고 이전 확인은 새 클릭을 소비하지 않는다`() {
-        val viewModel = RoomActivityPushClickViewModel(SavedStateHandle())
+        val viewModel = RoomActivityPushClickViewModel(SavedStateHandle(), roomsEnabled = true)
         val first = Intent()
             .putExtra(PushNotifications.EXTRA_REQUEST_ID, "click-a")
             .putExtra(RoomActivityPushTarget.RoomIdKey, "41")
@@ -96,7 +119,7 @@ class RoomActivityPushClickViewModelTest {
 
     @Test
     fun `잘못된 새 알림 클릭은 이전 대기 요청을 지우고 일반 진입으로 남는다`() {
-        val viewModel = RoomActivityPushClickViewModel(SavedStateHandle())
+        val viewModel = RoomActivityPushClickViewModel(SavedStateHandle(), roomsEnabled = true)
         viewModel.receive(
             Intent()
                 .putExtra(PushNotifications.EXTRA_REQUEST_ID, "click-a")

@@ -20,16 +20,39 @@ import kotlin.test.assertEquals
 @OptIn(ExperimentalCoroutinesApi::class)
 class AnalyticsRoomRepositoryTest {
     @Test
+    fun `모임 비활성화 중에는 응답이 와도 계정이나 참여 분석을 수집하지 않는다`() = runTest {
+        val storage = MemoryRoomAnalyticsStorage()
+        val cache = RoomMembershipAnalytics(storage, { "1" }, { 0 }, roomsEnabled = true)
+        var tokenReads = 0
+        val repository = AnalyticsRoomRepository(
+            delegate = object : UnusedRoomRepository() {
+                override suspend fun getRooms() = listOf(summary())
+            },
+            analytics = cache,
+            tokens = object : SecureTokenStorage {
+                override suspend fun read(): AuthTokens? { tokenReads++; return roomTokens(1) }
+                override suspend fun save(tokens: AuthTokens) = Unit
+                override suspend fun clear() = Unit
+            },
+            session = AuthSession().apply { startNewSession() },
+        )
+        repository.getRooms()
+        assertEquals(0, tokenReads)
+        assertEquals(0, storage.reads)
+        assertEquals(0, storage.writes)
+    }
+
+    @Test
     fun `탈퇴 전에 요청한 목록의 늦은 응답은 탈퇴 상태를 되돌리지 않는다`() = runTest {
         val session = AuthSession().apply { startNewSession() }
         val tokens = RoomTokens()
-        val cache = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "1" }, { 0 })
+        val cache = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "1" }, { 0 }, roomsEnabled = true)
         cache.replace("1", 0, setOf(7))
         val response = CompletableDeferred<List<RoomSummary>>()
         val repository = AnalyticsRoomRepository(object : UnusedRoomRepository() {
             override suspend fun getRooms() = response.await()
             override suspend fun leaveRoom(roomId: Long) = Unit
-        }, cache, tokens, session)
+        }, cache, tokens, session, roomsEnabled = true)
         val loading = async { repository.getRooms() }
         runCurrent()
         repository.leaveRoom(7)
@@ -43,11 +66,11 @@ class AnalyticsRoomRepositoryTest {
         val session = AuthSession().apply { startNewSession() }
         val tokens = RoomTokens()
         var owner = "1"
-        val cache = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { owner }, { 0 })
+        val cache = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { owner }, { 0 }, roomsEnabled = true)
         val response = CompletableDeferred<List<RoomSummary>>()
         val repository = AnalyticsRoomRepository(object : UnusedRoomRepository() {
             override suspend fun getRooms() = response.await()
-        }, cache, tokens, session)
+        }, cache, tokens, session, roomsEnabled = true)
         val loading = async { repository.getRooms() }
         runCurrent()
         tokens.save(roomTokens(2))

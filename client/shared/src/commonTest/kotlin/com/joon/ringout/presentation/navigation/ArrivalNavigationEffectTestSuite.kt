@@ -97,7 +97,7 @@ class ArrivalNavigationEffectTestSuite {
 
     fun `첫 조회가 끝나기 전에는 복원된 도착 화면과 푸시 요청을 유지한다`() = runTest {
         val restored = AppRoute.Arrival("arrival-a")
-        val navigation = AppNavigationState(NavBackStack(AppRoute.Home, restored))
+        val navigation = AppNavigationState(NavBackStack(AppRoute.Home, restored), roomsEnabled = true)
         var loaded by mutableStateOf(false)
         var arrival by mutableStateOf<String?>(null)
         var push by mutableStateOf<RoomActivityPushRequest?>(pushRequest())
@@ -178,7 +178,7 @@ class ArrivalNavigationEffectTestSuite {
     }
 
     fun `미확인 도착 결과를 확인하기 전에는 모임 푸시를 소비하지 않는다`() = runTest {
-        val navigation = AppNavigationState()
+        val navigation = AppNavigationState(roomsEnabled = true)
         var arrival by mutableStateOf<String?>("arrival-a")
         var push by mutableStateOf<RoomActivityPushRequest?>(pushRequest())
         val handled = mutableListOf<String>()

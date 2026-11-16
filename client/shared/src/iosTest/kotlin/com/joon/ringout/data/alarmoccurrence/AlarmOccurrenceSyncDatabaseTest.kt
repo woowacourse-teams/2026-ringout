@@ -26,12 +26,45 @@ import kotlin.test.assertTrue
 
 class AlarmOccurrenceSyncDatabaseTest {
     @Test
-    fun `중복 해제와 종료 경합은 이동 시작 한 건과 최초 종료 결과만 보존한다`() = withDatabase { dao ->
+    fun `모임 비활성화 시 해제와 종료는 개인 기록만 저장한다`() = withDatabase { dao ->
         dao.recordStart(execution())
         dao.recordDismissal(Owner, Root, 2_000)
-        dao.recordDismissal(Owner, Root, 2_100)
-        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
-        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.ARRIVED, 3_100)
+        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+        assertEquals(listOf(AlarmOccurrenceOutboxKind.START, AlarmOccurrenceOutboxKind.INITIAL_DISMISSED,
+            AlarmOccurrenceOutboxKind.ARRIVED), dao.getEvents(Owner, Root).map { it.kind })
+        assertTrue(dao.getMovements(Owner, Root).isEmpty())
+    }
+
+    @Test
+    fun `모임 비활성화 시 iOS 정리는 개인 기록 전송을 확인하며 모임 대기열은 보존한다`() = withDatabase { dao ->
+        dao.recordIosStart(serverDecision(), execution())
+        dao.completeStart(Owner, Root, ServerId)
+        dao.recordDismissal(Owner, Root, 2_000, roomsEnabled = true)
+        val preserved = dao.getMovements(Owner, Root)
+        val request = cleanupRequest(
+            events = listOf(
+                expectedEvent("start", AlarmOccurrenceOutboxKind.START, 1_000),
+                expectedEvent("dismiss:$Root", AlarmOccurrenceOutboxKind.INITIAL_DISMISSED, 2_000),
+            ),
+            movements = listOf(IosAlarmCleanupMovementProjection("start",
+                com.joon.ringout.domain.alarmmovement.AlarmMovementAction.START_MOVEMENT, 2_000)),
+            requireAllMovementRowsSent = true,
+        )
+        assertEquals(IosAlarmCleanupReadinessReason.PENDING, dao.evaluateIosAlarmCleanup(request).reason)
+        val dismissal = dao.getEvents(Owner, Root).single { it.kind == AlarmOccurrenceOutboxKind.INITIAL_DISMISSED }
+        dao.saveDeliveryState(Owner, dismissal.id, AlarmOccurrenceOutboxState.SENT, 1)
+        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.PENDING, dao.evaluateIosAlarmCleanup(request, roomsEnabled = true).reason)
+        assertEquals(preserved, dao.getMovements(Owner, Root))
+    }
+
+    @Test
+    fun `중복 해제와 종료 경합은 이동 시작 한 건과 최초 종료 결과만 보존한다`() = withDatabase { dao ->
+        dao.recordStart(execution())
+        dao.recordDismissal(Owner, Root, 2_000, roomsEnabled = true)
+        dao.recordDismissal(Owner, Root, 2_100, roomsEnabled = true)
+        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000, roomsEnabled = true)
+        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.ARRIVED, 3_100, roomsEnabled = true)
         val events = dao.getUnsentMovements(Owner)
         assertEquals(listOf(com.joon.ringout.domain.alarmmovement.AlarmMovementAction.START_MOVEMENT,
             com.joon.ringout.domain.alarmmovement.AlarmMovementAction.GIVE_UP), events.map { it.action })
@@ -47,7 +80,7 @@ class AlarmOccurrenceSyncDatabaseTest {
         try {
             var dao = database.alarmOccurrenceSyncDao()
             dao.recordStart(execution())
-            dao.recordDismissal(Owner, Root, 2_000)
+            dao.recordDismissal(Owner, Root, 2_000, roomsEnabled = true)
             val parent = dao.getUnsentMovements(Owner).single()
             dao.completeMovementTargets(Owner, parent.id, listOf(7, 8, 7))
             val children = dao.getUnsentMovements(Owner)
@@ -62,6 +95,9 @@ class AlarmOccurrenceSyncDatabaseTest {
             assertEquals(9_000L, restored.nextAttemptAtEpochMillis)
             assertEquals(2, restored.attemptCount)
             assertEquals("MOVEMENT500", restored.lastErrorCode)
+            val preserved = dao.getMovements(Owner, Root)
+            dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.ARRIVED, 3_000)
+            assertEquals(preserved, dao.getMovements(Owner, Root))
             dao.completeMovementTargets(Owner, parent.id, listOf(7, 8))
             assertEquals(3, dao.getMovements(Owner, Root).size)
             assertEquals(1, dao.getUnsentMovements(Owner).size)
@@ -75,15 +111,15 @@ class AlarmOccurrenceSyncDatabaseTest {
     fun `중복 이벤트는 원래 시각과 재울림 식별자를 보존하고 실행당 종료 결과는 하나만 남긴다`() = withDatabase { dao ->
         dao.recordStart(execution())
         dao.recordStart(execution().copy(startedAtEpochMillis = 99_000))
-        dao.recordDismissal(Owner, Root, 2_000)
-        dao.recordDismissal(Owner, Root, 99_000)
+        dao.recordDismissal(Owner, Root, 2_000, roomsEnabled = true)
+        dao.recordDismissal(Owner, Root, 99_000, roomsEnabled = true)
         dao.recordRepeat(Owner, Root, "retry-1", "event-1", 3_000)
         val repeated = dao.recordRepeat(Owner, Root, "retry-1", "new-event", 99_000)
         assertEquals("event-1", repeated.eventId)
         assertEquals(3_000L, repeated.ringingAtEpochMillis)
-        dao.recordDismissal(Owner, "retry-1", 4_000)
-        dao.recordTerminal(Owner, "retry-1", AlarmOccurrenceOutboxKind.ARRIVED, 5_000)
-        dao.recordTerminal(Owner, "retry-1", AlarmOccurrenceOutboxKind.FORCE_ENDED, 99_000)
+        dao.recordDismissal(Owner, "retry-1", 4_000, roomsEnabled = true)
+        dao.recordTerminal(Owner, "retry-1", AlarmOccurrenceOutboxKind.ARRIVED, 5_000, roomsEnabled = true)
+        dao.recordTerminal(Owner, "retry-1", AlarmOccurrenceOutboxKind.FORCE_ENDED, 99_000, roomsEnabled = true)
 
         val events = dao.getEvents(Owner, Root)
         assertEquals(listOf(AlarmOccurrenceOutboxKind.START, AlarmOccurrenceOutboxKind.INITIAL_DISMISSED,
@@ -104,7 +140,7 @@ class AlarmOccurrenceSyncDatabaseTest {
         assertTrue(dao.getUnsentEvents("other").isEmpty())
         assertFalse(dao.saveDeliveryState("other", id, AlarmOccurrenceOutboxState.BLOCKED, 1))
         assertFailsWith<IllegalStateException> { dao.recordStart(execution().copy(ownerAccountId = "other")) }
-        assertFailsWith<IllegalStateException> { dao.recordDismissal("other", Root, 2_000) }
+        assertFailsWith<IllegalStateException> { dao.recordDismissal("other", Root, 2_000, roomsEnabled = true) }
         assertFailsWith<IllegalStateException> { dao.completeStart("other", Root, ServerId) }
         assertEquals(Owner, dao.getExecution(Owner, Root)?.ownerAccountId)
         assertEquals(AlarmOccurrenceOutboxState.PENDING, dao.getEvents(Owner, Root).single().state)
@@ -163,7 +199,7 @@ class AlarmOccurrenceSyncDatabaseTest {
             dao.recordStart(execution())
             dao.completeStart(Owner, Root, ServerId)
             dao.recordRepeat(Owner, Root, "retry-1", "event-1", 3_000)
-            dao.recordDismissal(Owner, "retry-1", 4_000)
+            dao.recordDismissal(Owner, "retry-1", 4_000, roomsEnabled = true)
             val events = dao.getEvents(Owner, Root)
             dao.saveDeliveryState(Owner, events[1].id, AlarmOccurrenceOutboxState.PENDING, 3, 9_000, "HTTP500", "재전송 대기")
             dao.saveDeliveryState(Owner, events[2].id, AlarmOccurrenceOutboxState.BLOCKED, 1, errorCode = "HTTP403", errorMessage = "권한 확인")
@@ -211,7 +247,7 @@ class AlarmOccurrenceSyncDatabaseTest {
     @Test
     fun `확인하지 못한 시작 시각은 예정 시각이나 해제 시각으로 채우지 않는다`() = withDatabase { dao ->
         dao.recordStart(execution().copy(startedAtEpochMillis = null))
-        dao.recordDismissal(Owner, Root, 2_000)
+        dao.recordDismissal(Owner, Root, 2_000, roomsEnabled = true)
         assertNull(dao.getExecution(Owner, Root)?.startedAtEpochMillis)
         assertNull(dao.getRinging(Owner, Root)?.ringingAtEpochMillis)
         assertNull(dao.getEvents(Owner, Root).first().occurredAtEpochMillis)
@@ -233,14 +269,14 @@ class AlarmOccurrenceSyncDatabaseTest {
                 expectedEvent("repeat:retry-1", AlarmOccurrenceOutboxKind.REPEAT_RANG, 3_000, "retry-1"),
             ),
         )
-        assertEquals(IosAlarmCleanupReadinessReason.PENDING, dao.evaluateIosAlarmCleanup(request).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.PENDING, dao.evaluateIosAlarmCleanup(request, roomsEnabled = true).reason)
 
         val repeat = dao.getEvents(Owner, Root).single { it.kind == AlarmOccurrenceOutboxKind.REPEAT_RANG }
         dao.saveDeliveryState(Owner, repeat.id, AlarmOccurrenceOutboxState.BLOCKED, 1, errorCode = "ALREADY_ENDED")
-        assertEquals(IosAlarmCleanupReadinessReason.BLOCKED, dao.evaluateIosAlarmCleanup(request).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.BLOCKED, dao.evaluateIosAlarmCleanup(request, roomsEnabled = true).reason)
 
         dao.saveDeliveryState(Owner, repeat.id, AlarmOccurrenceOutboxState.SENT, 1)
-        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request, roomsEnabled = true).reason)
     }
 
     @Test
@@ -251,10 +287,10 @@ class AlarmOccurrenceSyncDatabaseTest {
         val missing = cleanupRequest(events = listOf(
             expectedEvent("dismiss:retry-1", AlarmOccurrenceOutboxKind.REPEAT_DISMISSED, 4_000, "retry-1"),
         ))
-        assertEquals(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, dao.evaluateIosAlarmCleanup(missing).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, dao.evaluateIosAlarmCleanup(missing, roomsEnabled = true).reason)
 
         val empty = cleanupRequest(events = emptyList())
-        assertEquals(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, dao.evaluateIosAlarmCleanup(empty).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.MISSING_OUTBOX, dao.evaluateIosAlarmCleanup(empty, roomsEnabled = true).reason)
     }
 
     @Test
@@ -265,7 +301,7 @@ class AlarmOccurrenceSyncDatabaseTest {
         ))
 
         val request = cleanupRequest(events = emptyList())
-        assertEquals(IosAlarmCleanupReadinessReason.AUTH_PENDING, dao.evaluateIosAlarmCleanup(request).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.AUTH_PENDING, dao.evaluateIosAlarmCleanup(request, roomsEnabled = true).reason)
     }
 
     @Test
@@ -284,7 +320,7 @@ class AlarmOccurrenceSyncDatabaseTest {
                 ringingStartObserved = false,
             )),
         )
-        assertEquals(IosAlarmCleanupReadinessReason.MISSING_PROJECTION, dao.evaluateIosAlarmCleanup(request).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.MISSING_PROJECTION, dao.evaluateIosAlarmCleanup(request, roomsEnabled = true).reason)
 
         activity.record(AlarmActivityEntity.rangConfirmedByStop("alarm-1", Root,
             AlarmActivityTimestamp(2_000, "1970-01-01"), scheduleVersion = 1))
@@ -294,14 +330,14 @@ class AlarmOccurrenceSyncDatabaseTest {
             ringingStoppedAtEpochMillis = 2_000,
             ringingScheduledAtEpochMillis = 900,
         ))
-        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request, roomsEnabled = true).reason)
     }
 
     @Test
     fun `이동 대상 조회 완료와 자식 전송 상태를 종료 정리 proof로 확인한다`() = withDatabase { dao ->
         dao.recordIosStart(serverDecision(), execution())
         dao.completeStart(Owner, Root, ServerId)
-        dao.recordDismissal(Owner, Root, 2_000)
+        dao.recordDismissal(Owner, Root, 2_000, roomsEnabled = true)
         val dismissal = dao.getEvents(Owner, Root).single { it.kind == AlarmOccurrenceOutboxKind.INITIAL_DISMISSED }
         dao.saveDeliveryState(Owner, dismissal.id, AlarmOccurrenceOutboxState.SENT, 1)
         val parent = dao.getMovements(Owner, Root).single()
@@ -320,12 +356,12 @@ class AlarmOccurrenceSyncDatabaseTest {
             movements = listOf(movement),
             requireAllMovementRowsSent = true,
         )
-        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.READY, dao.evaluateIosAlarmCleanup(request, roomsEnabled = true).reason)
 
-        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
+        dao.recordTerminal(Owner, Root, AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000, roomsEnabled = true)
         val terminalMovement = dao.getMovements(Owner, Root).first { it.deduplicationKey == "terminal" }
         dao.completeMovementTargets(Owner, terminalMovement.id, listOf(7))
-        assertEquals(IosAlarmCleanupReadinessReason.PENDING, dao.evaluateIosAlarmCleanup(request).reason)
+        assertEquals(IosAlarmCleanupReadinessReason.PENDING, dao.evaluateIosAlarmCleanup(request, roomsEnabled = true).reason)
     }
 
     private fun withDatabase(block: suspend (AlarmOccurrenceSyncDao) -> Unit) = runBlocking {
