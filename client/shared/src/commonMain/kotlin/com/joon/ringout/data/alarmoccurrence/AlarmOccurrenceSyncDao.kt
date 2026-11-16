@@ -26,6 +26,14 @@ abstract class AlarmOccurrenceSyncDao {
     """)
     abstract fun observeUnsentEvents(): Flow<List<AlarmOccurrenceOutboxEntity>>
 
+    /** Older queued arrivals may finish after newer ones, so observe a count rather than the latest ID. */
+    @Query("""
+        SELECT COUNT(*) FROM alarm_occurrence_outbox o
+        JOIN alarm_occurrence_sync e ON e.local_execution_id = o.local_execution_id
+        WHERE e.owner_account_id = :ownerAccountId AND o.kind = 'ARRIVED' AND o.state = 'SENT'
+    """)
+    abstract fun observeSuccessfulArrivalSyncs(ownerAccountId: String): Flow<Int>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     protected abstract suspend fun insertExecution(execution: AlarmOccurrenceSyncEntity)
 

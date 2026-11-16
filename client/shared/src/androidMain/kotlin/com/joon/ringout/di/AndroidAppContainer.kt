@@ -37,6 +37,8 @@ import com.joon.ringout.data.destination.DestinationSyncSessionGate
 import com.joon.ringout.data.destination.KtorDestinationRemoteDataSource
 import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.outbox.RoomOutboxReader
+import com.joon.ringout.data.forest.DataStoreForestLocalProgressStore
+import com.joon.ringout.data.forest.DefaultForestRepository
 import com.joon.ringout.data.member.DefaultMemberRepository
 import com.joon.ringout.data.room.DefaultRoomRepository
 import com.joon.ringout.data.missionhistory.RoomRecordsHistoryRepository
@@ -227,7 +229,13 @@ class AndroidAppContainer(
         com.joon.ringout.data.arrival.RoomArrivalResultRepository(database.arrivalResultDao())
 
     override val forestRepository =
-        com.joon.ringout.data.forest.RoomForestRepository(database.forestDao())
+        DefaultForestRepository(
+            httpClient = httpClient,
+            tokenStorage = tokenStorage,
+            authSession = authSession,
+            localProgressStore = DataStoreForestLocalProgressStore(getAppPreferencesDataStore(context)),
+            observeSyncedArrivals = database.alarmOccurrenceSyncDao()::observeSuccessfulArrivalSyncs,
+        )
 
     override val productAnalyticsRecorder =
         createProductAnalyticsRecorder(context)
