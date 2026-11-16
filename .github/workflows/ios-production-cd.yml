@@ -80,6 +80,7 @@ jobs:
     environment: ios-production
     env:
       RINGOUT_API_BASE_URL: ${{ vars.RINGOUT_API_BASE_URL || 'https://api.ringout.my' }}
+      RINGOUT_FOREST_WEB_URL: ${{ vars.RINGOUT_FOREST_WEB_URL }}
     steps:
       - name: Checkout source code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -88,6 +89,12 @@ jobs:
           persist-credentials: false
       - name: Confirm checked out commit
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Validate production forest URL
+        run: |
+          if [[ ! "$RINGOUT_FOREST_WEB_URL" =~ ^https://[^[:space:]]+$ ]]; then
+            echo '::error::Set RINGOUT_FOREST_WEB_URL to the production HTTPS URL in this GitHub Environment.'
+            exit 1
+          fi
       - name: Set up Corretto JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
