@@ -41,6 +41,7 @@ public class UserWithdrawalRepository {
 
         jdbcTemplate.update("delete from user_agreement where user_id = ?", userId);
         jdbcTemplate.update("delete from destination where user_id = ?", userId);
+        jdbcTemplate.update("delete from alarm where user_id = ?", userId);
         jdbcTemplate.update("delete from forest_onboarding where user_id = ?", userId);
         jdbcTemplate.update("delete from forest_tree where user_id = ?", userId);
         jdbcTemplate.update("delete from `user` where id = ?", userId);
