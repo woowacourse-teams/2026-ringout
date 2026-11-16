@@ -104,13 +104,28 @@ class ForestConnectionTest {
         f.request("forest.back"); runCurrent()
         assertEquals(1, f.backCount)
     }
+    @Test fun `온보딩 완료는 명령이 대기한 뒤의 시각 대신 수신 시각을 저장한다`() = runTest {
+        val f = Fixture(this)
+        f.request("forest.ready")
+        runCurrent()
+        f.connection.setActive(false)
+        f.time = 200
+        f.request("forest.completeOnboarding")
+        runCurrent()
+        f.time = 900
+        f.connection.setActive(true)
+        runCurrent()
+        assertEquals(200L, f.repo.state.value.onboardingCompletedAtEpochMillis)
+    }
+
     private class Fixture(scope: TestScope) {
         val repo = FakeRepository()
         val messages = mutableListOf<JsonObject>()
         var readyCount = 0
         var backCount = 0
         private var id = 0
-        private val viewModel = ForestViewModel(repo, scope.backgroundScope, AuthSession().apply { markAuthenticated() }) { 100 }
+        var time = 100L
+        private val viewModel = ForestViewModel(repo, scope.backgroundScope, AuthSession().apply { markAuthenticated() }) { time }
         val connection = viewModel.connect(
             send = { messages += Json.parseToJsonElement(it).jsonObject },
             onReady = { readyCount++ }, onBack = { backCount++ }, onError = {},

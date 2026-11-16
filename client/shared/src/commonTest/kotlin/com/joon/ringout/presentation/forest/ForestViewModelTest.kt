@@ -3,6 +3,7 @@ package com.joon.ringout.presentation.forest
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.forest.ForestGrowth
 import com.joon.ringout.domain.forest.ForestRepository
+import com.joon.ringout.domain.forest.ForestOnboardingSyncState
 import com.joon.ringout.domain.forest.ForestState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -20,6 +21,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -388,6 +390,123 @@ class ForestViewModelTest {
         assertEquals(1, fixture.repository.refreshCount)
     }
 
+    @Test
+    fun `온보딩을 로컬에 저장하면 서버 동기화 대기 중에도 웹에 성공을 전달한다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.viewModel.setActive(true)
+        fixture.ready()
+        runCurrent()
+        fixture.connection.receive(ForestProtocol.message("forest.completeOnboarding", "complete"))
+        runCurrent()
+        val result = fixture.messages.single { it["requestId"]?.jsonPrimitive?.content == "complete" }
+        assertTrue(result["success"]!!.jsonPrimitive.boolean)
+        assertNotNull(fixture.repository.state.value.onboardingCompletedAtEpochMillis)
+        assertEquals(ForestOnboardingSyncState.Pending, fixture.repository.onboardingSync.value)
+        assertEquals(0, fixture.repository.onboardingRetryCount)
+        assertEquals(1, fixture.repository.refreshCount)
+    }
+
+    @Test
+    fun `숲 조회 성공과 실패가 온보딩 동기화 오류를 지우지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        fixture.repository.nextFetch = { error("offline") }
+        fixture.viewModel.retry()
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.refreshErrorMessage)
+        assertNotNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        fixture.repository.nextFetch = { forest(5) }
+        fixture.viewModel.retry()
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.refreshErrorMessage)
+        assertNotNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Synced
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+    }
+
+    @Test
+    fun `온보딩 재시도는 중복 실행하거나 숲을 다시 조회하지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        fixture.repository.nextOnboardingRetry = {
+            gate.await()
+            fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Pending
+        }
+        fixture.viewModel.retryOnboardingSync()
+        fixture.viewModel.retryOnboardingSync()
+        runCurrent()
+        assertEquals(1, fixture.repository.onboardingRetryCount)
+        assertTrue(fixture.viewModel.uiState.value.isRetryingOnboardingSync)
+        assertEquals(1, fixture.repository.refreshCount)
+        gate.complete(Unit)
+        runCurrent()
+        assertFalse(fixture.viewModel.uiState.value.isRetryingOnboardingSync)
+        assertNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        assertEquals(1, fixture.repository.refreshCount)
+    }
+
+    @Test
+    fun `온보딩 재시도 기록 저장이 실패하면 완료 상태와 오류 안내를 유지한다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.state.value = forest(5).copy(onboardingCompletedAtEpochMillis = 100)
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Blocked
+        fixture.repository.nextOnboardingRetry = { error("storage failed") }
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        fixture.viewModel.retryOnboardingSync()
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        assertFalse(fixture.viewModel.uiState.value.isRetryingOnboardingSync)
+        assertTrue(fixture.viewModel.uiState.value.hasSnapshot)
+        assertEquals(100L, fixture.repository.state.value.onboardingCompletedAtEpochMillis)
+    }
+
+    @Test
+    fun `숲이 가려진 동안 동기화 상태를 표시하지 않고 복귀하면 최신 상태를 표시한다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        fixture.viewModel.setActive(false)
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Blocked
+        fixture.viewModel.retryOnboardingSync()
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        assertEquals(0, fixture.repository.onboardingRetryCount)
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+    }
+
+    @Test
+    fun `계정 변경 후 이전 온보딩 재시도 실패를 표시하지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        fixture.repository.nextOnboardingRetry = {
+            withContext(NonCancellable) { gate.await() }
+            error("old account failure")
+        }
+        fixture.viewModel.retryOnboardingSync()
+        runCurrent()
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Idle
+        fixture.session.startNewSession()
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        assertFalse(fixture.viewModel.uiState.value.isRetryingOnboardingSync)
+        assertEquals(1L, fixture.viewModel.uiState.value.sessionVersion)
+    }
+
     private class Fixture(scope: TestScope) {
         val repository = FakeRepository()
         val session = AuthSession().apply { markAuthenticated() }
@@ -414,6 +533,9 @@ class ForestViewModelTest {
         var arrivalFlow: Flow<Int> = arrivals
         var refreshCount = 0
         var nextFetch: suspend () -> ForestState = { state.value }
+        val onboardingSync = MutableStateFlow(ForestOnboardingSyncState.Idle)
+        var onboardingRetryCount = 0
+        var nextOnboardingRetry: suspend () -> Unit = { onboardingSync.value = ForestOnboardingSyncState.Pending }
         var readGate: CompletableDeferred<Unit>? = null
         override suspend fun refreshForest(): ForestState {
             refreshCount++
@@ -425,8 +547,14 @@ class ForestViewModelTest {
             return state.value
         }
         override fun observeForest() = state
+        override fun observeOnboardingSyncState() = onboardingSync
+        override suspend fun retryOnboardingSync() {
+            onboardingRetryCount++
+            nextOnboardingRetry()
+        }
         override suspend fun completeOnboarding(completedAtEpochMillis: Long) {
             state.value = state.value.copy(onboardingCompletedAtEpochMillis = completedAtEpochMillis)
+            onboardingSync.value = ForestOnboardingSyncState.Pending
         }
         override suspend fun acknowledgeTree(growthCycle: Int, acknowledgedAtEpochMillis: Long) = Unit
     }

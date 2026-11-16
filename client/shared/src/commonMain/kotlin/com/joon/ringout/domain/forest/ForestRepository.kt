@@ -16,6 +16,10 @@ interface ForestRepository {
 
     suspend fun completeOnboarding(completedAtEpochMillis: Long)
 
+    fun observeOnboardingSyncState(): Flow<ForestOnboardingSyncState> = flowOf(ForestOnboardingSyncState.Idle)
+
+    suspend fun retryOnboardingSync() = Unit
+
     /** Acknowledges only this reveal; other unacknowledged trees remain pending. */
     suspend fun acknowledgeTree(growthCycle: Int, acknowledgedAtEpochMillis: Long)
 }

@@ -6,6 +6,7 @@ import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.domain.forest.ForestRepository
+import com.joon.ringout.domain.forest.ForestOnboardingSyncState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -27,6 +28,8 @@ internal data class ForestUiState(
     val hasSnapshot: Boolean = false,
     val isRefreshing: Boolean = false,
     val refreshErrorMessage: String? = null,
+    val onboardingSyncErrorMessage: String? = null,
+    val isRetryingOnboardingSync: Boolean = false,
     val sessionVersion: Long = 0,
 )
 
@@ -43,6 +46,9 @@ internal class ForestViewModel(
     private var sessionIdentity = authSession.identity.value
     private var arrivalObserver: Job? = null
     private var refreshJob: Job? = null
+    private var onboardingObserver: Job? = null
+    private var onboardingRetryJob: Job? = null
+    private var syncGeneration = 0L
     private var followUpRefresh = false
     private var arrivalObservationFailed = false
     private var requestVersion = 0L
@@ -57,7 +63,10 @@ internal class ForestViewModel(
                         mutableUiState.value = ForestUiState(sessionVersion = uiState.value.sessionVersion + 1)
                     }
                     if (state == AuthSessionState.Authenticated) {
-                        if (active) observeArrivals()
+                        if (active) {
+                            observeArrivals()
+                            observeOnboardingSync()
+                        }
                     } else {
                         cancelWork()
                         if (state != AuthSessionState.Restoring) {
@@ -78,9 +87,10 @@ internal class ForestViewModel(
         active = value
         if (!value) {
             cancelWork()
-            mutableUiState.value = uiState.value.copy(isRefreshing = false)
+            mutableUiState.value = uiState.value.copy(isRefreshing = false, isRetryingOnboardingSync = false)
         } else if (authSession.state.value == AuthSessionState.Authenticated) {
             observeArrivals()
+            observeOnboardingSync()
         }
     }
 
@@ -88,6 +98,60 @@ internal class ForestViewModel(
         if (!active) return
         if (arrivalObserver?.isActive != true) observeArrivals()
         else requestRefresh()
+    }
+
+    fun retryOnboardingSync() {
+        if (!active || authSession.state.value != AuthSessionState.Authenticated || onboardingRetryJob?.isActive == true) return
+        val identity = authSession.identity.value
+        val generation = syncGeneration
+        onboardingRetryJob = workScope.launch {
+            mutableUiState.value = uiState.value.copy(isRetryingOnboardingSync = true)
+            try {
+                repository.retryOnboardingSync()
+                currentCoroutineContext().ensureActive()
+                if (canUpdateSync(identity, generation)) observeOnboardingSync()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                currentCoroutineContext().ensureActive()
+                if (canUpdateSync(identity, generation)) showOnboardingSyncFailure()
+            } finally {
+                if (canUpdateSync(identity, generation)) {
+                    mutableUiState.value = uiState.value.copy(isRetryingOnboardingSync = false)
+                }
+            }
+        }
+    }
+
+    private fun observeOnboardingSync() {
+        if (!active || onboardingObserver?.isActive == true || authSession.state.value != AuthSessionState.Authenticated) return
+        val identity = authSession.identity.value
+        val generation = syncGeneration
+        onboardingObserver = workScope.launch {
+            try {
+                repository.observeOnboardingSyncState().distinctUntilChanged().collect { state ->
+                    currentCoroutineContext().ensureActive()
+                    if (canUpdateSync(identity, generation)) {
+                        mutableUiState.value = uiState.value.copy(
+                            onboardingSyncErrorMessage = if (state == ForestOnboardingSyncState.Blocked) OnboardingSyncFailure else null,
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                currentCoroutineContext().ensureActive()
+                if (canUpdateSync(identity, generation)) showOnboardingSyncFailure()
+            }
+        }
+    }
+
+    private fun canUpdateSync(identity: Any?, generation: Long): Boolean =
+        active && generation == syncGeneration && identity != null && identity === authSession.identity.value &&
+            authSession.state.value == AuthSessionState.Authenticated
+
+    private fun showOnboardingSyncFailure() {
+        mutableUiState.value = uiState.value.copy(onboardingSyncErrorMessage = OnboardingSyncFailure)
     }
 
     fun connect(
@@ -187,10 +251,19 @@ internal class ForestViewModel(
 
     private fun cancelWork() {
         requestVersion++
+        syncGeneration++
         refreshJob?.cancel()
         refreshJob = null
         arrivalObserver?.cancel()
         arrivalObserver = null
+        onboardingObserver?.cancel()
+        onboardingObserver = null
+        onboardingRetryJob?.cancel()
+        onboardingRetryJob = null
         followUpRefresh = false
+    }
+
+    private companion object {
+        const val OnboardingSyncFailure = "시작 기록을 서버에 저장하지 못했어요."
     }
 }

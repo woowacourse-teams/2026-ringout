@@ -71,6 +71,7 @@ internal class ForestConnection(
             send(error("invalidRequest")); return
         }
         if (type == "forest.ready") onWebReady()
+        val completedAt = if (type == "forest.completeOnboarding") now() else null
         val fingerprint = "$type:$cycle"
         val pageMutex = mutex
         scope.launch {
@@ -108,7 +109,7 @@ internal class ForestConnection(
                         snapshot
                     } else null
                     when (type) {
-                        "forest.completeOnboarding" -> repository.completeOnboarding(now())
+                        "forest.completeOnboarding" -> repository.completeOnboarding(checkNotNull(completedAt))
                         "forest.acknowledgeTree" -> {
                             val state = repository.getForest()
                             require(state.isOnboardingCompleted && state.trees.any { it.growthCycle == cycle })

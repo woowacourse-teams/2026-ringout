@@ -12,6 +12,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.presentation.forest.component.ForestRefreshStatus
+import com.joon.ringout.presentation.forest.component.ForestOnboardingSyncError
 import com.joon.ringout.presentation.forest.component.ForestStatus
 import com.joon.ringout.presentation.navigation.NavigationBackAction
 import kotlinx.coroutines.delay
@@ -77,6 +78,7 @@ internal fun ForestRoute(viewModel: ForestViewModel, onBackClick: () -> Unit, mo
             },
             onBackClick = onBackClick,
             modifier = modifier,
+            onRetryOnboardingSync = viewModel::retryOnboardingSync,
         ) {
             if (endpoint != null) PlatformForestWebView(
                 endpoint = endpoint,
@@ -102,6 +104,7 @@ internal fun ForestScreen(
     onRetry: () -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onRetryOnboardingSync: () -> Unit = {},
     content: @Composable () -> Unit = {},
 ) {
     Surface(modifier = modifier.fillMaxSize()) {
@@ -109,8 +112,20 @@ internal fun ForestScreen(
             content()
             if (uiState.isLoading || uiState.errorMessage != null) {
                 ForestStatus(uiState, onRetry, onBackClick, Modifier.fillMaxSize())
-            } else if (uiState.isRefreshing || uiState.refreshErrorMessage != null) {
-                ForestRefreshStatus(uiState, onRetry, Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            } else {
+                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                    if (uiState.isRefreshing || uiState.refreshErrorMessage != null) {
+                        ForestRefreshStatus(uiState, onRetry, Modifier.fillMaxWidth())
+                    }
+                    uiState.onboardingSyncErrorMessage?.let { message ->
+                        ForestOnboardingSyncError(
+                            message = message,
+                            isRetrying = uiState.isRetryingOnboardingSync,
+                            onRetry = onRetryOnboardingSync,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
             }
         }
     }
@@ -136,4 +151,21 @@ private fun ForestScreenErrorPreview() { RingoutTheme { ForestScreen(ForestUiSta
 @Composable
 private fun ForestScreenRefreshErrorPreview() {
     RingoutTheme { ForestScreen(ForestUiState(isLoading = false, hasSnapshot = true, refreshErrorMessage = "숲을 새로 불러오지 못했어요."), {}, {}) }
+}
+
+@Preview
+@Composable
+private fun ForestScreenOnboardingSyncErrorPreview() {
+    RingoutTheme {
+        ForestScreen(
+            ForestUiState(
+                isLoading = false,
+                hasSnapshot = true,
+                refreshErrorMessage = "숲을 새로 불러오지 못했어요.",
+                onboardingSyncErrorMessage = "시작 기록을 서버에 저장하지 못했어요.",
+            ),
+            {},
+            {},
+        )
+    }
 }
