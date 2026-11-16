@@ -5,6 +5,8 @@ spring:
       max-request-size: 10MB
   task:
     scheduling:
+      pool:
+        size: 2
       shutdown:
         await-termination: true
         await-termination-period: 30s
@@ -42,6 +44,9 @@ server:
         same-site: lax
 
 management:
+  health:
+    redis:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -97,6 +102,7 @@ app:
     apple:
       client-id: ${APPLE_CLIENT_ID}
   jwt:
+    revocation-enabled: ${JWT_REVOCATION_ENABLED:false}
     secret: ${JWT_SECRET}
     access-token-expiration-millis: ${JWT_ACCESS_TOKEN_EXPIRATION_MILLIS}
     refresh-token-expiration-millis: ${JWT_REFRESH_TOKEN_EXPIRATION_MILLIS}

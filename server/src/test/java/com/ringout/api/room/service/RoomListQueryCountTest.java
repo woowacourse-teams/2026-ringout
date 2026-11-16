@@ -27,6 +27,8 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.hibernate.FlushMode;
+import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +37,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.BDDMockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Import;
 
 @DataJpaTest(properties = {
@@ -50,7 +53,8 @@ import org.springframework.context.annotation.Import;
 @Import(JpaAuditingConfig.class)
 public class RoomListQueryCountTest {
 
-    private static final int MAX_QUERIES_PER_ROOM_LIST = 2;
+    /** 캐시 미스 기준: 방 목록, 방별 인원 수, 내 참여 방 ID */
+    private static final int MAX_QUERIES_PER_ROOM_LIST = 3;
 
     private final AtomicLong sequence = new AtomicLong();
 
@@ -79,8 +83,11 @@ public class RoomListQueryCountTest {
         BDDMockito.given(imageFileService.createReadUri(any(ImageFile.class)))
             .willAnswer(invocation -> URI.create(invocation.<ImageFile>getArgument(0).getUrl()));
 
+        // 캐시 프록시 없이 직접 생성해 캐시 미스 경로(실제 DB 조회)의 쿼리 수를 잰다.
         roomService = new RoomService(
-            roomRepository, roomUserRepository, roomBlackListRepository, userRepository, imageFileService
+            roomRepository, roomUserRepository, roomBlackListRepository, userRepository, imageFileService,
+            new ActiveRoomsReader(roomRepository, roomUserRepository, imageFileService),
+            mock(ApplicationEventPublisher.class)
         );
         statistics = entityManager.getEntityManagerFactory().unwrap(SessionFactory.class).getStatistics();
     }
@@ -129,7 +136,17 @@ public class RoomListQueryCountTest {
     private long countQueries(Runnable action) {
         flushAndClear();            // 1차 캐시에 남은 엔티티 때문에 쿼리가 덜 세지지 않게 비운다
         statistics.clear();
-        action.run();
+        // 운영에서는 ActiveRoomsReader.read()가 readOnly 트랜잭션으로 실행된다.
+        // 프록시 없이 호출하는 이 테스트도 같은 조건(변경 감지·flush 없음)에서 조회 쿼리만 센다.
+        Session session = entityManager.unwrap(Session.class);
+        session.setDefaultReadOnly(true);
+        session.setHibernateFlushMode(FlushMode.MANUAL);
+        try {
+            action.run();
+        } finally {
+            session.setDefaultReadOnly(false);
+            session.setHibernateFlushMode(FlushMode.AUTO);
+        }
         return statistics.getPrepareStatementCount();
     }
 

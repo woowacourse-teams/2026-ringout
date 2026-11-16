@@ -8,7 +8,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -19,15 +21,20 @@ import com.ringout.api.config.jwt.JwtAuthenticationFilter;
 import com.ringout.api.config.jwt.JwtProvider;
 import com.ringout.api.config.security.CustomUserDetails;
 import com.ringout.api.config.security.JwtAuthenticationEntryPoint;
-import com.ringout.api.destination.dto.response.DestinationCreateResponse;
+import com.ringout.api.destination.dto.request.DestinationUpsertRequest;
+import com.ringout.api.destination.dto.response.DestinationListResponse;
+import com.ringout.api.destination.dto.response.DestinationResponse;
+import com.ringout.api.destination.dto.response.DestinationUpsertResponse;
 import com.ringout.api.destination.service.DestinationService;
 import com.ringout.api.destination.status.DestinationErrorStatus;
 import com.ringout.api.user.domain.Role;
+import java.util.List;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -44,6 +51,71 @@ class DestinationControllerTest {
 
     @MockitoBean
     private JwtProvider jwtProvider;
+
+    @Nested
+    class 목적지_목록_조회_응답 {
+
+        @Test
+        void 목적지_목록을_destinations_배열로_반환한다() throws Exception {
+            // given
+            given(destinationService.getDestinations(1L)).willReturn(new DestinationListResponse(List.of(
+                new DestinationResponse("destination-001", "런닝 장소", 37.5665, 126.9780, 1L),
+                new DestinationResponse("destination-002", "헬스장", 37.4979, 127.0276, 3L)
+            )));
+
+            // when
+            var result = mockMvc.perform(get("/api/v1/destinations")
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.code").value("DESTINATION200"),
+                jsonPath("$.message").value("조회되었습니다."),
+                jsonPath("$.result.destinations.length()").value(2),
+                jsonPath("$.result.destinations[0].destinationId").value("destination-001"),
+                jsonPath("$.result.destinations[0].alias").value("런닝 장소"),
+                jsonPath("$.result.destinations[0].latitude").value(37.5665),
+                jsonPath("$.result.destinations[0].longitude").value(126.9780),
+                jsonPath("$.result.destinations[0].destinationVersion").value(1),
+                jsonPath("$.result.destinations[1].destinationId").value("destination-002"),
+                jsonPath("$.result.destinations[1].destinationVersion").value(3)
+            );
+        }
+
+        @Test
+        void 목적지가_없으면_빈_destinations_배열을_반환한다() throws Exception {
+            // given
+            given(destinationService.getDestinations(1L)).willReturn(new DestinationListResponse(List.of()));
+
+            // when
+            var result = mockMvc.perform(get("/api/v1/destinations")
+                .with(user(new CustomUserDetails(1L, Role.USER))));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                jsonPath("$.code").value("DESTINATION200"),
+                jsonPath("$.result.destinations").isArray(),
+                jsonPath("$.result.destinations").isEmpty()
+            );
+        }
+
+        @Test
+        void 인증_정보가_없으면_AUTH401을_반환한다() throws Exception {
+            // given
+
+            // when
+            var result = mockMvc.perform(get("/api/v1/destinations"));
+
+            // then
+            result.andExpectAll(
+                status().isUnauthorized(),
+                jsonPath("$.code").value("AUTH401")
+            );
+            verify(destinationService, never()).getDestinations(any());
+        }
+    }
 
     @Nested
     class 목적지_삭제_응답 {
@@ -119,36 +191,67 @@ class DestinationControllerTest {
     }
 
     @Nested
-    class 목적지_생성_응답 {
+    class 목적지_upsert_응답 {
+
+        private static final String UPSERT_URL = "/api/v1/destinations/destination-001";
+        private static final String REQUEST_BODY = """
+            {"alias":"헬스장","latitude":37.4979,"longitude":127.0276,"destinationVersion":2}
+            """;
 
         @Test
-        void 문자열_목적지_id를_받아_201로_응답한다() throws Exception {
+        void 경로의_목적지_id와_body로_upsert하고_200과_서버에_저장된_목적지를_반환한다() throws Exception {
             // given
-            given(destinationService.createDestination(1L, "dest-1", "헬스장", 37.4979, 127.0276))
-                .willReturn(new DestinationCreateResponse("dest-1"));
+            given(destinationService.upsertDestination(any(), any(), any())).willReturn(
+                new DestinationUpsertResponse("destination-001", "학교", 37.5502, 127.0738, 5L));
 
             // when
-            var result = mockMvc.perform(post("/api/v1/destinations")
+            var result = mockMvc.perform(put(UPSERT_URL)
+                .with(user(new CustomUserDetails(1L, Role.USER)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(REQUEST_BODY));
+
+            // then
+            result.andExpectAll(
+                status().isOk(),
+                header().doesNotExist(HttpHeaders.LOCATION),
+                jsonPath("$.code").value("DESTINATION200"),
+                jsonPath("$.message").value("목적지 동기화에 성공했습니다."),
+                jsonPath("$.result.destinationId").value("destination-001"),
+                jsonPath("$.result.alias").value("학교"),
+                jsonPath("$.result.latitude").value(37.5502),
+                jsonPath("$.result.longitude").value(127.0738),
+                jsonPath("$.result.destinationVersion").value(5)
+            );
+            verify(destinationService).upsertDestination(1L, "destination-001",
+                new DestinationUpsertRequest("헬스장", 37.4979, 127.0276, 2L));
+        }
+
+        @Test
+        void 목적지_버전이_Long이_아니면_COMMON400을_반환한다() throws Exception {
+            // when
+            var result = mockMvc.perform(put(UPSERT_URL)
                 .with(user(new CustomUserDetails(1L, Role.USER)))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                    {"destinationId":"dest-1","alias":"헬스장","latitude":37.4979,"longitude":127.0276}
+                    {"alias":"헬스장","latitude":37.4979,"longitude":127.0276,"destinationVersion":"abc"}
                     """));
 
             // then
             result.andExpectAll(
-                status().isCreated(),
-                jsonPath("$.code").value("DESTINATION201"),
-                jsonPath("$.result.destinationId").value("dest-1")
+                status().isBadRequest(),
+                jsonPath("$.code").value("COMMON400")
             );
+            verify(destinationService, never()).upsertDestination(any(), any(), any());
         }
 
         @Test
-        void 목적지_id가_없으면_COMMON400을_반환한다() throws Exception {
+        void 서비스_검증에_실패하면_DESTINATION400을_반환한다() throws Exception {
             // given
+            given(destinationService.upsertDestination(any(), any(), any()))
+                .willThrow(new GeneralException(DestinationErrorStatus.DESTINATION_VERSION_INVALID));
 
             // when
-            var result = mockMvc.perform(post("/api/v1/destinations")
+            var result = mockMvc.perform(put(UPSERT_URL)
                 .with(user(new CustomUserDetails(1L, Role.USER)))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
@@ -158,31 +261,47 @@ class DestinationControllerTest {
             // then
             result.andExpectAll(
                 status().isBadRequest(),
-                jsonPath("$.code").value("COMMON400")
+                jsonPath("$.code").value("DESTINATION400"),
+                jsonPath("$.message").value("목적지 버전 값이 올바르지 않습니다."),
+                jsonPath("$.result").value(nullValue())
             );
-            verify(destinationService, never()).createDestination(any(), any(), any(), any(), any());
         }
 
         @Test
-        void 중복된_목적지_id는_DESTINATION409를_반환한다() throws Exception {
+        void 경로의_목적지_id가_올바르지_않으면_DESTINATION400을_반환한다() throws Exception {
             // given
-            given(destinationService.createDestination(1L, "dest-1", "헬스장", 37.4979, 127.0276))
-                .willThrow(new GeneralException(DestinationErrorStatus.DESTINATION_ID_DUPLICATED));
+            given(destinationService.upsertDestination(any(), any(), any()))
+                .willThrow(new GeneralException(DestinationErrorStatus.DESTINATION_ID_INVALID));
 
             // when
-            var result = mockMvc.perform(post("/api/v1/destinations")
+            var result = mockMvc.perform(put("/api/v1/destinations/{destinationId}", "dest 1")
                 .with(user(new CustomUserDetails(1L, Role.USER)))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"destinationId":"dest-1","alias":"헬스장","latitude":37.4979,"longitude":127.0276}
-                    """));
+                .content(REQUEST_BODY));
 
             // then
             result.andExpectAll(
-                status().isConflict(),
-                jsonPath("$.code").value("DESTINATION409"),
-                jsonPath("$.message").value("이미 존재하는 목적지입니다.")
+                status().isBadRequest(),
+                jsonPath("$.code").value("DESTINATION400"),
+                jsonPath("$.message").value("목적지 ID가 올바르지 않습니다.")
             );
+            verify(destinationService).upsertDestination(1L, "dest 1",
+                new DestinationUpsertRequest("헬스장", 37.4979, 127.0276, 2L));
+        }
+
+        @Test
+        void 인증_정보가_없으면_AUTH401을_반환한다() throws Exception {
+            // when
+            var result = mockMvc.perform(put(UPSERT_URL)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(REQUEST_BODY));
+
+            // then
+            result.andExpectAll(
+                status().isUnauthorized(),
+                jsonPath("$.code").value("AUTH401")
+            );
+            verify(destinationService, never()).upsertDestination(any(), any(), any());
         }
     }
 }
