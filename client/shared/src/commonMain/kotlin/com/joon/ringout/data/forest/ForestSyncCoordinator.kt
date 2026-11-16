@@ -19,7 +19,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
 
 /** Process-lifetime delivery; screen disposal never owns or cancels a persisted completion. */
-internal class ForestOnboardingSyncCoordinator(
+internal class ForestSyncCoordinator(
     private val repository: DefaultForestRepository,
     private val authSession: AuthSession,
     private val networkMonitor: NetworkMonitor,
@@ -84,7 +84,7 @@ internal class ForestOnboardingSyncCoordinator(
                     continue
                 }
                 try {
-                    nextRetryAt = repository.syncOnboarding(now)
+                    nextRetryAt = repository.syncForest(now)
                     storageRetryAt = null
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -98,3 +98,6 @@ internal class ForestOnboardingSyncCoordinator(
         }
     }
 }
+
+/** Source compatibility for onboarding-only callers and its regression tests. */
+internal typealias ForestOnboardingSyncCoordinator = ForestSyncCoordinator

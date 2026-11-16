@@ -69,6 +69,7 @@ class DataStoreForestLocalProgressStoreTest {
         assertNull(migrated.onboardingNextRetryAtEpochMillis)
         assertNull(migrated.onboardingLastErrorCode)
         assertEquals(mapOf("1:pine:7:50" to 200L), migrated.acknowledgedTrees)
+        assertTrue(migrated.treeAcknowledgementDeliveries.isEmpty())
         assertEquals(migrated, store.observe("1").first())
     }
 
@@ -186,6 +187,92 @@ class DataStoreForestLocalProgressStoreTest {
         dataStore.failUpdates = false
         store.completeOnboarding("1", 200)
         assertEquals(200L, store.read("1").onboardingCompletedAtEpochMillis)
+    }
+
+    @Test
+    fun `새 나무 확인은 시각과 전송 기록을 한 번에 저장하고 재실행해도 최초 값을 보존한다`() = runTest {
+        val preferences = MemoryPreferences()
+        val store = DataStoreForestLocalProgressStore(preferences)
+        val tree = ForestTree(1, ForestTreeKind.Pine, 7, 50)
+        val observed = mutableListOf<ForestLocalProgress>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { store.observe("1").toList(observed) }
+
+        store.acknowledgeTree("1", tree, 200)
+        store.acknowledgeTree("1", tree, 900)
+
+        assertEquals(2, observed.size)
+        val restored = DataStoreForestLocalProgressStore(preferences).read("1")
+        val delivery = restored.treeAcknowledgementDeliveries.getValue(tree.localProgressKey())
+        assertEquals(200L, restored.acknowledgedTrees[tree.localProgressKey()])
+        assertEquals(200L, delivery.acknowledgedAtEpochMillis)
+        assertEquals(ForestTreeAcknowledgementDeliveryStatus.Pending, delivery.status)
+        assertTrue(delivery.matches(tree))
+        assertEquals(restored, observed.last())
+        assertTrue(store.read("2").treeAcknowledgementDeliveries.isEmpty())
+    }
+
+    @Test
+    fun `기존 로컬 나무 기록은 중복 확인 명령을 받아도 서버 전송 대상으로 이관하지 않는다`() = runTest {
+        val preferences = MemoryPreferences()
+        preferences.edit {
+            it[stringPreferencesKey("forest_pending_progress_1")] =
+                """{"onboardingCompletedAtEpochMillis":100,"acknowledgedTrees":{"1:pine:7:50":200}}"""
+        }
+        val store = DataStoreForestLocalProgressStore(preferences)
+        store.acknowledgeTree("1", ForestTree(1, ForestTreeKind.Pine, 7, 50), 900)
+        assertEquals(200L, store.read("1").acknowledgedTrees["1:pine:7:50"])
+        assertTrue(store.read("1").treeAcknowledgementDeliveries.isEmpty())
+
+        val newTree = ForestTree(2, ForestTreeKind.Oak, 12, 150)
+        store.acknowledgeTree("1", newTree, 1_000)
+        assertEquals(setOf(newTree.localProgressKey()), store.read("1").treeAcknowledgementDeliveries.keys)
+    }
+
+    @Test
+    fun `나무별 복구 단계와 재시도 기한은 계정별로 저장되고 중복 확인으로 초기화되지 않는다`() = runTest {
+        val preferences = MemoryPreferences()
+        val store = DataStoreForestLocalProgressStore(preferences)
+        val tree = ForestTree(1, ForestTreeKind.Pine, 7, 50)
+        store.acknowledgeTree("1", tree, 200)
+        for (status in ForestTreeAcknowledgementDeliveryStatus.entries) {
+            val saved = store.update("1") { progress ->
+                progress.copy(treeAcknowledgementDeliveries = progress.treeAcknowledgementDeliveries.mapValues { (_, delivery) ->
+                    delivery.copy(status = status, attemptCount = 4, nextRetryAtEpochMillis = 45_000,
+                        lastErrorCode = "FOREST409", onboardingRepairCompleted = true)
+                })
+            }
+            store.acknowledgeTree("1", tree, 900)
+            assertEquals(saved, DataStoreForestLocalProgressStore(preferences).read("1"))
+        }
+        assertTrue(store.read("2").treeAcknowledgementDeliveries.isEmpty())
+    }
+
+    @Test
+    fun `나무 확인 저장이 실패하면 시각과 미전송 기록을 모두 만들지 않는다`() = runTest {
+        val preferences = MemoryPreferences()
+        val store = DataStoreForestLocalProgressStore(preferences)
+        val tree = ForestTree(1, ForestTreeKind.Pine, 7, 50)
+        preferences.failUpdates = true
+        assertFailsWith<IllegalStateException> { store.acknowledgeTree("1", tree, 200) }
+        assertTrue(store.read("1").acknowledgedTrees.isEmpty())
+        assertTrue(store.read("1").treeAcknowledgementDeliveries.isEmpty())
+        preferences.failUpdates = false
+        store.acknowledgeTree("1", tree, 300)
+        assertEquals(300L, store.read("1").treeAcknowledgementDeliveries.getValue(tree.localProgressKey()).acknowledgedAtEpochMillis)
+    }
+
+    @Test
+    fun `같은 회차라도 다른 나무이면 기존 확인을 옮기지 않고 별도 기록을 저장한다`() = runTest {
+        val store = DataStoreForestLocalProgressStore(MemoryPreferences())
+        val original = ForestTree(1, ForestTreeKind.Pine, 7, 50)
+        val replaced = ForestTree(1, ForestTreeKind.Oak, 8, 150)
+        store.acknowledgeTree("1", original, 200)
+        store.acknowledgeTree("1", replaced, 300)
+        val deliveries = store.read("1").treeAcknowledgementDeliveries
+        assertEquals(2, deliveries.size)
+        assertEquals(200L, deliveries.getValue(original.localProgressKey()).acknowledgedAtEpochMillis)
+        assertEquals(300L, deliveries.getValue(replaced.localProgressKey()).acknowledgedAtEpochMillis)
+        assertTrue(!deliveries.getValue(original.localProgressKey()).matches(replaced))
     }
 }
 

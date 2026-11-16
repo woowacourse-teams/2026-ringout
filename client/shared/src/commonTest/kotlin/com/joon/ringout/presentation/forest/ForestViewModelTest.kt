@@ -4,7 +4,10 @@ import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.forest.ForestGrowth
 import com.joon.ringout.domain.forest.ForestRepository
 import com.joon.ringout.domain.forest.ForestOnboardingSyncState
+import com.joon.ringout.domain.forest.ForestTreeAcknowledgementSyncState
 import com.joon.ringout.domain.forest.ForestState
+import com.joon.ringout.domain.forest.ForestTree
+import com.joon.ringout.domain.forest.ForestTreeKind
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -22,6 +25,7 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -507,16 +511,156 @@ class ForestViewModelTest {
         assertEquals(1L, fixture.viewModel.uiState.value.sessionVersion)
     }
 
+    @Test
+    fun `나무 확인은 로컬 저장 직후 성공하고 서버 동기화는 별도 대기 상태로 남는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.state.value = forest(5).copy(
+            onboardingCompletedAtEpochMillis = 1,
+            trees = listOf(ForestTree(1, ForestTreeKind.Pine, 2, 50)),
+        )
+        fixture.viewModel.setActive(true)
+        fixture.ready()
+        runCurrent()
+        fixture.connection.receive(ForestProtocol.message("forest.acknowledgeTree", "ack") { put("growthCycle", 1) })
+        runCurrent()
+        assertTrue(fixture.messages.single { it["requestId"]!!.jsonPrimitive.content == "ack" }["success"]!!.jsonPrimitive.boolean)
+        assertNotNull(fixture.repository.state.value.trees.single().acknowledgedAtEpochMillis)
+        assertEquals(ForestTreeAcknowledgementSyncState.Pending, fixture.repository.treeSync.value)
+        assertEquals(0, fixture.repository.treeRetryCount)
+        assertEquals(1, fixture.repository.refreshCount)
+    }
+
+    @Test
+    fun `나무 동기화 오류는 조회와 온보딩 상태 변경과 독립적으로 유지된다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Blocked
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        assertNotNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        fixture.repository.nextFetch = { error("offline") }
+        fixture.viewModel.retry()
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.refreshErrorMessage)
+        assertNotNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        fixture.repository.nextFetch = { forest(5) }
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Synced
+        fixture.viewModel.retry()
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.refreshErrorMessage)
+        assertNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        assertNotNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Synced
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+    }
+
+    @Test
+    fun `나무 동기화 재시도는 중복 호출을 합치고 일반 숲 갱신과 온보딩 재시도를 시작하지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        fixture.repository.nextTreeRetry = {
+            gate.await()
+            fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Pending
+        }
+        fixture.viewModel.retryTreeSync()
+        fixture.viewModel.retryTreeSync()
+        runCurrent()
+        assertEquals(1, fixture.repository.treeRetryCount)
+        assertTrue(fixture.viewModel.uiState.value.isRetryingTreeSync)
+        gate.complete(Unit)
+        runCurrent()
+        assertFalse(fixture.viewModel.uiState.value.isRetryingTreeSync)
+        assertNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        assertEquals(1, fixture.repository.refreshCount)
+        assertEquals(0, fixture.repository.onboardingRetryCount)
+    }
+
+    @Test
+    fun `나무 재시도 저장 실패에도 이미 확인한 나무와 숲 화면을 유지한다`() = runTest {
+        val fixture = Fixture(this)
+        val tree = ForestTree(1, ForestTreeKind.Pine, 2, 50, 100)
+        fixture.repository.state.value = forest(5).copy(onboardingCompletedAtEpochMillis = 1, trees = listOf(tree))
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Blocked
+        fixture.repository.nextTreeRetry = { error("storage failed") }
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        fixture.viewModel.retryTreeSync()
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        assertFalse(fixture.viewModel.uiState.value.isRetryingTreeSync)
+        assertTrue(fixture.viewModel.uiState.value.hasSnapshot)
+        assertEquals(tree, fixture.repository.state.value.trees.single())
+    }
+
+    @Test
+    fun `나무 동기화 관찰 실패는 안내를 표시하고 재시도에서 다시 관찰한다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.treeSyncFlow = flow { error("storage unavailable") }
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        fixture.repository.treeSyncFlow = fixture.repository.treeSync
+        fixture.viewModel.retryTreeSync()
+        runCurrent()
+        assertEquals(1, fixture.repository.treeRetryCount)
+        assertNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+    }
+
+    @Test
+    fun `화면이 가려지면 나무 오류 관찰과 수동 재시도를 멈추고 복귀 때 현재 상태를 읽는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        fixture.viewModel.setActive(false)
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Blocked
+        fixture.viewModel.retryTreeSync()
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        assertEquals(0, fixture.repository.treeRetryCount)
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+    }
+
+    @Test
+    fun `계정 변경 후 늦은 나무 재시도 실패는 새 계정 화면에 표시하지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        fixture.repository.nextTreeRetry = {
+            withContext(NonCancellable) { gate.await() }
+            error("old account failure")
+        }
+        fixture.viewModel.retryTreeSync()
+        runCurrent()
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Idle
+        fixture.session.startNewSession()
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        assertFalse(fixture.viewModel.uiState.value.isRetryingTreeSync)
+        assertEquals(1L, fixture.viewModel.uiState.value.sessionVersion)
+    }
+
     private class Fixture(scope: TestScope) {
         val repository = FakeRepository()
         val session = AuthSession().apply { markAuthenticated() }
         val viewModel = ForestViewModel(repository, scope.backgroundScope, session) { scope.testScheduler.currentTime }
-        val messages = mutableListOf<JsonObject>()
+        private val sentMessages = mutableListOf<JsonObject>()
+        val messages get() = sentMessages.filter { it["type"]?.jsonPrimitive?.content != "forest.visibility" }
         var readyCount = 0
         var webReadyCount = 0
         var reloadCount = 0
         val connection = viewModel.connect(
-            send = { messages += Json.parseToJsonElement(it).jsonObject },
+            send = { sentMessages += Json.parseToJsonElement(it).jsonObject },
             onReady = { readyCount++ },
             onBack = {},
             onError = { error("unexpected bridge failure") },
@@ -536,6 +680,10 @@ class ForestViewModelTest {
         val onboardingSync = MutableStateFlow(ForestOnboardingSyncState.Idle)
         var onboardingRetryCount = 0
         var nextOnboardingRetry: suspend () -> Unit = { onboardingSync.value = ForestOnboardingSyncState.Pending }
+        val treeSync = MutableStateFlow(ForestTreeAcknowledgementSyncState.Idle)
+        var treeSyncFlow: Flow<ForestTreeAcknowledgementSyncState> = treeSync
+        var treeRetryCount = 0
+        var nextTreeRetry: suspend () -> Unit = { treeSync.value = ForestTreeAcknowledgementSyncState.Pending }
         var readGate: CompletableDeferred<Unit>? = null
         override suspend fun refreshForest(): ForestState {
             refreshCount++
@@ -552,11 +700,21 @@ class ForestViewModelTest {
             onboardingRetryCount++
             nextOnboardingRetry()
         }
+        override fun observeTreeAcknowledgementSyncState() = treeSyncFlow
+        override suspend fun retryTreeAcknowledgementSync() {
+            treeRetryCount++
+            nextTreeRetry()
+        }
         override suspend fun completeOnboarding(completedAtEpochMillis: Long) {
             state.value = state.value.copy(onboardingCompletedAtEpochMillis = completedAtEpochMillis)
             onboardingSync.value = ForestOnboardingSyncState.Pending
         }
-        override suspend fun acknowledgeTree(growthCycle: Int, acknowledgedAtEpochMillis: Long) = Unit
+        override suspend fun acknowledgeTree(growthCycle: Int, acknowledgedAtEpochMillis: Long) {
+            state.value = state.value.copy(trees = state.value.trees.map {
+                if (it.growthCycle == growthCycle) it.copy(acknowledgedAtEpochMillis = it.acknowledgedAtEpochMillis ?: acknowledgedAtEpochMillis) else it
+            })
+            treeSync.value = ForestTreeAcknowledgementSyncState.Pending
+        }
     }
 }
 

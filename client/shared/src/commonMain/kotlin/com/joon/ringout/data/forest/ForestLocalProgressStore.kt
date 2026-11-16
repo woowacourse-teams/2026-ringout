@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 
-/** Account-owned onboarding delivery state and device-local tree confirmations. */
+/** Account-owned progress and durable delivery state; legacy tree confirmations remain local. */
 interface ForestLocalProgressStore {
     suspend fun read(ownerAccountId: String): ForestLocalProgress
     fun observe(ownerAccountId: String): Flow<ForestLocalProgress>
@@ -30,6 +30,27 @@ interface ForestLocalProgressStore {
 enum class ForestOnboardingDeliveryStatus { Pending, Synced, Blocked }
 
 @Serializable
+enum class ForestTreeAcknowledgementDeliveryStatus { Pending, NeedsOnboarding, Blocked, Synced }
+
+@Serializable
+data class ForestTreeAcknowledgementDelivery(
+    val growthCycle: Int,
+    val kind: String,
+    val slotIndex: Int,
+    val plantedAtEpochMillis: Long,
+    val acknowledgedAtEpochMillis: Long,
+    val status: ForestTreeAcknowledgementDeliveryStatus = ForestTreeAcknowledgementDeliveryStatus.Pending,
+    val attemptCount: Int = 0,
+    val nextRetryAtEpochMillis: Long? = null,
+    val lastErrorCode: String? = null,
+    val onboardingRepairCompleted: Boolean = false,
+) {
+    fun localProgressKey(): String = "$growthCycle:$kind:$slotIndex:$plantedAtEpochMillis"
+
+    fun matches(tree: ForestTree): Boolean = localProgressKey() == tree.localProgressKey()
+}
+
+@Serializable
 data class ForestLocalProgress(
     val onboardingCompletedAtEpochMillis: Long? = null,
     val acknowledgedTrees: Map<String, Long> = emptyMap(),
@@ -38,6 +59,8 @@ data class ForestLocalProgress(
     val onboardingAttemptCount: Int = 0,
     val onboardingNextRetryAtEpochMillis: Long? = null,
     val onboardingLastErrorCode: String? = null,
+    // Absence of tree metadata means a legacy local confirmation, never an implicit pending PATCH.
+    val treeAcknowledgementDeliveries: Map<String, ForestTreeAcknowledgementDelivery> = emptyMap(),
 )
 
 class DataStoreForestLocalProgressStore(
@@ -65,8 +88,20 @@ class DataStoreForestLocalProgressStore(
     override suspend fun acknowledgeTree(ownerAccountId: String, tree: ForestTree, acknowledgedAtEpochMillis: Long) {
         update(ownerAccountId) { progress ->
             val identity = tree.localProgressKey()
-            progress.copy(acknowledgedTrees = progress.acknowledgedTrees +
-                (identity to (progress.acknowledgedTrees[identity] ?: acknowledgedAtEpochMillis)))
+            if (identity in progress.acknowledgedTrees) progress
+            else {
+                val delivery = ForestTreeAcknowledgementDelivery(
+                    growthCycle = tree.growthCycle,
+                    kind = tree.kind.persistedValue,
+                    slotIndex = tree.slotIndex,
+                    plantedAtEpochMillis = tree.plantedAtEpochMillis,
+                    acknowledgedAtEpochMillis = acknowledgedAtEpochMillis,
+                )
+                progress.copy(
+                    acknowledgedTrees = progress.acknowledgedTrees + (identity to acknowledgedAtEpochMillis),
+                    treeAcknowledgementDeliveries = progress.treeAcknowledgementDeliveries + (identity to delivery),
+                )
+            }
         }
     }
 
