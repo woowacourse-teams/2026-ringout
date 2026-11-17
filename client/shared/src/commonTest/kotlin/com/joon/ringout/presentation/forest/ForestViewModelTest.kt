@@ -4,6 +4,7 @@ import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.forest.ForestGrowth
 import com.joon.ringout.domain.forest.ForestRepository
 import com.joon.ringout.domain.forest.ForestOnboardingSyncState
+import com.joon.ringout.domain.forest.ForestPlantingSyncState
 import com.joon.ringout.domain.forest.ForestTreeAcknowledgementSyncState
 import com.joon.ringout.domain.forest.ForestState
 import com.joon.ringout.domain.forest.ForestTree
@@ -650,6 +651,183 @@ class ForestViewModelTest {
         assertEquals(1L, fixture.viewModel.uiState.value.sessionVersion)
     }
 
+    @Test
+    fun `식재 오류는 숲 조회와 온보딩 및 나무 확인 상태 변경으로 지워지지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Blocked
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Blocked
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        fixture.repository.nextFetch = { error("offline") }
+        fixture.viewModel.retry()
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.refreshErrorMessage)
+        assertNotNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+
+        fixture.repository.nextFetch = { forest(5) }
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Synced
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Synced
+        fixture.viewModel.retry()
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.refreshErrorMessage)
+        assertNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        assertNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        assertNotNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Synced
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+    }
+
+    @Test
+    fun `식재 자동 전송 대기와 진행 상태는 오류 안내를 표시하지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Pending
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        assertTrue(fixture.viewModel.uiState.value.hasSnapshot)
+        assertNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Syncing
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        assertEquals(0, fixture.repository.plantingRetryCount)
+        assertEquals(1, fixture.repository.refreshCount)
+    }
+
+    @Test
+    fun `식재 재시도는 중복 실행을 합치고 다른 동기화와 일반 조회를 시작하지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Blocked
+        fixture.repository.onboardingSync.value = ForestOnboardingSyncState.Blocked
+        fixture.repository.treeSync.value = ForestTreeAcknowledgementSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        fixture.repository.nextPlantingRetry = {
+            gate.await()
+            fixture.repository.plantingSync.value = ForestPlantingSyncState.Pending
+        }
+        fixture.viewModel.retryPlantingSync()
+        fixture.viewModel.retryPlantingSync()
+        runCurrent()
+        assertEquals(1, fixture.repository.plantingRetryCount)
+        assertTrue(fixture.viewModel.uiState.value.isRetryingPlantingSync)
+        gate.complete(Unit)
+        runCurrent()
+        assertFalse(fixture.viewModel.uiState.value.isRetryingPlantingSync)
+        assertNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        assertNotNull(fixture.viewModel.uiState.value.onboardingSyncErrorMessage)
+        assertNotNull(fixture.viewModel.uiState.value.treeSyncErrorMessage)
+        assertEquals(1, fixture.repository.refreshCount)
+        assertEquals(0, fixture.repository.onboardingRetryCount)
+        assertEquals(0, fixture.repository.treeRetryCount)
+    }
+
+    @Test
+    fun `식재 재시도 실패는 표시된 숲을 유지하고 다시 시도할 수 있게 한다`() = runTest {
+        val fixture = Fixture(this)
+        val planted = forest(5).copy(trees = listOf(ForestTree(1, ForestTreeKind.Oak, 3, 50)))
+        fixture.repository.state.value = planted
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Blocked
+        fixture.repository.nextPlantingRetry = { error("storage failed") }
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        fixture.viewModel.retryPlantingSync()
+        runCurrent()
+        assertTrue(fixture.viewModel.uiState.value.hasSnapshot)
+        assertFalse(fixture.viewModel.uiState.value.isRetryingPlantingSync)
+        assertNotNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        assertEquals(planted, fixture.repository.state.value)
+
+        fixture.repository.nextPlantingRetry = { fixture.repository.plantingSync.value = ForestPlantingSyncState.Pending }
+        fixture.viewModel.retryPlantingSync()
+        runCurrent()
+        assertEquals(2, fixture.repository.plantingRetryCount)
+        assertNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+    }
+
+    @Test
+    fun `식재 상태 관찰이 실패하면 안내하고 수동 재시도로 관찰을 복구한다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.plantingSyncFlow = flow { error("storage unavailable") }
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        fixture.repository.plantingSyncFlow = fixture.repository.plantingSync
+        fixture.viewModel.retryPlantingSync()
+        runCurrent()
+        assertEquals(1, fixture.repository.plantingRetryCount)
+        assertNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        assertEquals(1, fixture.repository.refreshCount)
+    }
+
+    @Test
+    fun `화면이 가려진 동안 식재 오류 관찰과 수동 재시도를 멈추고 복귀하면 최신 상태를 표시한다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        fixture.viewModel.setActive(false)
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Blocked
+        fixture.viewModel.retryPlantingSync()
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        assertEquals(0, fixture.repository.plantingRetryCount)
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        assertNotNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+    }
+
+    @Test
+    fun `계정 변경 후 늦은 식재 재시도 실패는 새 계정 화면에 표시하지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        val gate = CompletableDeferred<Unit>()
+        fixture.repository.nextPlantingRetry = {
+            withContext(NonCancellable) { gate.await() }
+            error("old account failure")
+        }
+        fixture.viewModel.retryPlantingSync()
+        runCurrent()
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Idle
+        fixture.session.startNewSession()
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertNull(fixture.viewModel.uiState.value.plantingSyncErrorMessage)
+        assertFalse(fixture.viewModel.uiState.value.isRetryingPlantingSync)
+        assertEquals(1L, fixture.viewModel.uiState.value.sessionVersion)
+    }
+
+    @Test
+    fun `복귀 이전의 식재 재시도 종료가 복귀 후 진행 중인 재시도 상태를 지우지 않는다`() = runTest {
+        val fixture = Fixture(this)
+        fixture.repository.plantingSync.value = ForestPlantingSyncState.Blocked
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        val oldGate = CompletableDeferred<Unit>()
+        fixture.repository.nextPlantingRetry = { withContext(NonCancellable) { oldGate.await() } }
+        fixture.viewModel.retryPlantingSync()
+        runCurrent()
+        fixture.viewModel.setActive(false)
+        assertFalse(fixture.viewModel.uiState.value.isRetryingPlantingSync)
+        fixture.viewModel.setActive(true)
+        runCurrent()
+        val newGate = CompletableDeferred<Unit>()
+        fixture.repository.nextPlantingRetry = { newGate.await() }
+        fixture.viewModel.retryPlantingSync()
+        runCurrent()
+        oldGate.complete(Unit)
+        runCurrent()
+        assertTrue(fixture.viewModel.uiState.value.isRetryingPlantingSync)
+        assertEquals(2, fixture.repository.plantingRetryCount)
+        newGate.complete(Unit)
+        runCurrent()
+        assertFalse(fixture.viewModel.uiState.value.isRetryingPlantingSync)
+    }
+
     private class Fixture(scope: TestScope) {
         val repository = FakeRepository()
         val session = AuthSession().apply { markAuthenticated() }
@@ -684,6 +862,10 @@ class ForestViewModelTest {
         var treeSyncFlow: Flow<ForestTreeAcknowledgementSyncState> = treeSync
         var treeRetryCount = 0
         var nextTreeRetry: suspend () -> Unit = { treeSync.value = ForestTreeAcknowledgementSyncState.Pending }
+        val plantingSync = MutableStateFlow(ForestPlantingSyncState.Idle)
+        var plantingSyncFlow: Flow<ForestPlantingSyncState> = plantingSync
+        var plantingRetryCount = 0
+        var nextPlantingRetry: suspend () -> Unit = { plantingSync.value = ForestPlantingSyncState.Pending }
         var readGate: CompletableDeferred<Unit>? = null
         override suspend fun refreshForest(): ForestState {
             refreshCount++
@@ -704,6 +886,11 @@ class ForestViewModelTest {
         override suspend fun retryTreeAcknowledgementSync() {
             treeRetryCount++
             nextTreeRetry()
+        }
+        override fun observePlantingSyncState() = plantingSyncFlow
+        override suspend fun retryPlantingSync() {
+            plantingRetryCount++
+            nextPlantingRetry()
         }
         override suspend fun completeOnboarding(completedAtEpochMillis: Long) {
             state.value = state.value.copy(onboardingCompletedAtEpochMillis = completedAtEpochMillis)

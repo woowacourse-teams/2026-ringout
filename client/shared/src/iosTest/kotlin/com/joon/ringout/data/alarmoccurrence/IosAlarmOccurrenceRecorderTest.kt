@@ -64,9 +64,11 @@ class IosAlarmOccurrenceRecorderTest {
                 return@MockEngine respond("""{"isSuccess":true,"code":"ROOM200","message":"OK","result":{"rooms":[]}}""",
                     headers = headersOf(HttpHeaders.ContentType, "application/json"))
             }
-            calls += request.method to ApiJson.parseToJsonElement((request.body as TextContent).text).jsonObject
+            val body = ApiJson.parseToJsonElement((request.body as TextContent).text).jsonObject
+            calls += request.method to body
             respond("""{"isSuccess":true,"code":"OK","message":"OK","result":{
-                "alarmOccurrenceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","startedAt":"${iso("07:00")}","ringings":[]}}""",
+                "alarmOccurrenceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","startedAt":"${iso("07:00")}",
+                "ringings":[],"arrivedAt":${body["arrivedAt"] ?: "null"}}}""",
                 headers = headersOf(HttpHeaders.ContentType, "application/json"))
         }) { configureRingoutHttpClient() }
         try {

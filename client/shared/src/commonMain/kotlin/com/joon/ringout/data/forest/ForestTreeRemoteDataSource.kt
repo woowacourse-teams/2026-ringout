@@ -16,6 +16,7 @@ import com.joon.ringout.domain.forest.ForestTreeKind
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.patch
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.currentCoroutineContext
@@ -29,6 +30,32 @@ internal class ForestTreeRemoteDataSource(
     private val authSession: AuthSession,
 ) {
     private val requests = AuthenticatedRequestExecutor(client, tokenStorage, authSession)
+
+    suspend fun plant(account: AlarmOccurrenceAccount, delivery: ForestTreePlantingDelivery): ForestTree {
+        require(delivery.growthCycle in 1..16 && delivery.plantedAtEpochMillis >= 0)
+        ForestTreeKind.fromPersistedValue(delivery.kind)
+        val body = PlantTreeRequest(delivery.kind, Instant.fromEpochMilliseconds(delivery.plantedAtEpochMillis).toString())
+        val response = requests.execute { token ->
+            account.checkToken(authSession, token)
+            client.put(ApiConfig.url("/api/v1/forest/trees/${delivery.growthCycle}")) {
+                bearerAuth(token)
+                setBody(body)
+            }
+        }
+        val text = response.bodyAsText()
+        currentCoroutineContext().ensureActive()
+        account.checkSession(authSession)
+        if (response.status.value !in setOf(200, 201)) {
+            val error = runCatching { ApiJson.decodeFromString<ApiErrorResponse>(text) }.getOrNull()
+            throw ApiException(response.status.value, error?.code, error?.message ?: response.status.description)
+        }
+        val result = ApiJson.decodeFromString<ApiResponse<ForestTreeResponse>>(text)
+        check(result.isSuccess) { result.message }
+        return checkNotNull(result.result).toDomain().also { tree ->
+            // An existing server tree may have a different kind, position, and acquisition time.
+            require(tree.growthCycle == delivery.growthCycle) { "나무 저장 응답의 회차가 일치하지 않습니다." }
+        }
+    }
 
     suspend fun acknowledge(account: AlarmOccurrenceAccount, delivery: ForestTreeAcknowledgementDelivery): ForestTree {
         require(delivery.growthCycle in 1..16 && delivery.acknowledgedAtEpochMillis >= 0)
@@ -59,6 +86,9 @@ internal class ForestTreeRemoteDataSource(
 
 @Serializable
 private data class AcknowledgeTreeRequest(val acknowledgedAt: String)
+
+@Serializable
+private data class PlantTreeRequest(val kind: String, val plantedAt: String)
 
 @Serializable
 internal data class ForestTreeResponse(

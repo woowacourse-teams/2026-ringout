@@ -32,9 +32,7 @@ import com.joon.ringout.data.destination.DestinationSyncSessionGate
 import com.joon.ringout.data.destination.KtorDestinationRemoteDataSource
 import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.outbox.RoomOutboxReader
-import com.joon.ringout.data.forest.DataStoreForestLocalProgressStore
-import com.joon.ringout.data.forest.DefaultForestRepository
-import com.joon.ringout.data.forest.ForestSyncCoordinator
+import com.joon.ringout.data.forest.IosForestSyncRuntime
 import com.joon.ringout.data.member.DefaultMemberRepository
 import com.joon.ringout.data.room.DefaultRoomRepository
 import com.joon.ringout.data.missionhistory.RoomRecordsHistoryRepository
@@ -184,7 +182,7 @@ class IosAppContainer(
     override fun onAppResumed() {
         destinationSyncCoordinator.requestSync()
         alarmSyncCoordinator.requestSync()
-        forestSyncCoordinator.requestSync()
+        IosForestSyncRuntime.requestSync()
     }
 
     override val alarmActivityRepository =
@@ -227,24 +225,7 @@ class IosAppContainer(
     override val arrivalResultRepository =
         com.joon.ringout.data.arrival.RoomArrivalResultRepository(database.arrivalResultDao())
 
-    override val forestRepository =
-        DefaultForestRepository(
-            httpClient = httpClient,
-            tokenStorage = tokenStorage,
-            authSession = authSession,
-            localProgressStore = DataStoreForestLocalProgressStore(getAppPreferencesDataStore()),
-            observeSyncedArrivals = database.alarmOccurrenceSyncDao()::observeSuccessfulArrivalSyncs,
-        )
-
-    private val forestSyncCoordinator = ForestSyncCoordinator(
-        repository = forestRepository,
-        authSession = authSession,
-        networkMonitor = networkMonitor,
-    )
-
-    init {
-        forestSyncCoordinator.start(applicationScope)
-    }
+    override val forestRepository = IosForestSyncRuntime.repository
 
     override val productAnalyticsRecorder =
         createProductAnalyticsRecorder(

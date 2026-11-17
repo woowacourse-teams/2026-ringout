@@ -27,4 +27,8 @@ interface ForestRepository {
         flowOf(ForestTreeAcknowledgementSyncState.Idle)
 
     suspend fun retryTreeAcknowledgementSync() = Unit
+
+    fun observePlantingSyncState(): Flow<ForestPlantingSyncState> = flowOf(ForestPlantingSyncState.Idle)
+
+    suspend fun retryPlantingSync() = Unit
 }

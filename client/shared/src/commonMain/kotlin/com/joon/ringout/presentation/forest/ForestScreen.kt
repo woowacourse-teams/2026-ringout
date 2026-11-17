@@ -80,6 +80,7 @@ internal fun ForestRoute(viewModel: ForestViewModel, onBackClick: () -> Unit, mo
             modifier = modifier,
             onRetryOnboardingSync = viewModel::retryOnboardingSync,
             onRetryTreeSync = viewModel::retryTreeSync,
+            onRetryPlantingSync = viewModel::retryPlantingSync,
         ) {
             if (endpoint != null) PlatformForestWebView(
                 endpoint = endpoint,
@@ -107,6 +108,7 @@ internal fun ForestScreen(
     modifier: Modifier = Modifier,
     onRetryOnboardingSync: () -> Unit = {},
     onRetryTreeSync: () -> Unit = {},
+    onRetryPlantingSync: () -> Unit = {},
     content: @Composable () -> Unit = {},
 ) {
     Surface(modifier = modifier.fillMaxSize()) {
@@ -132,6 +134,14 @@ internal fun ForestScreen(
                             message = message,
                             isRetrying = uiState.isRetryingTreeSync,
                             onRetry = onRetryTreeSync,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    uiState.plantingSyncErrorMessage?.let { message ->
+                        ForestSyncError(
+                            message = message,
+                            isRetrying = uiState.isRetryingPlantingSync,
+                            onRetry = onRetryPlantingSync,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -190,6 +200,22 @@ private fun ForestScreenTreeSyncErrorPreview() {
                 hasSnapshot = true,
                 onboardingSyncErrorMessage = "시작 기록을 서버에 저장하지 못했어요.",
                 treeSyncErrorMessage = "나무 확인 기록을 서버에 저장하지 못했어요.",
+            ),
+            {},
+            {},
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun ForestScreenPlantingSyncErrorPreview() {
+    RingoutTheme {
+        ForestScreen(
+            ForestUiState(
+                isLoading = false,
+                hasSnapshot = true,
+                plantingSyncErrorMessage = "나무를 서버에 저장하지 못했어요.",
             ),
             {},
             {},

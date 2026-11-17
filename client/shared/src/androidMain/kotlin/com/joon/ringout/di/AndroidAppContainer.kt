@@ -37,9 +37,7 @@ import com.joon.ringout.data.destination.DestinationSyncSessionGate
 import com.joon.ringout.data.destination.KtorDestinationRemoteDataSource
 import com.joon.ringout.data.destination.RoomDestinationDataSource
 import com.joon.ringout.data.outbox.RoomOutboxReader
-import com.joon.ringout.data.forest.DataStoreForestLocalProgressStore
-import com.joon.ringout.data.forest.DefaultForestRepository
-import com.joon.ringout.data.forest.ForestSyncCoordinator
+import com.joon.ringout.data.forest.AndroidForestSyncRuntime
 import com.joon.ringout.data.member.DefaultMemberRepository
 import com.joon.ringout.data.room.DefaultRoomRepository
 import com.joon.ringout.data.missionhistory.RoomRecordsHistoryRepository
@@ -187,7 +185,7 @@ class AndroidAppContainer(
     override fun onAppResumed() {
         destinationSyncCoordinator.requestSync()
         alarmSyncCoordinator.requestSync()
-        forestSyncCoordinator.requestSync()
+        forestSyncRuntime.requestSync()
     }
 
     override val alarmActivityRepository =
@@ -230,24 +228,8 @@ class AndroidAppContainer(
     override val arrivalResultRepository =
         com.joon.ringout.data.arrival.RoomArrivalResultRepository(database.arrivalResultDao())
 
-    override val forestRepository =
-        DefaultForestRepository(
-            httpClient = httpClient,
-            tokenStorage = tokenStorage,
-            authSession = authSession,
-            localProgressStore = DataStoreForestLocalProgressStore(getAppPreferencesDataStore(context)),
-            observeSyncedArrivals = database.alarmOccurrenceSyncDao()::observeSuccessfulArrivalSyncs,
-        )
-
-    private val forestSyncCoordinator = ForestSyncCoordinator(
-        repository = forestRepository,
-        authSession = authSession,
-        networkMonitor = networkMonitor,
-    )
-
-    init {
-        forestSyncCoordinator.start(applicationScope)
-    }
+    private val forestSyncRuntime = AndroidForestSyncRuntime.get(context)
+    override val forestRepository = forestSyncRuntime.repository
 
     override val productAnalyticsRecorder =
         createProductAnalyticsRecorder(context)
