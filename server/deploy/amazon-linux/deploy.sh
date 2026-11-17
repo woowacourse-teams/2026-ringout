@@ -229,7 +229,7 @@ if [[ -n "$ACTIVE_PORT" ]]; then
 
   docker inspect \
     --format 'previous_image={{.Config.Image}} previous_image_id={{.Image}}' \
-    "$SERVER_CONTAINER_NAME"
+    "$PREVIOUS_CONTAINER_NAME"
 fi
 
 
