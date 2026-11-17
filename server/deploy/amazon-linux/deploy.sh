@@ -258,10 +258,15 @@ print(int(json.load(sys.stdin)["services"]["server"]["mem_limit"]))
 ')
   available_kib=$(awk '$1 == "MemAvailable:" {print $2}' /proc/meminfo)
   : "${available_kib:?Could not read available host memory}"
-  required_kib=$(( (limit_bytes + 1023) / 1024 + 128 * 1024 ))
+  headroom_mib="${DEPLOY_MEMORY_HEADROOM_MIB:-128}"
+  [[ "$headroom_mib" =~ ^[0-9]+$ ]] || {
+    echo "DEPLOY_MEMORY_HEADROOM_MIB must be a non-negative integer" >&2
+    exit 1
+  }
+  required_kib=$(( (limit_bytes + 1023) / 1024 + headroom_mib * 1024 ))
 
   if (( available_kib < required_kib )); then
-    log DEPLOY_FAILED "reason=insufficient_host_memory available_kib=$available_kib required_kib=$required_kib"
+    log DEPLOY_FAILED "reason=insufficient_host_memory available_kib=$available_kib required_kib=$required_kib headroom_mib=$headroom_mib"
     printf 'Not enough available memory to start a second Spring container.\n' >&2
     exit 1
   fi
