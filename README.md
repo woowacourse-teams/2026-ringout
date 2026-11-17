@@ -19,7 +19,7 @@
 알람 시간과 반복 요일을 선택하고, 알람을 끈 후 이동할 목적지를 설정해요.
 목적지에 도착하기 전까지 알람이 다시 울릴 간격도 정할 수 있어요.
 
-<img height="100" alt="Component 9" src="https://github.com/user-attachments/assets/40d43757-3597-4ded-a03c-e156e278ae4a"/>
+<img height="500" alt="Component 9" src="https://github.com/user-attachments/assets/40d43757-3597-4ded-a03c-e156e278ae4a"/>
 
 ### 알람이 울리고 난 뒤
 
@@ -27,7 +27,7 @@
 목적지에 도착하지 않으면 설정한 간격마다 알람이 다시 울리고,
 목적지에 도착하면 알람이 더 이상 울리지 않아요.
 
-<img height="100" alt="Component 10" src="https://github.com/user-attachments/assets/7a5ab5f6-6539-4749-bea1-e001dfeea339" />
+<img height="500" alt="Component 10" src="https://github.com/user-attachments/assets/7a5ab5f6-6539-4749-bea1-e001dfeea339" />
 
 # 📚 기술 스택
 ### Client
