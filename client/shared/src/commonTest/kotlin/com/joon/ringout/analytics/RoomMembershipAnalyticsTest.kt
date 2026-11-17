@@ -5,16 +5,42 @@ import kotlin.test.assertEquals
 
 internal class MemoryRoomAnalyticsStorage : RoomAnalyticsStorage {
     private val values = mutableMapOf<String, String>()
-    override fun read(key: String) = values[key]
-    override fun write(key: String, value: String) { values[key] = value }
+    var reads = 0
+    var writes = 0
+    fun snapshot(): Map<String, String> = values.toMap()
+    override fun read(key: String): String? { reads++; return values[key] }
+    override fun write(key: String, value: String) { writes++; values[key] = value }
     override fun <T> locked(block: () -> T): T = block()
 }
 
 class RoomMembershipAnalyticsTest {
     @Test
+    fun `모임 비활성화는 기존 저장값을 보존하고 참여 정보와 미션 스냅샷을 읽거나 쓰지 않는다`() {
+        val storage = MemoryRoomAnalyticsStorage()
+        val enabled = RoomMembershipAnalytics(storage, { "a" }, { 100 }, roomsEnabled = true)
+        enabled.replace("a", 0, setOf(7))
+        enabled.startMission(1, true)
+        val before = storage.snapshot()
+        val reads = storage.reads
+        val writes = storage.writes
+        val disabled = RoomMembershipAnalytics(storage, { error("계정 정보를 수집하면 안 됨") })
+
+        disabled.replace("a", 1, emptySet())
+        disabled.update("a", 7, false)
+        assertEquals(0L, disabled.revision("a"))
+        assertEquals(RoomMembershipSnapshot(), disabled.current())
+        assertEquals(RoomMembershipSnapshot(), disabled.startMission(2, true))
+        assertEquals(RoomMembershipSnapshot(), disabled.mission(1))
+
+        assertEquals(before, storage.snapshot())
+        assertEquals(reads, storage.reads)
+        assertEquals(writes, storage.writes)
+    }
+
+    @Test
     fun `조회하지 않은 계정은 알 수 없지만 확인한 가입 상태는 하루 이후에도 유지한다`() {
         var now = 0L
-        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { now })
+        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { now }, roomsEnabled = true)
         assertEquals(RoomMembershipSnapshot(), store.current())
         store.replace("a", 0, setOf(1, 2))
         assertEquals(RoomMembershipSnapshot("joined", 2, 0, 0), store.current())
@@ -26,7 +52,7 @@ class RoomMembershipAnalyticsTest {
 
     @Test
     fun `가입 변경 이전에 요청한 목록과 상세 응답은 최신 참여 정보를 덮어쓰지 않는다`() {
-        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { 0 })
+        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { 0 }, roomsEnabled = true)
         store.replace("a", 0, emptySet())
         val revision = store.revision("a")
         store.update("a", 1, true)
@@ -41,12 +67,12 @@ class RoomMembershipAnalyticsTest {
     fun `계정 변경과 재시작 및 재시도 이후에도 최초 미션의 참여 상태를 유지한다`() {
         var owner: String? = "a"
         val storage = MemoryRoomAnalyticsStorage()
-        val first = RoomMembershipAnalytics(storage, { owner }, { 0 })
+        val first = RoomMembershipAnalytics(storage, { owner }, { 0 }, roomsEnabled = true)
         first.replace("a", 0, setOf(1, 2))
         assertEquals(RoomMembershipSnapshot("joined", 2, 0, 0), first.startMission(1, true))
         first.update("a", 1, false)
         owner = "b"
-        val recreated = RoomMembershipAnalytics(storage, { owner }, { 0 })
+        val recreated = RoomMembershipAnalytics(storage, { owner }, { 0 }, roomsEnabled = true)
         assertEquals(RoomMembershipSnapshot(), recreated.current())
         assertEquals(RoomMembershipSnapshot("joined", 2, 0, 0), recreated.startMission(1, false))
         assertEquals(RoomMembershipSnapshot("joined", 2, 0, 0), recreated.mission(1))
@@ -58,7 +84,7 @@ class RoomMembershipAnalyticsTest {
 
     @Test
     fun `업데이트 이전 미션은 현재 참여 상태로 소급하지 않는다`() {
-        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { 0 })
+        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { 0 }, roomsEnabled = true)
         store.replace("a", 0, setOf(1))
         assertEquals(RoomMembershipSnapshot(), store.startMission(1, false))
         assertEquals(RoomMembershipSnapshot(), store.startMission(1, true))
@@ -68,10 +94,10 @@ class RoomMembershipAnalyticsTest {
     fun `미가입 상태도 장기간 경과와 재시작 후 유지하고 전체 조회로 다시 갱신한다`() {
         var now = 100L
         val storage = MemoryRoomAnalyticsStorage()
-        val store = RoomMembershipAnalytics(storage, { "a" }, { now })
+        val store = RoomMembershipAnalytics(storage, { "a" }, { now }, roomsEnabled = true)
         store.replace("a", 0, emptySet())
         now += 30L * 24 * 60 * 60 * 1_000
-        val recreated = RoomMembershipAnalytics(storage, { "a" }, { now })
+        val recreated = RoomMembershipAnalytics(storage, { "a" }, { now }, roomsEnabled = true)
         assertEquals(RoomMembershipSnapshot("not_joined", 0, 100, 100), recreated.current())
         recreated.replace("a", recreated.revision("a"), setOf(2))
         assertEquals(RoomMembershipSnapshot("joined", 1, now, now), recreated.current())
@@ -80,7 +106,7 @@ class RoomMembershipAnalyticsTest {
     @Test
     fun `부분 응답은 전체 확인 시각을 보존하고 중복 가입을 합산하지 않는다`() {
         var now = 100L
-        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { now })
+        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { now }, roomsEnabled = true)
         store.replace("a", 0, setOf(1))
         now = 200
         store.update("a", 2, true)
@@ -96,7 +122,7 @@ class RoomMembershipAnalyticsTest {
 
     @Test
     fun `일부 가입만 확인하면 전체 가입 수와 전체 확인 시각을 추정하지 않는다`() {
-        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { 100 })
+        val store = RoomMembershipAnalytics(MemoryRoomAnalyticsStorage(), { "a" }, { 100 }, roomsEnabled = true)
         store.update("a", 1, true)
         assertEquals(RoomMembershipSnapshot("joined", observedAt = 100), store.current())
         store.update("a", 1, false)
@@ -107,11 +133,11 @@ class RoomMembershipAnalyticsTest {
     fun `기존 전체 캐시의 확인 시각은 복원하지만 마지막 부분 확인 시각을 추정하지 않는다`() {
         val storage = MemoryRoomAnalyticsStorage()
         storage.write("account:a", """{"ids":[1],"complete":true,"checkedAt":100,"revision":1}""")
-        val store = RoomMembershipAnalytics(storage, { "a" }, { 200 })
+        val store = RoomMembershipAnalytics(storage, { "a" }, { 200 }, roomsEnabled = true)
         assertEquals(RoomMembershipSnapshot("joined", 1, 100), store.current())
         store.update("a", 2, true)
         assertEquals(RoomMembershipSnapshot("joined", 2, 100, 200), store.current())
-        assertEquals(store.current(), RoomMembershipAnalytics(storage, { "a" }).current())
+        assertEquals(store.current(), RoomMembershipAnalytics(storage, { "a" }, roomsEnabled = true).current())
     }
 
     @Test
@@ -119,7 +145,7 @@ class RoomMembershipAnalyticsTest {
         val storage = MemoryRoomAnalyticsStorage()
         storage.write("account:a", """{"ids":[1],"complete":false,"checkedAt":100,"revision":1}""")
         storage.write("mission:1", """{"state":"joined","count":2}""")
-        val store = RoomMembershipAnalytics(storage, { "a" }, { 200 })
+        val store = RoomMembershipAnalytics(storage, { "a" }, { 200 }, roomsEnabled = true)
         assertEquals(RoomMembershipSnapshot("joined"), store.current())
         store.replace("a", 1, setOf(1, 2, 3))
         assertEquals(RoomMembershipSnapshot("joined", 2), store.startMission(1, true))
@@ -129,7 +155,7 @@ class RoomMembershipAnalyticsTest {
     @Test
     fun `시각이 없는 저장 정보와 손상된 저장 정보는 임의 시각으로 보완하지 않는다`() {
         val storage = MemoryRoomAnalyticsStorage()
-        val store = RoomMembershipAnalytics(storage, { "a" }, { 200 })
+        val store = RoomMembershipAnalytics(storage, { "a" }, { 200 }, roomsEnabled = true)
         storage.write("account:a", """{"ids":[],"complete":true,"revision":1}""")
         assertEquals(RoomMembershipSnapshot("not_joined", 0), store.current())
         storage.write("account:a", "broken")
@@ -151,7 +177,7 @@ class RoomMembershipAnalyticsTest {
             override fun read(key: String): String? = error("unavailable")
             override fun write(key: String, value: String) = error("unavailable")
             override fun <T> locked(block: () -> T) = block()
-        }, { "a" })
+        }, { "a" }, roomsEnabled = true)
         store.update("a", 1, true)
         assertEquals(RoomMembershipSnapshot(), store.startMission(1, true))
         assertEquals(RoomMembershipSnapshot(), store.mission(1))

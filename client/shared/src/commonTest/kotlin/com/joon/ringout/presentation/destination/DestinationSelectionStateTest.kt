@@ -4,27 +4,23 @@ import com.joon.ringout.domain.destination.SavedDestination
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DestinationSelectionStateTest {
     @Test
-    fun `저장하지 않는 목적지는 주소를 이름으로 사용하고 좌표를 유지한다`() {
+    fun `저장하지 않는 목적지는 확인된 주소를 라벨로 사용하고 좌표를 유지한다`() {
         val selection = DestinationSelection("검색한 장소", "대한민국 서울 중구 세종대로 110", 37.5665, 126.978)
         assertEquals(
-            selection.copy(name = "서울 중구 세종대로 110"),
+            selection.copy(name = "대한민국 서울 중구 세종대로 110"),
             selection.withAddressAsName(),
         )
     }
 
     @Test
-    fun `저장하지 않을 때 주소 조회 중 문구나 빈 주소를 알람 이름으로 남기지 않는다`() {
-        for (address in listOf("", " ", ResolvingDestinationAddress)) {
+    fun `주소를 확인할 수 없으면 선택 라벨을 변경하지 않는다`() {
+        for (address in listOf("", " ", ResolvingDestinationAddress, UnavailableDestinationAddress)) {
             val selection = DestinationSelection("검색한 장소", address, 37.5665, 126.978)
-            assertEquals(
-                selection.copy(name = UnavailableDestinationAddress, address = UnavailableDestinationAddress),
-                selection.withAddressAsName(),
-            )
+            assertEquals(selection, selection.withAddressAsName())
         }
     }
 
@@ -77,12 +73,25 @@ class DestinationSelectionStateTest {
     }
 
     @Test
-    fun destinationCanBeConfirmedWhileOnlyAddressIsResolving() {
+    fun `주소를 확인할 수 없는 위치는 목적지로 확정할 수 없다`() {
+        assertFalse(
+            canConfirmDestination(
+                isCameraMoving = false,
+                isLocatingCurrentLocation = false,
+                mapError = null,
+                isAddressAvailable = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `주소를 확인한 위치는 목적지로 확정할 수 있다`() {
         assertTrue(
             canConfirmDestination(
                 isCameraMoving = false,
                 isLocatingCurrentLocation = false,
                 mapError = null,
+                isAddressAvailable = true,
             ),
         )
     }
@@ -269,7 +278,7 @@ class DestinationSelectionStateTest {
     }
 
     @Test
-    fun destinationSelectionMapsEverySavedRoomField() {
+    fun `저장 목적지는 선택 라벨과 좌표만 복사한다`() {
         val selection = DestinationSelection(
             name = "회사",
             address = "서울특별시 중구 세종대로 110",
@@ -281,54 +290,43 @@ class DestinationSelectionStateTest {
         assertEquals(
             SavedDestination(
                 id = 42L,
-                name = "회사",
-                address = "서울특별시 중구 세종대로 110",
+                label = "회사",
                 latitude = 37.5665,
                 longitude = 126.9780,
             ),
             savedDestination,
         )
-        assertEquals(selection, savedDestination.toDestinationSelection())
+        assertEquals(selection.copy(address = ""), savedDestination.toDestinationSelection())
     }
 
     @Test
-    fun savedDestinationIsMatchedByLocationEvenWhenNicknameAndAddressDiffer() {
+    fun `저장된 목적지를 선택하면 라벨과 좌표를 복사한다`() {
         val savedDestination = SavedDestination(
             id = 42L,
-            name = "회사",
-            address = "저장된 주소",
+            label = "회사",
             latitude = 37.5665,
             longitude = 126.9780,
         )
-        val restoredSelection = DestinationSelection(
-            name = "별명이 달라진 회사",
-            address = "새로 확인된 주소",
+        assertEquals("회사", savedDestination.toDestinationSelection().name)
+        assertEquals(savedDestination.latitude, savedDestination.toDestinationSelection().latitude)
+        assertEquals(savedDestination.longitude, savedDestination.toDestinationSelection().longitude)
+    }
+
+    @Test
+    fun `저장된 목적지와 좌표가 같아도 새 지도 선택에 별칭을 복사하지 않는다`() {
+        val savedDestination = SavedDestination(
+            id = 42L,
+            label = "회사",
+            latitude = 37.5665,
+            longitude = 126.9780,
+        )
+        val mapSelection = destinationAtCameraPosition(
+            cameraTarget = null,
             latitude = savedDestination.latitude,
             longitude = savedDestination.longitude,
         )
 
-        assertEquals(
-            savedDestination,
-            listOf(savedDestination).findAtLocation(restoredSelection),
-        )
-    }
-
-    @Test
-    fun savedDestinationIsNotMatchedByNicknameWhenLocationDiffers() {
-        val savedDestination = SavedDestination(
-            id = 42L,
-            name = "회사",
-            address = "서울특별시 중구 세종대로 110",
-            latitude = 37.5665,
-            longitude = 126.9780,
-        )
-        val differentLocation = DestinationSelection(
-            name = savedDestination.name,
-            address = savedDestination.address,
-            latitude = 35.1796,
-            longitude = 129.0756,
-        )
-
-        assertNull(listOf(savedDestination).findAtLocation(differentLocation))
+        assertEquals(SelectedDestinationFallbackName, mapSelection.name)
+        assertTrue(mapSelection.requiresAddressResolution())
     }
 }

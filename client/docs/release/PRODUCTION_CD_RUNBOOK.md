@@ -41,6 +41,15 @@ RINGOUT_API_BASE_URL=https://api.ringout.my xcodebuild -project iosApp/iosApp.xc
 
 Xcode Run Scheme의 런타임 환경변수는 빌드 설정 주입을 대신하지 않는다. 위처럼 빌드 프로세스에 환경변수를 전달한다.
 
+숲 WebView 주소도 빌드 환경변수 `RINGOUT_FOREST_WEB_URL`로 전달한다. GitHub Environment의 Variables에 다음과 같이 등록한다.
+
+| Environment | `RINGOUT_FOREST_WEB_URL` |
+| --- | --- |
+| `internal`, `ios-internal` | 개발 웹의 HTTPS 주소. 미등록 시 `client/gradle.properties`의 개발 기본 주소 사용 |
+| `production`, `ios-production` | 운영 웹의 최종 HTTPS 문서 주소. 필수 등록 |
+
+Android는 `build-release-aab.yml`의 AAB 빌드 잡에서, iOS는 각 CD의 Xcode 빌드 잡에서 주입한다. 운영 잡은 값이 없거나 HTTPS 주소가 아니면 빌드 전에 실패한다. 주소에 쿼리나 fragment를 포함하지 않으며 앱이 `?view=app`을 붙인다. 환경 변수는 Gradle 속성보다 우선하고 빈 값은 미설정으로 취급한다. Variables 등록은 이 코드 변경으로 원격에 자동 적용되지 않는다.
+
 `ci/production_config.py`는 CI의 임시 checkout에서 커밋된 원본(`git show HEAD:...`)을 기준으로 운영 빌드 번호만 준비한다. 로컬 소스의 버전은 변경하지 않는다.
 
 | 항목 | client/release | main |

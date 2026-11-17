@@ -10,6 +10,9 @@ expect fun PlatformDestinationMap(
     cameraTarget: DestinationSelection?,
     currentLocationRequestId: Int,
     currentLocationCancellationId: Int,
+    addressResolutionRequestId: Int,
+    addressResolutionLatitude: Double,
+    addressResolutionLongitude: Double,
     onCameraMoveStarted: () -> Unit,
     onCameraSettled: (
         latitude: Double,

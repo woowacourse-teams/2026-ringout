@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.joon.ringout.presentation.mypage.component.MyPageAccountActionDialog
 import com.joon.ringout.presentation.mypage.component.MyPageAccountManagementSection
+import com.joon.ringout.presentation.mypage.component.MyPageAccountActionBlockedDialog
 import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -28,7 +29,6 @@ import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.mypage.component.MyPageAccountLoadError
 import com.joon.ringout.presentation.mypage.component.MyPageLoggedInAccountStatus
 import com.joon.ringout.presentation.mypage.model.MyPageAccountStatus as AccountStatus
-import com.joon.ringout.presentation.mypage.component.MyPageAccountStatus
 import com.joon.ringout.presentation.mypage.component.MyPageAppVersionRow
 import com.joon.ringout.presentation.mypage.component.MyPagePolicySection
 import com.joon.ringout.presentation.mypage.component.MyPageThemeCard
@@ -41,13 +41,15 @@ internal fun MyPageScreen(
     policies: List<PolicyInfo>,
     onThemeModeChange: (ThemeMode) -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
+    accountStatus: AccountStatus,
     modifier: Modifier = Modifier,
     extraContent: (@Composable (ThemeMode) -> Unit)? = null,
-    onLoginClick: () -> Unit = {},
-    accountStatus: AccountStatus = AccountStatus.LoggedOut,
     profileImageUrl: String? = null,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean = { true },
+    logoutBlockedMessage: String? = null,
+    onDismissLogoutBlocked: () -> Unit = {},
     isAccountActionInProgress: Boolean = false,
     onConfirmAccountAction: (MyPageAccountAction) -> Unit = {},
 ) {
@@ -58,11 +60,13 @@ internal fun MyPageScreen(
         policies = policies,
         onThemeModeChange = onThemeModeChange,
         onPolicyClick = onPolicyClick,
-        onLoginClick = onLoginClick,
         accountStatus = accountStatus,
         profileImageUrl = profileImageUrl,
         onAccountRetry = onAccountRetry,
         onEditProfileClick = onEditProfileClick,
+        canPerformAccountAction = canPerformAccountAction,
+        logoutBlockedMessage = logoutBlockedMessage,
+        onDismissLogoutBlocked = onDismissLogoutBlocked,
         isAccountActionInProgress = isAccountActionInProgress,
         onConfirmAccountAction = onConfirmAccountAction,
         modifier = modifier,
@@ -76,18 +80,23 @@ fun MyPageScreenContent(
     policies: List<PolicyInfo>,
     onThemeModeChange: (ThemeMode) -> Unit,
     onPolicyClick: (PolicyId) -> Unit,
+    accountStatus: AccountStatus,
     modifier: Modifier = Modifier,
     extraContent: (@Composable (ThemeMode) -> Unit)? = null,
-    onLoginClick: () -> Unit = {},
-    accountStatus: AccountStatus = AccountStatus.LoggedOut,
     profileImageUrl: String? = null,
     onAccountRetry: () -> Unit = {},
     onEditProfileClick: () -> Unit = {},
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean = { true },
+    logoutBlockedMessage: String? = null,
+    onDismissLogoutBlocked: () -> Unit = {},
     isAccountActionInProgress: Boolean = false,
     onConfirmAccountAction: (MyPageAccountAction) -> Unit = {},
 ) {
     val colors = myPageColors()
     var pendingActionName by rememberSaveable(accountStatus is AccountStatus.LoggedIn) {
+        mutableStateOf<String?>(null)
+    }
+    var blockedActionName by rememberSaveable(accountStatus is AccountStatus.LoggedIn) {
         mutableStateOf<String?>(null)
     }
 
@@ -106,7 +115,6 @@ fun MyPageScreenContent(
                     color = colors.secondaryText,
                     modifier = Modifier.padding(vertical = 20.dp),
                 )
-                AccountStatus.LoggedOut -> MyPageAccountStatus(onClick = onLoginClick)
                 AccountStatus.Error -> MyPageAccountLoadError(onRetry = onAccountRetry)
                 is AccountStatus.LoggedIn -> MyPageLoggedInAccountStatus(
                     nickname = accountStatus.nickname,
@@ -137,8 +145,20 @@ fun MyPageScreenContent(
             item {
                 MyPageAccountManagementSection(
                     enabled = !isAccountActionInProgress,
-                    onLogoutClick = { pendingActionName = MyPageAccountAction.Logout.name },
-                    onWithdrawClick = { pendingActionName = MyPageAccountAction.Withdraw.name },
+                    onLogoutClick = {
+                        if (canPerformAccountAction(MyPageAccountAction.Logout)) {
+                            pendingActionName = MyPageAccountAction.Logout.name
+                        } else {
+                            blockedActionName = MyPageAccountAction.Logout.name
+                        }
+                    },
+                    onWithdrawClick = {
+                        if (canPerformAccountAction(MyPageAccountAction.Withdraw)) {
+                            pendingActionName = MyPageAccountAction.Withdraw.name
+                        } else {
+                            blockedActionName = MyPageAccountAction.Withdraw.name
+                        }
+                    },
                 )
             }
         }
@@ -160,11 +180,27 @@ fun MyPageScreenContent(
                 onConfirm = {
                     if (pendingActionName == action.name) {
                         pendingActionName = null
-                        onConfirmAccountAction(action)
+                        if (!canPerformAccountAction(action)) {
+                            blockedActionName = action.name
+                        } else {
+                            onConfirmAccountAction(action)
+                        }
                     }
                 },
             )
         }
+    }
+    if (blockedActionName != null || logoutBlockedMessage != null) {
+        val blockedAction = MyPageAccountAction.entries.firstOrNull {
+            it.name == blockedActionName
+        } ?: MyPageAccountAction.Logout
+        MyPageAccountActionBlockedDialog(
+            action = blockedAction,
+            onConfirm = {
+                blockedActionName = null
+                onDismissLogoutBlocked()
+            },
+        )
     }
 }
 
@@ -183,7 +219,10 @@ private fun MyPageSmallPreview() = MyPagePreview(ThemeMode.Dark)
 @Composable
 private fun MyPagePreview(
     themeMode: ThemeMode,
-    accountStatus: AccountStatus = AccountStatus.LoggedOut,
+    accountStatus: AccountStatus = AccountStatus.LoggedIn(
+        nickname = "링아웃",
+        email = "ringout@example.com",
+    ),
 ) {
     RingoutTheme(themeMode) {
         MyPageScreenContent(

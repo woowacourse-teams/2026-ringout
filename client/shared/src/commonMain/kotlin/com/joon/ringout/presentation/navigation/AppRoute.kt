@@ -22,6 +22,10 @@ internal sealed interface AppRoute : NavKey {
     data object Home : AppRoute
 
     @Serializable
+    @SerialName("forest")
+    data object Forest : AppRoute
+
+    @Serializable
     @SerialName("social")
     data object Social : AppRoute
 
@@ -54,6 +58,19 @@ internal sealed interface AppRoute : NavKey {
     data object Records : AppRoute
 
     @Serializable
+    @SerialName("records_detail")
+    data class RecordsDetail(val date: String) : AppRoute
+
+    @Serializable
+    @SerialName("record_share")
+    data class RecordShare(
+        val date: String,
+        val groupKey: String,
+        val successRecordKey: String,
+        val occurrenceId: String? = null,
+    ) : AppRoute
+
+    @Serializable
     @SerialName("add_alarm")
     data object AddAlarm : AppRoute
 
@@ -65,10 +82,6 @@ internal sealed interface AppRoute : NavKey {
     @Serializable
     @SerialName("destination")
     data class Destination(val requestId: Long) : AppRoute
-
-    @Serializable
-    @SerialName("destination_management")
-    data class DestinationManagement(val destinationId: Long) : AppRoute
 
     @Serializable
     @SerialName("alarm_sound")
@@ -99,4 +112,12 @@ internal sealed interface AppRoute : NavKey {
     @Serializable
     @SerialName("active_alarm_tracking")
     data class ActiveAlarmTracking(val occurrenceId: String) : AppRoute
+
+    @Serializable
+    @SerialName("arrival_share")
+    data class ArrivalShare(val occurrenceId: String) : AppRoute
+
+    @Serializable
+    @SerialName("arrival")
+    data class Arrival(val occurrenceId: String) : AppRoute
 }

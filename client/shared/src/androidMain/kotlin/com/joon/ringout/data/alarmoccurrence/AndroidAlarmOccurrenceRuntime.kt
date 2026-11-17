@@ -2,10 +2,13 @@ package com.joon.ringout.data.alarmoccurrence
 
 import android.content.Context
 import android.util.Log
+import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
 import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.data.auth.restoreAuthSession
 import com.joon.ringout.data.connectivity.AndroidNetworkMonitor
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.data.forest.AndroidForestSyncRuntime
+import com.joon.ringout.alarm.isAlarmSchedulingBlocked
 import com.joon.ringout.data.network.getRingoutHttpClient
 import com.joon.ringout.domain.auth.getAuthSession
 import kotlinx.coroutines.CancellationException
@@ -23,12 +26,19 @@ import java.util.UUID
 internal class AndroidAlarmOccurrenceRuntime private constructor(private val context: Context) {
     private val tokenStorage = createSecureTokenStorage(context)
     private val authSession = getAuthSession()
-    private val dao = getRingoutDatabase(context).alarmOccurrenceSyncDao()
+    private val database = getRingoutDatabase(context)
+    private val alarmDao = database.alarmDao()
+    private val activityDao = database.alarmActivityDao()
+    private val missionHistoryDao = database.missionHistoryDao()
+    private val dao = database.alarmOccurrenceSyncDao()
     private val journal = AndroidAlarmOccurrenceJournal(
         context.getSharedPreferences("alarm_occurrence_pending", Context.MODE_PRIVATE),
     )
     private val recorder = AlarmOccurrenceEventRecorder(dao)
-    private val syncer = AlarmOccurrenceSyncer(dao, getRingoutHttpClient(), tokenStorage, authSession)
+    private val syncer = AlarmOccurrenceSyncer(
+        dao, getRingoutHttpClient(), tokenStorage, authSession,
+        forestPlanting = AndroidForestSyncRuntime.get(context).repository,
+    )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val initializationMutex = Mutex()
     private var initialized = false
@@ -38,7 +48,8 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
         // UI를 열지 않고 알람/Worker로 프로세스가 시작되어도 저장된 인증을 복원한다.
         tokenStorage.restoreAuthSession(authSession)
         AlarmOccurrenceSyncCoordinator(syncer, dao, authSession, AndroidNetworkMonitor(context),
-            onStorageFailure = { Log.e(Tag, "알람 전송 대기열 조회 실패", it) }).start(scope)
+            onStorageFailure = { Log.e(Tag, "알람 전송 대기열 조회 실패", it) },
+            flush = { flushAccountOutbox() }).start(scope)
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             authSession.identity.drop(1).collect { identity ->
                 if (identity != null) AlarmOccurrenceSyncWorker.enqueue(context)
@@ -49,17 +60,19 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
 
     fun recordRinging(
         alarmId: String,
+        ownerAccountId: String?,
         ringingId: String,
         scheduleVersion: Long,
         scheduledAt: Long?,
         sourceRingingId: String?,
         at: Long,
+        remoteAlarmId: String? = null,
     ) {
-        // 토큰 자체는 저널에 저장하지 않는다. 네트워크 없이 발생 순간의 계정 ID만 고정한다.
-        val owner = if (sourceRingingId == null) tokenStorage.readSnapshot()?.accessToken
-            ?.let(::alarmOccurrenceTokenOwner) else null
+        // Reservation ownership was read from the Room schedule after validating the PendingIntent.
+        // Retry ringings inherit the root execution through sourceRingingId in the recorder.
+        val owner = ownerAccountId.takeIf { sourceRingingId == null }
         append(CapturedAlarmOccurrenceEvent.Rang(ringingId, alarmId, scheduleVersion,
-            scheduledAt, at, owner, sourceRingingId, UUID.randomUUID().toString()))
+            scheduledAt, at, owner, sourceRingingId, UUID.randomUUID().toString(), remoteAlarmId))
     }
 
     fun recordDismissal(ringingId: String, at: Long) =
@@ -91,8 +104,42 @@ internal class AndroidAlarmOccurrenceRuntime private constructor(private val con
     suspend fun flush(): Long? {
         initialize()
         journal.drain(recorder::record)
+        if (isAlarmSchedulingBlocked(context)) return null
         return syncer.flush()
     }
+
+    suspend fun clearPendingForLogout() = journal.clear()
+
+    suspend fun migrateLegacyData(ownerAccountId: String) {
+        require(ownerAccountId.isNotBlank())
+        alarmDao.assignUnownedLegacyAlarms(ownerAccountId)
+        val ownedSchedules = alarmDao.getAlarmsOwnedBy(ownerAccountId)
+        val journalSchedules = journal.unownedRootScheduleKeys().filter { (alarmId, _) ->
+            dao.canMigrateLegacyAlarmOccurrence(alarmId, ownerAccountId)
+        }.toSet()
+        journal.bindUnownedRoots(
+            ownerAccountId = ownerAccountId,
+            assignedSchedules = ownedSchedules.flatMap { alarm ->
+                listOfNotNull(alarm.id, alarm.remoteAlarmId).map { it to alarm.scheduleVersion }
+            }.toSet() + journalSchedules,
+        )
+        journal.drain(recorder::record)
+
+        AndroidAlarmActivityRecorder.get(context).flushPending()
+        activityDao.getRingingEventsForLegacyMigration().forEach { event ->
+            val occurrenceId = event.eventKey.removePrefix("rang:")
+            dao.migrateLegacyAndroidRingingToAccount(
+                ownerAccountId = ownerAccountId,
+                event = event,
+                times = activityDao.getOccurrenceTimes(occurrenceId),
+                history = missionHistoryDao.getHistoryByOccurrence(occurrenceId),
+            )
+        }
+        AlarmOccurrenceSyncWorker.enqueue(context)
+    }
+
+    private suspend fun flushAccountOutbox(): Long? =
+        if (isAlarmSchedulingBlocked(context)) null else syncer.flush()
 
     companion object {
         private const val Tag = "AlarmOccurrence"

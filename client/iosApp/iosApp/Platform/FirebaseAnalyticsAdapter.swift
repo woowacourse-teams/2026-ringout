@@ -1,7 +1,11 @@
 import FirebaseAnalytics
 import Shared
 
-final class FirebaseAnalyticsAdapter: IosAnalyticsTracker {
+final class FirebaseAnalyticsAdapter: IosAnalyticsTracker, IosAnalyticsUserIdSetter {
+    func setUserId(userId: String?) {
+        Analytics.setUserID(userId)
+    }
+
     func log(event: IosAnalyticsEventDto) {
         var parameters: [String: Any] = [:]
         event.parameters.forEach { parameter in

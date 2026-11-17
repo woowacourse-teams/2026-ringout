@@ -76,8 +76,12 @@ class AlarmRingingService : Service() {
             }
             return START_NOT_STICKY
         }
-        if (isActivelyRinging && activeOccurrenceId == occurrenceId) return START_NOT_STICKY
+        if (isActivelyRinging && activeOccurrenceId == occurrenceId) {
+            AlarmRingingRuntime.clearStarting(occurrenceId)
+            return START_NOT_STICKY
+        }
         if (!ringingSessionStore.markRinging(occurrenceId)) {
+            AlarmRingingRuntime.clearStarting(occurrenceId)
             return START_NOT_STICKY
         }
 
@@ -97,25 +101,31 @@ class AlarmRingingService : Service() {
         startAlarmSound(intent)
         startVibration()
         val ringingStartedAt = System.currentTimeMillis()
+        activeOccurrenceId = occurrenceId
+        // Publish before confirming a retry, which removes the pending mission record.
+        AlarmRingingRuntime.markRinging(intent)
         val retryAlarmConfirmed = missionCoordinator.confirmRetryAlarmStarted(intent)
         if (isRetryAlarm && !retryAlarmConfirmed) {
+            AlarmRingingRuntime.clearIfCurrent(occurrenceId)
             ringingSessionStore.clearIfCurrent(occurrenceId)
             stopRingingResources()
             stopForeground(STOP_FOREGROUND_REMOVE)
             isActivelyRinging = false
+            activeOccurrenceId = null
             stopSelf(startId)
             return START_NOT_STICKY
         }
-        activeOccurrenceId = occurrenceId
         runCatching {
             AndroidAlarmOccurrenceRuntime.get(applicationContext).recordRinging(
                 alarmId = intent.getStringExtra(AlarmRuntime.EXTRA_ALARM_ID).orEmpty(),
+                ownerAccountId = intent.getStringExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID),
                 ringingId = occurrenceId,
                 scheduleVersion = intent.getLongExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, 1),
                 scheduledAt = if (intent.hasExtra(AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS))
                     intent.getLongExtra(AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS, 0) else null,
                 sourceRingingId = intent.getStringExtra(AlarmRuntime.EXTRA_RETRY_SOURCE_OCCURRENCE_ID),
                 at = ringingStartedAt,
+                remoteAlarmId = intent.getStringExtra(AlarmRuntime.EXTRA_REMOTE_ALARM_ID),
             )
         }.onFailure { android.util.Log.e("AlarmOccurrence", "Could not record ringing", it) }
         runCatching {
@@ -275,6 +285,7 @@ class AlarmRingingService : Service() {
         activeOccurrenceId = null
         isActivelyRinging = false
         if (occurrenceId != null) {
+            AlarmRingingRuntime.clearIfCurrent(occurrenceId)
             runCatching {
                 AndroidAlarmActivityRecorder.get(applicationContext).recordRingingStopped(occurrenceId)
             }.onFailure { android.util.Log.e("AlarmActivity", "Could not record ringing stop", it) }

@@ -5,25 +5,42 @@ import androidx.room3.ConstructedBy
 import androidx.room3.Database
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
+import androidx.sqlite.SQLiteDriver
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import com.joon.ringout.data.alarmactivity.AlarmOccurrenceTimesEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityDao
 import com.joon.ringout.data.alarmactivity.AlarmActivityEntity
 import com.joon.ringout.data.alarmactivity.AlarmActivityTrackingEntity
 import com.joon.ringout.data.alarmactivity.AlarmRingingObservationEntity
+import com.joon.ringout.data.alarm.AlarmOutboxEntity
+import com.joon.ringout.data.alarm.AlarmRestoreEntity
+import com.joon.ringout.data.alarm.AlarmSyncDao
 import com.joon.ringout.data.alarm.AlarmDao
 import com.joon.ringout.data.alarm.AlarmEntity
 import com.joon.ringout.data.alarm.AlarmRepeatDayEntity
 import com.joon.ringout.data.alarm.StorageMigrationEntity
 import com.joon.ringout.data.destination.SavedDestinationDao
 import com.joon.ringout.data.destination.SavedDestinationEntity
+import com.joon.ringout.data.destination.DestinationOutboxEntity
+import com.joon.ringout.data.destination.DestinationSyncStateEntity
 import com.joon.ringout.data.missionhistory.MissionHistoryDao
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceCacheDao
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmOccurrenceEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmOccurrenceMonthEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmRingingEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceRingingLinkEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxEntity
 import com.joon.ringout.data.alarmoccurrence.IosAlarmOccurrenceRecordEntity
 import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
+import com.joon.ringout.data.arrival.ArrivalGrowthActivationEntity
+import com.joon.ringout.data.arrival.ArrivalResultDao
+import com.joon.ringout.data.arrival.ArrivalResultEntity
+import com.joon.ringout.data.forest.ForestDao
+import com.joon.ringout.data.forest.ForestStateEntity
+import com.joon.ringout.data.forest.ForestTreeEntity
+import kotlin.time.Clock
 
 @Database(
     entities = [
@@ -33,16 +50,27 @@ import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncDao
         AlarmRingingObservationEntity::class,
         MissionHistoryEntity::class,
         AlarmEntity::class,
+        AlarmOutboxEntity::class,
+        AlarmRestoreEntity::class,
         AlarmRepeatDayEntity::class,
         StorageMigrationEntity::class,
         SavedDestinationEntity::class,
+        DestinationOutboxEntity::class,
+        DestinationSyncStateEntity::class,
         AlarmOccurrenceSyncEntity::class,
         AlarmOccurrenceRingingLinkEntity::class,
         AlarmOccurrenceOutboxEntity::class,
         IosAlarmOccurrenceRecordEntity::class,
         AlarmMovementOutboxEntity::class,
+        ArrivalResultEntity::class,
+        ArrivalGrowthActivationEntity::class,
+        ForestStateEntity::class,
+        ForestTreeEntity::class,
+        CachedAlarmOccurrenceMonthEntity::class,
+        CachedAlarmOccurrenceEntity::class,
+        CachedAlarmRingingEntity::class,
     ],
-    version = 12,
+    version = 19,
     exportSchema = true,
 )
 @ConstructedBy(RingoutDatabaseConstructor::class)
@@ -53,9 +81,18 @@ abstract class RingoutDatabase : RoomDatabase() {
 
     abstract fun alarmDao(): AlarmDao
 
+    abstract fun alarmSyncDao(): AlarmSyncDao
+
     abstract fun destinationDao(): SavedDestinationDao
 
     abstract fun alarmOccurrenceSyncDao(): AlarmOccurrenceSyncDao
+
+    abstract fun alarmOccurrenceCacheDao(): AlarmOccurrenceCacheDao
+
+    abstract fun localUserDataCleanupDao(): LocalUserDataCleanupDao
+    abstract fun arrivalResultDao(): ArrivalResultDao
+
+    abstract fun forestDao(): ForestDao
 }
 
 @Suppress("KotlinNoActualForExpect")
@@ -65,8 +102,17 @@ expect object RingoutDatabaseConstructor : RoomDatabaseConstructor<RingoutDataba
 
 fun buildRingoutDatabase(
     builder: RoomDatabase.Builder<RingoutDatabase>,
+): RingoutDatabase = buildRingoutDatabase(builder, BundledSQLiteDriver())
+
+internal fun buildRingoutDatabase(
+    builder: RoomDatabase.Builder<RingoutDatabase>,
+    driver: SQLiteDriver,
+    // Room opens lazily. Capture activation before a first completion can trigger that opening.
+    arrivalGrowthActivatedAtEpochMillis: Long = Clock.System.now().toEpochMilliseconds(),
 ): RingoutDatabase = builder
-    .setDriver(BundledSQLiteDriver())
+    .setDriver(driver)
+    .addCallback(ArrivalGrowthDatabaseCallback(arrivalGrowthActivatedAtEpochMillis))
+    .addCallback(ForestDatabaseCallback())
     .addMigrations(
         RingoutMigration1To2,
         RingoutMigration2To3,
@@ -79,7 +125,15 @@ fun buildRingoutDatabase(
         RingoutMigration9To10,
         RingoutMigration10To11,
         RingoutMigration11To12,
+        RingoutMigration12To13,
+        createRingoutMigration13To14(arrivalGrowthActivatedAtEpochMillis),
+        RingoutMigration14To15,
+        RingoutMigration15To16,
+        RingoutMigration16To17,
+        RingoutMigration17To18,
+        RingoutMigration18To19,
     )
     .build()
+
 
 internal const val RingoutDatabaseName = "ringout.db"

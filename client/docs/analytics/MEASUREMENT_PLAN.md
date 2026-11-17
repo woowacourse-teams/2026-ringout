@@ -15,6 +15,7 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 ## 2. 이벤트 계약
 
 이벤트 이름과 파라미터는 배포 후 의미를 바꾸지 않는다. 같은 의미의 이벤트를 새로 정의해야 한다면 기존 파라미터를 재해석하지 말고 계약 버전을 별도로 올린다.
+`force_end_hold_*` 이벤트는 #687 이전 버전에서만 기록한 구버전 UI 이벤트다. 이 버전부터는 새로 기록하지 않으며, 아래 정의는 과거 데이터 해석을 위해 보존한다.
 
 | 이벤트 | 발생 시점 | 필수 파라미터 | 중복 방지 단위 |
 | --- | --- | --- | --- |
@@ -24,9 +25,9 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 | `destination_mission_started` | 미션의 `Tracking` 상태가 영속 저장된 직후 | `use_index`, `retry_attempt` | 한 번의 미션 시작 시도 |
 | `destination_mission_completed` | 도착 판정이 성공으로 확정된 직후 | `use_index`, `retry_attempt`, `elapsed_bucket` | 한 번의 성공 상태 전이 |
 | `destination_mission_expired` | 제한 시간 안에 도착하지 못해 해당 시도가 만료된 직후 | `use_index`, `retry_attempt`, `elapsed_bucket` | 한 번의 만료 상태 전이 |
-| `force_end_hold_started` | 진행 중인 미션에서 사용자가 강제 종료 홀드 제스처를 시작한 직후 | `use_index`, `retry_attempt` | 한 번의 홀드 제스처 시작 |
-| `force_end_hold_cancelled` | 홀드 완료가 확정되기 전에 손을 떼거나 제스처·화면 수명주기가 중단된 직후 | `use_index`, `retry_attempt`, `hold_duration_ms` | 한 번의 홀드 제스처 취소 |
-| `force_end_hold_completed` | 홀드 임계 시간을 충족해 강제 종료 확인 다이얼로그가 표시되기 직전 | `use_index`, `retry_attempt`, `hold_duration_ms` | 한 번의 홀드 제스처 완료 |
+| `force_end_hold_started` (구버전) | 구버전에서 진행 중 미션의 30초 강제 종료 홀드 제스처를 시작한 직후 | `use_index`, `retry_attempt` | 한 번의 홀드 제스처 시작 |
+| `force_end_hold_cancelled` (구버전) | 구버전에서 홀드 완료 전 손을 떼거나 제스처·화면 수명주기가 중단된 직후 | `use_index`, `retry_attempt`, `hold_duration_ms` | 한 번의 홀드 제스처 취소 |
+| `force_end_hold_completed` (구버전) | 구버전에서 홀드 임계 시간을 채워 강제 종료 확인 다이얼로그가 표시되기 직전 | `use_index`, `retry_attempt`, `hold_duration_ms` | 한 번의 홀드 제스처 완료 |
 | `destination_mission_force_ended` | 사용자가 진행 중인 미션을 명시적으로 강제 종료한 직후 | `use_index`, `retry_attempt`, `elapsed_bucket` | 한 번의 강제 종료 상태 전이 |
 
 프로세스 재시작, 중복 브로드캐스트, Compose 재구성으로 같은 논리 이벤트를 다시 보내지 않는다. 로컬에서는 원시 식별자를 Analytics에 전송하지 않고도 동일한 상태 전이를 한 번만 claim하도록 처리한다.
@@ -51,13 +52,13 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 | `alarm_sound_list_size` | 정수(`int_value`, Android 전용) | `1` 이상 | 같은 화면에 표시된 전체 음원 수 |
 | `alarm_sound_selection_changed` | 정수(`int_value`, Android 전용) | `0`, `1` | 화면 진입 시 선택값과 저장 시 선택값이 달라졌는지 여부 |
 | `elapsed_bucket` | 문자열(`string_value`) | `under_5m`, `5_to_15m`, `15_to_30m`, `over_30m` | 해당 미션 시도가 시작된 뒤 결과 상태 전이까지의 경과 시간 구간. 경계는 각각 5분 미만, 5분 이상 15분 미만, 15분 이상 30분 미만, 30분 이상이다. |
-| `hold_duration_ms` | 정수(`int_value`) | 0 이상의 정수 | 단조 시계로 측정한 현재 홀드 제스처의 시작부터 취소 또는 완료까지의 경과 밀리초. 벽시계 시각이나 미션 진행 시간을 뜻하지 않는다. |
+| `hold_duration_ms` (구버전 전용) | 정수(`int_value`) | 0 이상의 정수 | #687 이전 버전에서 단조 시계로 측정한 현재 홀드 제스처의 시작부터 취소 또는 완료까지의 경과 밀리초. 벽시계 시각이나 미션 진행 시간을 뜻하지 않는다. |
 
 `destination_alarm_ringing_started`에는 `use_index`를 보내지 않는다. 울림은 미션 시작을 보장하지 않으므로 이 시점에 인덱스를 선점하면 실제 사용 순서에 빈 번호가 생긴다.
 
-### 2.2 강제 종료 홀드와 실제 결과의 경계
+### 2.2 구버전 강제 종료 홀드와 실제 결과의 경계
 
-홀드 이벤트 3개는 UI 제스처의 마찰을 측정하며 미션 결과를 뜻하지 않는다.
+구버전의 홀드 이벤트 3개는 UI 제스처의 마찰을 측정하며 미션 결과를 뜻하지 않는다. #687 이후 버전은 확인 다이얼로그를 사용하고 이 이벤트를 보내지 않는다.
 
 - `force_end_hold_started`에는 `hold_duration_ms`를 보내지 않는다. 아직 종료 시점이 없기 때문이다.
 - 한 번의 정상적인 홀드 시도는 `force_end_hold_started` 뒤 `force_end_hold_cancelled` 또는 `force_end_hold_completed` 중 하나로 끝난다. 사용자가 다시 시도하면 같은 `use_index`와 `retry_attempt`로 새 이벤트 묶음을 보낼 수 있다.
@@ -76,9 +77,20 @@ Android에서 Analytics 수집이 허용된 모든 사용자의 해당 이벤트
 - 날짜, timezone, 다음 울림 timestamp, 실제 울림/미션 시작·종료 시각을 복제한 파라미터. 사용자가 저장한 로컬 `HH:mm`은 `alarm_time`으로만 허용한다.
 - 알람음 이름, URI 또는 단순 해시, 알림 본문, 사용자가 입력한 자유 텍스트. Android에서는 확정 당시 화면 위치·목록 크기·변경 여부만 허용한다.
 - 원시 `alarmId`, `occurrenceId`, 로컬 데이터베이스 키 또는 이를 단순 해시한 값
-- 이메일, 전화번호, 광고 식별자 등 직접·간접 식별자
+- 이메일, 전화번호, 닉네임, 소셜 로그인 토큰, JWT 원문, 광고 식별자. 서버 회원 ID는 아래의 SDK `user_id` 용도로만 허용한다.
 
-분석에는 Firebase가 제공하는 `user_pseudo_id`, `event_timestamp`, 위에서 승인한 이벤트 파라미터만 사용한다. 미션 진행 시간은 정확한 값 대신 `elapsed_bucket`을 사용한다. `hold_duration_ms`는 위치나 벽시계 정보가 없는 짧은 UI 제스처 경과 시간에만 사용한다. `user_id`는 설정하지 않는다.
+분석에는 Firebase가 제공하는 `user_pseudo_id`, `event_timestamp`, 위에서 승인한 이벤트 파라미터와 로그인 회원의 `user_id`를 사용한다. 미션 진행 시간은 정확한 값 대신 `elapsed_bucket`을 사용한다. `hold_duration_ms`는 #687 이전 버전의 홀드 제스처 경과 시간에만 사용했으며 새 버전에서는 전송하지 않는다.
+
+### 3.1 회원 ID 연동
+
+- Android `FirebaseAnalytics.setUserId`와 iOS `Analytics.setUserID`에 동일한 서버 회원 ID의 문자열을 전달한다. 이벤트 파라미터나 사용자 속성으로 중복 전송하지 않는다.
+- 로그인 응답의 `userId`를 인증 토큰과 함께 보안 저장소에 저장하고 앱 시작·세션 복원 시 다시 사용한다. 로그인·계정 전환 시 새 응답의 ID로 교체하며, 토큰 재발급 시에는 저장된 ID를 유지한다. 로그아웃·탈퇴 후 로그아웃·재인증 필요 상태로 전환될 때는 `null`로 해제한다. 백그라운드 알람 런타임도 같은 저장소를 사용한다.
+- `/auth/{provider}/login` 응답의 양수 `userId`만 Analytics 식별에 사용한다. JWT 클레임에서 ID를 추출하거나 누락값을 보완하지 않는다. 응답에 ID가 없거나 유효하지 않으면 `null`로 설정해 이전 계정 ID가 남지 않게 한다.
+- 이전 앱 버전에 저장된 토큰에는 `userId`가 없어도 로그인 상태는 유지한다. Analytics ID는 다음 정상 로그인 응답을 받기 전까지 비워 둔다. 현재 `/signup` 응답에도 `userId`가 없으므로 회원가입 직후에는 비워 두며, 회원가입 필요 응답을 받을 때 이전 ID를 해제한다.
+- SDK 설정 이후 발생한 이벤트부터 BigQuery 최상위 `user_id`에 반영된다. 기존 데이터, 로그인 전 이벤트, 앱 시작 시 ID 복원이 끝나기 전에 SDK가 자동 수집한 이벤트에는 소급 적용되지 않는다. 비로그인 분석과 기존 설치 단위 리텐션 SQL은 계속 `user_pseudo_id`를 사용한다.
+- SDK 사용자 ID 설정 실패가 인증 처리를 실패시키지 않도록 격리한다. 실기기 검증에서는 ID 설정·해제가 실제로 반영되는지 별도로 확인한다.
+
+동작 기준: [Firebase 사용자 ID 설정](https://firebase.google.com/docs/analytics/userid), [서버 로그인 응답 계약 PR #625](https://github.com/woowacourse-teams/2026-ringout/pull/625).
 
 Android Manifest에서 Advertising ID 수집과 광고 개인화 신호를 기본 비활성화한다. 이 설정은 제품 사용 측정에는 영향을 주지 않으며, 향후 광고 기능이 필요해지더라도 개인정보 정책과 사용자 동의 흐름을 먼저 확정한 뒤 별도 변경한다.
 
@@ -161,11 +173,28 @@ Android Manifest에서 Advertising ID 수집과 광고 개인화 신호를 기�
 
 ## 8. 출시 전 데이터 품질 점검
 
+### 8.1 사용자 ID 검증
+
+Android와 iOS 각각 다음 순서를 DebugView 및 배포 후 BigQuery export에서 확인한다. DebugView 트래픽은 BigQuery 일별 export 검증용으로 사용하지 않는다.
+
+1. 비로그인 상태의 이벤트: `user_id` 없음, `user_pseudo_id` 유지.
+2. 회원 A 로그인 후 이벤트와 앱 재시작 후 이벤트: `/login` 응답의 회원 ID A. JWT 내용과 달라도 응답 ID를 사용.
+   회원가입 직후와 ID 없는 구버전 저장 데이터 복원 시에는 ID가 없으며 다음 정상 로그인 후 설정됨.
+3. 같은 계정의 토큰 재발급 후 이벤트: A 유지.
+4. 로그아웃·탈퇴·인증 만료 후 이벤트: `user_id` 없음.
+5. 회원 B 로그인 후 이벤트: B이며 A가 남지 않음. A의 지연된 재발급 응답이 도착해도 B 유지.
+6. 로그인 상태의 백그라운드 알람 이벤트에도 해당 회원 ID가 기록됨.
+
+운영 BigQuery 확인은 새 버전에서 실제 수집한 이벤트의 export가 끝난 후 진행한다. 과거 `events_20261030`의 `null` 값은 변경되지 않는다.
+
+### 8.2 이벤트 계약 검증
+
 - 각 이벤트의 필수 파라미터 누락률이 0%인지 확인한다.
 - `creation_index`와 `use_index`가 1부터 단조 증가하고, `retry_attempt > 0`에서 `use_index`가 바뀌지 않는지 확인한다.
 - 최초 울림만 있고 미션을 시작하지 않은 테스트에서 `use_index`가 증가하지 않는지 확인한다.
 - 결과 이벤트가 대응하는 시작 이벤트보다 먼저 발생하지 않는지 확인한다.
 - 같은 상태 전이를 중복 전달해도 Analytics 이벤트가 한 번만 기록되는지 확인한다.
+- 다음 홀드 이벤트 품질 점검은 #687 이전 버전 데이터를 검증할 때만 적용한다.
 - `force_end_hold_started`에는 `hold_duration_ms`가 없고, cancelled/completed에는 0 이상의 값이 있는지 확인한다.
 - 정상적인 한 번의 홀드 시도에서 cancelled와 completed가 동시에 기록되지 않는지 확인한다.
 - `force_end_hold_completed`만 있는 테스트 사용자가 강제 종료 경험률 분자에 포함되지 않는지 확인한다.
@@ -178,6 +207,8 @@ Android Manifest에서 Advertising ID 수집과 광고 개인화 신호를 기�
 - SQL 결과에서 `3회 이상 사용률 <= 두 번째 사용률 <= 100%`인지 확인한다. 위반 시 인덱스 누락 또는 순서 손상을 조사한다.
 
 ## 모임 이용과 미션 참여 상태 (#440)
+
+현재 모임 기능은 `RoomFeature.isEnabled=false`로 비활성화되어 있다. 아래 이벤트와 분석 구현은 재도입 검토를 위해 보존하지만, 모임 이벤트 9종과 미션의 `room_membership_state`, `joined_room_count`, `room_list_checked_at_ms`, `room_membership_observed_at_ms`는 수집·전송하지 않는다. 참여 캐시와 미션 스냅샷도 읽거나 갱신하지 않으며 기존 로컬 저장값은 보존한다. 개인 미션 이벤트의 사용 인덱스·재시도·경과 시간 및 분석 사용자 식별은 기존대로 유지한다. 아래 계약은 기능이 활성화된 버전에 해당하며, 구버전 데이터와 비활성화 버전 데이터는 앱 버전으로 구분한다.
 
 ### 모임 이벤트
 

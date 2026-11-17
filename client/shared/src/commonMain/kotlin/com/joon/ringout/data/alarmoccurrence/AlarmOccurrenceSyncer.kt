@@ -1,9 +1,11 @@
 package com.joon.ringout.data.alarmoccurrence
 
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.data.alarmmovement.AlarmMovementSyncer
 import com.joon.ringout.data.alarmmovement.DefaultAlarmMovementRepository
 import com.joon.ringout.domain.alarmmovement.AlarmMovementRepository
 import com.joon.ringout.data.network.ApiException
+import com.joon.ringout.data.forest.ForestArrivalPlanting
 import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrence
 import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceEvent
 import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceId
@@ -17,6 +19,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import kotlinx.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Clock
@@ -32,11 +35,15 @@ internal class AlarmOccurrenceSyncer(
     private val repositoryFactory: (AlarmOccurrenceAccount) -> AlarmOccurrenceRepository = { account ->
         DefaultAlarmOccurrenceRepository(httpClient, tokenStorage, authSession, account)
     },
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
     private val movementRepositoryFactory: (AlarmOccurrenceAccount) -> AlarmMovementRepository = { account ->
-        DefaultAlarmMovementRepository(httpClient, tokenStorage, authSession, account)
+        DefaultAlarmMovementRepository(httpClient, tokenStorage, authSession, account, roomsEnabled)
     },
+    private val forestPlanting: ForestArrivalPlanting = ForestArrivalPlanting.None,
 ) {
     private var unauthorizedSession: Any? = null
+
+    fun observeArrivalPlantingWork(): Flow<Unit> = forestPlanting.observeArrivalPlantingWork()
 
     /** 반환 시각은 실행별 첫 미전송 이벤트의 다음 재시도 시각이다. null이면 외부 변경을 기다린다. */
     suspend fun flush(): Long? = processMutex.withLock {
@@ -44,23 +51,55 @@ internal class AlarmOccurrenceSyncer(
         if (unauthorizedSession === account.sessionIdentity) return@withLock null
         val repository = repositoryFactory(account)
         var nextRetryAt: Long? = null
+        var arrivalStorageFailure: Exception? = null
+        fun recordRetry(next: Long?) {
+            if (next != null) nextRetryAt = nextRetryAt?.let { minOf(it, next) } ?: next
+        }
         val executions = dao.getUnsentEvents(account.ownerAccountId).map { it.localExecutionId }.distinct()
         try {
+            // A forest outage must not hold up starts, dismissals, force ends or movement events.
             for (executionId in executions) {
-                val next = drainExecution(account, executionId, repository)
-                if (next != null) nextRetryAt = nextRetryAt?.let { minOf(it, next) } ?: next
+                recordRetry(drainExecution(account, executionId, repository))
             }
-            val movementRetry = AlarmMovementSyncer(dao, movementRepositoryFactory(account), now,
-                checkAccount = { checkAccount(account) },
-                onUnauthorized = {
-                    unauthorizedSession = account.sessionIdentity
-                    throw AlarmOccurrenceAccountChanged()
-                }).flush(account.ownerAccountId)
-            if (movementRetry != null) nextRetryAt = nextRetryAt?.let { minOf(it, movementRetry) } ?: movementRetry
+            try {
+                while (true) {
+                    checkAccount(account)
+                    // Also runs after process restart when every source event is already SENT.
+                    val gate = forestPlanting.resolvePendingArrivals(account, now)
+                    checkAccount(account)
+                    recordRetry(gate.nextRetryAtEpochMillis)
+                    if (!gate.maySendArrival) break
+                    val arrival = dao.getUnsentEvents(account.ownerAccountId)
+                        .filter { it.kind == AlarmOccurrenceOutboxKind.ARRIVED }
+                        .minWithOrNull(compareBy<AlarmOccurrenceOutboxEntity> { it.occurredAtEpochMillis ?: Long.MIN_VALUE }
+                            .thenBy { it.id }) ?: break
+                    recordRetry(drainExecution(account, arrival.localExecutionId, repository, arrival.id))
+                    // The oldest arrival, including its prerequisites, must finish before a later one.
+                    if (dao.getEvents(account.ownerAccountId, arrival.localExecutionId)
+                            .any { it.id == arrival.id && it.state != AlarmOccurrenceOutboxState.SENT }) break
+                }
+            } catch (error: AlarmOccurrenceAccountChanged) {
+                throw error
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // Finish unrelated movement work before reporting a persistence failure to the loop.
+                arrivalStorageFailure = error
+            }
+            if (roomsEnabled) {
+                val movementRetry = AlarmMovementSyncer(dao, movementRepositoryFactory(account), now,
+                    checkAccount = { checkAccount(account) },
+                    onUnauthorized = {
+                        unauthorizedSession = account.sessionIdentity
+                        throw AlarmOccurrenceAccountChanged()
+                    }, roomsEnabled = roomsEnabled).flush(account.ownerAccountId)
+                recordRetry(movementRetry)
+            }
         } catch (_: AlarmOccurrenceAccountChanged) {
             // 응답이 유실된 것처럼 남긴다. 원래 계정으로 돌아오면 같은 식별자로 재전송한다.
             return@withLock null
         }
+        arrivalStorageFailure?.let { throw it }
         nextRetryAt
     }
 
@@ -74,12 +113,14 @@ internal class AlarmOccurrenceSyncer(
         account: AlarmOccurrenceAccount,
         executionId: String,
         repository: AlarmOccurrenceRepository,
+        permittedArrivalId: Long? = null,
     ): Long? {
         while (true) {
             checkAccount(account)
             val events = dao.getEvents(account.ownerAccountId, executionId)
             val event = events.filter { it.state != AlarmOccurrenceOutboxState.SENT }
                 .minWithOrNull(compareBy<AlarmOccurrenceOutboxEntity> { it.kind.priority() }.thenBy { it.id }) ?: return null
+            if (event.kind == AlarmOccurrenceOutboxKind.ARRIVED && event.id != permittedArrivalId) return null
             if (event.state == AlarmOccurrenceOutboxState.BLOCKED && event.lastErrorCode !in RecoverableBlocks) return null
             if (events.any { it.kind.isTerminal() && it.state == AlarmOccurrenceOutboxState.SENT }) {
                 block(account, event, "ALREADY_ENDED", "이미 종료된 실행의 후속 이벤트입니다.")
@@ -113,6 +154,11 @@ internal class AlarmOccurrenceSyncer(
                 }
                 checkAccount(account)
                 if (request is Prepared.Event) check(response.id == request.id) { "응답의 알람 실행 ID가 일치하지 않습니다." }
+                if (request is Prepared.Event && request.event is AlarmOccurrenceEvent.Arrived) {
+                    check(response.arrivedAt == request.event.arrivedAt && response.forceEndedAt == null) {
+                        "응답의 도착 상태가 요청한 실제 도착 시각과 일치하지 않습니다."
+                    }
+                }
             } catch (error: AlarmOccurrenceAccountChanged) {
                 throw error
             } catch (error: CancellationException) {
@@ -142,6 +188,11 @@ internal class AlarmOccurrenceSyncer(
             if (request is Prepared.Start) {
                 dao.completeStart(account.ownerAccountId, executionId, response.id.value)
             } else {
+                if (request is Prepared.Event && request.event is AlarmOccurrenceEvent.Arrived) {
+                    // Save first: a crash before SENT repeats the idempotent arrival and handoff.
+                    forestPlanting.recordConfirmedArrival(account, response.id.value, checkNotNull(response.arrivedAt).toEpochMilliseconds())
+                    checkAccount(account)
+                }
                 check(dao.saveDeliveryState(account.ownerAccountId, event.id, AlarmOccurrenceOutboxState.SENT, attempt))
             }
         }
@@ -175,7 +226,7 @@ private fun prepare(
     ringing: AlarmOccurrenceRingingLinkEntity?,
 ): Prepared {
     if (event.kind == AlarmOccurrenceOutboxKind.START) return Prepared.Start(AlarmOccurrenceStart(
-        execution.alarmId, execution.scheduledAtEpochMillis.requiredTime(), execution.startedAtEpochMillis.requiredTime(),
+        execution.remoteAlarmId ?: execution.alarmId, execution.scheduledAtEpochMillis.requiredTime(), execution.startedAtEpochMillis.requiredTime(),
     ))
     val id = AlarmOccurrenceId(checkNotNull(execution.serverOccurrenceId) { "POST가 완료되지 않았습니다." })
     val at = event.occurredAtEpochMillis.requiredTime()

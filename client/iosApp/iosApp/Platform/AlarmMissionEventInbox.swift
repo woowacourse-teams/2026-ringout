@@ -132,6 +132,7 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
 
         let alarmId = alarmUUID.uuidString
         let occurredAtEpochMillis = Int64(now.timeIntervalSince1970 * 1_000)
+        let reservationOwner = ownerForReservation(alarmId: alarmId, scheduleVersion: scheduleVersion)
         let event = try mutateEvents { events, dedupRecords in
             let observation = try? AlarmRingingOccurrenceStore.shared.consume(
                 systemAlarmId: systemAlarmId.flatMap { UUID(uuidString: $0)?.uuidString } ?? alarmId,
@@ -163,7 +164,6 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
             }.flatMap { $0.chainId ?? (($0.retryAttempt ?? 0) == 0 ? $0.occurrenceId : nil) }
             let chainId = requestedChainId ?? previous?.chainId ??
                 (retryAttempt == 0 ? occurrenceId : previousChainId)
-            // Preserve an explicitly captured guest, including across native/fallback duplicates.
             let owner: IosAlarmOccurrenceOwner
             if let previous {
                 owner = IosAlarmOccurrenceOwner(accountId: previous.ownerAccountId, captured: previous.ownerCaptured ?? false)
@@ -172,10 +172,8 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                     accountId: previousDedupRecord.ownerAccountId,
                     captured: previousDedupRecord.ownerCaptured ?? false
                 )
-            } else if let observation {
-                owner = IosAlarmOccurrenceOwner(accountId: observation.ownerAccountId, captured: observation.ownerCaptured ?? false)
             } else {
-                owner = IosAlarmOccurrenceAccount.shared.capture()
+                owner = reservationOwner
             }
             let event = AlarmMissionEvent(
                 eventId: UUID().uuidString,
@@ -198,6 +196,26 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         }
         notifyEventRecorded()
         return event
+    }
+
+    private func ownerForReservation(alarmId: String, scheduleVersion: Int64) -> IosAlarmOccurrenceOwner {
+        guard let snapshot = try? AlarmRecoveryDriver.journal.sourceSnapshot(
+            sourceAlarmId: alarmId,
+            scheduleVersion: scheduleVersion
+        ) else {
+            return IosAlarmOccurrenceOwner(accountId: nil, captured: false)
+        }
+        switch snapshot.owner.kind {
+        case .capturedAccount:
+            guard let accountId = snapshot.owner.accountId, !accountId.isEmpty else {
+                return IosAlarmOccurrenceOwner(accountId: nil, captured: false)
+            }
+            return IosAlarmOccurrenceOwner(accountId: accountId, captured: true)
+        case .capturedGuest:
+            return IosAlarmOccurrenceOwner(accountId: nil, captured: true)
+        case .uncaptured:
+            return IosAlarmOccurrenceOwner(accountId: nil, captured: false)
+        }
     }
 
     func recordOpenEvent(
@@ -544,6 +562,33 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
         }
     }
 
+    func suppressFutureReservationsForLogout(callback: @escaping (IosAlarmOperationResult) -> Void) {
+        Task { @MainActor in
+            do {
+                try await AlarmRecoveryDriver.suppressFutureReservationsForLogout()
+                callback(IosAlarmOperationResult(code: .success, message: nil))
+            } catch {
+                callback(IosAlarmOperationResult(code: .sdkError, message: error.localizedDescription))
+            }
+        }
+    }
+
+    func clearPendingDataForLogout(callback: @escaping (IosAlarmOperationResult) -> Void) {
+        do {
+            try withInboxFileLock {
+                try writeStateUnlocked(.empty)
+                try AlarmRecoveryDriver.journal.clearForLogout()
+            }
+            try AlarmRingingOccurrenceStore.shared.clearForLogout()
+            callback(IosAlarmOperationResult(code: .success, message: nil))
+        } catch {
+            callback(IosAlarmOperationResult(
+                code: .sdkError,
+                message: "iOS 알람 복구 기록을 정리하지 못했습니다."
+            ))
+        }
+    }
+
     func recoveryState(callback: @escaping (IosAlarmRecoveryAttemptsResult) -> Void) {
         do {
             try importLegacyProjection()
@@ -884,15 +929,8 @@ final class RingoutAlarmMissionEventInbox: IosAlarmMissionEventInbox {
                   ), try AlarmRecoveryDriver.journal.recoveryState().sources[
                     AlarmRecoverySourceKey(sourceAlarmId: event.alarmId, scheduleVersion: event.scheduleVersion ?? 1)
                   ] == .enabled else { continue }
-            snapshot = AlarmRecoverySourceSnapshot(
-                sourceAlarmId: snapshot.sourceAlarmId, scheduleVersion: snapshot.scheduleVersion,
-                destination: snapshot.destination, limitSeconds: snapshot.limitSeconds,
-                scheduledAtEpochMillis: snapshot.scheduledAtEpochMillis, originalTime: snapshot.originalTime,
-                arrivalRadiusMeters: snapshot.arrivalRadiusMeters, repeatRule: snapshot.repeatRule,
-                title: snapshot.title, soundName: snapshot.soundName, soundURI: snapshot.soundURI,
-                owner: event.ownerCaptured == true
-                    ? event.ownerAccountId.map(AlarmRecoveryOwner.capturedAccount) ?? .capturedGuest : .uncaptured
-            )
+            snapshot.owner = event.ownerCaptured == true
+                ? event.ownerAccountId.map(AlarmRecoveryOwner.capturedAccount) ?? .capturedGuest : .uncaptured
             do {
                 _ = try AlarmRecoveryDriver.journal.importLegacy(
                     occurrenceId: event.occurrenceId, snapshot: snapshot,
@@ -1130,7 +1168,8 @@ private extension AlarmMissionEvent {
             scheduleVersion: scheduleVersion ?? 1,
             ownerAccountId: ownerAccountId,
             ownerCaptured: ownerCaptured ?? false,
-            chainId: chainId
+            chainId: chainId,
+            remoteAlarmId: nil
         )
     }
 }

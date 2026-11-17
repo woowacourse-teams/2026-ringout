@@ -101,6 +101,15 @@ class AlarmMapperTest {
         }
     }
 
+    @Test
+    fun `검증된 알람 소유 계정을 Room 왕복에서 보존한다`() {
+        val alarm = savedAlarm().copy(
+            request = savedAlarm().request.copy(ownerAccountId = "account-42"),
+        )
+
+        assertEquals(alarm, alarm.toAlarmWithRepeatDays().toSavedAlarmSchedule())
+    }
+
     private fun savedAlarm(
         time: String = "07:05",
         selectedDays: List<String> = listOf("월", "금"),
@@ -117,8 +126,7 @@ class AlarmMapperTest {
             selectedDays = selectedDays,
             repeatEnabled = repeatEnabled,
             limitMinutes = limitMinutes,
-            destinationName = "회사",
-            destinationAddress = "서울특별시 중구 세종대로 110",
+            destinationLabel = "회사",
             destinationLatitude = destinationLatitude,
             destinationLongitude = destinationLongitude,
             targetDistanceKm = targetDistanceKm,

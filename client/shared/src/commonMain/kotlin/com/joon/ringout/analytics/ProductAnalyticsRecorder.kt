@@ -1,5 +1,7 @@
 package com.joon.ringout.analytics
 
+import com.joon.ringout.domain.room.RoomFeature
+
 enum class AnalyticsLoginState(
     internal val wireName: String,
 ) {
@@ -77,8 +79,11 @@ internal interface ProductAnalyticsUsageStore {
 internal class DefaultProductAnalyticsRecorder(
     private val tracker: AnalyticsTracker,
     private val usageStore: ProductAnalyticsUsageStore,
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) : ProductAnalyticsRecorder {
-    override fun recordRoomEvent(event: RoomAnalyticsEvent) = safelyRecord { tracker.log(event.toAnalyticsEvent()) }
+    override fun recordRoomEvent(event: RoomAnalyticsEvent) = safelyRecord {
+        if (roomsEnabled) tracker.log(event.toAnalyticsEvent())
+    }
 
     override fun recordOnboardingStarted(stepCount: Int) = safelyRecord {
         val event = onboardingAnalyticsEvent(AnalyticsEventName.TutorialBegin, stepCount)

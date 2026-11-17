@@ -78,7 +78,7 @@ internal fun DestinationNicknameDialog(
                 .clickable(
                     interactionSource = scrimInteractionSource,
                     indication = null,
-                    onClickLabel = "목적지 별명 설정 닫기",
+                    onClickLabel = "목적지 라벨 설정 닫기",
                     onClick = onDismissRequest,
                 ),
         )
@@ -131,7 +131,7 @@ internal fun DestinationNicknameDialogContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = "목적지 별명 설정",
+                    text = "목적지 라벨 설정",
                     color = NicknameDialogPrimary,
                     maxLines = 1,
                     style = MaterialTheme.typography.titleLarge.copy(
@@ -163,7 +163,7 @@ internal fun DestinationNicknameDialogContent(
                     .background(NicknameDialogInput)
                     .padding(horizontal = 16.dp)
                     .semantics {
-                        contentDescription = "목적지 별명"
+                        contentDescription = "목적지 라벨"
                     },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = NicknameDialogPrimary,
@@ -212,7 +212,7 @@ internal fun DestinationNicknameDialogContent(
                     .clickable(
                         enabled = isSaveEnabled,
                         role = Role.Button,
-                        onClickLabel = "목적지 별명 저장",
+                        onClickLabel = "목적지 라벨 저장",
                         onClick = onSave,
                     ),
                 contentAlignment = Alignment.Center,

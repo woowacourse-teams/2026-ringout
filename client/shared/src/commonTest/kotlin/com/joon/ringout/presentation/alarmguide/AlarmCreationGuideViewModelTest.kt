@@ -220,6 +220,50 @@ class AlarmCreationGuideViewModelTest {
     }
 
     @Test
+    fun `어느 안내에서든 중단하면 완료하지 않고 다음 홈 진입에서 첫 안내를 표시한다`() {
+        AlarmCreationGuideStep.entries.forEach { step ->
+            val viewModel = guideAt(step)
+
+            viewModel.interrupt()
+
+            assertEquals(AlarmCreationGuideUiState(), viewModel.uiState.value)
+            assertFalse(viewModel.finish())
+            assertFalse(viewModel.onNext(step))
+            viewModel.updateContext(surface = AlarmCreationGuideSurface.Other)
+            assertNull(viewModel.uiState.value.step)
+            viewModel.updateContext(surface = AlarmCreationGuideSurface.Home)
+            assertEquals(AlarmCreationGuideStep.AddAlarm, viewModel.uiState.value.step)
+            assertFalse(viewModel.uiState.value.isFinishing)
+        }
+    }
+
+    @Test
+    fun `중단 뒤 작성 화면만 다시 방문해도 안내를 이어가지 않고 홈에서 다시 시작한다`() {
+        val viewModel = guideAt(AlarmCreationGuideStep.Destination)
+
+        viewModel.interrupt()
+        viewModel.updateContext(surface = AlarmCreationGuideSurface.Editor)
+
+        assertEquals(AlarmCreationGuideUiState(), viewModel.uiState.value)
+        assertFalse(viewModel.onNext(AlarmCreationGuideStep.Destination))
+        viewModel.updateContext(surface = AlarmCreationGuideSurface.Home)
+        assertEquals(AlarmCreationGuideStep.AddAlarm, viewModel.uiState.value.step)
+    }
+
+    @Test
+    fun `완료 저장 중 중단 요청은 완료 상태를 초기화하지 않는다`() {
+        val viewModel = guideAt(AlarmCreationGuideStep.CreateAlarm)
+        assertTrue(viewModel.finish())
+        val finishingState = viewModel.uiState.value
+
+        viewModel.interrupt()
+        viewModel.updateContext(surface = AlarmCreationGuideSurface.Home)
+
+        assertEquals(finishingState, viewModel.uiState.value)
+        assertFalse(viewModel.finish())
+    }
+
+    @Test
     fun `프로세스가 재시작되어도 저장된 가이드 대기 상태로 홈에서 다시 시작한다`() {
         val restoredViewModel = AlarmCreationGuideViewModel()
 

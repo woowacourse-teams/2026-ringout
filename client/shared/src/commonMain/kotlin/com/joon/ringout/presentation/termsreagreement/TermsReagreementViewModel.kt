@@ -28,6 +28,8 @@ class TermsReagreementViewModel(
     networkMonitor: NetworkMonitor,
     private val currentDate: () -> String = ::currentAgreementDate,
     coroutineScope: CoroutineScope? = null,
+    private val explicitLogout: suspend () -> Unit = authRepository::logout,
+    private val canStartExplicitLogout: () -> Boolean = { true },
 ) : ViewModel() {
     var uiState by mutableStateOf(TermsReagreementUiState())
         private set
@@ -137,12 +139,22 @@ class TermsReagreementViewModel(
 
     fun logout() {
         if (uiState.isLoggingOut || uiState.isSubmitting) return
+        if (!canStartExplicitLogout()) {
+            uiState = uiState.copy(
+                isLoggingOut = false,
+                errorMessage = "진행 중인 알람이나 미션을 종료한 뒤 로그아웃해 주세요.",
+            )
+            return
+        }
         cancelRequest()
         val key = identity
         uiState = uiState.copy(isLoggingOut = true, isChecking = false, errorMessage = null)
         logoutJob = scope.launch {
             try {
-                authRepository.logout()
+                explicitLogout()
+                if (key === session.identity.value) {
+                    uiState = uiState.copy(isLoggingOut = false)
+                }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Throwable) {

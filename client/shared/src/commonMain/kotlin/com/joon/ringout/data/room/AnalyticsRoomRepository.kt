@@ -5,6 +5,7 @@ import com.joon.ringout.data.alarmoccurrence.alarmOccurrenceTokenOwner
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.auth.SecureTokenStorage
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.domain.room.RoomCreateInput
 import com.joon.ringout.domain.room.RoomRepository
 import kotlinx.coroutines.CancellationException
@@ -15,9 +16,10 @@ internal class AnalyticsRoomRepository(
     private val analytics: RoomMembershipAnalytics,
     private val tokens: SecureTokenStorage,
     private val session: AuthSession,
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) : RoomRepository by delegate {
     private data class Owner(val id: String, val identity: Any, val revision: Long)
-    private suspend fun capture(): Owner? = try {
+    private suspend fun capture(): Owner? = if (!roomsEnabled) null else try {
         val identity = session.identity.value
         if (identity == null || session.state.value != AuthSessionState.Authenticated) null
         else tokens.read()?.accessToken?.let(::alarmOccurrenceTokenOwner)?.takeIf {

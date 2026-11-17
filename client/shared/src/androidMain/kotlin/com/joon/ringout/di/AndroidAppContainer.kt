@@ -1,10 +1,24 @@
 package com.joon.ringout.di
 
 import android.content.Context
+import com.joon.ringout.data.auth.DevelopmentAuthDiagnostics
+import com.joon.ringout.domain.auth.AuthDiagnostics
+import com.joon.ringout.alarm.AndroidAlarmScheduler
 import com.joon.ringout.data.alarmactivity.AndroidAlarmActivityRecorder
 import com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime
+import com.joon.ringout.data.alarmoccurrence.DefaultAlarmOccurrenceMonthLoader
+import com.joon.ringout.data.alarmoccurrence.captureAlarmOccurrenceAccount
+import com.joon.ringout.alarm.newAlarmId
+import com.joon.ringout.data.alarm.AlarmOutboxSyncer
+import com.joon.ringout.data.alarm.LegacyAlarmPreferencesMigrator
+import com.joon.ringout.data.alarm.RoomAlarmDataSource
+import kotlinx.coroutines.CancellationException
+import com.joon.ringout.data.alarm.AlarmSyncCoordinator
+import com.joon.ringout.data.alarm.AlarmSyncStore
+import com.joon.ringout.data.alarm.KtorAlarmRemoteDataSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import com.joon.ringout.data.alarmactivity.RoomAlarmActivityRepository
 import com.joon.ringout.analytics.createRoomMembershipAnalytics
@@ -14,21 +28,32 @@ import com.joon.ringout.data.auth.DefaultAuthRepository
 import com.joon.ringout.data.auth.local.createSecureTokenStorage
 import com.joon.ringout.data.auth.remote.KtorAuthApi
 import com.joon.ringout.data.database.getRingoutDatabase
+import com.joon.ringout.data.database.RoomLocalUserDataCleanup
 import com.joon.ringout.data.destination.DefaultDestinationRepository
+import com.joon.ringout.data.destination.DestinationAccountProvider
+import com.joon.ringout.data.destination.DestinationOutboxSyncer
+import com.joon.ringout.data.destination.DestinationSyncCoordinator
+import com.joon.ringout.data.destination.DestinationSyncSessionGate
+import com.joon.ringout.data.destination.KtorDestinationRemoteDataSource
 import com.joon.ringout.data.destination.RoomDestinationDataSource
+import com.joon.ringout.data.outbox.RoomOutboxReader
+import com.joon.ringout.data.forest.AndroidForestSyncRuntime
 import com.joon.ringout.data.member.DefaultMemberRepository
 import com.joon.ringout.data.room.DefaultRoomRepository
+import com.joon.ringout.data.missionhistory.RoomRecordsHistoryRepository
 import com.joon.ringout.data.missionhistory.DefaultMissionHistoryRepository
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
 import com.joon.ringout.data.network.getRingoutHttpClient
 import com.joon.ringout.data.preferences.DataStoreAppPreferencesRepository
 import com.joon.ringout.data.preferences.AndroidSystemThemeModeReader
 import com.joon.ringout.data.preferences.getAppPreferencesDataStore
+import com.joon.ringout.data.preferences.getInstallationPreferencesDataStore
 import com.joon.ringout.domain.auth.getAuthSession
 import com.joon.ringout.data.push.AndroidFcmTokenSource
 import com.joon.ringout.data.push.KtorPushTokenRegistrar
 import com.joon.ringout.domain.push.PushPlatform
 import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
+import com.joon.ringout.domain.outbox.OutboxReader
 
 class AndroidAppContainer(
     context: Context,
@@ -36,6 +61,10 @@ class AndroidAppContainer(
     private val httpClient = getRingoutHttpClient()
     private val tokenStorage = createSecureTokenStorage(context)
     private val database = getRingoutDatabase(context)
+    override val outboxReader: OutboxReader = RoomOutboxReader(
+        destinationDao = database.destinationDao(),
+        alarmOccurrenceSyncDao = database.alarmOccurrenceSyncDao(),
+    )
 
     init {
         AndroidAlarmActivityRecorder.get(context).flush()
@@ -43,17 +72,37 @@ class AndroidAppContainer(
     }
 
     override val authSession = getAuthSession()
+    override val authDiagnostics: AuthDiagnostics by lazy {
+        DevelopmentAuthDiagnostics(httpClient, tokenStorage, authSession)
+    }
+    override val currentVerifiedAlarmAccountId: suspend () -> String? = {
+        captureAlarmOccurrenceAccount(tokenStorage, authSession)?.ownerAccountId
+    }
+    override val migrateLegacyAlarmData: suspend (String) -> Unit = { accountId ->
+        LegacyAlarmPreferencesMigrator(context, RoomAlarmDataSource(database)).ensureMigrated()
+        AndroidAlarmOccurrenceRuntime.get(context).migrateLegacyData(accountId)
+    }
     override val pushTokenSource = AndroidFcmTokenSource
     override val pushTokenRegistrationReadiness =
         PushTokenRegistrationReadiness(PushPlatform.Android)
     override val pushTokenRegistrar = KtorPushTokenRegistrar(httpClient, tokenStorage, authSession)
     override val termsRepository = com.joon.ringout.data.terms.DefaultTermsRepository(httpClient, tokenStorage, authSession)
     override val networkMonitor = com.joon.ringout.data.connectivity.AndroidNetworkMonitor(context)
+    private val destinationSessionGate = DestinationSyncSessionGate()
+    private val destinationAccountProvider = DestinationAccountProvider(
+        authSession = authSession,
+        currentVerifiedAccountId = currentVerifiedAlarmAccountId,
+    )
 
     override val appPreferencesRepository =
         DataStoreAppPreferencesRepository(
-            getAppPreferencesDataStore(context)
+            dataStore = getAppPreferencesDataStore(context),
+            installationDataStore = getInstallationPreferencesDataStore(context),
         )
+
+    override val hasStoredAlarmsForEntryMigration: suspend () -> Boolean = {
+        database.alarmDao().getAll().isNotEmpty()
+    }
 
     override val systemThemeModeReader = AndroidSystemThemeModeReader(context)
 
@@ -80,8 +129,64 @@ class AndroidAppContainer(
             dataSource = RoomDestinationDataSource(
                 database.destinationDao(),
             ),
+            accountProvider = destinationAccountProvider,
+            sessionGate = destinationSessionGate,
         )
-    // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 KtorDestinationRemoteDataSource를 다시 주입한다.
+
+    private val destinationSyncer = DestinationOutboxSyncer(
+        dao = database.destinationDao(),
+        remoteDataSource = KtorDestinationRemoteDataSource(httpClient, tokenStorage),
+        accountProvider = destinationAccountProvider,
+        sessionGate = destinationSessionGate,
+        authSession = authSession,
+    )
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val destinationSyncCoordinator = DestinationSyncCoordinator(
+        syncer = destinationSyncer,
+        dao = database.destinationDao(),
+        accountProvider = destinationAccountProvider,
+        authSession = authSession,
+        networkMonitor = networkMonitor,
+    )
+
+    private val alarmScheduler = AndroidAlarmScheduler(context)
+    private val alarmSyncCoordinator = AlarmSyncCoordinator(
+        syncer = AlarmOutboxSyncer(
+            store = AlarmSyncStore(database, ::newAlarmId),
+            remoteDataSource = KtorAlarmRemoteDataSource(httpClient, tokenStorage),
+            accountProvider = destinationAccountProvider,
+            sessionGate = destinationSessionGate,
+            applyServerChange = alarmScheduler::applyServerChange,
+        ),
+        accountProvider = destinationAccountProvider,
+        authSession = authSession,
+        networkMonitor = networkMonitor,
+    )
+
+    init {
+        destinationSyncCoordinator.start(applicationScope)
+        alarmSyncCoordinator.start(applicationScope)
+    }
+
+    override suspend fun prepareAlarmSync(forceRestore: Boolean) {
+        val sessionIdentity = authSession.identity.value
+        try {
+            alarmScheduler.rescheduleAll()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            android.util.Log.w("AndroidAppContainer", "알람 예약을 복구하지 못했습니다.", error)
+        }
+        if (authSession.identity.value === sessionIdentity) {
+            alarmSyncCoordinator.prepareCurrentSession(forceRestore)
+        }
+    }
+
+    override fun onAppResumed() {
+        destinationSyncCoordinator.requestSync()
+        alarmSyncCoordinator.requestSync()
+        forestSyncRuntime.requestSync()
+    }
 
     override val alarmActivityRepository =
         RoomAlarmActivityRepository(
@@ -99,7 +204,32 @@ class AndroidAppContainer(
         DefaultMissionHistoryRepository(
             dataSource = RoomMissionHistoryDataSource(database.missionHistoryDao()),
         )
+    override val recordsHistoryRepository = RoomRecordsHistoryRepository(
+        database,
+        tokenStorage,
+        authSession,
+        alarmActivityRepository,
+    )
+    override val alarmOccurrenceMonthLoader = DefaultAlarmOccurrenceMonthLoader(
+        httpClient,
+        tokenStorage,
+        authSession,
+        database.alarmOccurrenceCacheDao(),
+        destinationSessionGate,
+        applicationScope,
+    )
+    override val localUserDataCleanup = RoomLocalUserDataCleanup(
+        dao = database.localUserDataCleanupDao(),
+        destinationSessionGate = destinationSessionGate,
+        currentSessionIdentity = { authSession.identity.value },
+    )
     // TODO(RINGOUT_ACCOUNT): 로그인 재도입 시 KtorMissionHistoryRemoteDataSource를 다시 주입한다.
+
+    override val arrivalResultRepository =
+        com.joon.ringout.data.arrival.RoomArrivalResultRepository(database.arrivalResultDao())
+
+    private val forestSyncRuntime = AndroidForestSyncRuntime.get(context)
+    override val forestRepository = forestSyncRuntime.repository
 
     override val productAnalyticsRecorder =
         createProductAnalyticsRecorder(context)

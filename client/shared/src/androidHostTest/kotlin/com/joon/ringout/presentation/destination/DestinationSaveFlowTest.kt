@@ -42,63 +42,61 @@ class DestinationSaveFlowTest {
     @get:Rule val compose = createEmptyComposeRule()
 
     @Test
-    fun `새 위치에서 저장 안함을 누르면 별명 입력이나 저장 없이 선택 결과만 전달한다`() = withMap { state, _ ->
+    fun `새 위치에서 저장 안함은 주소 라벨 변환 전의 선택 좌표를 전달한다`() = withMap { state, _ ->
         compose.onNodeWithText("이 위치를 목적지로 설정").performClick()
         compose.onNodeWithText("목적지 저장").assertIsDisplayed()
         compose.onNodeWithText("다음에 편하게 쓸 수 있도록\n목적지를 저장할까요?").assertIsDisplayed()
         compose.onNodeWithText("저장 안함").performClick()
         compose.onNodeWithText("목적지 저장").assertDoesNotExist()
-        compose.onNodeWithContentDescription("목적지 별명").assertDoesNotExist()
+        compose.onNodeWithContentDescription("목적지 라벨").assertDoesNotExist()
         compose.runOnIdle {
             assertEquals(listOf(SelectedLocation), state.withoutSave)
             assertTrue(state.saves.isEmpty())
-            assertTrue(state.savedSelections.isEmpty())
         }
     }
 
     @Test
-    fun `저장하기는 기존 별명 입력창을 열고 별명을 입력해 저장한 시점에만 저장을 요청한다`() = withMap { state, _ ->
+    fun `저장하기는 라벨 입력창을 열고 입력한 라벨을 저장한다`() = withMap { state, _ ->
         compose.onNodeWithText("이 위치를 목적지로 설정").performClick()
         compose.onNodeWithText("저장하기").performClick()
         compose.onNodeWithText("목적지 저장").assertDoesNotExist()
-        compose.onNodeWithText("목적지 별명 설정").assertIsDisplayed()
-        compose.onNodeWithContentDescription("목적지 별명")
+        compose.onNodeWithText("목적지 라벨 설정").assertIsDisplayed()
+        compose.onNodeWithContentDescription("목적지 라벨")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
         compose.onNodeWithText("저장").assertIsNotEnabled()
         compose.runOnIdle { assertTrue(state.saves.isEmpty()) }
-        compose.onNodeWithContentDescription("목적지 별명").performTextReplacement(" 우리 회사 ")
+        compose.onNodeWithContentDescription("목적지 라벨").performTextReplacement(" 우리 회사 ")
         compose.onNodeWithText("저장").performClick()
         compose.runOnIdle {
-            assertEquals(listOf(SelectedLocation.toSavedDestination().copy(name = "우리 회사")), state.saves)
+            assertEquals(listOf(SelectedLocation.toSavedDestination().copy(label = "우리 회사")), state.saves)
             assertTrue(state.withoutSave.isEmpty())
         }
     }
 
     @Test
-    fun `별명 입력을 취소하고 다시 열면 이전 입력 없이 빈 값으로 시작한다`() = withMap { state, activity ->
+    fun `라벨 입력을 취소하고 다시 열면 이전 입력 없이 빈 값으로 시작한다`() = withMap { state, activity ->
         compose.onNodeWithText("이 위치를 목적지로 설정").performClick()
         compose.onNodeWithText("저장하기").performClick()
-        compose.onNodeWithContentDescription("목적지 별명").performTextReplacement("우리 회사")
+        compose.onNodeWithContentDescription("목적지 라벨").performTextReplacement("우리 회사")
         compose.runOnIdle { activity.onBackPressedDispatcher.onBackPressed() }
-        compose.onNodeWithContentDescription("목적지 별명").assertDoesNotExist()
+        compose.onNodeWithContentDescription("목적지 라벨").assertDoesNotExist()
         compose.onNodeWithText("이 위치를 목적지로 설정").performClick()
         compose.onNodeWithText("저장하기").performClick()
-        compose.onNodeWithContentDescription("목적지 별명")
+        compose.onNodeWithContentDescription("목적지 라벨")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
         compose.onNodeWithText("저장").assertIsNotEnabled()
         compose.runOnIdle { assertTrue(state.saves.isEmpty()) }
     }
 
     @Test
-    fun `이미 저장된 좌표는 저장 여부를 묻지 않고 기존 별명으로 선택한다`() =
-        withMap(saved = listOf(SelectedLocation.toSavedDestination(9).copy(name = "회사"))) { state, _ ->
+    fun `저장된 목적지와 같은 좌표를 다시 선택해도 저장 목적지 라벨을 자동 재사용하지 않는다`() = withMap { state, _ ->
             compose.onNodeWithText("이 위치를 목적지로 설정").performClick()
-            compose.onNodeWithText("목적지 저장").assertDoesNotExist()
-            compose.onNodeWithContentDescription("목적지 별명").assertDoesNotExist()
+            compose.onNodeWithText("목적지 저장").assertIsDisplayed()
+            compose.onNodeWithText("저장 안함").performClick()
+            compose.onNodeWithContentDescription("목적지 라벨").assertDoesNotExist()
             compose.runOnIdle {
-                assertEquals(state.destinations, state.savedSelections)
+            assertEquals(listOf(SelectedLocation), state.withoutSave)
                 assertTrue(state.saves.isEmpty())
-                assertTrue(state.withoutSave.isEmpty())
             }
         }
 
@@ -115,7 +113,7 @@ class DestinationSaveFlowTest {
         compose.onNodeWithText("이 위치를 목적지로 설정").performClick()
         compose.onNodeWithText("저장하기").performClick()
         compose.runOnIdle { activity.onBackPressedDispatcher.onBackPressed() }
-        compose.onNodeWithText("목적지 별명 설정").assertDoesNotExist()
+        compose.onNodeWithText("목적지 라벨 설정").assertDoesNotExist()
         compose.runOnIdle { assertEquals(0, state.backs) }
     }
 
@@ -161,20 +159,17 @@ class DestinationSaveFlowTest {
     }
 
     private fun withMap(
-        saved: List<SavedDestination> = emptyList(),
         verify: (Fixture, ComponentActivity) -> Unit,
     ) {
-        val state = Fixture(saved)
+        val state = Fixture()
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
             activity.get().setContent {
                 RingoutTheme {
                     DestinationMapScreen(
                         initialSelection = SelectedLocation,
-                        savedDestinations = state.destinations,
                         onBackClick = { state.backs++ },
                         onConfirmClick = { state.saves += it },
-                        onSavedDestinationConfirmClick = { state.savedSelections += it },
                         onConfirmWithoutSave = { state.withoutSave += it },
                         isDestinationActionEnabled = state.active.value,
                         mapContent = { Box(it) },
@@ -187,10 +182,9 @@ class DestinationSaveFlowTest {
         }
     }
 
-    private class Fixture(val destinations: List<SavedDestination>) {
+    private class Fixture {
         val active = mutableStateOf(true)
         val saves = mutableListOf<SavedDestination>()
-        val savedSelections = mutableListOf<SavedDestination>()
         val withoutSave = mutableListOf<DestinationSelection>()
         var backs = 0
     }

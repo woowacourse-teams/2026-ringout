@@ -19,6 +19,12 @@ import com.joon.ringout.RingoutTheme
 import com.joon.ringout.SystemBarAppearanceEffect
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.presentation.ringing.AlarmRingingRoute
+import androidx.lifecycle.lifecycleScope
+import com.joon.ringout.data.auth.local.createSecureTokenStorage
+import com.joon.ringout.data.auth.restoreAuthSession
+import com.joon.ringout.domain.auth.getAuthSession
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 class AlarmRingingActivity : ComponentActivity() {
     private val alarmMissionCoordinator by lazy {
@@ -32,6 +38,7 @@ class AlarmRingingActivity : ComponentActivity() {
     private var isStopHandled = false
     private var isDismissRequested = false
     private var isPrerequisiteRequestInFlight = false
+    private var isAuthCheckInFlight = false
     private val missionLocationSettingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
@@ -136,6 +143,63 @@ class AlarmRingingActivity : ComponentActivity() {
     }
 
     private fun stopAlarmAndOpenApp() {
+        if (isStopHandled || isAuthCheckInFlight) return
+        val requestedOccurrence = intent.getStringExtra(AlarmRuntime.EXTRA_OCCURRENCE_ID)
+        isAuthCheckInFlight = true
+        lifecycleScope.launch {
+            try {
+                dismissRingingAlarmForSession(
+                    restoreSession = {
+                        val session = getAuthSession()
+                        createSecureTokenStorage(applicationContext).restoreAuthSession(session)
+                        session.state.value
+                    },
+                    onAuthenticated = {
+                        if (intent.getStringExtra(AlarmRuntime.EXTRA_OCCURRENCE_ID) == requestedOccurrence) {
+                            stopAuthenticatedAlarmAndOpenApp()
+                        }
+                    },
+                    onStopOnly = {
+                        if (intent.getStringExtra(AlarmRuntime.EXTRA_OCCURRENCE_ID) == requestedOccurrence) {
+                            stopUnauthenticatedAlarmAndOpenApp()
+                        }
+                    },
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                showPrerequisiteMessage("로그인 상태를 확인하지 못했어요. 알람 종료를 다시 시도해 주세요.")
+            } finally {
+                isAuthCheckInFlight = false
+            }
+        }
+    }
+
+    private fun stopUnauthenticatedAlarmAndOpenApp() {
+        val occurrenceId = intent.getStringExtra(AlarmRuntime.EXTRA_OCCURRENCE_ID) ?: run {
+            finish()
+            return
+        }
+        val wasCurrent = ringingSessionStore.runIfCurrent(occurrenceId) {
+            runCatching {
+                com.joon.ringout.data.alarmoccurrence.AndroidAlarmOccurrenceRuntime.get(applicationContext)
+                    .recordDismissal(occurrenceId, System.currentTimeMillis())
+            }.onFailure { android.util.Log.e("AlarmOccurrence", "Could not record dismissal", it) }
+            true
+        } == true
+        if (!wasCurrent) {
+            finish()
+            return
+        }
+        startService(Intent(this, AlarmRingingService::class.java).apply {
+            action = AlarmRuntime.ACTION_STOP
+            putExtra(AlarmRuntime.EXTRA_OCCURRENCE_ID, occurrenceId)
+        })
+        isStopHandled = true
+        openAppAndFinish()
+    }
+
+    private fun stopAuthenticatedAlarmAndOpenApp() {
         if (isStopHandled) return
         isDismissRequested = true
         if (!applicationContext.hasMissionFineLocationPermission()) {
@@ -188,6 +252,10 @@ class AlarmRingingActivity : ComponentActivity() {
                 "이미 진행 중인 미션이 있어 기존 제한시간을 유지합니다.",
             )
         }
+        openAppAndFinish()
+    }
+
+    private fun openAppAndFinish() {
         packageManager.getLaunchIntentForPackage(packageName)?.let { launchIntent ->
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             startActivity(launchIntent)

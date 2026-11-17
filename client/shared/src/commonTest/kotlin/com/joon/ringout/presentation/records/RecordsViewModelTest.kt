@@ -2,6 +2,7 @@ package com.joon.ringout.presentation.records
 
 import com.joon.ringout.domain.alarmactivity.AlarmActivitySummary
 import com.joon.ringout.domain.alarmactivity.AlarmActivityRepository
+import com.joon.ringout.domain.alarmoccurrence.AlarmOccurrenceMonthLoader
 
 import com.joon.ringout.domain.missionhistory.AlarmUsageRecord
 import com.joon.ringout.domain.missionhistory.toAlarmUsageRecord
@@ -11,10 +12,15 @@ import com.joon.ringout.domain.missionhistory.MissionHistoryEntry
 import com.joon.ringout.domain.missionhistory.MissionHistoryRepository
 import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
+import com.joon.ringout.domain.missionhistory.RecordsHistoryRepository
+import com.joon.ringout.domain.missionhistory.RecordsHistorySnapshot
+import com.joon.ringout.domain.missionhistory.yearMonth
 import com.joon.ringout.domain.missionhistory.weekDates
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -698,6 +704,116 @@ class RecordsViewModelTest {
         assertEquals(1, viewModel.uiState.value.records.size)
         assertEquals(today, viewModel.uiState.value.today)
         assertEquals(today, viewModel.uiState.value.weekDays.single { it.isToday }.date)
+    }
+
+    @Test
+    fun `연도가 바뀌기 전에는 미래 월을 요청하지 않고 새해에 다시 열면 두 달을 확인한다`() = runTest {
+        var today = MissionDate.parse("2026-12-31")
+        val requested = mutableListOf<MissionYearMonth>()
+        val viewModel = RecordsViewModel(
+            getRecordsHistory = GetRecordsHistory(RecordsRepository()),
+            initialDate = today,
+            currentDate = { today },
+            coroutineScope = backgroundScope,
+            monthLoader = AlarmOccurrenceMonthLoader {
+                requested += it
+                true
+            },
+            currentCacheMonth = { today.yearMonth },
+        )
+        viewModel.refresh()
+        runCurrent()
+        assertEquals(listOf(MissionYearMonth(2026, 12)), requested)
+
+        today = MissionDate.parse("2027-01-01")
+        viewModel.refresh()
+        runCurrent()
+
+        assertEquals(
+            listOf(MissionYearMonth(2026, 12), MissionYearMonth(2026, 12), MissionYearMonth(2027, 1)),
+            requested,
+        )
+    }
+
+    @Test
+    fun `두 달에 걸친 주에서 실패한 월은 다른 월을 기다리지 않고 다시 시도할 수 있다`() = runTest {
+        val today = MissionDate.parse("2027-01-01")
+        val december = MissionYearMonth(2026, 12)
+        val january = today.yearMonth
+        val januaryLoad = CompletableDeferred<Boolean>()
+        val requests = mutableListOf<MissionYearMonth>()
+        val viewModel = RecordsViewModel(
+            getRecordsHistory = GetRecordsHistory(RecordsRepository(listOf(entry(today.iso8601)))),
+            initialDate = today,
+            coroutineScope = backgroundScope,
+            monthLoader = AlarmOccurrenceMonthLoader { month ->
+                requests += month
+                if (month == january) januaryLoad.await() else requests.count { it == december } == 2
+            },
+            currentCacheMonth = { january },
+        )
+        viewModel.refresh()
+        runCurrent()
+
+        assertNotNull(viewModel.uiState.value.weekCacheErrorMessage)
+        assertEquals(1, viewModel.uiState.value.records.size)
+        assertNull(viewModel.uiState.value.activitySummary.ringingCount)
+
+        viewModel.retry()
+        runCurrent()
+        januaryLoad.complete(true)
+        runCurrent()
+
+        assertEquals(listOf(december, january, december), requests)
+        assertNull(viewModel.uiState.value.weekCacheErrorMessage)
+        assertEquals(1, viewModel.uiState.value.records.size)
+    }
+
+    @Test
+    fun `월 달력을 열어 둔 상태에서 캐시 기록과 울림 횟수가 갱신된다`() = runTest {
+        val today = MissionDate.parse("2026-09-28")
+        val records = MutableStateFlow(RecordsHistorySnapshot(emptyList()))
+        val getRecordsHistory = GetRecordsHistory(
+            RecordsRepository(),
+            object : RecordsHistoryRepository {
+                override fun observe(dates: List<MissionDate>) = records.map { snapshot ->
+                    RecordsHistorySnapshot(
+                        snapshot.records.filter { it.date in dates },
+                        snapshot.summaries.filterKeys { it in dates },
+                    )
+                }
+            },
+        )
+        val requested = mutableListOf<MissionYearMonth>()
+        val viewModel = RecordsViewModel(
+            getRecordsHistory = getRecordsHistory,
+            initialDate = today,
+            coroutineScope = backgroundScope,
+            monthLoader = AlarmOccurrenceMonthLoader { month ->
+                requested += month
+                requested.size > 1
+            },
+            currentCacheMonth = { today.yearMonth },
+        )
+        viewModel.openCalendar()
+        runCurrent()
+        assertNotNull(viewModel.uiState.value.calendarCacheErrorMessage)
+        assertNull(viewModel.uiState.value.calendarDays.filterNotNull().single { it.date == today }.ringingCount)
+
+        viewModel.retryCalendar()
+        val ringing = AlarmUsageRecord(
+            key = "cached:first", date = today, result = MissionResult.SUCCESS,
+            ringingStartedAtEpochMillis = 1_000L,
+        )
+        records.value = RecordsHistorySnapshot(listOf(ringing), mapOf(today to AlarmActivitySummary(ringingCount = 1)))
+        runCurrent()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf(today.yearMonth, today.yearMonth), requested)
+        assertNull(state.calendarCacheErrorMessage)
+        val day = state.calendarDays.filterNotNull().single { it.date == today }
+        assertEquals(MissionResult.SUCCESS, day.result)
+        assertEquals(1, day.ringingCount)
     }
 }
 

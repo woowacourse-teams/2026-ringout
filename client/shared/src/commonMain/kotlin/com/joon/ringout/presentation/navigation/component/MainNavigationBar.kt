@@ -28,6 +28,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import com.joon.ringout.domain.room.RoomFeature
+import com.joon.ringout.presentation.navigation.visibleMainNavigationTabs
 import com.joon.ringout.presentation.navigation.MainNavigationTab
 import com.joon.ringout.ringoutColors
 import org.jetbrains.compose.resources.painterResource
@@ -43,6 +45,7 @@ internal fun MainNavigationBar(
     selectedTab: MainNavigationTab,
     onTabSelected: (MainNavigationTab) -> Unit,
     modifier: Modifier = Modifier,
+    roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) {
     Row(
         modifier = modifier
@@ -55,7 +58,7 @@ internal fun MainNavigationBar(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MainNavigationTab.entries.forEach { tab ->
+        visibleMainNavigationTabs(roomsEnabled).forEach { tab ->
             val selected = tab == selectedTab
             val interactionSource = remember(tab) {
                 MutableInteractionSource()

@@ -11,7 +11,7 @@ internal class PlayStoreUpdateChecker(
     private val activity: Activity,
     private val currentVersionCode: Int,
 ) {
-    private val appUpdateManager = AppUpdateManagerFactory.create(activity.applicationContext)
+    private val appUpdateManager by lazy { AppUpdateManagerFactory.create(activity.applicationContext) }
 
     fun check(onUpdateAvailable: () -> Unit) {
         appUpdateManager.appUpdateInfo
@@ -25,21 +25,22 @@ internal class PlayStoreUpdateChecker(
             }
     }
 
-    fun openStore() {
+    fun openStore(): Boolean {
         val packageName = activity.packageName
-        val marketIntent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse("market://details?id=$packageName"),
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try {
-            activity.startActivity(marketIntent)
-        } catch (_: ActivityNotFoundException) {
-            activity.startActivity(
-                Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://play.google.com/store/apps/details?id=$packageName"),
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
+        return tryOpen("market://details?id=$packageName") ||
+            tryOpen("https://play.google.com/store/apps/details?id=$packageName")
     }
+
+    private fun tryOpen(uri: String): Boolean =
+        try {
+            activity.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        } catch (_: ActivityNotFoundException) {
+            false
+        } catch (_: SecurityException) {
+            false
+        }
 }

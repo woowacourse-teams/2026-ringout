@@ -13,8 +13,7 @@ class DestinationSavedEventTest {
             requestId = 7L,
             destination = SavedDestination(
                 id = 42L,
-                name = "회사",
-                address = "서울특별시 중구 세종대로 110",
+                label = "회사",
                 latitude = 37.5665,
                 longitude = 126.978,
             ),

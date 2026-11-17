@@ -14,6 +14,9 @@ data class AlarmUsageRecord(
     /** Display time from the iOS schedule, not an observed ringing start. */
     val ringingScheduledAtEpochMillis: Long? = null,
     val scheduleVersion: Long = 1,
+    val serverOccurrenceId: String? = null,
+    val alarmTime: String? = null,
+    val ringingCount: Int = if (ringingStartedAtEpochMillis != null) 1 else 0,
 )
 
 /** Fallback for history sources without separate ringing events. */

@@ -14,7 +14,17 @@ interface AlarmDataSource {
 
     suspend fun replace(alarm: SavedAlarmSchedule)
 
+    suspend fun replaceUserAlarm(alarm: SavedAlarmSchedule, previous: SavedAlarmSchedule?) = replace(alarm)
+
+    suspend fun deleteUserAlarm(id: String): Boolean = delete(id)
+
     suspend fun setEnabled(id: String, enabled: Boolean): Boolean
+
+    suspend fun disableAll() {
+        getAll().forEach { alarm ->
+            check(setEnabled(alarm.request.id, false)) { "저장된 알람을 비활성화하지 못했습니다." }
+        }
+    }
 
     suspend fun delete(id: String): Boolean
 
@@ -23,6 +33,12 @@ interface AlarmDataSource {
         oldId: String,
         newId: String,
     ): Boolean = false
+
+    /** Keeps a marker on the new primary key until the native reservation is confirmed. */
+    suspend fun migrateIdForReservation(oldId: String, newId: String): Boolean =
+        migrateId(oldId, newId)
+
+    suspend fun completeReservationIdMigration(id: String): Boolean = true
 
     suspend fun hasStorageMigration(id: String): Boolean
 

@@ -12,6 +12,7 @@ class AppRouteTest {
         val routes = listOf<AppRoute>(
             AppRoute.Onboarding,
             AppRoute.Home,
+            AppRoute.Forest,
             AppRoute.Social,
             AppRoute.RoomCreate,
             AppRoute.RoomDetail("room/서울?name=러닝"),
@@ -19,6 +20,8 @@ class AppRouteTest {
             AppRoute.RoomActivity("41", "2026-10-07"),
             AppRoute.RoomMemberManagement("room/서울?name=러닝"),
             AppRoute.Records,
+            AppRoute.RecordsDetail("2026-09-30"),
+            AppRoute.RecordShare("2026-09-30", "group:서울/1", "history:42"),
             AppRoute.AddAlarm,
             AppRoute.EditAlarm(alarmId = "alarm/서울?time=07:30&label=\"출근\""),
             AppRoute.Destination(requestId = Long.MAX_VALUE),
@@ -29,6 +32,7 @@ class AppRouteTest {
             AppRoute.TermsAgreement,
             AppRoute.AlarmRinging(alarmId = "system-alarm-1"),
             AppRoute.ActiveAlarmTracking(occurrenceId = "alarm-1:retry-2"),
+            AppRoute.Arrival(occurrenceId = "alarm-1:retry-2"),
             AppRoute.Home,
             AppRoute.EditAlarm(alarmId = "alarm-2"),
         )
@@ -49,6 +53,9 @@ class AppRouteTest {
             AppRoute.Destination.serializer(),
             AppRoute.AlarmRinging.serializer(),
             AppRoute.ActiveAlarmTracking.serializer(),
+            AppRoute.Arrival.serializer(),
+            AppRoute.RecordsDetail.serializer(),
+            AppRoute.RecordShare.serializer(),
         )
 
         serializers.forEach { serializer ->

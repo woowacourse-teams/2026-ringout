@@ -19,6 +19,14 @@ class ActiveAlarmMissionStore(context: Context) {
             ?.mission
     }
 
+    /** Tracking and a pending retry still require user access; terminal cleanup does not. */
+    fun hasPendingMission(): Boolean = synchronized(ActiveAlarmMissionStoreLock) {
+        when (readStoredMissionLocked()?.phase) {
+            AlarmMissionPhase.Tracking, AlarmMissionPhase.RetryPendingRing -> true
+            else -> false
+        }
+    }
+
     internal fun readStoredMission(): StoredAlarmMission? =
         synchronized(ActiveAlarmMissionStoreLock) {
             readStoredMissionLocked()

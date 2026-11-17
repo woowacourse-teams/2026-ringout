@@ -197,7 +197,8 @@ Firebase Analytics는 DebugView를 켜고 실제 흐름에서 최소한 다음 �
 - `destination_alarm_ringing_started`
 - `destination_mission_started`
 - `destination_mission_completed` 또는 실패·강제 종료 이벤트
-- `force_end_hold_started`, `force_end_hold_cancelled`, `force_end_hold_completed`
+
+`force_end_hold_*`는 #687 이전 버전에서만 발생하는 구버전 이벤트이므로 이 버전의 필수 확인 항목에서는 제외한다.
 
 ```bash
 adb shell setprop debug.firebase.analytics.app com.joon.ringout

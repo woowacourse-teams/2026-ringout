@@ -84,11 +84,19 @@ jobs:
     environment: ${{ github.ref_name == 'main' && 'production' || 'internal' }}
     env:
       RINGOUT_API_BASE_URL: ${{ vars.RINGOUT_API_BASE_URL || (github.ref_name == 'main' && 'https://api.ringout.my' || 'https://dev-api.ringout.my') }}
+      RINGOUT_FOREST_WEB_URL: ${{ vars.RINGOUT_FOREST_WEB_URL }}
     steps:
       - name: Checkout the triggering commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Validate production forest URL
+        if: github.ref == 'refs/heads/main'
+        run: |
+          if [[ ! "$RINGOUT_FOREST_WEB_URL" =~ ^https://[^[:space:]]+$ ]]; then
+            echo '::error::Set RINGOUT_FOREST_WEB_URL to the production HTTPS URL in this GitHub Environment.'
+            exit 1
+          fi
       - name: Validate production API and prepare reserved build number
         if: github.ref == 'refs/heads/main'
         run: python3 ci/production_config.py android

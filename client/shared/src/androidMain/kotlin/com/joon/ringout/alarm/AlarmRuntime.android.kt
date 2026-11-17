@@ -23,6 +23,8 @@ internal object AlarmRuntime {
     const val ACTION_STOP = "com.joon.ringout.action.STOP_ALARM"
 
     const val EXTRA_ALARM_ID = "alarm_id"
+    const val EXTRA_REMOTE_ALARM_ID = "remote_alarm_id"
+    const val EXTRA_OWNER_ACCOUNT_ID = "owner_account_id"
     const val EXTRA_OCCURRENCE_ID = "occurrence_id"
     const val EXTRA_RETRY_SOURCE_OCCURRENCE_ID = "retry_source_occurrence_id"
     const val EXTRA_RETRY_ATTEMPT = "retry_attempt"
@@ -43,11 +45,14 @@ internal object AlarmRuntime {
 internal fun Intent.putAlarmExtras(request: AlarmScheduleRequest): Intent = apply {
     data = Uri.parse("ringout://alarm/${Uri.encode(request.id)}")
     putExtra(AlarmRuntime.EXTRA_ALARM_ID, request.id)
+    putExtra(AlarmRuntime.EXTRA_REMOTE_ALARM_ID, request.remoteAlarmId)
+    removeExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID)
+    request.ownerAccountId?.let { putExtra(AlarmRuntime.EXTRA_OWNER_ACCOUNT_ID, it) }
     putExtra(AlarmRuntime.EXTRA_ALARM_TIME, request.time)
     putExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, request.scheduleVersion)
     putExtra(AlarmRuntime.EXTRA_LIMIT_MINUTES, request.limitMinutes)
     putExtra(AlarmRuntime.EXTRA_TARGET_DISTANCE_KM, request.targetDistanceKm)
-    putExtra(AlarmRuntime.EXTRA_DESTINATION_NAME, request.destinationName)
+    putExtra(AlarmRuntime.EXTRA_DESTINATION_NAME, request.destinationLabel)
     putExtra(AlarmRuntime.EXTRA_DESTINATION_LATITUDE, request.destinationLatitude)
     putExtra(AlarmRuntime.EXTRA_DESTINATION_LONGITUDE, request.destinationLongitude)
     putExtra(AlarmRuntime.EXTRA_ARRIVAL_RADIUS_METERS, DefaultArrivalRadiusMeters)
@@ -55,6 +60,25 @@ internal fun Intent.putAlarmExtras(request: AlarmScheduleRequest): Intent = appl
     putExtra(AlarmRuntime.EXTRA_SCHEDULE_FINGERPRINT, request.scheduleFingerprint())
     removeExtra(AlarmRuntime.EXTRA_SOUND_URI)
     request.alarmSoundUri?.let { putExtra(AlarmRuntime.EXTRA_SOUND_URI, it) }
+}
+
+/** Checks fields available in old broadcast payloads when their pre-v13 fingerprint has changed. */
+internal fun Intent.matchesLegacyAlarmScheduleSnapshot(request: AlarmScheduleRequest): Boolean {
+    val intentDestinationLabel = getStringExtra(AlarmRuntime.EXTRA_DESTINATION_NAME)
+    val destinationLabelMatches = intentDestinationLabel == request.destinationLabel ||
+        (intentDestinationLabel.isNullOrBlank() && request.destinationLabel in LegacyDestinationLabels)
+    val hasSoundUri = getBooleanExtra(AlarmRuntime.EXTRA_HAS_SOUND_URI, false)
+    val soundUri = if (hasSoundUri) getStringExtra(AlarmRuntime.EXTRA_SOUND_URI) else null
+
+    return getStringExtra(AlarmRuntime.EXTRA_ALARM_ID) == request.id &&
+        getStringExtra(AlarmRuntime.EXTRA_ALARM_TIME) == request.time &&
+        getLongExtra(AlarmRuntime.EXTRA_SCHEDULE_VERSION, 1L) == request.scheduleVersion &&
+        getIntExtra(AlarmRuntime.EXTRA_LIMIT_MINUTES, Int.MIN_VALUE) == request.limitMinutes &&
+        getDoubleExtra(AlarmRuntime.EXTRA_TARGET_DISTANCE_KM, Double.NaN) == request.targetDistanceKm &&
+        destinationLabelMatches &&
+        getDoubleExtra(AlarmRuntime.EXTRA_DESTINATION_LATITUDE, Double.NaN) == request.destinationLatitude &&
+        getDoubleExtra(AlarmRuntime.EXTRA_DESTINATION_LONGITUDE, Double.NaN) == request.destinationLongitude &&
+        soundUri == request.alarmSoundUri
 }
 
 internal fun AlarmScheduleRequest.scheduleFingerprint(): String {
@@ -70,8 +94,7 @@ internal fun AlarmScheduleRequest.scheduleFingerprint(): String {
         canonicalDays.forEach { day -> appendFingerprintPart(day) }
         appendFingerprintPart(repeatEnabled.toString())
         appendFingerprintPart(limitMinutes.toString())
-        appendFingerprintPart(destinationName)
-        appendFingerprintPart(destinationAddress)
+        appendFingerprintPart(destinationLabel)
         appendFingerprintPart(destinationLatitude.fingerprintBits().toString())
         appendFingerprintPart(destinationLongitude.fingerprintBits().toString())
         appendFingerprintPart(targetDistanceKm.fingerprintBits().toString())
@@ -113,16 +136,16 @@ class AlarmReceiver : BroadcastReceiver() {
                         expectedFingerprint = sourceIntent.getStringExtra(
                             AlarmRuntime.EXTRA_SCHEDULE_FINGERPRINT,
                         ),
+                        legacySnapshotMatches = sourceIntent::matchesLegacyAlarmScheduleSnapshot,
                     ) { request ->
+                        val triggerAt = sourceIntent.getLongExtra(
+                            AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS,
+                            System.currentTimeMillis(),
+                        )
+                        val occurrenceId = "$alarmId:$triggerAt"
                         val runtimeIntent = sourceIntent.apply {
                             putAlarmExtras(request)
-                            putExtra(
-                                AlarmRuntime.EXTRA_OCCURRENCE_ID,
-                                "$alarmId:${sourceIntent.getLongExtra(
-                                    AlarmRuntime.EXTRA_TRIGGER_AT_EPOCH_MILLIS,
-                                    System.currentTimeMillis(),
-                                )}",
-                            )
+                            putExtra(AlarmRuntime.EXTRA_OCCURRENCE_ID, occurrenceId)
                             putExtra(AlarmRuntime.EXTRA_RETRY_ATTEMPT, 0)
                         }
                         withContext(Dispatchers.Main.immediate) {
@@ -133,7 +156,13 @@ class AlarmReceiver : BroadcastReceiver() {
                                 action = AlarmRuntime.ACTION_RING
                                 replaceExtras(runtimeIntent)
                             }
-                            applicationContext.startForegroundService(serviceIntent)
+                            AlarmRingingRuntime.markStarting(alarmId, occurrenceId)
+                            try {
+                                applicationContext.startForegroundService(serviceIntent)
+                            } catch (error: Exception) {
+                                AlarmRingingRuntime.clearStarting(occurrenceId)
+                                throw error
+                            }
                             if (Settings.canDrawOverlays(applicationContext)) {
                                 runCatching {
                                     applicationContext.startActivity(
@@ -212,6 +241,7 @@ internal fun scheduleAlarmRescheduleRetry(
     context: Context,
     attempt: Int,
 ) {
+    if (isAlarmSchedulingBlocked(context)) return
     val retryDelayMillis = AlarmRescheduleRetryDelaysMillis.getOrNull(attempt - 1)
     if (retryDelayMillis == null) {
         Log.e(AlarmPersistenceLogTag, "알람 재등록 재시도 횟수를 초과했습니다.")
@@ -283,3 +313,4 @@ private val AlarmDayOrder = mapOf(
     "토" to 6,
     "일" to 7,
 )
+private val LegacyDestinationLabels = setOf("주소 정보 없음")

@@ -18,7 +18,7 @@ internal fun TermsAgreementRoute(
     signupViewModel: SignupViewModel,
     isActive: Boolean,
     onMissingSignup: () -> Unit,
-    onSignupCompleted: () -> Boolean,
+    onSignupCompleted: (Long, Long) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val signupUiState = signupViewModel.uiState
@@ -27,10 +27,20 @@ internal fun TermsAgreementRoute(
     }
     if (isActive && signupUiState.hasPendingSignup) lastPendingSignup = signupUiState
     val completedEventId = signupUiState.completedEventId
-    LaunchedEffect(signupViewModel, signupUiState.hasPendingSignup, completedEventId, isActive) {
+    val authFlowAttemptId = signupUiState.authFlowAttemptId
+    LaunchedEffect(
+        signupViewModel,
+        signupUiState.hasPendingSignup,
+        authFlowAttemptId,
+        completedEventId,
+        isActive,
+    ) {
         if (!isActive) return@LaunchedEffect
         if (completedEventId != null) {
-            if (onSignupCompleted()) {
+            if (
+                authFlowAttemptId != null &&
+                onSignupCompleted(authFlowAttemptId, completedEventId)
+            ) {
                 signupViewModel.consumeCompletedEvent(completedEventId)
             }
         } else if (!signupUiState.hasPendingSignup) {

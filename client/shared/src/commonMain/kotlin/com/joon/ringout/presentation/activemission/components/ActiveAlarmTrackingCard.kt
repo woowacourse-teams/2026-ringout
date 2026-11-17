@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,14 +30,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.joon.ringout.RingoutTheme
 import com.joon.ringout.ThemeMode
+import ringout.shared.generated.resources.Res
+import ringout.shared.generated.resources.force_end_mission_button
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 internal fun ActiveAlarmTrackingCard(
     destinationName: String,
     countdown: String,
-    onForceEndHoldStarted: () -> Unit,
-    onForceEndHoldCancelled: (holdDurationMillis: Long) -> Unit,
-    onForceEndHoldComplete: (holdDurationMillis: Long) -> Unit,
+    onForceEndClick: () -> Unit,
     modifier: Modifier = Modifier,
     isForceEndEnabled: Boolean = true,
 ) {
@@ -134,12 +138,29 @@ internal fun ActiveAlarmTrackingCard(
                 )
             }
 
-            ForceEndHoldButton(
-                onHoldStarted = onForceEndHoldStarted,
-                onHoldCancelled = onForceEndHoldCancelled,
-                onHoldComplete = onForceEndHoldComplete,
+            Button(
+                onClick = onForceEndClick,
                 enabled = isForceEndEnabled,
-            )
+                modifier = Modifier
+                    .width(160.dp)
+                    .height(48.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.panelContent,
+                    contentColor = colors.screenChrome,
+                    disabledContainerColor = colors.panelContent.copy(alpha = 0.6f),
+                    disabledContentColor = colors.screenChrome.copy(alpha = 0.6f),
+                ),
+            ) {
+                Text(
+                    text = stringResource(Res.string.force_end_mission_button),
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontSize = 14.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                    ),
+                )
+            }
         }
     }
 }
@@ -151,9 +172,7 @@ private fun ActiveAlarmTrackingCardPreview() {
         ActiveAlarmTrackingCard(
             destinationName = "스터디카페",
             countdown = "11:42",
-            onForceEndHoldStarted = {},
-            onForceEndHoldCancelled = {},
-            onForceEndHoldComplete = {},
+            onForceEndClick = {},
         )
     }
 }
