@@ -33,6 +33,6 @@ internal fun AlarmSetupSectionLabel(
 @Composable
 private fun AlarmSetupSectionLabelPreview() {
     RingoutTheme {
-        AlarmSetupSectionLabel("반복 알람 간격", alarmSetupColors().primaryText)
+        AlarmSetupSectionLabel("알람 반복 간격", alarmSetupColors().primaryText)
     }
 }
