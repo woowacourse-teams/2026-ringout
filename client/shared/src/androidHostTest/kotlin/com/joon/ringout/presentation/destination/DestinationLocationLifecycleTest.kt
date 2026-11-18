@@ -12,10 +12,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class DestinationLocationLifecycleTest {
+class DestinationLocationLifecycleTest : LifecycleOwner {
+    override val lifecycle = LifecycleRegistry.createUnsafe(this)
+
     @Test
     fun `재진입 화면은 전환이 끝나야 위치 조회를 시작한다`() = runTest {
-        val lifecycle = createLifecycle()
         repeat(2) {
             lifecycle.currentState = Lifecycle.State.STARTED
             val ready = async { lifecycle.awaitDestinationLocationReady() }
@@ -29,14 +30,12 @@ class DestinationLocationLifecycleTest {
 
     @Test
     fun `이미 활성화된 화면은 즉시 위치를 조회한다`() = runTest {
-        val lifecycle = createLifecycle()
         lifecycle.currentState = Lifecycle.State.RESUMED
         assertTrue(lifecycle.awaitDestinationLocationReady())
     }
 
     @Test
     fun `활성화 전에 화면이 제거되면 위치를 조회하지 않는다`() = runTest {
-        val lifecycle = createLifecycle()
         lifecycle.currentState = Lifecycle.State.STARTED
         val ready = async { lifecycle.awaitDestinationLocationReady() }
         runCurrent()
@@ -46,7 +45,6 @@ class DestinationLocationLifecycleTest {
 
     @Test
     fun `사용자 선택으로 대기를 취소하면 활성화되어도 요청을 재개하지 않는다`() = runTest {
-        val lifecycle = createLifecycle()
         lifecycle.currentState = Lifecycle.State.STARTED
         val ready = async { lifecycle.awaitDestinationLocationReady() }
         runCurrent()
@@ -54,12 +52,5 @@ class DestinationLocationLifecycleTest {
         lifecycle.currentState = Lifecycle.State.RESUMED
         runCurrent()
         assertTrue(ready.isCancelled)
-    }
-
-    private fun createLifecycle(): LifecycleRegistry {
-        val owner = object : LifecycleOwner {
-            override val lifecycle: LifecycleRegistry = LifecycleRegistry.createUnsafe(this)
-        }
-        return owner.lifecycle
     }
 }
