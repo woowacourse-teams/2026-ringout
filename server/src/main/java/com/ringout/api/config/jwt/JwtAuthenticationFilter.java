@@ -23,6 +23,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private final JwtProvider jwtProvider;
 
   @Override
+  protected boolean shouldNotFilter(HttpServletRequest request) {
+    String path = request.getRequestURI().substring(request.getContextPath().length());
+    return path.equals("/api/v1/admin") || path.startsWith("/api/v1/admin/");
+  }
+
+  @Override
   protected void doFilterInternal(
       HttpServletRequest request,
       HttpServletResponse response,

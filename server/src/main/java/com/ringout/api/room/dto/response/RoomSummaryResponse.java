@@ -1,10 +1,7 @@
 package com.ringout.api.room.dto.response;
 
-import com.ringout.api.room.domain.Room;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.Comparator;
 import java.util.List;
 
 public record RoomSummaryResponse(
@@ -18,28 +15,4 @@ public record RoomSummaryResponse(
     @Schema(description = "현재 인증 사용자의 참여 여부", example = "true") Boolean isJoined,
     @Schema(description = "방 최초 생성 일시 (ISO 8601)", example = "2026-09-20T10:30:00", format = "date-time") LocalDateTime createdAt
 ) {
-
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
-
-    public static RoomSummaryResponse from(
-        Room room,
-        String imageUrl,
-        int memberCount,
-        boolean isJoined
-    ) {
-        return new RoomSummaryResponse(
-            room.getId(),
-            room.getName(),
-            room.getDescription(),
-            imageUrl,
-            room.getActivityDays().stream()
-                .sorted(Comparator.comparingInt(Enum::ordinal))
-                .map(Enum::name)
-                .toList(),
-            room.getActivityTime().format(TIME_FORMATTER),
-            memberCount,
-            isJoined,
-            room.getCreated_at()
-        );
-    }
 }

@@ -8,7 +8,6 @@ on:
       - "!server/docs/**"
       - ".github/workflows/server-ci.yml"
       - ".github/workflows/server-cd.yml"
-      - ".github/workflows/server-dev-cd.yml"
   push:
     branches: [develop, main]
     paths:
@@ -16,7 +15,6 @@ on:
       - "!server/docs/**"
       - ".github/workflows/server-ci.yml"
       - ".github/workflows/server-cd.yml"
-      - ".github/workflows/server-dev-cd.yml"
 
 concurrency:
   group: server-ci-${{ github.workflow }}-${{ github.ref }}
@@ -148,6 +146,8 @@ jobs:
             --network ringout-smoke \
             --publish 127.0.0.1:8080:8080 \
             --env-file .env \
+            --env JAVA_TOOL_OPTIONS=-javaagent:/otel/opentelemetry-javaagent.jar \
+            --env OTEL_SDK_DISABLED=true \
             ringout-server:${{ github.sha }}
 
       - name: Smoke test

@@ -5,10 +5,10 @@ import com.ringout.api.alarmoccurrence.domain.AlarmRinging;
 import com.ringout.api.alarmoccurrence.domain.OccurrenceEndType;
 import com.ringout.api.alarmoccurrence.dto.request.AlarmOccurrenceEventRequest;
 import com.ringout.api.alarmoccurrence.dto.request.AlarmOccurrenceStartRequest;
+import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrenceDayResponse;
 import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrenceDetailResponse;
 import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrenceResponse;
 import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrenceStartResult;
-import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrenceSummaryResponse;
 import com.ringout.api.alarmoccurrence.dto.response.AlarmOccurrencesResponse;
 import com.ringout.api.alarmoccurrence.repository.AlarmOccurrenceRepository;
 import com.ringout.api.alarmoccurrence.repository.AlarmRingingRepository;
@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -49,20 +50,29 @@ public class AlarmOccurrenceService {
     private final Clock clock;
 
     @Transactional(readOnly = true)
-    public AlarmOccurrencesResponse getAlarmOccurrences(Long userId, LocalDate date) {
+    public AlarmOccurrencesResponse getAlarmOccurrences(Long userId, YearMonth month) {
         List<AlarmOccurrence> alarmOccurrences = alarmOccurrenceRepository.findActiveByUserIdAndStartedAtBetween(
-            userId, date.atStartOfDay(), date.plusDays(1).atStartOfDay());
+            userId, month.atDay(1).atStartOfDay(), month.plusMonths(1).atDay(1).atStartOfDay());
+        Map<LocalDate, List<AlarmOccurrenceResponse>> occurrencesByDate = groupByStartedDate(alarmOccurrences);
+
+        List<AlarmOccurrenceDayResponse> days = month.atDay(1).datesUntil(month.plusMonths(1).atDay(1))
+            .map(date -> new AlarmOccurrenceDayResponse(date, occurrencesByDate.getOrDefault(date, List.of())))
+            .toList();
+        return new AlarmOccurrencesResponse(month, days);
+    }
+
+    private Map<LocalDate, List<AlarmOccurrenceResponse>> groupByStartedDate(List<AlarmOccurrence> alarmOccurrences) {
         if (alarmOccurrences.isEmpty()) {
-            return new AlarmOccurrencesResponse(date, new AlarmOccurrenceSummaryResponse(0, 0), List.of());
+            return Map.of();
         }
 
         Map<Long, List<AlarmRinging>> ringingsByOccurrenceId = findRingingsByOccurrenceId(alarmOccurrences);
-        List<AlarmOccurrenceResponse> occurrences = alarmOccurrences.stream()
-            .map(alarmOccurrence -> AlarmOccurrenceResponse.of(alarmOccurrence,
-                ringingsByOccurrenceId.getOrDefault(alarmOccurrence.getId(), List.of()), clock.getZone()))
-            .toList();
-
-        return new AlarmOccurrencesResponse(date, summarize(occurrences), occurrences);
+        return alarmOccurrences.stream()
+            .collect(Collectors.groupingBy(
+                alarmOccurrence -> alarmOccurrence.getStartedAt().toLocalDate(),
+                Collectors.mapping(alarmOccurrence -> AlarmOccurrenceResponse.of(alarmOccurrence,
+                        ringingsByOccurrenceId.getOrDefault(alarmOccurrence.getId(), List.of()), clock.getZone()),
+                    Collectors.toList())));
     }
 
     @Transactional
@@ -140,18 +150,6 @@ public class AlarmOccurrenceService {
 
         return alarmRingingRepository.findActiveByAlarmOccurrenceIds(alarmOccurrenceIds).stream()
             .collect(Collectors.groupingBy(alarmRinging -> alarmRinging.getAlarmOccurrence().getId()));
-    }
-
-    private AlarmOccurrenceSummaryResponse summarize(List<AlarmOccurrenceResponse> occurrences) {
-        int alarmCount = (int) occurrences.stream()
-            .map(AlarmOccurrenceResponse::alarmId)
-            .distinct()
-            .count();
-        int ringingCount = occurrences.stream()
-            .mapToInt(occurrence -> occurrence.ringings().size())
-            .sum();
-
-        return new AlarmOccurrenceSummaryResponse(alarmCount, ringingCount);
     }
 
     private AlarmOccurrenceDetailResponse toDetailResponse(AlarmOccurrence alarmOccurrence) {
