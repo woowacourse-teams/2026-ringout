@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+
+# Keep environment values out of version control.
+.env
+.env*

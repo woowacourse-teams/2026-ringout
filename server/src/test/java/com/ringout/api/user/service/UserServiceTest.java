@@ -2,6 +2,7 @@ package com.ringout.api.user.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.file.service.ImageFileService;
+import com.ringout.api.room.service.RoomListChangedEvent;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.dto.request.UpdateNicknameRequest;
 import com.ringout.api.user.dto.response.UpdateNicknameResponse;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,11 +42,14 @@ class UserServiceTest {
     @Mock
     private ImageFileService imageFileService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, userWithdrawalRepository, imageFileService);
+        userService = new UserService(userRepository, userWithdrawalRepository, imageFileService, eventPublisher);
     }
 
     @Test
@@ -154,6 +160,7 @@ class UserServiceTest {
 
         verify(userWithdrawalRepository).deleteAllByUserId(userId);
         verify(imageFileService).deleteAllByIds(List.of(10L));
+        verify(eventPublisher).publishEvent(any(RoomListChangedEvent.class));
     }
 
     @Test

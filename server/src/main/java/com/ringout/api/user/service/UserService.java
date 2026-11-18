@@ -4,6 +4,7 @@ import com.ringout.api.auth.social.SocialProvider;
 import com.ringout.api.common.response.error.GeneralException;
 import com.ringout.api.file.domain.ImageFile;
 import com.ringout.api.file.service.ImageFileService;
+import com.ringout.api.room.service.RoomListChangedEvent;
 import com.ringout.api.user.domain.User;
 import com.ringout.api.user.dto.request.UpdateNicknameRequest;
 import com.ringout.api.user.dto.response.ProfileImageResponse;
@@ -16,6 +17,7 @@ import java.net.URI;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,6 +29,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserWithdrawalRepository userWithdrawalRepository;
     private final ImageFileService imageFileService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${app.file.image.profile-directory}")
     private String profileImageDirectory;
@@ -80,6 +83,8 @@ public class UserService {
 
         var imageFileIds = userWithdrawalRepository.findOwnedImageFileIds(userId);
         userWithdrawalRepository.deleteAllByUserId(userId);
+        // 방장이던 방 삭제와 참여하던 방 인원 수 변경이 SQL로 직접 일어나므로 활성 모임방 캐시도 비운다.
+        eventPublisher.publishEvent(new RoomListChangedEvent());
         var orphanedImageFileIds = userWithdrawalRepository.findOrphanedImageFileIds(imageFileIds);
         imageFileService.deleteAllByIds(orphanedImageFileIds);
     }

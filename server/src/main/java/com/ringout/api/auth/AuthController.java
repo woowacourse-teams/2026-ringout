@@ -7,11 +7,18 @@ import com.ringout.api.auth.dto.ReissueResponse;
 import com.ringout.api.auth.dto.SignupResponse;
 import com.ringout.api.auth.reason.AuthErrorReason;
 import com.ringout.api.auth.social.SocialProvider;
+import com.ringout.api.auth.status.AuthErrorStatus;
 import com.ringout.api.auth.status.AuthSuccessStatus;
 import com.ringout.api.common.response.CustomResponse;
+import com.ringout.api.common.response.error.GeneralException;
+import com.ringout.api.config.jwt.JwtProvider;
+import com.ringout.api.config.jwt.RedisTokenBlacklist;
 import com.ringout.api.terms.dto.request.TermsAgreeRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import java.time.Instant;
 import java.util.Locale;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,8 +35,17 @@ public class AuthController implements AuthControllerApi {
 
     private final AuthService authService;
 
-    public AuthController(AuthService authService) {
+    private final JwtProvider jwtProvider;
+    private final Optional<RedisTokenBlacklist> tokenBlacklist;
+
+    public AuthController(
+        AuthService authService,
+        JwtProvider jwtProvider,
+        Optional<RedisTokenBlacklist> tokenBlacklist
+    ) {
         this.authService = authService;
+        this.jwtProvider = jwtProvider;
+        this.tokenBlacklist = tokenBlacklist;
     }
 
     @Override
@@ -82,6 +98,23 @@ public class AuthController implements AuthControllerApi {
 
         return ResponseEntity.status(AuthSuccessStatus.TOKEN_REISSUED.getHttpStatus())
             .body(CustomResponse.onSuccess(AuthSuccessStatus.TOKEN_REISSUED, response));
+    }
+
+    @PostMapping("/revoke")
+    public ResponseEntity<Void> revoke(@Valid @RequestBody RevokeRequest request) {
+        if (tokenBlacklist.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        String token = request.token();
+        Instant expiresAt = jwtProvider.getRevocableTokenExpiration(token);
+        if (expiresAt == null) {
+            throw new GeneralException(AuthErrorStatus.UNAUTHORIZED);
+        }
+        tokenBlacklist.get().revoke(token, expiresAt);
+        return ResponseEntity.noContent().build();
+    }
+
+    public record RevokeRequest(@NotBlank String token) {
     }
 
     private String resolveBearerToken(String authorization) {
