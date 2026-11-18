@@ -4,6 +4,7 @@ import com.joon.ringout.data.alarm.AlarmDataSource
 import com.joon.ringout.data.alarm.validateForStorage
 import com.joon.ringout.platform.IosAlarmAuthorizationState
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -21,7 +22,13 @@ internal class IosAlarmStore(
         IosAlarmStoreMutationMutex.withLock {
             request.validateForStorage()
             val previous = dataSource.getById(request.id)
-            val scheduleRequest = request.withScheduleVersion(previous?.request)
+            val ownerPreservingRequest = request.copy(
+                ownerAccountId = previous?.request?.ownerAccountId ?: request.ownerAccountId,
+                remoteAlarmId = previous?.request?.remoteAlarmId
+                    ?: if (previous == null) newAlarmId() else null,
+                pendingReservationId = previous?.request?.pendingReservationId,
+            )
+            val scheduleRequest = ownerPreservingRequest.withScheduleVersion(previous?.request)
             // Each native configuration needs an immutable mission snapshot, including
             // changes that leave the calendar time/weekday schedule unchanged.
             val versionedRequest = if (previous != null &&
@@ -79,7 +86,7 @@ internal class IosAlarmStore(
                 throw error
             }
             try {
-                dataSource.replace(replacement)
+                dataSource.replaceUserAlarm(replacement, previous)
             } catch (error: Exception) {
                 withContext(NonCancellable) {
                     scheduler.cancelBestEffort(request.id)
@@ -186,7 +193,7 @@ internal class IosAlarmStore(
             )
         }
         val deleted = try {
-            dataSource.delete(alarmId)
+            dataSource.deleteUserAlarm(alarmId)
         } catch (error: Exception) {
             withContext(NonCancellable) {
                 previous?.let { alarm ->
@@ -221,6 +228,49 @@ internal class IosAlarmStore(
             }
             error("저장된 알람을 삭제하지 못했습니다.")
         }
+    }
+
+    suspend fun cancelAllForLogout(
+        isValidNativeId: (String) -> Boolean = { true },
+    ): Unit = IosAlarmStoreMutationMutex.withLock {
+        val alarms = dataSource.getAll()
+        dataSource.disableAll()
+        var firstFailure: Exception? = null
+        try {
+            recoveryInbox?.let { inbox ->
+                val result = awaitSingleCallback<IosAlarmOperationResult> { callback ->
+                    inbox.suppressFutureReservationsForLogout(callback)
+                }
+                result.requireAlarmKitSuccess("알람 복구 예약을 차단하지 못했습니다.")
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            firstFailure = error
+        }
+        val scheduled = try {
+            scheduler.scheduledAlarmsAwait()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            firstFailure?.addSuppressed(error) ?: run { firstFailure = error }
+            throw requireNotNull(firstFailure)
+        }
+        val alertingIds = scheduled.filter { it.state == IosScheduledAlarmState.ALERTING }
+            .mapTo(mutableSetOf()) { it.alarmId }
+        val ids = alarms.map { it.request.id }.filterTo(mutableSetOf(), isValidNativeId)
+        ids += scheduled.map { it.alarmId }
+        ids.removeAll(alertingIds)
+        ids.forEach { alarmId ->
+            try {
+                scheduler.cancelFutureForLogoutAwait(alarmId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                firstFailure?.addSuppressed(error) ?: run { firstFailure = error }
+            }
+        }
+        firstFailure?.let { throw it }
     }
 
     fun observeAll(): Flow<List<SavedAlarmSchedule>> = dataSource.observeAll()
@@ -317,7 +367,7 @@ internal fun AlarmScheduleRequest.toRecoverySnapshot(): IosAlarmRecoverySourceSn
         sourceAlarmId = id,
         scheduleVersion = scheduleVersion,
         destination = IosAlarmRecoveryDestinationSnapshotDto(
-            name = destinationName,
+            name = destinationLabel,
             latitude = destinationLatitude,
             longitude = destinationLongitude,
         ),
@@ -325,8 +375,12 @@ internal fun AlarmScheduleRequest.toRecoverySnapshot(): IosAlarmRecoverySourceSn
         originalTime = time,
         arrivalRadiusMeters = DefaultArrivalRadiusMeters,
         repeatRule = if (repeatEnabled) selectedDays.joinToString(",") else null,
-        title = destinationName.ifBlank { "Ringout" },
+        title = destinationLabel.ifBlank { "Ringout" },
         soundName = alarmSoundName,
         soundUri = alarmSoundUri,
-        owner = IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.UNCAPTURED),
+        owner = ownerAccountId
+            ?.takeIf(String::isNotBlank)
+            ?.let { IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.CAPTURED_ACCOUNT, it) }
+            ?: IosAlarmRecoveryOwnerDto(IosAlarmRecoveryOwnerKind.UNCAPTURED),
+        remoteAlarmId = remoteAlarmId,
     )

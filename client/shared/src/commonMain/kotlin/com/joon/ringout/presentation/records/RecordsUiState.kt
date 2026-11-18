@@ -18,6 +18,7 @@ data class RecordsDayUiState(
     val isFuture: Boolean = false,
     val result: MissionResult? = null,
     val recordCount: Int = 0,
+    val ringingCount: Int? = null,
 )
 
 data class RecordsUiState(
@@ -36,6 +37,7 @@ data class RecordsUiState(
     val isWeekChanging: Boolean = false,
     val showWeekLoadingIndicator: Boolean = false,
     val weekChangeErrorMessage: String? = null,
+    val weekCacheErrorMessage: String? = null,
     val calendarMonth: MissionYearMonth = selectedDate.yearMonth,
     val calendarDays: List<RecordsDayUiState?> = calendarMonth.calendarDates().map { date ->
         date?.let { recordsDayUiState(it, today, selectedDate) }
@@ -43,6 +45,7 @@ data class RecordsUiState(
     val isCalendarVisible: Boolean = false,
     val isCalendarLoading: Boolean = false,
     val calendarErrorMessage: String? = null,
+    val calendarCacheErrorMessage: String? = null,
 )
 
 internal fun recordsDayUiState(
@@ -50,6 +53,7 @@ internal fun recordsDayUiState(
     today: MissionDate,
     selectedDate: MissionDate,
     records: List<AlarmUsageRecord> = emptyList(),
+    summary: AlarmActivitySummary? = null,
 ): RecordsDayUiState = RecordsDayUiState(
     date = date,
     isToday = date == today,
@@ -57,4 +61,5 @@ internal fun recordsDayUiState(
     isFuture = date.isAfter(today),
     result = records.lastOrNull { it.result != null }?.result,
     recordCount = records.size,
+    ringingCount = summary?.ringingCount,
 )

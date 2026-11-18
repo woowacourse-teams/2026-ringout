@@ -71,6 +71,7 @@ class DefaultAuthRepository(
                     refreshToken = requireNotNull(login.refreshToken?.takeIf(String::isNotBlank)) {
                         "리프레시 토큰이 비어 있어요."
                     },
+                    userId = login.userId?.takeIf { it > 0 },
                 ),
                 authSession = authSession,
             )

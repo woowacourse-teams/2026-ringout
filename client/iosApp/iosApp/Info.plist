@@ -61,5 +61,9 @@
 		<key>UIImageRespectsSafeAreaInsets</key>
 		<false/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>기상 기록에 사용할 사진을 촬영합니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>만든 기상 기록 이미지를 사진 보관함에 저장합니다.</string>
 </dict>
 </plist>

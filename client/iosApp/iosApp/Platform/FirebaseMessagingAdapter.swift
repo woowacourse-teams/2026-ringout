@@ -56,6 +56,7 @@ final class FirebaseMessagingAdapter {
         roomId: String?,
         activityDate: String?
     ) {
+        guard RoomFeature.shared.isEnabled else { return }
         guard handledNotificationIdentifiers.insert(notificationIdentifier).inserted else { return }
         let request = PendingRoomActivityPush(
             requestId: UUID().uuidString,

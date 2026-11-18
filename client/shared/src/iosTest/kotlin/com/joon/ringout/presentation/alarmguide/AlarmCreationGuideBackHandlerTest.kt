@@ -20,25 +20,25 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AlarmCreationGuideBackHandlerTest {
     @Test
-    fun `iOS 뒤로가기 제스처는 작성 화면을 유지하고 가이드 종료를 한 번만 요청한다`() = runTest {
+    fun `iOS 뒤로가기 제스처는 완료하지 않고 작성 화면에서 홈으로 돌아간다`() = runTest {
         val fixture = Fixture()
         withBackHandlers(fixture) { drain ->
             fixture.input.start()
             fixture.input.progress()
             drain()
-            assertEquals(0, fixture.finishCalls)
+            assertFalse(fixture.viewModel.uiState.value.isFinishing)
 
             fixture.input.complete()
             drain()
-            fixture.input.gesture()
-            drain()
-
-            assertEquals(1, fixture.finishCalls)
-            assertEquals(listOf(AppRoute.Home, AppRoute.AddAlarm), fixture.navigation.backStack.toList())
+            assertEquals(1, fixture.backCalls)
+            assertFalse(fixture.viewModel.uiState.value.isFinishing)
+            assertEquals(listOf(AppRoute.Home), fixture.navigation.backStack.toList())
+            assertEquals(AlarmCreationGuideStep.AddAlarm, fixture.viewModel.uiState.value.step)
         }
     }
 
@@ -51,7 +51,7 @@ class AlarmCreationGuideBackHandlerTest {
             fixture.input.cancel()
             drain()
 
-            assertEquals(0, fixture.finishCalls)
+            assertFalse(fixture.viewModel.uiState.value.isFinishing)
             assertEquals(listOf(AppRoute.Home, AppRoute.AddAlarm), fixture.navigation.backStack.toList())
 
             fixture.visible = false
@@ -59,7 +59,7 @@ class AlarmCreationGuideBackHandlerTest {
             fixture.input.gesture()
             drain()
 
-            assertEquals(0, fixture.finishCalls)
+            assertFalse(fixture.viewModel.uiState.value.isFinishing)
             assertEquals(listOf(AppRoute.Home), fixture.navigation.backStack.toList())
         }
     }
@@ -71,16 +71,20 @@ class AlarmCreationGuideBackHandlerTest {
             fixture.input.gesture()
             drain()
 
-            assertEquals(0, fixture.finishCalls)
+            assertFalse(fixture.viewModel.uiState.value.isFinishing)
             assertEquals(listOf(AppRoute.Home, AppRoute.AddAlarm), fixture.navigation.backStack.toList())
 
             fixture.isBusy = false
             drain()
+            assertEquals(0, fixture.backCalls)
+            assertEquals(listOf(AppRoute.Home, AppRoute.AddAlarm), fixture.navigation.backStack.toList())
+
             fixture.input.gesture()
             drain()
-
-            assertEquals(1, fixture.finishCalls)
-            assertEquals(listOf(AppRoute.Home, AppRoute.AddAlarm), fixture.navigation.backStack.toList())
+            assertEquals(1, fixture.backCalls)
+            assertFalse(fixture.viewModel.uiState.value.isFinishing)
+            assertEquals(listOf(AppRoute.Home), fixture.navigation.backStack.toList())
+            assertEquals(AlarmCreationGuideStep.AddAlarm, fixture.viewModel.uiState.value.step)
         }
     }
 
@@ -101,9 +105,12 @@ class AlarmCreationGuideBackHandlerTest {
                         AlarmCreationGuideBackHandler(
                             visible = fixture.visible,
                             isBusy = fixture.isBusy,
-                            onFinish = {
-                                fixture.finishCalls++
-                                fixture.isBusy = true
+                            onBack = {
+                                fixture.backCalls++
+                                fixture.viewModel.interrupt()
+                                fixture.navigation.popBackStack()
+                                fixture.viewModel.onContextChanged(true, AlarmCreationGuideSurface.Home, true)
+                                fixture.visible = false
                             },
                         )
                     }
@@ -121,7 +128,12 @@ class AlarmCreationGuideBackHandlerTest {
         val navigation = AppNavigationState().apply { navigate(AppRoute.AddAlarm) }
         var visible by mutableStateOf(true)
         var isBusy by mutableStateOf(false)
-        var finishCalls = 0
+        val viewModel = AlarmCreationGuideViewModel().apply {
+            onContextChanged(true, AlarmCreationGuideSurface.Home, true)
+            onNext(AlarmCreationGuideStep.AddAlarm)
+            onContextChanged(true, AlarmCreationGuideSurface.Editor, true)
+        }
+        var backCalls = 0
     }
 
     private class GestureInput : NavigationEventInput() {

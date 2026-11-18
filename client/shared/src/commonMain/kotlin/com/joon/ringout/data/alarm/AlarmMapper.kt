@@ -9,7 +9,7 @@ internal fun AlarmScheduleRequest.validateForStorage(): AlarmScheduleRequest = a
         "Alarm time must use 24-hour HH:mm format: $time"
     }
     require(limitMinutes > 0) { "Alarm limitMinutes must be positive: $limitMinutes" }
-    require(destinationName.isNotBlank()) { "Alarm destinationName must not be blank." }
+    require(destinationLabel.isNotBlank()) { "Alarm destinationLabel must not be blank." }
     require(destinationLatitude.isFinite() && destinationLatitude in ValidLatitudeRange) {
         "Alarm destinationLatitude is out of range: $destinationLatitude"
     }
@@ -50,8 +50,7 @@ internal fun AlarmScheduleRequest.toAlarmWithRepeatDays(
             time = time,
             repeatEnabled = repeatEnabled,
             limitMinutes = limitMinutes,
-            destinationName = destinationName,
-            destinationAddress = destinationAddress,
+            destinationLabel = destinationLabel,
             destinationLatitude = destinationLatitude,
             destinationLongitude = destinationLongitude,
             targetDistanceKm = targetDistanceKm,
@@ -59,6 +58,9 @@ internal fun AlarmScheduleRequest.toAlarmWithRepeatDays(
             alarmSoundUri = alarmSoundUri,
             enabled = enabled,
             scheduleVersion = scheduleVersion,
+            ownerAccountId = ownerAccountId,
+            remoteAlarmId = remoteAlarmId,
+            pendingReservationId = pendingReservationId,
         ),
         repeatDays = repeatDays,
     )
@@ -88,14 +90,16 @@ internal fun AlarmWithRepeatDays.toSavedAlarmSchedule(): SavedAlarmSchedule {
         selectedDays = selectedDays,
         repeatEnabled = alarm.repeatEnabled,
         limitMinutes = alarm.limitMinutes,
-        destinationName = alarm.destinationName,
-        destinationAddress = alarm.destinationAddress,
+        destinationLabel = alarm.destinationLabel,
         destinationLatitude = alarm.destinationLatitude,
         destinationLongitude = alarm.destinationLongitude,
         targetDistanceKm = alarm.targetDistanceKm,
         alarmSoundName = alarm.alarmSoundName,
         alarmSoundUri = alarm.alarmSoundUri,
         scheduleVersion = alarm.scheduleVersion,
+        ownerAccountId = alarm.ownerAccountId,
+        remoteAlarmId = alarm.remoteAlarmId,
+        pendingReservationId = alarm.pendingReservationId,
     ).validateForStorage()
 
     return SavedAlarmSchedule(

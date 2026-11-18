@@ -14,6 +14,7 @@ class KSafeTokenStorage(
             value = StoredAuthTokens(
                 accessToken = tokens.accessToken,
                 refreshToken = tokens.refreshToken,
+                userId = tokens.userId?.takeIf { it > 0 },
             ),
         )
     }
@@ -44,14 +45,19 @@ class KSafeTokenStorage(
 }
 
 @Serializable
-private data class StoredAuthTokens(
+internal data class StoredAuthTokens(
     val accessToken: String = "",
     val refreshToken: String = "",
     val reauthenticationRequired: Boolean = false,
+    val userId: Long? = null,
 )
 
-private fun StoredAuthTokens.toAuthTokens(): AuthTokens? =
-    if (accessToken.isBlank() || refreshToken.isBlank()) null else AuthTokens(accessToken, refreshToken)
+internal fun StoredAuthTokens.toAuthTokens(): AuthTokens? =
+    if (accessToken.isBlank() || refreshToken.isBlank()) {
+        null
+    } else {
+        AuthTokens(accessToken, refreshToken, userId?.takeIf { it > 0 })
+    }
 
 internal const val AUTH_VAULT_FILE_NAME = "auth_vault"
 private const val AUTH_TOKENS_KEY = "auth_tokens"

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { NativeForestBridge, nativeTransport } from "../bridge/NativeForestBridge";
 import { ForestController } from "./ForestController";
 import { ForestScreen } from "./ForestScreen";
-import { PLANT_DURATION } from "../forest/motion";
 import "./forest-screen.css";
 
 export function NativeForestApp() {
@@ -35,11 +34,13 @@ export function NativeForestApp() {
     const receiver = { receive: bridge.receive };
     window.RingoutForestBridge = receiver;
     let unsubscribe = () => {};
+    let unsubscribeVisibility = () => {};
+    let current: ForestController | null = null;
     bridge.ready().then(snapshot => {
       if (disposed) return;
-      const next = new ForestController(snapshot, bridge, () => new Promise(resolve => {
-        setTimeout(resolve, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PLANT_DURATION);
-      }));
+      const next = new ForestController(snapshot, bridge);
+      current = next;
+      unsubscribeVisibility = bridge.subscribeVisibility(next.setHostActive);
       bridge.onBack = next.back;
       unsubscribe = bridge.subscribe(next.receiveSnapshot);
       setController(next);
@@ -48,7 +49,9 @@ export function NativeForestApp() {
     });
     return () => {
       disposed = true;
+      current?.dispose();
       unsubscribe();
+      unsubscribeVisibility();
       bridge.dispose();
       if (window.RingoutForestBridge === receiver) delete window.RingoutForestBridge;
     };

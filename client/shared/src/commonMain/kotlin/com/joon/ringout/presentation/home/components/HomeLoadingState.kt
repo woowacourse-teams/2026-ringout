@@ -1,6 +1,9 @@
 package com.joon.ringout.presentation.home.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -16,6 +19,7 @@ import com.joon.ringout.ringoutColors
 @Composable
 internal fun HomeLoadingState(
     modifier: Modifier = Modifier,
+    onForestClick: () -> Unit = {},
 ) {
     Box(
         modifier = modifier
@@ -23,6 +27,11 @@ internal fun HomeLoadingState(
             .background(MaterialTheme.ringoutColors.mainScreenBackground),
         contentAlignment = Alignment.Center,
     ) {
+        AlarmListHeader(
+            nextAlarmDescription = "",
+            onForestClick = onForestClick,
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(20.dp),
+        )
         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
     }
 }

@@ -4,4 +4,4 @@ internal fun roomTestRecorder(events: MutableList<AnalyticsEvent>): ProductAnaly
     DefaultProductAnalyticsRecorder(AnalyticsTracker { events.add(it) }, object : ProductAnalyticsUsageStore {
         override fun claimOnboardingEvent(eventName: AnalyticsEventName) = true
         override fun claimDestinationCreation(destinationKey: String): Long = 1
-    })
+    }, roomsEnabled = true)

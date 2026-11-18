@@ -19,8 +19,6 @@ data class MyPageUiState(
 sealed interface MyPageAccountStatus {
     data object Loading : MyPageAccountStatus
 
-    data object LoggedOut : MyPageAccountStatus
-
     data object Error : MyPageAccountStatus
 
     data class LoggedIn(

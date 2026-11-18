@@ -1,5 +1,6 @@
 package com.joon.ringout.analytics
 
+import com.joon.ringout.domain.room.RoomFeature
 import android.content.Context
 import android.util.Log
 import com.joon.ringout.alarm.AlarmScheduleRequest
@@ -9,6 +10,7 @@ internal class AlarmAnalytics internal constructor(
     private val usageStore: AnalyticsUsageStore,
     private val nowEpochMillis: () -> Long,
     private val roomMembership: RoomMembershipAnalytics? = null,
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) {
     constructor(context: Context) : this(
         tracker = FirebaseAnalyticsTracker(context),
@@ -161,8 +163,10 @@ internal class AlarmAnalytics internal constructor(
         val existingUse = usageStore.findUseIndex(occurrenceId)
         val useIndex = usageStore.getOrCreateUseIndex(occurrenceId)
             ?: return@safelyRecord
-        val roomSnapshot = roomMembership?.startMission(useIndex, existingUse == null && retryAttempt == 0)
-            ?: RoomMembershipSnapshot()
+        val roomSnapshot = if (roomsEnabled) {
+            roomMembership?.startMission(useIndex, existingUse == null && retryAttempt == 0)
+                ?: RoomMembershipSnapshot()
+        } else null
         if (
             !usageStore.claimEvent(
                 eventName = AnalyticsEventName.DestinationMissionStarted,
@@ -175,7 +179,7 @@ internal class AlarmAnalytics internal constructor(
             AnalyticsEvent(
                 name = AnalyticsEventName.DestinationMissionStarted,
                 parameters = buildMap {
-                    putAll(roomSnapshot.parameters())
+                    roomSnapshot?.let { putAll(it.parameters()) }
                     put(
                         AnalyticsParameterName.UseIndex,
                         AnalyticsParameterValue.Number(useIndex),
@@ -228,68 +232,6 @@ internal class AlarmAnalytics internal constructor(
         startedAtEpochMillis = startedAtEpochMillis,
     )
 
-    fun recordForceEndHoldStarted(
-        occurrenceId: String,
-        retryAttempt: Int,
-    ) = recordForceEndHoldInteraction(
-        eventName = AnalyticsEventName.ForceEndHoldStarted,
-        occurrenceId = occurrenceId,
-        retryAttempt = retryAttempt,
-    )
-
-    fun recordForceEndHoldCancelled(
-        occurrenceId: String,
-        retryAttempt: Int,
-        holdDurationMillis: Long,
-    ) = recordForceEndHoldInteraction(
-        eventName = AnalyticsEventName.ForceEndHoldCancelled,
-        occurrenceId = occurrenceId,
-        retryAttempt = retryAttempt,
-        holdDurationMillis = holdDurationMillis,
-    )
-
-    fun recordForceEndHoldCompleted(
-        occurrenceId: String,
-        retryAttempt: Int,
-        holdDurationMillis: Long,
-    ) = recordForceEndHoldInteraction(
-        eventName = AnalyticsEventName.ForceEndHoldCompleted,
-        occurrenceId = occurrenceId,
-        retryAttempt = retryAttempt,
-        holdDurationMillis = holdDurationMillis,
-    )
-
-    private fun recordForceEndHoldInteraction(
-        eventName: AnalyticsEventName,
-        occurrenceId: String,
-        retryAttempt: Int,
-        holdDurationMillis: Long? = null,
-    ) = safelyRecord {
-        val useIndex = usageStore.findUseIndex(occurrenceId)
-            ?: return@safelyRecord
-        tracker.log(
-            AnalyticsEvent(
-                name = eventName,
-                parameters = buildMap {
-                    put(
-                        AnalyticsParameterName.UseIndex,
-                        AnalyticsParameterValue.Number(useIndex),
-                    )
-                    put(
-                        AnalyticsParameterName.RetryAttempt,
-                        AnalyticsParameterValue.Number(retryAttempt.coerceAtLeast(0).toLong()),
-                    )
-                    holdDurationMillis?.let { durationMillis ->
-                        put(
-                            AnalyticsParameterName.HoldDurationMillis,
-                            AnalyticsParameterValue.Number(durationMillis.coerceAtLeast(0L)),
-                        )
-                    }
-                },
-            ),
-        )
-    }
-
     private fun recordMissionOutcome(
         eventName: AnalyticsEventName,
         occurrenceId: String,
@@ -316,7 +258,9 @@ internal class AlarmAnalytics internal constructor(
                         AnalyticsParameterValue.Number(retryAttempt.coerceAtLeast(0).toLong()),
                     AnalyticsParameterName.ElapsedBucket to
                         AnalyticsParameterValue.Text(analyticsElapsedBucket(elapsedMillis)),
-                ) + (roomMembership?.mission(useIndex) ?: RoomMembershipSnapshot()).parameters(),
+                ) + if (roomsEnabled) {
+                    (roomMembership?.mission(useIndex) ?: RoomMembershipSnapshot()).parameters()
+                } else emptyMap(),
             ),
         )
     }

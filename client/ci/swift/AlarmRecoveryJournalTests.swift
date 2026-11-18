@@ -50,7 +50,7 @@ struct AlarmRecoveryJournalTests {
         try `손상된_저널은_빈_상태로_덮어쓰지_않는다`()
         try `다른_프로세스의_동시_저장은_유실되지_않는다`()
         try `legacy_import는_멱등이며_기존_ID를_chain으로_사용한다`()
-        try `source_snapshot은_버전별로_처음_값을_보존한다`()
+        try `source_snapshot은_검증된_계정_소유자를_보존한다`()
         try `terminal_record_ACK는_mission_record_ACK와_분리된다`()
         try `terminal_취소확인_후_예약이_다시_보이면_취소의무가_되살아난다`()
         try `미정산_schedule_call은_취소확인으로_닫히지_않는다`()
@@ -64,7 +64,53 @@ struct AlarmRecoveryJournalTests {
         try `미지원_schema는_변경하지_않고_실패한다`()
         try `앱_전환_관측은_마감과_예약을_바꾸지_않고_개수를_제한한다`()
         try `예약_ID_없는_legacy는_UNKNOWN을_유지하고_claim되지_않는다`()
-        print("34 alarm recovery journal tests passed")
+        try `로그아웃_뒤_늦은_예약_성공은_취소의무를_보존한다`()
+        try `로그아웃은_현재_울림을_취소하지_않고_새_재울림은_차단한다`()
+        print("36 alarm recovery journal tests passed")
+    }
+
+    static func `로그아웃_뒤_늦은_예약_성공은_취소의무를_보존한다`() throws {
+        try withJournal(ids: ["root", "reservation", "retry-token"]) { directory, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let attempt = try journal.acceptStop(snapshot: snapshot, occurrenceToken: "stop",
+                stopAt: Date(timeIntervalSince1970: 1_000)).attempt
+            let claim = try journal.claimNextReservation(occurrenceId: attempt.occurrenceId,
+                executionEpoch: "old-process", now: Date(timeIntervalSince1970: 1_001))!
+            try journal.suppressFutureReservationsForLogout(excluding: [])
+            try journal.completeReservation(claim: claim, status: .confirmed)
+            let restored = AlarmRecoveryJournal(directoryURL: directory)
+            let cancelled = try restored.attemptsForRecovery().first!
+            assert(cancelled.currentReservation.cancellationRequired)
+            assert(cancelled.currentReservation.status == .cancellationRequired)
+            assert(cancelled.logoutSuppressed == true)
+            let repeatedClaim = try restored.claimNextReservation(occurrenceId: attempt.occurrenceId,
+                executionEpoch: "new-process", now: Date(timeIntervalSince1970: 1_002))
+            assert(repeatedClaim == nil)
+        }
+    }
+
+    static func `로그아웃은_현재_울림을_취소하지_않고_새_재울림은_차단한다`() throws {
+        try withJournal(ids: ["root", "reservation", "retry-token"]) { _, journal in
+            let snapshot = testSnapshot()
+            try enable(snapshot, in: journal)
+            let attempt = try journal.acceptStop(snapshot: snapshot, occurrenceToken: "stop",
+                stopAt: Date(timeIntervalSince1970: 1_000)).attempt
+            let claim = try journal.claimNextReservation(occurrenceId: attempt.occurrenceId,
+                executionEpoch: "process", now: Date(timeIntervalSince1970: 1_001))!
+            try journal.completeReservation(claim: claim, status: .confirmed)
+            try journal.suppressFutureReservationsForLogout(excluding: [attempt.nextReservationUUID])
+            let preserved = try journal.attemptsForRecovery().first!
+            assert(preserved.currentReservation.status == .confirmed)
+            assert(!preserved.currentReservation.cancellationRequired)
+            do {
+                _ = try journal.acceptStop(snapshot: snapshot,
+                    occurrenceToken: attempt.nextOccurrenceToken,
+                    parentOccurrenceId: attempt.occurrenceId,
+                    stopAt: Date(timeIntervalSince1970: 1_060))
+                fatalError("logout-suppressed chain must not create a future retry")
+            } catch AlarmRecoveryJournalError.sourceNotEligible {}
+        }
     }
 
     static func arrivalNotificationClaims() throws {
@@ -836,16 +882,19 @@ struct AlarmRecoveryJournalTests {
         }
     }
 
-    static func `source_snapshot은_버전별로_처음_값을_보존한다`() throws {
+    static func `source_snapshot은_검증된_계정_소유자를_보존한다`() throws {
         try withJournal { _, journal in
             let first = testSnapshot(sourceAlarmId: "alarm", scheduleVersion: 3, owner: .uncaptured)
             let second = testSnapshot(sourceAlarmId: "alarm", scheduleVersion: 3, owner: .capturedAccount("later"))
+            let third = testSnapshot(sourceAlarmId: "alarm", scheduleVersion: 3, owner: .capturedAccount("different"))
             let storedFirst = try journal.upsertSourceSnapshot(first)
             let storedSecond = try journal.upsertSourceSnapshot(second)
+            let storedThird = try journal.upsertSourceSnapshot(third)
             let loaded = try journal.sourceSnapshot(sourceAlarmId: "alarm", scheduleVersion: 3)
             assert(storedFirst == first)
-            assert(storedSecond == first)
-            assert(loaded == first)
+            assert(storedSecond.owner == .capturedAccount("later"))
+            assert(storedThird == storedSecond)
+            assert(loaded == storedThird)
         }
     }
 

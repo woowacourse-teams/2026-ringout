@@ -60,7 +60,7 @@ internal suspend fun resolveIosRingingAlarm(
         occurrenceId = observedOccurrenceId,
         retryAttempt = 0,
         alarmTime = savedAlarm.request.time,
-        destinationName = savedAlarm.request.destinationName,
+        destinationName = savedAlarm.request.destinationLabel,
         limitMinutes = savedAlarm.request.limitMinutes,
         startedAtEpochMillis = startedAtEpochMillis,
         scheduleVersion = savedAlarm.request.scheduleVersion,

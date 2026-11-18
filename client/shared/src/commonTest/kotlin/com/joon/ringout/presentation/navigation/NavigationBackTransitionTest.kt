@@ -37,7 +37,7 @@ class NavigationBackTransitionTest {
     @Test
     fun `최상위 탭에서 홈으로 복귀할 때는 탭 선택과 뒤로가기 모두 전환을 적용하지 않는다`() {
         listOf(AppRoute.Social, AppRoute.Records, AppRoute.MyPage).forEach { tab ->
-            val state = AppNavigationState().apply { navigate(tab) }
+            val state = AppNavigationState(roomsEnabled = true).apply { navigate(tab) }
 
             assertFalse(state.isBackTransition(tab, AppRoute.Home))
             assertEquals(listOf(AppRoute.Home, tab), state.backStack.toList())
@@ -59,7 +59,7 @@ class NavigationBackTransitionTest {
             AppRoute.RoomDetail("1") to AppRoute.Social,
             AppRoute.NicknameChange to AppRoute.MyPage,
         ).forEach { (child, tab) ->
-            val state = AppNavigationState().apply { navigate(child) }
+            val state = AppNavigationState(roomsEnabled = true).apply { navigate(child) }
 
             assertTrue(state.isBackTransition(child, tab))
 
@@ -68,19 +68,6 @@ class NavigationBackTransitionTest {
             assertEquals(tab, state.requestedRoute)
             assertFalse(state.isBackTransition(tab, AppRoute.Home))
         }
-    }
-
-    @Test
-    fun `인증 완료로 백스택을 정리할 때는 뒤로가기 전환을 적용하지 않는다`() {
-        val state = AppNavigationState().apply {
-            navigate(AppRoute.Login)
-            navigate(AppRoute.TermsAgreement)
-        }
-
-        state.completeAuthenticationFlow()
-
-        assertEquals(listOf(AppRoute.Home), state.backStack.toList())
-        assertFalse(state.isBackTransition(AppRoute.TermsAgreement, AppRoute.Home))
     }
 
     @Test

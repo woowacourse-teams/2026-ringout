@@ -4,5 +4,6 @@ data class SignupUiState(
     val hasPendingSignup: Boolean = false,
     val isSaving: Boolean = false,
     val errorMessage: String? = null,
+    val authFlowAttemptId: Long? = null,
     val completedEventId: Long? = null,
 )

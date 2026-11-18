@@ -26,6 +26,12 @@ fun DeveloperToolsHost(
     content: @Composable (extraContent: @Composable (ThemeMode) -> Unit) -> Unit,
 ) {
     var toolsThemeName by rememberSaveable { mutableStateOf<String?>(null) }
+    val owner = remember {
+        object : ViewModelStoreOwner {
+            override val viewModelStore = ViewModelStore()
+        }
+    }
+    DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
     Box(Modifier.fillMaxSize()) {
         // Preserve navigation while hiding the covered app from accessibility services.
         Box(if (toolsThemeName != null) Modifier.clearAndSetSemantics {} else Modifier) {
@@ -34,12 +40,6 @@ fun DeveloperToolsHost(
             }
         }
         toolsThemeName?.let { themeName ->
-            val owner = remember {
-                object : ViewModelStoreOwner {
-                    override val viewModelStore = ViewModelStore()
-                }
-            }
-            DisposableEffect(owner) { onDispose { owner.viewModelStore.clear() } }
             CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
                 RingoutTheme(ThemeMode.valueOf(themeName)) {
                     toolsContent { toolsThemeName = null }

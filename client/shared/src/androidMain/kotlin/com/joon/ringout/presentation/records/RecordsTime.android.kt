@@ -8,8 +8,8 @@ import java.time.format.DateTimeFormatter
 internal actual fun formatRecordsRingingRange(started: String?, stopped: String?): String =
     if (started != null && stopped == null) started else "${started ?: "--:--"} ~ ${stopped ?: "--:--"}"
 
+@Suppress("UNUSED_PARAMETER")
 internal actual fun formatRecordsTime(epochMillis: Long, completedDate: MissionDate): String {
     val time = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
-    val pattern = if (time.toLocalDate().toString() == completedDate.iso8601) "HH:mm" else "M/d HH:mm"
-    return time.format(DateTimeFormatter.ofPattern(pattern))
+    return time.format(DateTimeFormatter.ofPattern("HH:mm"))
 }

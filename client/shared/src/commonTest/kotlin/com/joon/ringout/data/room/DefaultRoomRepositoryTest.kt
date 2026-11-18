@@ -48,6 +48,34 @@ import kotlin.test.assertTrue
 
 class DefaultRoomRepositoryTest {
     @Test
+    fun `모임 비활성화 시 모든 API는 HTTP 요청 없이 기능 중단을 알린다`() = runTest {
+        var requests = 0
+        val client = clientFor { requests++; error("HTTP 요청이 발생하면 안 됩니다.") }
+        val repository = DefaultRoomRepository(
+            client, TestTokenStorage(AuthTokens("access", "refresh")), session(AuthSessionState.Authenticated),
+        )
+        val operations: List<suspend () -> Unit> = listOf(
+            { repository.getRooms() },
+            { repository.getRoom(7) },
+            { repository.getMembersForManagement(7) },
+            { repository.getMemberMovements(7) },
+            { repository.kickMember(7, 10) },
+            { repository.getRoomRecords(7, MissionDate.parse("2026-11-16")) },
+            { repository.createRoom(RoomCreateInput("아침 모임", null, listOf("MONDAY"), "08:00")) },
+            { repository.joinRoom(7) },
+            { repository.updateRoom(7, RoomUpdateInput(name = "새 이름")) },
+            { repository.deleteRoom(7) },
+            { repository.leaveRoom(7) },
+        )
+        try {
+            operations.forEach { operation ->
+                assertEquals("ROOM_DISABLED", assertFailsWith<RoomRepositoryException> { operation() }.code)
+            }
+            assertEquals(0, requests)
+        } finally { client.close() }
+    }
+
+    @Test
     fun `활동 일정만 수정하면 요일별 멀티파트와 시간만 전송한다`() = runTest {
         val fixture = RoomUpdateFixture()
         fixture.repository.updateRoom(7, RoomUpdateInput(
@@ -272,7 +300,7 @@ class DefaultRoomRepositoryTest {
             }
         }
 
-        DefaultRoomRepository(client, storage, session).updateRoom(
+        DefaultRoomRepository(client, storage, session, roomsEnabled = true).updateRoom(
             7,
             RoomUpdateInput(
                 name = "새 모임",
@@ -302,7 +330,7 @@ class DefaultRoomRepositoryTest {
         }
 
         assertFailsWith<IllegalStateException> {
-            DefaultRoomRepository(client, storage, session)
+            DefaultRoomRepository(client, storage, session, roomsEnabled = true)
                 .updateRoom(7, RoomUpdateInput(name = "새 모임"))
         }
         client.close()
@@ -398,7 +426,7 @@ class DefaultRoomRepositoryTest {
                 headers = jsonHeaders,
             )
         }) { configureRingoutHttpClient() }
-        val repository = DefaultRoomRepository(client, TestTokenStorage(AuthTokens("access", "refresh")), session(AuthSessionState.Authenticated))
+        val repository = DefaultRoomRepository(client, TestTokenStorage(AuthTokens("access", "refresh")), session(AuthSessionState.Authenticated), roomsEnabled = true)
 
         val rooms = repository.getRooms()
 
@@ -671,7 +699,7 @@ class DefaultRoomRepositoryTest {
             }
         }
 
-        DefaultRoomRepository(client, storage, authSession).getMemberMovements(7)
+        DefaultRoomRepository(client, storage, authSession, roomsEnabled = true).getMemberMovements(7)
 
         assertEquals(2, movementRequestCount)
         assertEquals(1, reissueRequestCount)
@@ -815,7 +843,7 @@ class DefaultRoomRepositoryTest {
             }
         }
 
-        DefaultRoomRepository(client, storage, authSession).kickMember(7, 10)
+        DefaultRoomRepository(client, storage, authSession, roomsEnabled = true).kickMember(7, 10)
 
         assertEquals(2, kickRequestCount)
         assertEquals(1, reissueRequestCount)
@@ -830,7 +858,7 @@ class DefaultRoomRepositoryTest {
         val client = clientFor {
             respond(successBody(listOf(roomJson(1, false))), headers = jsonHeaders)
         }
-        val repository = DefaultRoomRepository(client, storage, session)
+        val repository = DefaultRoomRepository(client, storage, session, roomsEnabled = true)
 
         val room = repository.getRooms().single()
 
@@ -1149,12 +1177,14 @@ class DefaultRoomRepositoryTest {
             client,
             TestTokenStorage(AuthTokens("access", "refresh")),
             unauthenticatedSession,
+            roomsEnabled = true,
         )
         val missingTokenRepository = repository(client, null, AuthSessionState.Authenticated)
         val restoringRepository = DefaultRoomRepository(
             client,
             TestTokenStorage(AuthTokens("access", "refresh")),
             session(AuthSessionState.Restoring),
+            roomsEnabled = true,
         )
 
         assertFailsWith<RoomRepositoryException> { unauthenticatedRepository.createRoom(createInput()) }
@@ -1246,7 +1276,7 @@ class DefaultRoomRepositoryTest {
         }
 
         assertFailsWith<RoomRepositoryException> {
-            DefaultRoomRepository(client, storage, session).joinRoom(1)
+            DefaultRoomRepository(client, storage, session, roomsEnabled = true).joinRoom(1)
         }
 
         assertEquals(AuthSessionState.ReauthenticationRequired, session.state.value)
@@ -1269,7 +1299,7 @@ class DefaultRoomRepositoryTest {
         }
 
         assertFailsWith<RoomRepositoryException> {
-            DefaultRoomRepository(client, storage, session).joinRoom(1)
+            DefaultRoomRepository(client, storage, session, roomsEnabled = true).joinRoom(1)
         }
 
         assertEquals(AuthSessionState.Authenticated, session.state.value)
@@ -1504,7 +1534,7 @@ class DefaultRoomRepositoryTest {
             }
         }
 
-        DefaultRoomRepository(client, storage, session).deleteRoom(7)
+        DefaultRoomRepository(client, storage, session, roomsEnabled = true).deleteRoom(7)
 
         assertEquals(2, deleteRequestCount)
         assertEquals(1, reissueRequestCount)
@@ -1547,6 +1577,7 @@ private class RoomUpdateFixture {
         client,
         TestTokenStorage(AuthTokens("access", "refresh")),
         session(AuthSessionState.Authenticated),
+        roomsEnabled = true,
     )
 }
 
@@ -1580,7 +1611,7 @@ private fun repository(
     client: HttpClient,
     tokens: AuthTokens? = null,
     state: AuthSessionState = AuthSessionState.Unauthenticated,
-) = DefaultRoomRepository(client, TestTokenStorage(tokens), session(state))
+) = DefaultRoomRepository(client, TestTokenStorage(tokens), session(state), roomsEnabled = true)
 
 private fun session(state: AuthSessionState) = AuthSession().apply {
     when (state) {

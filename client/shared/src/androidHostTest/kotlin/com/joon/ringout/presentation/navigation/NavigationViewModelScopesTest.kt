@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertTextEquals
@@ -34,6 +35,7 @@ import com.joon.ringout.domain.destination.SavedDestination
 import com.joon.ringout.domain.member.MemberRepository
 import com.joon.ringout.domain.missionhistory.MissionHistoryRepository
 import com.joon.ringout.domain.preferences.AppPreferencesRepository
+import com.joon.ringout.data.database.LocalUserDataCleanup
 import com.joon.ringout.domain.preferences.SystemThemeModeReader
 import com.joon.ringout.domain.push.PushTokenRegistrar
 import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
@@ -123,6 +125,22 @@ class NavigationViewModelScopesTest {
         assertEquals(1, fixture.alarmCompletions)
     }
 
+    @Test
+    fun `인증 세션 identity가 바뀌면 서비스 화면 모델을 정리하고 새 스코프를 만든다`() {
+        val fixture = Fixture()
+        withActivity(fixture, withExtras = true) {
+            val previousHome = fixture.home
+            val previousJob = checkNotNull(previousHome.viewModelScope.coroutineContext[Job])
+
+            compose.runOnIdle { fixture.sessionIdentity.value = Any() }
+            advanceFrames()
+
+            assertNotSame(previousHome, fixture.home)
+            assertTrue(previousJob.isCancelled)
+            compose.runOnIdle { assertSame(fixture.home, fixture.displayedHome) }
+        }
+    }
+
     private fun verifyNavigationRoundTrips(withExtras: Boolean) {
         val fixture = Fixture()
         withActivity(fixture, withExtras) {
@@ -152,7 +170,7 @@ class NavigationViewModelScopesTest {
             assertSame(original, fixture.home)
             assertSame(original, fixture.displayedHome)
             assertFalse(original.uiState.isLoading)
-            assertEquals(1, fixture.container.destinationRepository.observations)
+            assertEquals(0, fixture.container.destinationRepository.observations)
             assertEquals(1, fixture.alarmSubscriptions)
             assertEquals(0, fixture.alarmCompletions)
         }
@@ -206,6 +224,8 @@ class NavigationViewModelScopesTest {
             appContainer = fixture.container,
             retainedRoutes = navigation.retainedRoutes(route),
             destinationCurrentLocationCache = fixture.locationCache,
+            sessionIdentity = fixture.sessionIdentity.value,
+            explicitLogout = {},
         )
         val home = scopes.get(AppRoute.Home, HomeViewModel::class)
         // 실제 App처럼 스코프를 얻는 부모 composition에서 홈 상태를 읽는다.
@@ -246,9 +266,10 @@ class NavigationViewModelScopesTest {
 
     private class Fixture : NavigationEventDispatcherOwner {
         override val navigationEventDispatcher = NavigationEventDispatcher()
-        val navigation = AppNavigationState()
+        val navigation = AppNavigationState(roomsEnabled = true)
         val container = HomeTestContainer()
         val locationCache = DestinationCurrentLocationCache()
+        val sessionIdentity = mutableStateOf<Any?>(Any())
         lateinit var home: HomeViewModel
         var displayedHome: HomeViewModel? = null
         var editor: AlarmSetupViewModel? = null
@@ -265,8 +286,9 @@ class NavigationViewModelScopesTest {
     }
 }
 
-private class HomeTestContainer : AppContainer {
+internal class HomeTestContainer : AppContainer {
     override val destinationRepository = HomeTestDestinationRepository()
+    override val hasStoredAlarmsForEntryMigration: suspend () -> Boolean = { false }
     override val termsRepository: TermsRepository get() = error("Unused dependency")
     override val networkMonitor: NetworkMonitor get() = error("Unused dependency")
     override val appPreferencesRepository: AppPreferencesRepository get() = error("Unused dependency")
@@ -280,10 +302,15 @@ private class HomeTestContainer : AppContainer {
     override val roomRepository: RoomRepository get() = error("Unused dependency")
     override val alarmActivityRepository: AlarmActivityRepository get() = error("Unused dependency")
     override val missionHistoryRepository: MissionHistoryRepository get() = error("Unused dependency")
+    override val localUserDataCleanup: LocalUserDataCleanup get() = error("Unused dependency")
+    override val arrivalResultRepository: com.joon.ringout.domain.arrival.ArrivalResultRepository
+        get() = error("Unused dependency")
+    override val forestRepository: com.joon.ringout.domain.forest.ForestRepository
+        get() = error("Unused dependency")
     override val productAnalyticsRecorder: ProductAnalyticsRecorder get() = error("Unused dependency")
 }
 
-private class HomeTestDestinationRepository : DestinationRepository {
+internal class HomeTestDestinationRepository : DestinationRepository {
     var observations = 0
         private set
 
@@ -292,9 +319,6 @@ private class HomeTestDestinationRepository : DestinationRepository {
         return MutableStateFlow(emptyList())
     }
 
-    override suspend fun fetchAll(): List<SavedDestination> = error("Unused dependency")
-    override suspend fun sync(): List<SavedDestination> = error("Unused dependency")
     override suspend fun save(destination: SavedDestination): SavedDestination = error("Unused dependency")
-    override suspend fun updateName(id: Long, name: String): Boolean = error("Unused dependency")
     override suspend fun delete(id: Long): Boolean = error("Unused dependency")
 }

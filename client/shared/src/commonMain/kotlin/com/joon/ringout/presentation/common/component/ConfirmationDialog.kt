@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -68,10 +69,12 @@ fun ConfirmationDialog(
     layout: ConfirmationDialogLayout = ConfirmationDialogLayout(),
     annotatedDescription: AnnotatedString? = null,
     cancelOnClick: (() -> Unit)? = null,
+    cancelEnabled: Boolean = true,
     confirmEnabled: Boolean = true,
     showConfirmButton: Boolean = true,
     dismissOnBackPress: Boolean = true,
     dismissOnClickOutside: Boolean = true,
+    cancelReplacement: (@Composable () -> Unit)? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val colors = MaterialTheme.ringoutColors.dialog
@@ -152,11 +155,9 @@ fun ConfirmationDialog(
                         ) {
                             val measurer = rememberTextMeasurer()
                             val density = LocalDensity.current
-                            val textStyle = MaterialTheme.typography.labelLarge.copy(
-                                fontSize = 16.sp, lineHeight = 19.2.sp, fontWeight = FontWeight.Medium,
-                            )
+                            val textStyle = actionLabelStyle()
                             fun labelWidth(label: String): Dp = with(density) {
-                                measurer.measure(label, textStyle, softWrap = false).size.width.toDp() + 24.dp
+                                measurer.measure(label, textStyle, softWrap = false).size.width.toDp() + ActionHorizontalPadding * 2
                             }
                             val hasTwoActions = cancelLabel != null && showConfirmButton
                             val available = maxWidth - ActionButtonSpacing
@@ -167,10 +168,37 @@ fun ConfirmationDialog(
                                 )
                             val buttons: @Composable (Modifier, Modifier) -> Unit = { cancelModifier, confirmModifier ->
                                 if (cancelLabel != null) {
-                                    ConfirmationDialogButton(
-                                        text = cancelLabel, containerColor = colors.cancel,
-                                        onClick = cancelOnClick ?: onDismiss, modifier = cancelModifier,
-                                    )
+                                    if (cancelReplacement == null) {
+                                        ConfirmationDialogButton(
+                                            text = cancelLabel, containerColor = colors.cancel,
+                                            onClick = cancelOnClick ?: onDismiss,
+                                            enabled = cancelEnabled,
+                                            modifier = cancelModifier,
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = cancelModifier.heightIn(min = ActionTouchHeight),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            // Reserve the button label's height, including when it wraps.
+                                            Layout(
+                                                content = {},
+                                                modifier = Modifier.fillMaxWidth()
+                                                    .heightIn(min = ActionVisualHeight)
+                                                    .padding(horizontal = ActionHorizontalPadding, vertical = ActionVerticalPadding),
+                                            ) { _, constraints ->
+                                                val size = measurer.measure(
+                                                    text = cancelLabel,
+                                                    style = textStyle,
+                                                    constraints = constraints,
+                                                ).size
+                                                layout(size.width, size.height) {}
+                                            }
+                                            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                                                cancelReplacement()
+                                            }
+                                        }
+                                    }
                                 }
                                 if (showConfirmButton) {
                                     ConfirmationDialogButton(
@@ -236,28 +264,33 @@ private fun ConfirmationDialogButton(
                 )
                 .clip(shape)
                 .background(containerColor)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = ActionHorizontalPadding, vertical = ActionVerticalPadding),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = text,
                 color = MaterialTheme.ringoutColors.dialog.actionContent,
                 textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontSize = 16.sp,
-                    lineHeight = 19.2.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
+                style = actionLabelStyle(),
             )
         }
     }
 }
+
+@Composable
+private fun actionLabelStyle() = MaterialTheme.typography.labelLarge.copy(
+    fontSize = 16.sp,
+    lineHeight = 19.2.sp,
+    fontWeight = FontWeight.Medium,
+)
 
 private val DialogContentPadding = 24.dp
 private val DialogContentSpacing = 20.dp
 private val DialogInfoSpacing = 12.dp
 private val DialogCornerRadius = 16.dp
 private val DialogShadowElevation = 12.dp
+private val ActionHorizontalPadding = 12.dp
+private val ActionVerticalPadding = 10.dp
 private val ActionTouchHeight = 48.dp
 private val ActionVisualHeight = 40.dp
 private val ActionButtonSpacing = 10.dp

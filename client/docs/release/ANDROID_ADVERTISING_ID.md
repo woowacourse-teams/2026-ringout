@@ -7,7 +7,7 @@ Ringout은 Firebase Analytics의 일반 이벤트를 수집하지만 광고 ID �
 - Release 매니페스트 병합 보고서에서 measurement SDK 및 ads-identifier의 AD_ID 선언이 제거되는지 확인한다.
 - 내부 테스트·운영 배포용 최종 AAB의 매니페스트에 `com.google.android.gms.permission.AD_ID`가 없는지 확인한다. 두 배포 모두 공통 main 매니페스트 설정을 사용한다.
 - `google_analytics_adid_collection_enabled=false`와 `google_analytics_default_allow_ad_personalization_signals=false`를 유지한다.
-- 실기기 DebugView에서 모임·미션 이벤트가 계속 수집되는지 확인한다.
+- 실기기 DebugView에서 미션 이벤트가 계속 수집되고 비활성화된 모임 이벤트는 수집되지 않는지 확인한다.
 
 ## Play Console 적용
 

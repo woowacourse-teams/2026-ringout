@@ -1,22 +1,24 @@
 package com.joon.ringout.data.destination
 
 import com.joon.ringout.data.auth.AuthenticatedRequestExecutor
+import com.joon.ringout.data.alarmoccurrence.alarmOccurrenceTokenOwner
 import com.joon.ringout.data.network.ApiConfig
 import com.joon.ringout.data.network.ApiErrorResponse
 import com.joon.ringout.data.network.ApiException
 import com.joon.ringout.data.network.ApiJson
 import com.joon.ringout.data.network.ApiResponse
 import com.joon.ringout.domain.auth.SecureTokenStorage
-import com.joon.ringout.domain.destination.SavedDestination
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.delete
 import io.ktor.client.request.get
-import io.ktor.client.request.patch
-import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.URLBuilder
+import io.ktor.http.appendPathSegments
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -28,169 +30,128 @@ class KtorDestinationRemoteDataSource(
 ) : DestinationRemoteDataSource {
     private val authenticatedRequests = AuthenticatedRequestExecutor(httpClient, tokenStorage)
 
-    override suspend fun hasAccessToken(): Boolean =
-        tokenStorage.read()?.accessToken?.isNotBlank() == true
-
-    override suspend fun fetchAll(): List<SavedDestination> {
+    override suspend fun fetchAll(ownerAccountId: String): List<RemoteSavedDestination> {
         val response = authenticatedRequests.execute { accessToken ->
+            check(alarmOccurrenceTokenOwner(accessToken) == ownerAccountId) {
+                "현재 로그인 계정이 목적지 계정과 일치하지 않아요."
+            }
             httpClient.get(ApiConfig.url("/api/v1/destinations")) {
                 bearerAuth(accessToken)
             }
         }
-        val body = response.decodeOrThrow<List<DestinationResponse>>()
-        check(body.isSuccess) { body.message }
-        return body.result.orEmpty().map(DestinationResponse::toDomain)
+        val body = response.decodeOrThrow<DestinationListResponse>()
+        requireSuccess(body)
+        return checkNotNull(body.result) { "목적지 조회 응답이 비어 있어요." }
+            .destinations
+            .map(DestinationResponse::toRemote)
     }
 
-    override suspend fun sync(destinations: List<SavedDestination>): List<SavedDestination> {
-        val destinationsByClientId = destinations.associateBy(SavedDestination::id)
+    override suspend fun upsert(
+        ownerAccountId: String,
+        destination: RemoteSavedDestination,
+    ): RemoteSavedDestination {
+        requireValidDestinationId(destination.id)
         val response = authenticatedRequests.execute { accessToken ->
-            httpClient.post(ApiConfig.url("/api/v1/destinations/sync")) {
-                bearerAuth(accessToken)
-                setBody(
-                    DestinationSyncRequest(
-                        destinations = destinations.map { destination ->
-                            require(destination.id > 0L) {
-                                "동기화할 목적지의 기기 ID가 올바르지 않아요."
-                            }
-                            DestinationSyncItemRequest(
-                                clientDestinationId = destination.id,
-                                alias = destination.name,
-                                latitude = destination.latitude,
-                                longitude = destination.longitude,
-                            )
-                        },
-                    ),
-                )
+            check(alarmOccurrenceTokenOwner(accessToken) == ownerAccountId) {
+                "현재 로그인 계정이 목적지 계정과 일치하지 않아요."
             }
-        }
-        val body = response.decodeOrThrow<DestinationSyncResponse>()
-        check(body.isSuccess) { body.message }
-        val result = checkNotNull(body.result) { "목적지 동기화 응답이 비어 있어요." }
-        return result.destinations.map { synced ->
-            SavedDestination(
-                id = synced.destinationId,
-                name = synced.alias,
-                address = destinationsByClientId[synced.clientDestinationId]?.address.orEmpty(),
-                latitude = synced.latitude,
-                longitude = synced.longitude,
+            val request = DestinationWriteRequest(
+                alias = destination.alias,
+                latitude = destination.latitude,
+                longitude = destination.longitude,
+                destinationVersion = destination.version,
             )
-        }
-    }
-
-    override suspend fun create(destination: SavedDestination): SavedDestination {
-        val response = authenticatedRequests.execute { accessToken ->
-            httpClient.post(ApiConfig.url("/api/v1/destinations")) {
+            httpClient.put(destinationUrl(destination.id)) {
                 bearerAuth(accessToken)
-                setBody(
-                    DestinationCreateRequest(
-                        alias = destination.name,
-                        latitude = destination.latitude,
-                        longitude = destination.longitude,
-                    ),
-                )
+                setBody(request)
             }
         }
-        val body = response.decodeOrThrow<DestinationCreateResponse>()
-        check(body.isSuccess) { body.message }
-        val result = checkNotNull(body.result) { "목적지 저장 응답이 비어 있어요." }
-        return destination.copy(id = result.destinationId)
+
+        val body = response.decodeOrThrow<DestinationResponse>()
+        requireSuccess(body)
+        return checkNotNull(body.result) { "목적지 upsert 응답이 비어 있어요." }.toRemote()
     }
 
-    override suspend fun delete(id: Long): Boolean {
+    override suspend fun delete(ownerAccountId: String, destinationId: String) {
+        requireValidDestinationId(destinationId)
         val response = authenticatedRequests.execute { accessToken ->
-            httpClient.delete(ApiConfig.url("/api/v1/destinations/$id")) {
+            check(alarmOccurrenceTokenOwner(accessToken) == ownerAccountId) {
+                "현재 로그인 계정이 목적지 계정과 일치하지 않아요."
+            }
+            httpClient.delete(destinationUrl(destinationId)) {
                 bearerAuth(accessToken)
             }
         }
         val body = response.decodeOrThrow<JsonElement>()
-        check(body.isSuccess) { body.message }
-        return true
+        requireSuccess(body)
+        check(body.result == null) { "목적지 삭제 응답은 result를 포함하지 않아야 해요." }
     }
 
-    override suspend fun updateName(id: Long, name: String): Boolean {
-        val response = authenticatedRequests.execute { accessToken ->
-            httpClient.patch(ApiConfig.url("/api/v1/destinations/$id")) {
-                bearerAuth(accessToken)
-                setBody(DestinationUpdateRequest(alias = name))
-            }
-        }
-        val body = response.decodeOrThrow<DestinationResponse>()
-        check(body.isSuccess) { body.message }
-        checkNotNull(body.result) { "목적지 수정 응답이 비어 있어요." }
-        return true
-    }
+    private fun destinationUrl(destinationId: String): String =
+        URLBuilder(ApiConfig.url("/api/v1/destinations"))
+            .apply { appendPathSegments(destinationId, encodeSlash = true) }
+            .buildString()
 }
 
 @Serializable
-private data class DestinationCreateRequest(
+private data class DestinationWriteRequest(
     val alias: String,
     val latitude: Double,
     val longitude: Double,
+    val destinationVersion: Long,
 )
 
 @Serializable
-private data class DestinationSyncRequest(
-    val destinations: List<DestinationSyncItemRequest>,
-)
-
-@Serializable
-private data class DestinationSyncItemRequest(
-    val clientDestinationId: Long,
-    val alias: String,
-    val latitude: Double,
-    val longitude: Double,
-)
-
-@Serializable
-private data class DestinationSyncResponse(
-    val destinations: List<DestinationSyncItemResponse>,
-)
-
-@Serializable
-private data class DestinationSyncItemResponse(
-    val clientDestinationId: Long,
-    val destinationId: Long,
-    val alias: String,
-    val latitude: Double,
-    val longitude: Double,
-)
-
-@Serializable
-private data class DestinationCreateResponse(
-    val destinationId: Long,
-)
-
-@Serializable
-private data class DestinationUpdateRequest(
-    val alias: String,
+private data class DestinationListResponse(
+    val destinations: List<DestinationResponse>,
 )
 
 @Serializable
 private data class DestinationResponse(
-    val destinationId: Long,
+    val destinationId: String,
     val alias: String,
     val latitude: Double,
     val longitude: Double,
+    val destinationVersion: Long,
 )
 
-private fun DestinationResponse.toDomain(): SavedDestination = SavedDestination(
+private fun DestinationResponse.toRemote(): RemoteSavedDestination = RemoteSavedDestination(
     id = destinationId,
-    name = alias,
-    address = "",
+    alias = alias,
     latitude = latitude,
     longitude = longitude,
+    version = destinationVersion,
 )
 
-private suspend inline fun <reified T> HttpResponse.decodeOrThrow(): ApiResponse<T> {
+private fun requireValidDestinationId(destinationId: String) {
+    require(destinationId.length in 1..36 && destinationId.none(Char::isWhitespace)) {
+        "목적지 ID는 공백 없이 1~36자여야 해요."
+    }
+}
+
+private fun requireSuccess(response: ApiResponse<*>, expectedCode: String = DestinationSuccessCode) {
+    check(response.isSuccess && response.code == expectedCode) { response.message }
+}
+
+private suspend inline fun <reified T> HttpResponse.decodeOrThrow(
+    expectedStatus: HttpStatusCode = HttpStatusCode.OK,
+): ApiResponse<T> {
     val responseBody = bodyAsText()
-    if (status.isSuccess()) {
+    if (status == expectedStatus) {
         return ApiJson.decodeFromString(responseBody)
     }
 
     val errorResponse = runCatching {
         ApiJson.decodeFromString<ApiErrorResponse>(responseBody)
     }.getOrNull()
+    if (status.isSuccess()) {
+        throw ApiException(
+            statusCode = status.value,
+            code = errorResponse?.code,
+            apiMessage = errorResponse?.message ?: "목적지 API가 예상하지 않은 성공 상태를 반환했어요.",
+            result = errorResponse?.result,
+        )
+    }
     throw ApiException(
         statusCode = status.value,
         code = errorResponse?.code,
@@ -198,3 +159,5 @@ private suspend inline fun <reified T> HttpResponse.decodeOrThrow(): ApiResponse
         result = errorResponse?.result,
     )
 }
+
+private const val DestinationSuccessCode = "DESTINATION200"

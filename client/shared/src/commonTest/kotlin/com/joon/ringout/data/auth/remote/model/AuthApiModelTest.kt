@@ -22,6 +22,7 @@ class AuthApiModelTest {
               "result": {
                 "accessToken": "access-token",
                 "refreshToken": "refresh-token",
+                "userId": 42,
                 "isNewUser": false
               }
             }
@@ -30,8 +31,23 @@ class AuthApiModelTest {
 
         assertEquals("access-token", response.result?.accessToken)
         assertEquals("refresh-token", response.result?.refreshToken)
+        assertEquals(42L, response.result?.userId)
         assertNull(response.result?.signupToken)
         assertEquals(false, response.result?.isNewUser)
+    }
+
+    @Test
+    fun `회원 ID가 생략되거나 null인 로그인 응답도 처리한다`() {
+        val responses = listOf(
+            """{"accessToken":"access","refreshToken":"refresh","isNewUser":false}""",
+            """{"accessToken":"access","refreshToken":"refresh","isNewUser":false,"userId":null}""",
+        )
+
+        responses.forEach { json ->
+            val response = ApiJson.decodeFromString<LoginResponse>(json)
+            assertNull(response.userId)
+            assertEquals("access", response.accessToken)
+        }
     }
 
     @Test
@@ -54,6 +70,7 @@ class AuthApiModelTest {
         assertNull(response.result?.accessToken)
         assertNull(response.result?.refreshToken)
         assertEquals(true, response.result?.isNewUser)
+        assertNull(response.result?.userId)
     }
 
     @Test

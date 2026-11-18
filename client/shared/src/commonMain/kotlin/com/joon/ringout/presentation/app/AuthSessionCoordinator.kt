@@ -6,8 +6,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.joon.ringout.diagnostics.AuthDiagnosticLogger
-import com.joon.ringout.domain.auth.AuthRepository
 import com.joon.ringout.domain.auth.AuthSession
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.domain.push.PushTokenRegistrationReadiness
 import com.joon.ringout.domain.push.PushTokenRegistrar
@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 internal fun AuthSessionCoordinator(
-    authRepository: AuthRepository,
     authSession: AuthSession,
     authSessionState: AuthSessionState,
     pushTokenSource: PushTokenSource,
@@ -68,7 +67,6 @@ internal fun AuthSessionCoordinator(
         roomHomeViewModels = roomHomeViewModels,
         roomActivityViewModels = roomActivityViewModels,
     )
-    AuthSessionRestoreEffect(authRepository)
 }
 
 @Composable
@@ -91,8 +89,10 @@ internal class RoomSessionStateHandler(
     private val roomListViewModel: RoomListViewModel?,
     private val roomHomeViewModels: List<RoomHomeViewModel>,
     private val roomActivityViewModels: List<RoomActivityViewModel> = emptyList(),
+    private val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) {
     fun onSessionStateChanged(authSessionState: AuthSessionState, sessionIdentity: Any?) {
+        if (!roomsEnabled) return
         roomListViewModel?.onAuthSessionChanged(authSessionState, sessionIdentity)
         roomHomeViewModels.forEach { it.onAuthSessionChanged(authSessionState, sessionIdentity) }
         roomActivityViewModels.forEach { it.onAuthSessionChanged(authSessionState, sessionIdentity) }
@@ -116,13 +116,6 @@ private fun AuthSessionStateBinding(
     }
     LaunchedEffect(authSessionState, sessionIdentity, sessionStateHandler) {
         sessionStateHandler.onSessionStateChanged(authSessionState)
-    }
-}
-
-@Composable
-private fun AuthSessionRestoreEffect(authRepository: AuthRepository) {
-    LaunchedEffect(authRepository) {
-        authRepository.restoreSession()
     }
 }
 

@@ -1,6 +1,7 @@
 import FirebaseCore
 import FirebaseMessaging
 import OSLog
+import Shared
 import UIKit
 import UserNotifications
 
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         FirebaseApp.configure()
+        IosAnalyticsIdentityKt.initializeAnalyticsUserId(setter: FirebaseAnalyticsAdapter())
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
         FirebaseMessagingAdapter.shared.updateToken(Messaging.messaging().fcmToken)
@@ -56,6 +58,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        let userInfo = notification.request.content.userInfo
+        if !RoomFeature.shared.isEnabled, userInfo["roomId"] != nil || userInfo["activityDate"] != nil {
+            completionHandler([])
+            return
+        }
         if notification.request.trigger is UNPushNotificationTrigger {
             Messaging.messaging().appDidReceiveMessage(notification.request.content.userInfo)
         }
@@ -68,6 +75,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
+        if !RoomFeature.shared.isEnabled, userInfo["roomId"] != nil || userInfo["activityDate"] != nil {
+            completionHandler()
+            return
+        }
         if response.notification.request.trigger is UNPushNotificationTrigger {
             Messaging.messaging().appDidReceiveMessage(userInfo)
         }

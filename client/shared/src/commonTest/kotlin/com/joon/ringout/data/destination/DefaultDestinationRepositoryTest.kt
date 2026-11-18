@@ -11,113 +11,50 @@ import kotlin.test.assertTrue
 
 class DefaultDestinationRepositoryTest {
     @Test
-    fun `비로그인 상태에서는 원격 API를 호출하지 않고 Room에 목적지를 저장한다`() = runTest {
+    fun `로그인 상태와 관계없이 목적지를 Room에 먼저 저장한다`() = runTest {
         val local = FakeDestinationDataSource()
-        val remote = FakeDestinationRemoteDataSource(hasAccessToken = false)
-        val repository = DefaultDestinationRepository(local, remote)
+        val repository = DefaultDestinationRepository(local)
 
         val saved = repository.save(destination())
 
         assertEquals(1L, saved.id)
         assertEquals(1, local.saveCallCount)
-        assertEquals(0, remote.createCallCount)
+        assertEquals(null, local.lastOwnerAccountId)
     }
 
     @Test
-    fun `로그인 상태에서는 목적지 저장 API를 호출한다`() = runTest {
+    fun `목적지 화면에서 관찰하는 목록은 로컬 데이터 소스이다`() = runTest {
         val local = FakeDestinationDataSource()
-        val remote = FakeDestinationRemoteDataSource(hasAccessToken = true)
-        val repository = DefaultDestinationRepository(local, remote)
-
+        val repository = DefaultDestinationRepository(local)
         val saved = repository.save(destination())
 
-        assertEquals(101L, saved.id)
-        assertEquals(0, local.saveCallCount)
-        assertEquals(1, remote.createCallCount)
-    }
-
-    @Test
-    fun `비로그인 상태에서는 원격 API를 호출하지 않고 Room의 목적지 목록을 조회한다`() = runTest {
-        val local = FakeDestinationDataSource()
-        val remote = FakeDestinationRemoteDataSource(hasAccessToken = false)
-        val repository = DefaultDestinationRepository(local, remote)
-        val saved = local.save(destination())
-
-        val destinations = repository.fetchAll()
-
-        assertEquals(listOf(saved), destinations)
+        assertEquals(listOf(saved), repository.observeAll().first())
         assertEquals(1, local.observeAllCallCount)
-        assertEquals(0, remote.fetchAllCallCount)
     }
 
     @Test
-    fun `로그인 상태에서는 목적지 목록 API를 호출한다`() = runTest {
+    fun `삭제 결과는 Room의 로컬 행을 기준으로 반환한다`() = runTest {
         val local = FakeDestinationDataSource()
-        val remote = FakeDestinationRemoteDataSource(hasAccessToken = true)
-        val repository = DefaultDestinationRepository(local, remote)
-        remote.fetchAllResult = listOf(destination().copy(id = 101L))
+        val repository = DefaultDestinationRepository(local)
+        val saved = repository.save(destination())
 
-        val destinations = repository.fetchAll()
-
-        assertEquals(remote.fetchAllResult, destinations)
-        assertEquals(0, local.observeAllCallCount)
-        assertEquals(1, remote.fetchAllCallCount)
-    }
-
-    @Test
-    fun `비로그인 상태에서는 원격 API를 호출하지 않고 로컬 목적지 별명을 수정한다`() = runTest {
-        val local = FakeDestinationDataSource()
-        val remote = FakeDestinationRemoteDataSource(hasAccessToken = false)
-        val repository = DefaultDestinationRepository(local, remote)
-        val saved = local.save(destination())
-
-        val updated = repository.updateName(saved.id, "회사")
-
-        assertTrue(updated)
-        assertEquals("회사", local.observeAll().first().single().name)
-        assertEquals(1, local.updateNameCallCount)
-        assertEquals(0, remote.updateNameCallCount)
-    }
-
-    @Test
-    fun `비로그인 상태에서는 원격 API를 호출하지 않고 로컬 목적지를 삭제한다`() = runTest {
-        val local = FakeDestinationDataSource()
-        val remote = FakeDestinationRemoteDataSource(hasAccessToken = false)
-        val repository = DefaultDestinationRepository(local, remote)
-        val saved = local.save(destination())
-
-        val deleted = repository.delete(saved.id)
-
-        assertTrue(deleted)
-        assertTrue(local.observeAll().first().isEmpty())
+        assertTrue(repository.delete(saved.id))
+        assertTrue(repository.observeAll().first().isEmpty())
         assertEquals(1, local.deleteCallCount)
-        assertEquals(0, remote.deleteCallCount)
     }
 
     @Test
-    fun `로그인 상태에서는 목적지 별명 수정 API를 호출한다`() = runTest {
+    fun `로그인 계정에 귀속된 목록만 구독한다`() = runTest {
         val local = FakeDestinationDataSource()
-        val remote = FakeDestinationRemoteDataSource(hasAccessToken = true)
-        val repository = DefaultDestinationRepository(local, remote)
+        val accountProvider = DestinationAccountProvider(
+            authSession = com.joon.ringout.domain.auth.AuthSession().apply { markAuthenticated() },
+            currentVerifiedAccountId = { "account-42" },
+        )
+        val repository = DefaultDestinationRepository(local, accountProvider)
 
-        val updated = repository.updateName(id = 101L, name = "회사")
+        repository.observeAll().first()
 
-        assertTrue(updated)
-        assertEquals(0, local.updateNameCallCount)
-        assertEquals(1, remote.updateNameCallCount)
-    }
-
-    @Test
-    fun `로그인 상태에서는 목적지 삭제 API를 호출한다`() = runTest {
-        val local = FakeDestinationDataSource()
-        val remote = FakeDestinationRemoteDataSource(hasAccessToken = true)
-        val repository = DefaultDestinationRepository(local, remote)
-
-        val deleted = repository.delete(id = 101L)
-
-        assertTrue(deleted)
-        assertEquals(0, local.deleteCallCount)
-        assertEquals(1, remote.deleteCallCount)
+        assertEquals("account-42", local.lastObservedAccountId)
     }
 }
 
@@ -127,81 +64,38 @@ private class FakeDestinationDataSource : DestinationDataSource {
         private set
     var saveCallCount = 0
         private set
-    var updateNameCallCount = 0
-        private set
     var deleteCallCount = 0
         private set
+    var lastObservedAccountId: String? = null
+        private set
+    var lastOwnerAccountId: String? = null
+        private set
 
-    override fun observeAll(): Flow<List<SavedDestination>> {
+    override fun observeAll(ownerAccountId: String?): Flow<List<SavedDestination>> {
         observeAllCallCount += 1
+        lastObservedAccountId = ownerAccountId
         return destinations
     }
 
-    override suspend fun save(destination: SavedDestination): SavedDestination {
+    override suspend fun save(destination: SavedDestination, ownerAccountId: String?): SavedDestination {
         saveCallCount += 1
+        lastOwnerAccountId = ownerAccountId
         return destination.copy(id = 1L).also { saved ->
             destinations.value = destinations.value + saved
         }
     }
 
-    override suspend fun updateName(id: Long, name: String): Boolean {
-        updateNameCallCount += 1
-        val destination = destinations.value.firstOrNull { it.id == id } ?: return false
-        destinations.value = destinations.value.map {
-            if (it.id == id) destination.copy(name = name) else it
-        }
-        return true
-    }
-
-    override suspend fun delete(id: Long): Boolean {
+    override suspend fun delete(id: Long, ownerAccountId: String?): Boolean {
         deleteCallCount += 1
+        lastOwnerAccountId = ownerAccountId
         val containsDestination = destinations.value.any { it.id == id }
         destinations.value = destinations.value.filterNot { it.id == id }
         return containsDestination
     }
 }
 
-private class FakeDestinationRemoteDataSource(
-    private val hasAccessToken: Boolean,
-) : DestinationRemoteDataSource {
-    var fetchAllCallCount = 0
-        private set
-    var fetchAllResult: List<SavedDestination> = emptyList()
-    var createCallCount = 0
-        private set
-    var updateNameCallCount = 0
-        private set
-    var deleteCallCount = 0
-        private set
-
-    override suspend fun hasAccessToken(): Boolean = hasAccessToken
-
-    override suspend fun fetchAll(): List<SavedDestination> {
-        fetchAllCallCount += 1
-        return fetchAllResult
-    }
-
-    override suspend fun sync(destinations: List<SavedDestination>): List<SavedDestination> = destinations
-
-    override suspend fun create(destination: SavedDestination): SavedDestination {
-        createCallCount += 1
-        return destination.copy(id = 101L)
-    }
-
-    override suspend fun updateName(id: Long, name: String): Boolean {
-        updateNameCallCount += 1
-        return true
-    }
-
-    override suspend fun delete(id: Long): Boolean {
-        deleteCallCount += 1
-        return true
-    }
-}
-
 private fun destination(): SavedDestination = SavedDestination(
-    name = "집",
-    address = "서울특별시 강남구",
+    label = "집",
     latitude = 37.4979,
     longitude = 127.0276,
 )

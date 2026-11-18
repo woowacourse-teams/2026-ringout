@@ -5,12 +5,12 @@ import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.analytics.ProductAnalyticsRecorder
 import com.joon.ringout.analytics.DestinationSelectionSource
 import com.joon.ringout.analytics.toAnalyticsLoginStateOrNull
+import com.joon.ringout.domain.connectivity.NetworkMonitor
 import com.joon.ringout.presentation.destination.component.DestinationEntry
 import com.joon.ringout.domain.auth.AuthSessionState
 import com.joon.ringout.presentation.alarmsound.AlarmSoundRoute
 import com.joon.ringout.presentation.alarmsetup.AlarmSetupRoute
 import com.joon.ringout.presentation.destination.DestinationRoute
-import com.joon.ringout.presentation.destination.DestinationManagementRoute
 
 // 편집 흐름이 백스택에서 제거될 때까지 AlarmSetup과 Destination은 Add/Edit 부모 저장소를 공유한다.
 internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
@@ -18,6 +18,7 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
     displayedRoute: AppRoute,
     authSessionState: AuthSessionState,
     productAnalyticsRecorder: ProductAnalyticsRecorder,
+    networkMonitor: NetworkMonitor,
 ) {
     // 연속 뒤로 가기로 부모까지 제거되어도 퇴장 중인 선택 화면은 원래 초안을 표시한다.
     val parentRoute = navigation.editorRoute
@@ -43,24 +44,12 @@ internal fun EntryProviderScope<AppRoute>.alarmEditorGraph(
                 requestId = route.requestId,
                 authSessionState = authSessionState,
                 productAnalyticsRecorder = productAnalyticsRecorder,
+                networkMonitor = networkMonitor,
                 isActive = navigation.isActive(route, displayedRoute),
                 onBackClick = { navigation.onBack(route, displayedRoute) },
-                onSavedDestinationConfirmClick = { destination ->
-                    navigation.onSavedDestinationSelected(route, displayedRoute, destination)
-                },
                 onConfirmWithoutSave = { destination ->
                     navigation.onDestinationSelected(route, displayedRoute, destination)
                 },
-            )
-        }
-    }
-
-    entry<AppRoute.DestinationManagement>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
-        if (navigation.hasValidDraft(parentRoute)) {
-            DestinationManagementRoute(
-                viewModel = navigation.destinationViewModel,
-                isActive = navigation.isActive(route, displayedRoute),
-                onFinished = { navigation.onBack(route, displayedRoute) },
             )
         }
     }
@@ -103,14 +92,13 @@ private fun AlarmEditorDestinationEntry(
             }
         },
         onRetry = navigation.destinationViewModel::onScreenEntered,
-        onManage = { navigation.onManageDestination(route, displayedRoute, it) },
+        onDeleteRequest = navigation.destinationViewModel::requestDelete,
+        onDeleteConfirm = navigation.destinationViewModel::confirmDelete,
+        onDeleteDismiss = navigation.destinationViewModel::dismissDelete,
         openRequestId = navigation.destinationDialogRequestId,
     ) { onDestinationClick ->
         AlarmSetupRoute(
             viewModel = navigation.alarmSetupViewModel,
-            savedDestinations = navigation.destinationViewModel.uiState.let { state ->
-                state.destinations.takeIf { state.hasLoadedDestinations }
-            },
             isActive = isActive,
             onBackClick = { navigation.onBack(route, displayedRoute) },
             onDestinationClick = onDestinationClick,

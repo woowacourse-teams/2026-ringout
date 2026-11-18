@@ -4,20 +4,26 @@ import com.joon.ringout.presentation.roomlist.RoomListRoute
 import com.joon.ringout.presentation.roomlist.RoomListViewModel
 import com.joon.ringout.presentation.roomlist.roomdetail.RoomDetailRoute
 import com.joon.ringout.presentation.records.RecordsRoute
+import com.joon.ringout.presentation.records.RecordsDetailRoute
 import com.joon.ringout.presentation.records.RecordsViewModel
 import androidx.compose.runtime.Composable
 import androidx.navigation3.runtime.EntryProviderScope
 import com.joon.ringout.domain.auth.AuthSessionState
+import com.joon.ringout.domain.connectivity.NetworkMonitor
 import com.joon.ringout.domain.member.MemberRepository
+import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.presentation.profilechange.ProfileChangeRoute
 import com.joon.ringout.ThemeMode
 import com.joon.ringout.alarm.ActiveAlarmMission
 import com.joon.ringout.alarm.AlarmController
 import com.joon.ringout.alarm.AlarmScheduleRequest
+import com.joon.ringout.presentation.forest.ForestRoute
+import com.joon.ringout.presentation.forest.ForestViewModel
 import com.joon.ringout.presentation.home.HomeRoute
 import com.joon.ringout.presentation.home.HomeViewModel
 import com.joon.ringout.presentation.mypage.MyPageRoute
 import com.joon.ringout.presentation.mypage.MyPageViewModel
+import com.joon.ringout.presentation.mypage.model.MyPageAccountAction
 import com.joon.ringout.presentation.roomcreate.RoomCreateRoute
 import com.joon.ringout.presentation.roomcreate.RoomCreateViewModel
 import com.joon.ringout.domain.room.RoomCreateInput
@@ -38,6 +44,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     viewModelScopes: NavigationViewModelScopes,
     sessionIdentity: Any?,
     myPageViewModel: MyPageViewModel?,
+    networkMonitor: NetworkMonitor,
     authSessionState: AuthSessionState,
     memberRepository: MemberRepository,
     themeMode: ThemeMode,
@@ -46,8 +53,12 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     alarmController: AlarmController,
     activeAlarmMission: ActiveAlarmMission?,
     onThemeModeChange: (ThemeMode) -> Unit,
+    canPerformAccountAction: (MyPageAccountAction) -> Boolean = { true },
+    logoutBlockedMessage: String? = null,
+    onDismissLogoutBlocked: () -> Unit = {},
     onAddAlarm: () -> Unit,
     onEditAlarm: (AlarmScheduleRequest) -> Unit,
+    onAuthenticationRequired: () -> Unit,
     onActiveAlarmMissionClick: () -> Unit,
     onActiveAlarmMissionExpired: () -> Unit,
     onJoinRoom: (RoomMutationSource) -> Unit,
@@ -59,20 +70,31 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             alarmController = alarmController,
             activeAlarmMission = activeAlarmMission,
             onAddAlarm = onAddAlarm,
+            onForestClick = { navigationState.navigate(AppRoute.Forest) },
             onEditAlarm = onEditAlarm,
             onActiveAlarmMissionClick = onActiveAlarmMissionClick,
             onActiveAlarmMissionExpired = onActiveAlarmMissionExpired,
         )
     }
 
+    entry<AppRoute.Forest>(clazzContentKey = AppRoute::viewModelStoreKey) {
+        ForestRoute(
+            viewModel = viewModelScopes.get(AppRoute.Forest, ForestViewModel::class),
+            onBackClick = { navigationState.popBackStack(AppRoute.Forest) },
+        )
+    }
+
     entry<AppRoute.MyPage>(clazzContentKey = AppRoute::viewModelStoreKey) {
         MyPageRoute(
             viewModel = checkNotNull(myPageViewModel),
+            networkMonitor = networkMonitor,
             themeMode = themeMode,
             appVersion = appVersion,
             extraContent = myPageExtraContent,
             onThemeModeChange = onThemeModeChange,
-            onLoginClick = { navigationState.navigate(AppRoute.Login) },
+            canPerformAccountAction = canPerformAccountAction,
+            logoutBlockedMessage = logoutBlockedMessage,
+            onDismissLogoutBlocked = onDismissLogoutBlocked,
             onEditProfileClick = { navigationState.navigate(AppRoute.NicknameChange) },
         )
     }
@@ -80,10 +102,11 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
     entry<AppRoute.Social>(clazzContentKey = AppRoute::viewModelStoreKey) {
         RoomListRoute(
             viewModel = viewModelScopes.get(AppRoute.Social, RoomListViewModel::class),
+            networkMonitor = networkMonitor,
             authSessionState = authSessionState,
             sessionIdentity = sessionIdentity,
             onCreateRoom = { navigationState.navigate(AppRoute.RoomCreate) },
-            onLoginClick = { navigationState.navigate(AppRoute.Login) },
+            onLoginClick = onAuthenticationRequired,
             onRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomDetail(roomId)) },
             onJoinedRoomClick = { roomId -> navigationState.navigate(AppRoute.RoomHome(roomId)) },
         )
@@ -116,7 +139,7 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
             onMutationSourceVisible = roomListViewModel::onMutationSourceVisible,
             onMutationSourceHidden = roomListViewModel::onMutationSourceHidden,
             onBackClick = { navigationState.popBackStack(route) },
-            onLoginClick = { navigationState.navigate(AppRoute.Login) },
+            onLoginClick = onAuthenticationRequired,
             onJoinRoom = onJoinRoom,
             onDetailViewed = roomListViewModel::recordDetailViewed,
             onRetryRooms = roomListViewModel::onRetryRooms,
@@ -193,7 +216,33 @@ internal fun EntryProviderScope<AppRoute>.homeGraph(
         )
     }
     entry<AppRoute.Records>(clazzContentKey = AppRoute::viewModelStoreKey) {
-        RecordsRoute(viewModelScopes.get(AppRoute.Records, RecordsViewModel::class))
+        RecordsRoute(
+            viewModel = viewModelScopes.get(AppRoute.Records, RecordsViewModel::class),
+            onRecordClick = { date -> navigationState.navigate(AppRoute.RecordsDetail(date.iso8601)) },
+        )
+    }
+
+    entry<AppRoute.RecordsDetail>(clazzContentKey = AppRoute::viewModelStoreKey) { route ->
+        val date = runCatching { MissionDate.parse(route.date) }.getOrNull()
+        if (date != null) {
+            RecordsDetailRoute(
+                viewModel = viewModelScopes.get(AppRoute.Records, RecordsViewModel::class),
+                date = date,
+                onBack = { navigationState.popBackStack(route) },
+                onShare = { record ->
+                    if (navigationState.isCurrentRoute(route) && record.date == date) {
+                        navigationState.navigate(
+                            AppRoute.RecordShare(
+                                date = record.date.iso8601,
+                                groupKey = record.groupKey,
+                                successRecordKey = record.successRecordKey,
+                                occurrenceId = record.occurrenceId,
+                            ),
+                        )
+                    }
+                },
+            )
+        }
     }
 
     entry<AppRoute.NicknameChange>(clazzContentKey = AppRoute::viewModelStoreKey) {

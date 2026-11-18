@@ -1,5 +1,6 @@
 package com.joon.ringout.data.auth
 
+import com.joon.ringout.data.auth.local.AnalyticsTokenStorage
 import com.joon.ringout.data.auth.remote.AuthApi
 import com.joon.ringout.data.auth.remote.AuthProvider
 import com.joon.ringout.data.auth.remote.model.LoginRequest
@@ -18,12 +19,123 @@ import com.joon.ringout.domain.auth.SocialLoginOutcome
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
+import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 class DefaultAuthRepositoryTest {
+    @Test
+    fun `로그인 응답의 회원 ID를 저장하고 토큰 형식과 클레임에 관계없이 Analytics에 전달한다`() = runTest {
+        for (accessToken in listOf("opaque-access-token", tokenWithUserId(1))) {
+            val storedTokens = FakeTokenStorage()
+            val ids = mutableListOf<String?>()
+            val storage = AnalyticsTokenStorage(storedTokens, { storedTokens.tokens }) { ids += it }
+            val session = AuthSession()
+            val repository = DefaultAuthRepository(
+                FakeAuthApi(
+                    loginResponse = LoginResponse(
+                        accessToken = accessToken,
+                        refreshToken = "refresh-token",
+                        isNewUser = false,
+                        userId = 42L,
+                    ),
+                ),
+                storage,
+                session,
+            )
+
+            val outcome = repository.loginWithGoogle("google-access")
+
+            assertIs<SocialLoginOutcome.Authenticated>(outcome)
+            assertEquals(AuthTokens(accessToken, "refresh-token", userId = 42L), storedTokens.tokens)
+            assertEquals(listOf<String?>("42"), ids)
+            assertEquals(AuthSessionState.Authenticated, session.state.value)
+        }
+    }
+
+    @Test
+    fun `로그인 응답 회원 ID가 없거나 양수가 아니면 이전 계정 ID를 재사용하지 않는다`() = runTest {
+        for (userId in listOf(null, 0L, -1L)) {
+            val storedTokens = FakeTokenStorage().apply {
+                tokens = AuthTokens("previous-access", "previous-refresh", userId = 42L)
+            }
+            val ids = mutableListOf<String?>()
+            val storage = AnalyticsTokenStorage(storedTokens, { storedTokens.tokens }) { ids += it }
+            storage.synchronizeUserId()
+            val session = AuthSession().apply { markAuthenticated() }
+            val repository = DefaultAuthRepository(
+                FakeAuthApi(
+                    loginResponse = LoginResponse(
+                        accessToken = tokenWithUserId(7),
+                        refreshToken = "refresh-token",
+                        isNewUser = false,
+                        userId = userId,
+                    ),
+                ),
+                storage,
+                session,
+            )
+
+            val outcome = repository.loginWithApple("apple-id-token")
+
+            assertIs<SocialLoginOutcome.Authenticated>(outcome)
+            assertNull(storedTokens.tokens?.userId)
+            assertEquals(listOf<String?>("42", null), ids)
+            assertEquals(AuthSessionState.Authenticated, session.state.value)
+        }
+    }
+
+    @Test
+    fun `회원 ID를 제공하지 않는 회원가입 응답은 이전 ID와 토큰 클레임을 사용하지 않는다`() = runTest {
+        val storedTokens = FakeTokenStorage().apply {
+            tokens = AuthTokens("previous-access", "previous-refresh", userId = 42L)
+        }
+        val ids = mutableListOf<String?>()
+        val storage = AnalyticsTokenStorage(storedTokens, { storedTokens.tokens }) { ids += it }
+        storage.synchronizeUserId()
+        val session = AuthSession().apply { markAuthenticated() }
+        val repository = DefaultAuthRepository(
+            FakeAuthApi(signupResponse = SignupResponse(tokenWithUserId(7), "refresh-token")),
+            storage,
+            session,
+        )
+
+        repository.signup(
+            signupToken = "signup-token",
+            agreedTerms = setOf(AuthTerm.SERVICE, AuthTerm.PRIVACY),
+            agreedAt = "2026-11-03",
+        )
+
+        assertEquals(AuthTokens(tokenWithUserId(7), "refresh-token"), storedTokens.tokens)
+        assertEquals(listOf<String?>("42", null), ids)
+        assertEquals(AuthSessionState.Authenticated, session.state.value)
+    }
+
+    @Test
+    fun `가입이 필요한 로그인 응답은 기존 계정 토큰과 Analytics ID를 해제한다`() = runTest {
+        val storedTokens = FakeTokenStorage().apply {
+            tokens = AuthTokens("previous-access", "previous-refresh", userId = 42L)
+        }
+        val ids = mutableListOf<String?>()
+        val storage = AnalyticsTokenStorage(storedTokens, { storedTokens.tokens }) { ids += it }
+        storage.synchronizeUserId()
+        val session = AuthSession().apply { markAuthenticated() }
+        val repository = DefaultAuthRepository(
+            FakeAuthApi(loginResponse = LoginResponse(signupToken = "signup", isNewUser = true)),
+            storage,
+            session,
+        )
+
+        val outcome = repository.loginWithKakao("kakao-access")
+
+        assertEquals(SocialLoginOutcome.SignupRequired("signup"), outcome)
+        assertNull(storedTokens.tokens)
+        assertEquals(listOf<String?>("42", null), ids)
+        assertEquals(AuthSessionState.Unauthenticated, session.state.value)
+    }
+
     @Test
     fun restoreSessionAuthenticatesWhenStoredTokensExist() = runTest {
         val storage = FakeTokenStorage().apply {
@@ -309,3 +421,10 @@ private data class FakePersistedAuthState(
     var tokens: AuthTokens? = null,
     var reauthenticationRequired: Boolean = false,
 )
+
+private fun tokenWithUserId(userId: Long): String {
+    val payload = Base64.UrlSafe.encode(
+        """{"sub":"$userId","userId":$userId,"tokenType":"ACCESS"}""".encodeToByteArray(),
+    ).trimEnd('=')
+    return "header.$payload.signature"
+}

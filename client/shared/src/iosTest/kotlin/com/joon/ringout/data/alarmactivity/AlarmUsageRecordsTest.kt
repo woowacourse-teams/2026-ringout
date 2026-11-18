@@ -2,10 +2,18 @@ package com.joon.ringout.data.alarmactivity
 
 import androidx.room3.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceOutboxKind
+import com.joon.ringout.data.alarmoccurrence.AlarmOccurrenceSyncEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmOccurrenceEntity
+import com.joon.ringout.data.alarmoccurrence.CachedAlarmRingingEntity
 import com.joon.ringout.data.database.RingoutDatabase
 import com.joon.ringout.data.missionhistory.MissionHistoryDto
 import com.joon.ringout.data.missionhistory.MissionHistoryEntity
 import com.joon.ringout.data.missionhistory.RoomMissionHistoryDataSource
+import com.joon.ringout.data.missionhistory.RoomRecordsHistoryRepository
+import com.joon.ringout.domain.auth.AuthSession
+import com.joon.ringout.domain.auth.AuthTokens
+import com.joon.ringout.domain.auth.SecureTokenStorage
 import com.joon.ringout.domain.missionhistory.MissionDate
 import com.joon.ringout.domain.missionhistory.MissionResult
 import com.joon.ringout.domain.missionhistory.MissionYearMonth
@@ -13,6 +21,7 @@ import com.joon.ringout.domain.missionhistory.groupByAlarm
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
@@ -21,6 +30,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.io.encoding.Base64
 
 class AlarmUsageRecordsTest {
     private val september = MissionYearMonth(2026, 9)
@@ -153,6 +163,59 @@ class AlarmUsageRecordsTest {
         val alarmCard = cards.single { it.alarmId == "alarm" }
         assertEquals(listOf("one", "one:retry-1"), alarmCard.entries.map { it.occurrenceId })
         assertEquals(2, activity.observeCounts("2026-09-28").first().ringingCount)
+    }
+
+    @Test
+    fun `서버 식별자가 뒤늦게 연결되면 월 경계의 중복을 지우고 대기 중인 재울림과 종료를 함께 표시한다`() = withDatabase { db ->
+        val owner = "1"
+        val serverId = "00000000-0000-0000-0000-000000000001"
+        val december = MissionDate.parse("2026-12-31")
+        val january = MissionDate.parse("2027-01-01")
+        val uncached = MissionDate.parse("2027-02-01")
+        val occurrence = db.alarmOccurrenceSyncDao()
+        occurrence.recordStart(AlarmOccurrenceSyncEntity("local", owner, "alarm", 1, 900, 1_000))
+        occurrence.recordRepeat(owner, "local", "repeat", "repeat-event", 2_000)
+        occurrence.recordTerminal(owner, "repeat", AlarmOccurrenceOutboxKind.FORCE_ENDED, 3_000)
+        val activity = db.alarmActivityDao()
+        activity.record(AlarmActivityEntity.rang("alarm", "local", AlarmActivityTimestamp(1_000, january.iso8601)))
+        val cache = db.alarmOccurrenceCacheDao()
+        cache.saveMonth(
+            owner, "2026-12",
+            listOf(CachedAlarmOccurrenceEntity(owner, "2026-12", serverId, "alarm", december.iso8601, "23:59", null, null)),
+            listOf(CachedAlarmRingingEntity(owner, serverId, "INITIAL", null, 1_000, null)),
+        )
+        cache.saveMonth(owner, "2027-01", emptyList(), emptyList())
+
+        val claims = """{"sub":"1","userId":1,"tokenType":"ACCESS"}"""
+        val accessToken = "header.${Base64.UrlSafe.encode(claims.encodeToByteArray()).trimEnd('=')}.signature"
+        val tokenStorage = object : SecureTokenStorage {
+            override suspend fun read() = AuthTokens(accessToken, "refresh")
+            override suspend fun save(tokens: AuthTokens) = error("Unused")
+            override suspend fun clear() = error("Unused")
+        }
+        val session = AuthSession().apply { startNewSession() }
+        val repository = RoomRecordsHistoryRepository(db, tokenStorage, session, RoomAlarmActivityRepository(activity))
+        val initial = CompletableDeferred<Unit>()
+        withTimeout(5_000) {
+            val merged = async {
+                repository.observe(listOf(december, january, uncached))
+                    .onEach { snapshot ->
+                        if (snapshot.summaries[january]?.ringingCount == 1) initial.complete(Unit)
+                    }
+                    .first { it.summaries[january]?.ringingCount == 0 }
+            }
+            initial.await()
+            occurrence.completeStart(owner, "local", serverId)
+
+            val snapshot = merged.await()
+            val card = snapshot.records.groupByAlarm().single()
+            assertEquals(december, card.date)
+            assertEquals(listOf(1_000L, 2_000L), card.entries.map { it.ringingStartedAtEpochMillis })
+            assertEquals(MissionResult.FAILURE, card.entries.last().result)
+            assertEquals(3_000L, card.entries.last().missionCompletedAtEpochMillis)
+            assertEquals(2, snapshot.summaries[december]?.ringingCount)
+            assertNull(snapshot.summaries[uncached]?.ringingCount)
+        }
     }
 
     private fun withDatabase(block: suspend (RingoutDatabase) -> Unit) = runBlocking<Unit> {

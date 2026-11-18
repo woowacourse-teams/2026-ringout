@@ -1,5 +1,6 @@
 package com.joon.ringout.data.alarmoccurrence
 
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.domain.auth.AuthSession
 import com.joon.ringout.domain.connectivity.NetworkMonitor
 import com.joon.ringout.domain.connectivity.NetworkStatus
@@ -7,6 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -27,7 +29,23 @@ internal class AlarmOccurrenceSyncCoordinator(
         val network = MutableStateFlow(NetworkStatus.Unknown)
         val observers = listOf(
             launch { dao.observeUnsentEvents().collect { wakeups.trySend(Unit) } },
-            launch { dao.observeUnsentMovements().collect { wakeups.trySend(Unit) } },
+            launch {
+                while (true) {
+                    try {
+                        syncer.observeArrivalPlantingWork().collect { wakeups.trySend(Unit) }
+                        break
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        onStorageFailure(error)
+                        wakeups.trySend(Unit)
+                        delay(5_000)
+                    }
+                }
+            },
+            launch {
+                if (RoomFeature.isEnabled) dao.observeUnsentMovements().collect { wakeups.trySend(Unit) }
+            },
             launch { authSession.identity.collect { wakeups.trySend(Unit) } },
             launch { authSession.state.collect { wakeups.trySend(Unit) } },
             launch { networkMonitor.status.collect { network.value = it; wakeups.trySend(Unit) } },

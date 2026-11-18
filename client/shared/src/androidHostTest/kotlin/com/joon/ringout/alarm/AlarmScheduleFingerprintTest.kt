@@ -17,6 +17,16 @@ class AlarmScheduleFingerprintTest {
     }
 
     @Test
+    fun `계정 소유자 메타데이터 변경은 기존 예약 fingerprint를 바꾸지 않는다`() {
+        val request = alarmRequest()
+
+        assertEquals(
+            request.scheduleFingerprint(),
+            request.copy(ownerAccountId = "42").scheduleFingerprint(),
+        )
+    }
+
+    @Test
     fun `저장 예약에 쓰이는 설정이 바뀌면 fingerprint가 바뀐다`() {
         val request = alarmRequest()
         val originalFingerprint = request.scheduleFingerprint()
@@ -26,8 +36,7 @@ class AlarmScheduleFingerprintTest {
             request.copy(selectedDays = listOf("화", "목")),
             request.copy(repeatEnabled = false),
             request.copy(limitMinutes = 20),
-            request.copy(destinationName = "집"),
-            request.copy(destinationAddress = "서울특별시 강남구 테헤란로 1"),
+            request.copy(destinationLabel = "집"),
             request.copy(destinationLatitude = 37.0),
             request.copy(destinationLongitude = 127.0),
             request.copy(targetDistanceKm = 1.5),
@@ -46,8 +55,7 @@ class AlarmScheduleFingerprintTest {
         selectedDays = selectedDays,
         repeatEnabled = true,
         limitMinutes = 12,
-        destinationName = "회사",
-        destinationAddress = "서울특별시 중구 세종대로 110",
+        destinationLabel = "회사",
         destinationLatitude = 37.5665,
         destinationLongitude = 126.978,
         targetDistanceKm = 1.2,

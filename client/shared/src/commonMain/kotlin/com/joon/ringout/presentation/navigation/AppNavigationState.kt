@@ -5,31 +5,65 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.saveable.rememberSerializable
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavBackStack
-import androidx.navigation3.runtime.serialization.NavBackStackSerializer
+import com.joon.ringout.LocalAppNavigationStoreProviders
 import com.joon.ringout.domain.missionhistory.MissionDate
+import com.joon.ringout.domain.room.RoomFeature
 import com.joon.ringout.domain.push.RoomActivityPushTarget
 
 @Composable
-internal fun rememberAppNavigationState(): AppNavigationState {
-    val backStack = rememberSerializable(
-        serializer = NavBackStackSerializer(AppRoute.serializer()),
-    ) {
-        NavBackStack<AppRoute>(AppRoute.Home)
-    }
-    return remember(backStack) {
+internal fun rememberAppNavigationState(sessionIdentity: Any? = null): AppNavigationState =
+    rememberNavigationState("service", sessionIdentity, authenticationOnlyMode = false)
+
+@Composable
+internal fun rememberAuthOnlyNavigationState(): AppNavigationState =
+    rememberNavigationState("auth", sessionIdentity = null, authenticationOnlyMode = true)
+
+@Composable
+private fun rememberNavigationState(
+    scopeKey: String,
+    sessionIdentity: Any?,
+    authenticationOnlyMode: Boolean,
+): AppNavigationState {
+    val stores = LocalAppNavigationStoreProviders.current?.getValue(scopeKey)
+    val createState = {
         AppNavigationState(
-            routes = backStack,
+            routes = if (authenticationOnlyMode) NavBackStack(AppRoute.Login) else NavBackStack(AppRoute.Home),
+            authenticationOnlyMode = authenticationOnlyMode,
         )
     }
+    // 호스트가 있는 Android에서는 차단 중에도 백스택을 해당 화면 모델과 함께 유지한다.
+    return if (stores != null) {
+        val owner = stores.getOrCreateOwner("ringout-navigation-state")
+        viewModel(viewModelStoreOwner = owner) { NavigationStateViewModel(createState()) }.navigationState
+    } else {
+        remember(sessionIdentity) { createState() }
+    }
 }
+
+private class NavigationStateViewModel(val navigationState: AppNavigationState) : ViewModel()
 
 /** 화면 이동 요청과 표시 경로를 타입 안전한 Navigation 3 백스택으로 관리한다. */
 internal class AppNavigationState(
     private val routes: NavBackStack<AppRoute> = NavBackStack(AppRoute.Home),
     private val guestOnlyMode: Boolean = false,
+    private val authenticationOnlyMode: Boolean = false,
+    val roomsEnabled: Boolean = RoomFeature.isEnabled,
 ) {
+    init {
+        if (!roomsEnabled) {
+            routes.removeAll { it.isRoomRoute() }
+            if (routes.isEmpty()) routes.add(AppRoute.Home)
+        }
+        check(
+            authenticationOnlyMode || routes.none {
+                it == AppRoute.Login || it == AppRoute.TermsAgreement
+            },
+        ) { "Authentication routes must use the root authentication navigation state." }
+    }
+
     // Not saved: a restored stack must never replay an old back animation.
     private var lastBackTransition: Pair<AppRoute, AppRoute>? by mutableStateOf(null)
 
@@ -47,6 +81,19 @@ internal class AppNavigationState(
      * 경로의 식별자가 다르면 같은 화면 유형이어도 최상위 항목을 교체한다.
      */
     fun navigate(route: AppRoute) {
+        if (!roomsEnabled && route.isRoomRoute()) return
+        if (authenticationOnlyMode) {
+            val destinationStack = when (route) {
+                AppRoute.Login -> listOf(AppRoute.Login)
+                AppRoute.TermsAgreement -> listOf(AppRoute.Login, AppRoute.TermsAgreement)
+                else -> return
+            }
+            replaceBackStack(destinationStack)
+            return
+        }
+        check(route != AppRoute.Login && route != AppRoute.TermsAgreement) {
+            "Authentication routes must use the root authentication navigation state."
+        }
         if (guestOnlyMode) {
             when (route) {
                 AppRoute.NicknameChange,
@@ -60,6 +107,7 @@ internal class AppNavigationState(
         }
         val destinationStack = when (route) {
             AppRoute.Home -> listOf(AppRoute.Home)
+            AppRoute.Forest -> listOf(AppRoute.Home, AppRoute.Forest)
             AppRoute.MyPage -> listOf(AppRoute.Home, AppRoute.MyPage)
             AppRoute.Social -> listOf(AppRoute.Home, AppRoute.Social)
             AppRoute.RoomCreate -> listOf(AppRoute.Home, AppRoute.Social, AppRoute.RoomCreate)
@@ -82,18 +130,20 @@ internal class AppNavigationState(
                 else -> routes.toList() + route
             }
             AppRoute.Records -> listOf(AppRoute.Home, AppRoute.Records)
+            is AppRoute.RecordsDetail -> if (route.isValid()) {
+                listOf(AppRoute.Home, AppRoute.Records, route)
+            } else routes.toList()
+            is AppRoute.RecordShare -> if (route.isValid()) {
+                listOf(AppRoute.Home, AppRoute.Records, AppRoute.RecordsDetail(route.date), route)
+            } else routes.toList()
             AppRoute.NicknameChange ->
                 listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.NicknameChange)
-            // 소셜에서 시작한 인증은 출처를 유지하고, 일반 로그인은 마이페이지로 돌아간다.
-            AppRoute.Login -> socialReturnStack()?.plus(AppRoute.Login)
-                ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login)
-            AppRoute.TermsAgreement -> socialReturnStack()?.let { socialStack ->
-                socialStack + AppRoute.Login + AppRoute.TermsAgreement
-            } ?: listOf(AppRoute.Home, AppRoute.MyPage, AppRoute.Login, AppRoute.TermsAgreement)
+            AppRoute.Login,
+            AppRoute.TermsAgreement,
+            -> error("Authentication routes must use the root authentication navigation state.")
             AppRoute.AddAlarm -> listOf(AppRoute.Home, AppRoute.AddAlarm)
             is AppRoute.EditAlarm -> listOf(AppRoute.Home, route)
             is AppRoute.Destination,
-            is AppRoute.DestinationManagement,
             AppRoute.AlarmSound,
             -> {
                 val parent = requireNotNull(editorRoute) { "An alarm picker requires an editor parent" }
@@ -101,6 +151,8 @@ internal class AppNavigationState(
             }
             is AppRoute.ActiveAlarmTracking ->
                 routes.filterNot { it is AppRoute.ActiveAlarmTracking } + route
+            is AppRoute.Arrival -> listOf(AppRoute.Home, route)
+            is AppRoute.ArrivalShare -> listOf(AppRoute.Home, AppRoute.Arrival(route.occurrenceId), route)
             AppRoute.Onboarding -> error("온보딩은 앱 내비게이션 진입 전에 관리한다: $route")
             is AppRoute.AlarmRinging ->
                 error("알람 울림 경로는 플랫폼 상태에서만 표시한다: $route")
@@ -111,13 +163,9 @@ internal class AppNavigationState(
         replaceBackStack(destinationStack)
     }
 
-    /** 소셜에서 시작한 인증은 완료 후 기존 소셜 또는 모임 소개 화면으로 돌아간다. */
-    fun completeAuthenticationFlow() {
-        replaceBackStack(socialReturnStack() ?: listOf(AppRoute.Home))
-    }
-
     /** 성공한 생성/가입 화면만 RoomHome으로 바꾸며, 이미 나간 화면의 완료는 무시한다. */
     fun navigateToRoomHomeFrom(sourceRoute: AppRoute, roomId: String): Boolean {
+        if (!roomsEnabled) return false
         if (!isCurrentRoute(sourceRoute)) return false
         if (sourceRoute != AppRoute.RoomCreate && sourceRoute !is AppRoute.RoomDetail) return false
         val expectedStack = listOf(AppRoute.Home, AppRoute.Social, sourceRoute)
@@ -130,6 +178,7 @@ internal class AppNavigationState(
 
     /** Builds the complete room activity stack for an explicit notification click. */
     fun openRoomActivityFromPush(target: RoomActivityPushTarget): Boolean {
+        if (!roomsEnabled) return false
         val activityRoute = AppRoute.RoomActivity(target.roomId, target.activityDate)
         if (!activityRoute.isValid()) return false
 
@@ -165,31 +214,7 @@ internal class AppNavigationState(
 
     fun isCurrentRoute(route: AppRoute): Boolean = routes.last() == route
 
-    private fun socialReturnStack(): List<AppRoute>? {
-        val currentRoute = routes.lastOrNull() ?: return null
-        if (currentRoute == AppRoute.Social) {
-            return routes.take(routes.lastIndex + 1)
-        }
-
-        val returnRouteIndex = when (currentRoute) {
-            is AppRoute.RoomDetail -> routes.lastIndex
-            AppRoute.Login -> routes.lastIndex - 1
-            AppRoute.TermsAgreement -> routes.indexOfLast { it == AppRoute.Login } - 1
-            else -> return null
-        }
-        if (returnRouteIndex < 1) return null
-
-        return when (val returnRoute = routes[returnRouteIndex]) {
-            AppRoute.Social -> routes.take(returnRouteIndex + 1)
-            is AppRoute.RoomDetail -> {
-                if (routes.getOrNull(returnRouteIndex - 1) != AppRoute.Social) return null
-                routes.take(returnRouteIndex + 1)
-            }
-            else -> null
-        }
-    }
-
-    private fun replaceBackStack(destinationStack: List<AppRoute>) {
+    internal fun replaceBackStack(destinationStack: List<AppRoute>) {
         lastBackTransition = null
         // 공통 백스택 항목과 화면 상태는 유지하고 달라진 뒷부분만 교체한다.
         val sharedSize = routes.zip(destinationStack).takeWhile { (a, b) -> a == b }.size
@@ -200,6 +225,13 @@ internal class AppNavigationState(
     private fun AppRoute.RoomActivity.isValid(): Boolean =
         roomId.toLongOrNull()?.let { it > 0L } == true &&
             runCatching { MissionDate.parse(activityDate) }.getOrNull()?.iso8601 == activityDate
+
+    private fun AppRoute.RecordsDetail.isValid(): Boolean =
+        runCatching { MissionDate.parse(date) }.getOrNull()?.iso8601 == date
+
+    private fun AppRoute.RecordShare.isValid(): Boolean =
+        AppRoute.RecordsDetail(date).isValid() && groupKey.isNotBlank() && successRecordKey.isNotBlank() &&
+            (occurrenceId == null || occurrenceId.isNotBlank())
 
     /** 아직 제공하지 않는 닉네임 수정 화면은 마이페이지로 되돌린다. */
     internal fun normalizeForGuestMode() {
@@ -223,4 +255,11 @@ internal class AppNavigationState(
         isCurrentRoute(displayedRoute) -> routes.toList()
         else -> null
     }
+}
+
+internal fun AppRoute.isRoomRoute(): Boolean = when (this) {
+    AppRoute.Social, AppRoute.RoomCreate,
+    is AppRoute.RoomDetail, is AppRoute.RoomHome, is AppRoute.RoomActivity,
+    is AppRoute.RoomEdit, is AppRoute.RoomMemberManagement -> true
+    else -> false
 }

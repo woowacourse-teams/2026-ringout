@@ -23,6 +23,7 @@ import { disposeModels, loadForestModels } from "./assets";
 import type { ForestModels } from "./assets";
 import { slotPosition, validatePlacements } from "./layout";
 import { PLANT_DURATION } from "./motion";
+import type { ForestRevealRequest } from "./motion";
 
 export type SceneStatus = {
   phase: "loading" | "ready" | "error";
@@ -48,13 +49,19 @@ export class ForestRenderer {
   private disposed = false;
   private visible = true;
   private failed = false;
-  private revealCycle: number | null = null;
-  private revealStarted = 0;
+  private hostActive = true;
+  private hasSize = false;
+  private revealRequest: ForestRevealRequest | null = null;
+  private revealElapsed = 0;
+  private revealLastFrame: number | null = null;
+  private revealSettled = false;
 
   constructor(
     private readonly container: HTMLDivElement,
     private readonly onStatus: (status: SceneStatus) => void,
     private readonly onZoom: (zoom: number) => void,
+    private readonly onRevealComplete: (request: ForestRevealRequest) => void = () => {},
+    private readonly onRevealError: (request: ForestRevealRequest) => void = () => {},
   ) {
     this.renderer = new WebGLRenderer({
       antialias: true,
@@ -165,7 +172,7 @@ export class ForestRenderer {
     this.onStatus({ phase: "loading" });
     try {
       const models = await loadForestModels(this.abortController.signal);
-      if (this.disposed) {
+      if (this.disposed || this.failed) {
         disposeModels(Object.values(models));
         return;
       }
@@ -177,13 +184,7 @@ export class ForestRenderer {
       this.invalidate();
     } catch {
       if (this.disposed) return;
-      this.failed = true;
-      this.stopFrame();
-      this.onStatus({
-        phase: "error",
-        message:
-          "모델을 불러오는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.",
-      });
+      this.fail("모델을 불러오는 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.");
     }
   }
 
@@ -214,10 +215,27 @@ export class ForestRenderer {
     this.invalidate();
   }
 
-  setRevealCycle(cycle: number | null): void {
-    this.revealCycle = cycle;
-    this.revealStarted = performance.now();
+  setRevealRequest(request: ForestRevealRequest | null): void {
+    if (this.disposed) return;
+    if (this.revealRequest?.attemptId === request?.attemptId &&
+        this.revealRequest?.growthCycle === request?.growthCycle) return;
+    this.revealRequest = request;
+    this.revealElapsed = 0;
+    this.revealLastFrame = null;
+    this.revealSettled = false;
+    if (this.failed && request) {
+      this.revealSettled = true;
+      this.onRevealError(request);
+      return;
+    }
     this.invalidate();
+  }
+
+  setHostActive(active: boolean): void {
+    if (this.hostActive === active) return;
+    this.hostActive = active;
+    if (active) this.invalidate();
+    else this.stopFrame();
   }
 
   resetView = (): void => {
@@ -295,7 +313,8 @@ export class ForestRenderer {
   private resize = (): void => {
     if (this.disposed) return;
     const { width, height } = this.container.getBoundingClientRect();
-    if (width <= 0 || height <= 0) return;
+    this.hasSize = width > 0 && height > 0;
+    if (!this.hasSize) { this.stopFrame(); return; }
     const aspect = width / height;
     const halfHeight = Math.max(3.35, 3.35 / aspect);
     this.camera.left = -halfHeight * aspect;
@@ -319,18 +338,15 @@ export class ForestRenderer {
 
   private onContextLost = (event: Event): void => {
     event.preventDefault();
-    this.failed = true;
-    this.stopFrame();
-    this.onStatus({
-      phase: "error",
-      message: "3D 화면 연결이 중단됐어요. 다시 불러와 주세요.",
-    });
+    this.fail("3D 화면 연결이 중단됐어요. 다시 불러와 주세요.");
   };
 
   private invalidate = (): void => {
     if (
       this.disposed ||
       this.failed ||
+      !this.hostActive ||
+      !this.hasSize ||
       document.hidden ||
       !this.visible ||
       this.frame
@@ -339,36 +355,65 @@ export class ForestRenderer {
     this.frame = requestAnimationFrame(this.draw);
   };
 
-  private draw = (): void => {
+  private draw = (timestamp: number): void => {
     this.frame = 0;
-    if (this.disposed || this.failed || document.hidden || !this.visible)
+    if (this.disposed || this.failed || !this.hostActive || !this.hasSize || document.hidden || !this.visible) {
+      this.revealLastFrame = null;
       return;
-    const changed = this.controls.update();
-    const revealing =
-      this.revealCycle === null
+    }
+    try {
+      const changed = this.controls.update();
+      const request = this.revealRequest;
+      const revealing = !this.models || request === null
         ? undefined
-        : this.trees.getObjectByName(`tree-${this.revealCycle}`);
-    const progress = this.reducedMotion.matches
-      ? 1
-      : Math.min(1, (performance.now() - this.revealStarted) / PLANT_DURATION);
-    if (revealing)
-      revealing.scale.setScalar(Math.max(0.02, 1 - Math.pow(1 - progress, 3)));
-    this.renderer.render(this.scene, this.camera);
-    this.onZoom(this.camera.zoom);
-    this.container.dataset.camera = `${this.controls.getAzimuthalAngle().toFixed(3)},${this.controls.getPolarAngle().toFixed(3)}`;
-    // Stop drawing when the camera settles. No perpetual loop for an idle static forest.
-    if ((changed && this.controls.enableDamping) || (revealing && progress < 1))
-      this.invalidate();
+        : this.trees.getObjectByName(`tree-${request.growthCycle}`);
+      if (revealing) {
+        if (this.revealLastFrame !== null) {
+          this.revealElapsed += Math.max(0, timestamp - this.revealLastFrame);
+        }
+        this.revealLastFrame = timestamp;
+      } else this.revealLastFrame = null;
+      const progress = this.reducedMotion.matches ? 1 : Math.min(1, this.revealElapsed / PLANT_DURATION);
+      if (revealing) revealing.scale.setScalar(Math.max(0.02, 1 - Math.pow(1 - progress, 3)));
+      this.renderer.render(this.scene, this.camera);
+      // Only a successfully rendered final frame confirms the current attempt.
+      if (request && revealing && progress === 1 && !this.revealSettled) {
+        this.revealSettled = true;
+        this.onRevealComplete(request);
+      }
+      this.onZoom(this.camera.zoom);
+      this.container.dataset.camera = `${this.controls.getAzimuthalAngle().toFixed(3)},${this.controls.getPolarAngle().toFixed(3)}`;
+      if ((changed && this.controls.enableDamping) || (revealing && progress < 1)) this.invalidate();
+    } catch {
+      this.fail("3D 화면을 표시하지 못했어요. 다시 불러와 주세요.");
+    }
   };
+
+  private fail(message: string): void {
+    if (this.disposed) return;
+    this.failed = true;
+    this.stopFrame();
+    this.onStatus({ phase: "error", message });
+    if (this.revealRequest && !this.revealSettled) {
+      this.revealSettled = true;
+      this.onRevealError(this.revealRequest);
+    }
+  }
 
   private stopFrame(): void {
     cancelAnimationFrame(this.frame);
     this.frame = 0;
+    this.revealLastFrame = null;
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.revealRequest && !this.revealSettled) {
+      this.revealSettled = true;
+      this.onRevealError(this.revealRequest);
+    }
+    this.revealRequest = null;
     this.abortController.abort();
     this.stopFrame();
     this.resizeObserver.disconnect();

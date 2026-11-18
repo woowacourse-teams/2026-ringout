@@ -11,14 +11,17 @@ data class AlarmScheduleRequest(
     val selectedDays: List<String>,
     val repeatEnabled: Boolean,
     val limitMinutes: Int,
-    val destinationName: String,
-    val destinationAddress: String,
+    val destinationLabel: String,
     val destinationLatitude: Double,
     val destinationLongitude: Double,
     val targetDistanceKm: Double = 1.2,
     val alarmSoundName: String,
     val alarmSoundUri: String?,
     val scheduleVersion: Long = 1,
+    /** Verified account that owns this schedule; null keeps legacy or unresolved schedules unassigned. */
+    val ownerAccountId: String? = null,
+    val remoteAlarmId: String? = null,
+    val pendingReservationId: String? = null,
 )
 
 class AlarmController(

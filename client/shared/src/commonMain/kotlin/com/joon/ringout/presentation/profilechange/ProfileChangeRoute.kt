@@ -28,15 +28,15 @@ internal fun ProfileChangeRoute(
     onNicknameChanged: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val account = accountStatus as? MyPageAccountStatus.LoggedIn
+    val account = (accountStatus as? MyPageAccountStatus.LoggedIn)
+        ?.takeIf { authSessionState == AuthSessionState.Authenticated }
     if (account == null) {
         LaunchedEffect(authSessionState, accountStatus) {
-            if (
-                authSessionState != AuthSessionState.Restoring &&
-                accountStatus != MyPageAccountStatus.Loading
-            ) {
-                onBackClick()
-            }
+            val isWaitingForSessionOrProfile =
+                authSessionState == AuthSessionState.Restoring ||
+                    (authSessionState == AuthSessionState.Authenticated &&
+                        accountStatus == MyPageAccountStatus.Loading)
+            if (!isWaitingForSessionOrProfile) onBackClick()
         }
         return
     }

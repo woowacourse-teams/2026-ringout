@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.swipe
@@ -40,14 +41,16 @@ class DestinationSelectionDialogTest {
     fun `세 항목을 완전히 표시하고 더 많은 목적지는 고정 높이 안에서 스크롤한다`() {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         var selections = 0
+        var deletes = 0
+        val destinations = listOf("370-41", "헬스장", "러닝", "도서관").mapIndexed { index, label ->
+            SavedDestination(index + 1L, label, 37.28, 127.01)
+        }
         try {
             activity.get().setContent {
                 RingoutTheme(themeMode = ThemeMode.Dark) {
                     DestinationSelectionDialogContent(
-                        destinations = listOf("370-41", "헬스장", "러닝", "도서관").mapIndexed { index, name ->
-                            SavedDestination(index + 1L, name, "대한민국 경기도 수원시 팔달구", 37.28, 127.01)
-                        },
-                        onDismissRequest = {}, onSelect = { selections++ }, onFindInMap = {},
+                        destinations = destinations,
+                        onDismissRequest = {}, onSelect = { selections++ }, onDelete = { deletes++ }, onFindInMap = {},
                         modifier = Modifier.testTag("dialog"),
                     )
                 }
@@ -57,6 +60,7 @@ class DestinationSelectionDialogTest {
             val thirdBounds = compose.onNodeWithText("러닝").fetchSemanticsNode().boundsInWindow
             assertTrue(thirdBounds.bottom <= listBounds.bottom)
             compose.onNodeWithText("370-41").assertIsDisplayed()
+            compose.onNodeWithText("대한민국 경기도 수원시 팔달구").assertDoesNotExist()
             compose.onNodeWithText("러닝").assertIsDisplayed()
             compose.onNodeWithContentDescription("저장된 목적지 스크롤").assertIsDisplayed()
             compose.runOnIdle {
@@ -81,11 +85,12 @@ class DestinationSelectionDialogTest {
             }
             compose.onNodeWithText("370-41").assertIsDisplayed()
             compose.runOnIdle { assertEquals(0, selections) }
-            val selectButton = compose.onNodeWithContentDescription("370-41 선택")
-            val scrollbarBounds = compose.onNodeWithContentDescription("저장된 목적지 스크롤")
-                .fetchSemanticsNode().boundsInWindow
-            assertTrue(selectButton.fetchSemanticsNode().boundsInWindow.right <= scrollbarBounds.left)
-            selectButton.performTouchInput { click(center) }
+            compose.onNodeWithContentDescription("370-41 제거").performClick()
+            compose.runOnIdle {
+                assertEquals(1, deletes)
+                assertEquals(0, selections)
+            }
+            compose.onNodeWithContentDescription("370-41 선택").performClick()
             compose.runOnIdle { assertEquals(1, selections) }
             assertEquals(bounds, compose.onNodeWithTag("dialog").fetchSemanticsNode().boundsInWindow)
         } finally {
@@ -101,9 +106,9 @@ class DestinationSelectionDialogTest {
                 RingoutTheme {
                     DestinationSelectionDialogContent(
                         destinations = List(3) {
-                            SavedDestination(it + 1L, "목적지 ${it + 1}", "서울특별시", 37.56, 126.97)
+                            SavedDestination(it + 1L, "목적지 ${it + 1}", 37.56, 126.97)
                         },
-                        onDismissRequest = {}, onSelect = {}, onFindInMap = {},
+                        onDismissRequest = {}, onSelect = {}, onDelete = {}, onFindInMap = {},
                     )
                 }
             }

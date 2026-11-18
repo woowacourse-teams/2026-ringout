@@ -23,13 +23,16 @@ data class LoginUiState(
 )
 
 sealed interface LoginCompletion {
+    val attemptId: Long
     val eventId: Long
 
     data class Authenticated(
+        override val attemptId: Long,
         override val eventId: Long,
     ) : LoginCompletion
 
     data class SignupRequired(
+        override val attemptId: Long,
         override val eventId: Long,
         val signupToken: String,
         val provider: AnalyticsAuthProvider,
@@ -46,23 +49,24 @@ class LoginViewModel(
 
     private var nextEventId = 0L
     private var activeProvider: AnalyticsAuthProvider? = null
+    private var activeAttemptId: Long? = null
     private var loginJob: Job? = null
     private var isCleared = false
     private val scope = coroutineScope ?: viewModelScope
 
-    fun beginAppleSignIn(): Boolean {
-        return beginSocialSignIn(AnalyticsAuthProvider.Apple)
+    fun beginAppleSignIn(attemptId: Long = 0L): Boolean {
+        return beginSocialSignIn(AnalyticsAuthProvider.Apple, attemptId)
     }
 
-    fun beginGoogleSignIn(): Boolean {
-        return beginSocialSignIn(AnalyticsAuthProvider.Google)
+    fun beginGoogleSignIn(attemptId: Long = 0L): Boolean {
+        return beginSocialSignIn(AnalyticsAuthProvider.Google, attemptId)
     }
 
-    fun beginKakaoSignIn(): Boolean {
-        return beginSocialSignIn(AnalyticsAuthProvider.Kakao)
+    fun beginKakaoSignIn(attemptId: Long = 0L): Boolean {
+        return beginSocialSignIn(AnalyticsAuthProvider.Kakao, attemptId)
     }
 
-    private fun beginSocialSignIn(provider: AnalyticsAuthProvider): Boolean {
+    private fun beginSocialSignIn(provider: AnalyticsAuthProvider, attemptId: Long): Boolean {
         if (isCleared) return false
         if (uiState.isLoading) {
             AuthDiagnosticLogger.debug(
@@ -71,6 +75,7 @@ class LoginViewModel(
             return false
         }
         activeProvider = provider
+        activeAttemptId = attemptId
         uiState = uiState.copy(isLoading = true, errorMessage = null)
         AuthDiagnosticLogger.debug("login_started provider=${provider.logValue}")
         runCatching {
@@ -95,6 +100,7 @@ class LoginViewModel(
             GoogleAccessTokenResult.Cancelled -> {
                 AuthDiagnosticLogger.debug("sdk_cancelled provider=google")
                 activeProvider = null
+                activeAttemptId = null
                 uiState = uiState.copy(isLoading = false)
             }
 
@@ -104,6 +110,7 @@ class LoginViewModel(
                     IllegalStateException(result.message),
                 )
                 activeProvider = null
+                activeAttemptId = null
                 uiState = uiState.copy(
                     isLoading = false,
                     errorMessage = result.message,
@@ -129,6 +136,7 @@ class LoginViewModel(
             AppleIdTokenResult.Cancelled -> {
                 AuthDiagnosticLogger.debug("sdk_cancelled provider=apple")
                 activeProvider = null
+                activeAttemptId = null
                 uiState = uiState.copy(isLoading = false)
             }
 
@@ -138,6 +146,7 @@ class LoginViewModel(
                     IllegalStateException(result.message),
                 )
                 activeProvider = null
+                activeAttemptId = null
                 uiState = uiState.copy(
                     isLoading = false,
                     errorMessage = result.message,
@@ -163,6 +172,7 @@ class LoginViewModel(
             KakaoAccessTokenResult.Cancelled -> {
                 AuthDiagnosticLogger.debug("sdk_cancelled provider=kakao")
                 activeProvider = null
+                activeAttemptId = null
                 uiState = uiState.copy(isLoading = false)
             }
 
@@ -172,6 +182,7 @@ class LoginViewModel(
                     IllegalStateException(result.message),
                 )
                 activeProvider = null
+                activeAttemptId = null
                 uiState = uiState.copy(
                     isLoading = false,
                     errorMessage = result.message,
@@ -196,12 +207,14 @@ class LoginViewModel(
     fun consumeCompletion(eventId: Long) {
         if (uiState.completion?.eventId == eventId) {
             uiState = uiState.copy(completion = null)
+            activeAttemptId = null
         }
     }
 
     override fun onCleared() {
         isCleared = true
         activeProvider = null
+        activeAttemptId = null
         loginJob?.cancel()
         loginJob = null
         uiState = LoginUiState()
@@ -256,10 +269,14 @@ class LoginViewModel(
                 if (isCleared || !isActive) return@launch
                 val completion = when (outcome) {
                     SocialLoginOutcome.Authenticated ->
-                        LoginCompletion.Authenticated(++nextEventId)
+                        LoginCompletion.Authenticated(
+                            attemptId = checkNotNull(activeAttemptId),
+                            eventId = ++nextEventId,
+                        )
 
                     is SocialLoginOutcome.SignupRequired ->
                         LoginCompletion.SignupRequired(
+                            attemptId = checkNotNull(activeAttemptId),
                             eventId = ++nextEventId,
                             signupToken = outcome.signupToken,
                             provider = provider,
@@ -282,6 +299,7 @@ class LoginViewModel(
                     isLoading = false,
                     errorMessage = error.message ?: "로그인하지 못했어요. 다시 시도해 주세요.",
                 )
+                activeAttemptId = null
             }
         }
     }

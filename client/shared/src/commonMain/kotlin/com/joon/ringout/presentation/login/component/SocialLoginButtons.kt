@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -49,7 +50,7 @@ internal fun SocialLoginButtons(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(dimensions.socialPadding),
+            .padding(horizontal = dimensions.socialPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(dimensions.socialButtonSpacing),
     ) {
@@ -99,7 +100,7 @@ private fun SocialLoginButton(
         modifier = modifier
             .widthIn(max = dimensions.socialButtonWidth)
             .fillMaxWidth()
-            .height(dimensions.socialButtonHeight)
+            .heightIn(min = dimensions.socialButtonHeight)
             .clip(shape)
             .background(style.backgroundColor)
             .then(borderModifier)
@@ -108,7 +109,8 @@ private fun SocialLoginButton(
                 role = Role.Button,
                 onClickLabel = style.label,
                 onClick = onClick,
-            ),
+            )
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -126,6 +128,7 @@ private fun SocialLoginButton(
         Text(
             text = style.label,
             color = style.contentColor,
+            textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelLarge.copy(
                 fontSize = 16.sp,
                 lineHeight = 20.sp,

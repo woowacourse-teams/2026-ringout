@@ -4,7 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.joon.ringout.LocalRingoutThemeMode
 import com.joon.ringout.ThemeMode
 
@@ -12,6 +14,7 @@ import com.joon.ringout.ThemeMode
 internal data class LoginColors(
     val background: Color,
     val primaryText: Color,
+    val accent: Color,
     val loadingScrim: Color,
     val loadingIndicator: Color,
     val appleBackground: Color,
@@ -28,25 +31,26 @@ internal data class LoginColors(
 
 @Immutable
 internal data class LoginDimensions(
-    val headerContainerHeight: Dp,
-    val headerVisualHeight: Dp,
-    val headerToImageSpacing: Dp,
-    val heroImageSize: Dp,
-    val imageToTextSpacing: Dp,
-    val heroTextHeight: Dp,
-    val textToSocialSpacing: Dp,
+    val contentTopSpacing: Dp,
+    val heroToButtonsSpacing: Dp,
+    val contentHorizontalPadding: Dp,
+    val heroLogoSize: Dp,
+    val logoToGreetingSpacing: Dp,
+    val greetingToDescriptionSpacing: Dp,
+    val greetingFontSize: TextUnit,
+    val greetingLineHeight: TextUnit,
+    val descriptionFontSize: TextUnit,
+    val descriptionLineHeight: TextUnit,
     val socialPadding: Dp,
     val socialButtonSpacing: Dp,
     val socialButtonWidth: Dp,
     val socialButtonHeight: Dp,
-) {
-    val headerContainerToImageSpacing: Dp
-        get() = headerToImageSpacing - (headerContainerHeight - headerVisualHeight) / 2f
-}
+)
 
 private val LoginDarkColors = LoginColors(
     background = Color(0xFF0F1012),
-    primaryText = Color(0xFFF5F5F6),
+    primaryText = Color.White,
+    accent = Color(0xFFF95E25),
     loadingScrim = Color.Black.copy(alpha = 0.5f),
     loadingIndicator = Color(0xFFFF6D2E),
     appleBackground = Color(0xFFFFFFFF),
@@ -64,6 +68,7 @@ private val LoginDarkColors = LoginColors(
 private val LoginLightColors = LoginColors(
     background = Color(0xFFFFFFFF),
     primaryText = Color(0xFF111827),
+    accent = Color(0xFFF95E25),
     loadingScrim = Color.Black.copy(alpha = 0.5f),
     loadingIndicator = Color(0xFFFF6D2E),
     appleBackground = Color(0xFFFFFFFF),
@@ -78,29 +83,18 @@ private val LoginLightColors = LoginColors(
     naverText = Color(0xFFFFFFFF),
 )
 
-private val LoginDarkDimensions = LoginDimensions(
-    headerContainerHeight = 40.dp,
-    headerVisualHeight = 24.dp,
-    headerToImageSpacing = 20.dp,
-    heroImageSize = 200.dp,
-    imageToTextSpacing = 20.dp,
-    heroTextHeight = 76.dp,
-    textToSocialSpacing = 80.dp,
-    socialPadding = 10.dp,
-    socialButtonSpacing = 10.dp,
-    socialButtonWidth = 308.dp,
-    socialButtonHeight = 56.dp,
-)
-
-private val LoginLightDimensions = LoginDimensions(
-    headerContainerHeight = 40.dp,
-    headerVisualHeight = 24.dp,
-    headerToImageSpacing = 20.dp,
-    heroImageSize = 200.dp,
-    imageToTextSpacing = 20.dp,
-    heroTextHeight = 76.dp,
-    textToSocialSpacing = 80.dp,
-    socialPadding = 10.dp,
+private val DefaultLoginDimensions = LoginDimensions(
+    contentTopSpacing = 114.dp,
+    heroToButtonsSpacing = 152.dp,
+    contentHorizontalPadding = 40.dp,
+    heroLogoSize = 67.dp,
+    logoToGreetingSpacing = 14.dp,
+    greetingToDescriptionSpacing = 24.dp,
+    greetingFontSize = 36.sp,
+    greetingLineHeight = 43.sp,
+    descriptionFontSize = 20.sp,
+    descriptionLineHeight = 32.sp,
+    socialPadding = 7.dp,
     socialButtonSpacing = 10.dp,
     socialButtonWidth = 308.dp,
     socialButtonHeight = 56.dp,
@@ -112,8 +106,4 @@ internal fun loginColors(): LoginColors = when (LocalRingoutThemeMode.current) {
     ThemeMode.Light -> LoginLightColors
 }
 
-@Composable
-internal fun loginDimensions(): LoginDimensions = when (LocalRingoutThemeMode.current) {
-    ThemeMode.Dark -> LoginDarkDimensions
-    ThemeMode.Light -> LoginLightDimensions
-}
+internal fun loginDimensions(): LoginDimensions = DefaultLoginDimensions

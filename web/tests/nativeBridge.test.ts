@@ -94,3 +94,42 @@ describe("네이티브 숲 브리지", () => {
     f.bridge.dispose();
   });
 });
+
+
+describe("현재 페이지의 앱 가시성", () => {
+  it("준비 응답보다 먼저 받은 활성 상태를 나중 구독자에게 전달한다", async () => {
+    const f = fixture();
+    const ready = f.bridge.ready();
+    const visibility = { version: 1, type: "forest.visibility", requestId: f.requests[0]!.requestId, active: false };
+    f.bridge.receive(visibility);
+    f.reply();
+    await ready;
+    const listener = vi.fn();
+    const unsubscribe = f.bridge.subscribeVisibility(listener);
+    expect(listener).toHaveBeenLastCalledWith(false);
+    f.bridge.receive({ ...visibility, active: true });
+    expect(listener).toHaveBeenLastCalledWith(true);
+    expect(listener).toHaveBeenCalledTimes(2);
+    unsubscribe();
+    f.bridge.receive(visibility);
+    expect(listener).toHaveBeenCalledTimes(2);
+    f.bridge.dispose();
+  });
+  it("구버전 앱은 활성 상태를 기본으로 쓰고 다른 페이지나 잘못된 이벤트는 무시한다", async () => {
+    const f = fixture();
+    const listener = vi.fn();
+    f.bridge.subscribeVisibility(listener);
+    expect(listener).toHaveBeenLastCalledWith(true);
+    const ready = f.bridge.ready();
+    const requestId = f.requests[0]!.requestId;
+    f.bridge.receive({ version: 1, type: "forest.visibility", requestId: "old-page", active: false });
+    f.bridge.receive({ version: 2, type: "forest.visibility", requestId, active: false });
+    f.bridge.receive({ version: 1, type: "forest.visibility", requestId, active: "false" });
+    f.reply();
+    await ready;
+    expect(listener).toHaveBeenCalledTimes(1);
+    f.bridge.dispose();
+    f.bridge.receive({ version: 1, type: "forest.visibility", requestId, active: false });
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+});

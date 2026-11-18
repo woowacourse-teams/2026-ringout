@@ -33,12 +33,19 @@ internal fun DestinationDeleteDialog(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     isDeleting: Boolean = false,
+    errorMessage: String? = null,
 ) {
     Dialog(
         onDismissRequest = { if (!isDeleting) onDismissRequest() },
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = !isDeleting, dismissOnClickOutside = !isDeleting),
     ) {
-        DestinationDeleteDialogContent(onDismissRequest, onConfirm, modifier.padding(horizontal = 24.dp), isDeleting)
+        DestinationDeleteDialogContent(
+            onDismissRequest,
+            onConfirm,
+            modifier.padding(horizontal = 24.dp),
+            isDeleting,
+            errorMessage,
+        )
     }
 }
 
@@ -48,6 +55,7 @@ internal fun DestinationDeleteDialogContent(
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
     isDeleting: Boolean = false,
+    errorMessage: String? = null,
 ) {
     val colors = DestinationManagementPalette
     Column(
@@ -60,6 +68,9 @@ internal fun DestinationDeleteDialogContent(
                 style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold))
             Text("저장된 목적지 목록에서 삭제할까요?\n이미 알람에 설정한 목적지는 유지됩니다.", color = colors.confirmBody,
                 style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, lineHeight = 19.2.sp, fontWeight = FontWeight.Medium))
+            errorMessage?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             listOf("취소" to onDismissRequest, (if (isDeleting) "삭제 중…" else "삭제") to onConfirm).forEachIndexed { index, (label, action) ->
@@ -77,5 +88,5 @@ internal fun DestinationDeleteDialogContent(
 @Preview
 @Composable
 private fun DestinationDeleteDialogPreview() {
-    RingoutTheme { DestinationDeleteDialogContent({}, {}) }
+    RingoutTheme { DestinationDeleteDialogContent({}, {}, errorMessage = "삭제에 실패했어요. 다시 시도해 주세요.") }
 }
