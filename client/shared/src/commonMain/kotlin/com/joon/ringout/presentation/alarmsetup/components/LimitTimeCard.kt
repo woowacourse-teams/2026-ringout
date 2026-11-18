@@ -63,10 +63,10 @@ fun LimitTimeCard(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            AlarmSetupSectionLabel("반복 알람 간격", colors.primaryText)
+            AlarmSetupSectionLabel("알람 반복 간격", colors.primaryText)
             Text(
                 text = buildAnnotatedString {
-                    append("움직임이 없으면 ")
+                    append("도착 전까지 ")
                     withStyle(
                         SpanStyle(
                             color = colors.accent,
@@ -76,7 +76,7 @@ fun LimitTimeCard(
                     ) {
                         append("${sliderMinutes}분마다")
                     }
-                    append(" 다시 울려요")
+                    append(" 알람이 다시 울려요")
                 },
                 color = colors.supportingText,
                 style = MaterialTheme.typography.bodyMedium.copy(
