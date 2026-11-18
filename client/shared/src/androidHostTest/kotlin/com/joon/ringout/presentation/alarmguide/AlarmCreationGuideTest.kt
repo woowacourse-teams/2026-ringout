@@ -218,6 +218,7 @@ class AlarmCreationGuideTest {
             compose.onNode(SemanticsMatcher.keyIsDefined(SemanticsActions.SetProgress))
                 .performScrollTo()
                 .performSemanticsAction(SemanticsActions.SetProgress) { it(10f) }
+            compose.onNodeWithText("도착 전까지 10분마다 알람이 다시 울려요").assertExists()
             compose.runOnIdle {
                 assertEquals(10, fixture.setup.limitMinutes)
                 assertEquals(1, fixture.finishCalls)

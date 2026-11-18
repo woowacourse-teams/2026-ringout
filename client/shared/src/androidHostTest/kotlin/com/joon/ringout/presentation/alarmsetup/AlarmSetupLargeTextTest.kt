@@ -130,7 +130,7 @@ class AlarmSetupLargeTextTest {
             compose.onNodeWithText("저장").assertIsDisplayed()
             compose.runOnIdle { content.captureLayout("setup-top-$scale") }
             listOf("요일", "매일", "목적지", "알람을 끄고 이동할 곳을 선택해주세요", destination,
-                "반복 알람 간격", "움직임이 없으면 5분마다 다시 울려요", "1분", "30분", "알람음", sound).forEach {
+                "알람 반복 간격", "도착 전까지 5분마다 알람이 다시 울려요", "1분", "30분", "알람음", sound).forEach {
                 compose.onNodeWithText(it, useUnmergedTree = true).assertTextFits()
             }
             compose.onNodeWithText(destination).performScrollTo().assertIsDisplayed().performClick()
