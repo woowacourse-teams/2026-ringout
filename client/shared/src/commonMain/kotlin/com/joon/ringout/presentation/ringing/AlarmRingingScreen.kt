@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +44,7 @@ fun AlarmRingingScreen(
             .semantics { paneTitle = "알람이 울리고 있어요" }
             .statusBarsPadding()
             .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(
@@ -80,6 +83,7 @@ internal fun formatAlarmDisplayTime(value: String): String {
 }
 
 @Preview(widthDp = 402, heightDp = 917)
+@Preview(name = "가로 화면", widthDp = 640, heightDp = 360)
 @Composable
 private fun AlarmRingingScreenDarkPreview() {
     RingoutTheme(themeMode = ThemeMode.Dark) {
