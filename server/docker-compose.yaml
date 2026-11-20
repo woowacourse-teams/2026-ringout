@@ -45,7 +45,6 @@ services:
         -Xmx${JAVA_MAX_HEAP:-384m}
         ${JAVA_EXTRA_OPTS:-}
         -Duser.timezone=Asia/Seoul
-        -javaagent:/otel/opentelemetry-javaagent.jar
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:?OTEL_SERVICE_NAME is required}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT is required}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:?OTEL_EXPORTER_OTLP_PROTOCOL is required}
