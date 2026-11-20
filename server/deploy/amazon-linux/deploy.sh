@@ -158,31 +158,31 @@ docker image inspect \
 
 
 # ==========================================================
-# [무중단 배포 비활성화] Blue-Green 활성 포트 감지
+# Blue-Green 활성 포트 감지
 # ==========================================================
 
-# healthy() {
-#   curl --fail --silent --connect-timeout 2 --max-time 3 \
-#     "http://127.0.0.1:$1/actuator/health" > /dev/null
-# }
-#
-# ACTIVE_PORT=""
-# if healthy 8081; then ACTIVE_PORT=8081; fi
-# if healthy 8082; then
-#   if [[ -n "$ACTIVE_PORT" ]]; then
-#     echo "Both ports are healthy. Resolve the active deployment before retrying." >&2
-#     exit 1
-#   fi
-#   ACTIVE_PORT=8082
-# fi
+healthy() {
+  curl --fail --silent --connect-timeout 2 --max-time 3 \
+    "http://127.0.0.1:$1/actuator/health" > /dev/null
+}
+
+ACTIVE_PORT=""
+if healthy 8081; then ACTIVE_PORT=8081; fi
+if healthy 8082; then
+  if [[ -n "$ACTIVE_PORT" ]]; then
+    echo "Both ports are healthy. Resolve the active deployment before retrying." >&2
+    exit 1
+  fi
+  ACTIVE_PORT=8082
+fi
 
 
 # ==========================================================
-# [무중단 배포 비활성화] 반대 포트 선택
+# 반대 포트 선택
 # ==========================================================
 
-# SERVER_PORT=8081
-# if [[ "$ACTIVE_PORT" == 8081 ]]; then SERVER_PORT=8082; fi
+SERVER_PORT=8081
+if [[ "$ACTIVE_PORT" == 8081 ]]; then SERVER_PORT=8082; fi
 
 
 # 3. 현재 Nginx 설정 확인
@@ -203,19 +203,6 @@ if ! grep -Eq 'proxy_pass http://127\.0\.0\.1:(8081|8082);' "$NGINX_BACKUP"; the
   exit 1
 fi
 
-# 일반 배포: Nginx가 현재 사용하는 포트에 그대로 배포
-mapfile -t nginx_ports < <(
-  grep -Eo 'proxy_pass http://127\.0\.0\.1:(8081|8082);' "$NGINX_BACKUP" \
-    | sed -E 's/.*:([0-9]+);/\1/' \
-    | sort -u
-)
-
-if (( ${#nginx_ports[@]} != 1 )); then
-  echo "Expected exactly one Nginx upstream port." >&2
-  exit 1
-fi
-
-SERVER_PORT="${nginx_ports[0]}"
 export SERVER_PORT
 export SERVER_CONTAINER_NAME="ringout-server-$SERVER_PORT"
 
@@ -223,63 +210,70 @@ compose+=(-p "ringout-$SERVER_PORT")
 HEALTH_URL="http://127.0.0.1:$SERVER_PORT/actuator/health"
 
 # 기존 컨테이너 이미지 정보 기록
-if docker container inspect "$SERVER_CONTAINER_NAME" >/dev/null 2>&1; then
+if [[ -n "$ACTIVE_PORT" ]]; then
+  PREVIOUS_CONTAINER_NAME="ringout-server-$ACTIVE_PORT"
+
   export PREVIOUS_IMAGE="$(
-    docker inspect --format '{{.Config.Image}}' "$SERVER_CONTAINER_NAME"
+    docker inspect --format '{{.Config.Image}}' "$PREVIOUS_CONTAINER_NAME"
   )"
 
   export PREVIOUS_IMAGE_ID="$(
-    docker inspect --format '{{.Image}}' "$SERVER_CONTAINER_NAME"
+    docker inspect --format '{{.Image}}' "$PREVIOUS_CONTAINER_NAME"
   )"
 
   export PREVIOUS_IMAGE_DIGEST="$(
     repo_digest "$PREVIOUS_IMAGE_ID" "$(image_repository "$PREVIOUS_IMAGE")"
   )"
 
-  log PREVIOUS_SERVER "port=$SERVER_PORT"
+  log PREVIOUS_SERVER "port=$ACTIVE_PORT"
 
   docker inspect \
     --format 'previous_image={{.Config.Image}} previous_image_id={{.Image}}' \
-    "$SERVER_CONTAINER_NAME"
+    "$PREVIOUS_CONTAINER_NAME"
 fi
 
 
 # ==========================================================
-# [무중단 배포 비활성화] Nginx 트래픽 전환 함수
+# Nginx 트래픽 전환 함수
 # ==========================================================
 
-# reload_nginx() {
-#   if [[ "$NGINX_CONFIG" == "$container_nginx_config" ]]; then
-#     docker exec ringout-nginx nginx -t &&
-#     docker exec ringout-nginx nginx -s reload
-#   else
-#     sudo nginx -t && sudo systemctl reload nginx
-#   fi
-# }
+reload_nginx() {
+  if [[ "$NGINX_CONFIG" == "$container_nginx_config" ]]; then
+    docker exec ringout-nginx nginx -t &&
+    docker exec ringout-nginx nginx -s reload
+  else
+    sudo nginx -t && sudo systemctl reload nginx
+  fi
+}
 
 
 # ==========================================================
-# [무중단 배포 비활성화] 이중 컨테이너 메모리 검사
+# 이중 컨테이너 메모리 검사
 # ==========================================================
 
-# if [[ -n "$ACTIVE_PORT" ]]; then
-#   limit_bytes=$("${compose[@]}" config --format json | python3 -c '
-# import json, sys
-# print(int(json.load(sys.stdin)["services"]["server"]["mem_limit"]))
-# ')
-#   available_kib=$(awk '$1 == "MemAvailable:" {print $2}' /proc/meminfo)
-#   : "${available_kib:?Could not read available host memory}"
-#   required_kib=$(( (limit_bytes + 1023) / 1024 + 128 * 1024 ))
-#
-#   if (( available_kib < required_kib )); then
-#     log DEPLOY_FAILED "reason=insufficient_host_memory available_kib=$available_kib required_kib=$required_kib"
-#     printf 'Not enough available memory to start a second Spring container.\n' >&2
-#     exit 1
-#   fi
-# fi
+if [[ -n "$ACTIVE_PORT" ]]; then
+  limit_bytes=$("${compose[@]}" config --format json | python3 -c '
+import json, sys
+print(int(json.load(sys.stdin)["services"]["server"]["mem_limit"]))
+')
+  available_kib=$(awk '$1 == "MemAvailable:" {print $2}' /proc/meminfo)
+  : "${available_kib:?Could not read available host memory}"
+  headroom_mib="${DEPLOY_MEMORY_HEADROOM_MIB:-128}"
+  [[ "$headroom_mib" =~ ^[0-9]+$ ]] || {
+    echo "DEPLOY_MEMORY_HEADROOM_MIB must be a non-negative integer" >&2
+    exit 1
+  }
+  required_kib=$(( (limit_bytes + 1023) / 1024 + headroom_mib * 1024 ))
+
+  if (( available_kib < required_kib )); then
+    log DEPLOY_FAILED "reason=insufficient_host_memory available_kib=$available_kib required_kib=$required_kib headroom_mib=$headroom_mib"
+    printf 'Not enough available memory to start a second Spring container.\n' >&2
+    exit 1
+  fi
+fi
 
 
-# 4. 기존 컨테이너 교체 및 헬스체크
+# 4. 반대 포트에 새 컨테이너 실행 및 헬스체크
 if "${compose[@]}" up -d --pull never --no-build --no-deps server; then
 
   for attempt in {1..30}; do
@@ -290,50 +284,49 @@ if "${compose[@]}" up -d --pull never --no-build --no-deps server; then
 
 
       # ====================================================
-      # [무중단 배포 비활성화] Nginx 트래픽 전환 및 롤백
+      # Nginx 트래픽 전환 및 롤백
       # ====================================================
 
-      # sed -E "s@proxy_pass http://127\.0\.0\.1:(8081|8082);@proxy_pass http://127.0.0.1:$SERVER_PORT;@g" \
-      #   "$NGINX_BACKUP" | sudo tee "$NGINX_CONFIG" > /dev/null
-      #
-      # if ! reload_nginx; then
-      #   log DEPLOY_FAILED "reason=nginx_switch_failed"
-      #   log ROLLBACK_STARTED "scope=nginx_configuration previous_port=${ACTIVE_PORT:-none}"
-      #
-      #   if ! {
-      #     sudo tee "$NGINX_CONFIG" < "$NGINX_BACKUP" > /dev/null &&
-      #     reload_nginx
-      #   }; then
-      #     log ROLLBACK_FAILED "reason=nginx_restore_failed"
-      #     "${compose[@]}" stop server || true
-      #     exit 1
-      #   fi
-      #
-      #   if [[ -n "$ACTIVE_PORT" ]] && healthy "$ACTIVE_PORT"; then
-      #     log ROLLBACK_SUCCEEDED "scope=nginx_configuration previous_port=$ACTIVE_PORT"
-      #   else
-      #     log ROLLBACK_FAILED "reason=previous_server_not_healthy"
-      #   fi
-      #
-      #   "${compose[@]}" stop server || true
-      #   echo "Nginx switch failed. Previous configuration restored." >&2
-      #   exit 1
-      # fi
-      #
-      # log TRAFFIC_SWITCHED "port=$SERVER_PORT"
+      sed -E "s@proxy_pass http://127\.0\.0\.1:(8081|8082);@proxy_pass http://127.0.0.1:$SERVER_PORT;@g" \
+        "$NGINX_BACKUP" | sudo tee "$NGINX_CONFIG" > /dev/null
+
+      if ! reload_nginx; then
+        log DEPLOY_FAILED "reason=nginx_switch_failed"
+        log ROLLBACK_STARTED "scope=nginx_configuration previous_port=${ACTIVE_PORT:-none}"
+
+        if ! {
+          sudo tee "$NGINX_CONFIG" < "$NGINX_BACKUP" > /dev/null &&
+          reload_nginx
+        }; then
+          log ROLLBACK_FAILED "reason=nginx_restore_failed"
+          "${compose[@]}" stop server || true
+          exit 1
+        fi
+
+        if [[ -n "$ACTIVE_PORT" ]] && healthy "$ACTIVE_PORT"; then
+          log ROLLBACK_SUCCEEDED "scope=nginx_configuration previous_port=$ACTIVE_PORT"
+        else
+          log ROLLBACK_FAILED "reason=previous_server_not_healthy"
+        fi
+
+        "${compose[@]}" stop server || true
+        echo "Nginx switch failed. Previous configuration restored." >&2
+        exit 1
+      fi
+
+      log TRAFFIC_SWITCHED "port=$SERVER_PORT"
 
 
       # ====================================================
-      # [무중단 배포 비활성화] 기존 컨테이너 종료 대기
+      # 기존 컨테이너 종료 대기
       # ====================================================
 
-      # if [[ -n "$ACTIVE_PORT" ]]; then
-      #   sleep 10
-      #   docker stop "ringout-server-$ACTIVE_PORT" || true
-      # fi
+      if [[ -n "$ACTIVE_PORT" ]]; then
+        sleep 10
+        docker stop "ringout-server-$ACTIVE_PORT" || true
+      fi
 
 
-      # 일반 배포 성공
       export DEPLOY_SUCCESS=true
       log DEPLOY_SUCCEEDED "port=$SERVER_PORT"
       exit 0

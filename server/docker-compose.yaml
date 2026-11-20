@@ -5,7 +5,7 @@ services:
     image: ${SERVER_IMAGE:?SERVER_IMAGE is required}
     container_name: ${SERVER_CONTAINER_NAME:-ringout-server}
     restart: unless-stopped
-    mem_limit: ${SERVER_MEMORY_LIMIT:-640m}
+    mem_limit: ${SERVER_MEMORY_LIMIT:-768m}
     stop_grace_period: 40s
     environment:
       DB_URL: ${DB_URL:?DB_URL is required}
@@ -40,10 +40,11 @@ services:
       APP_ENV: ${APP_ENV:-production}
       JWT_REVOCATION_ENABLED: ${JWT_REVOCATION_ENABLED:-false}
       SPRING_DATA_REDIS_URL: ${SPRING_DATA_REDIS_URL:-redis://redis:6379}
+      MALLOC_ARENA_MAX: ${MALLOC_ARENA_MAX:-2}
       JAVA_TOOL_OPTIONS: >-
         -Xmx${JAVA_MAX_HEAP:-384m}
+        ${JAVA_EXTRA_OPTS:-}
         -Duser.timezone=Asia/Seoul
-        -javaagent:/otel/opentelemetry-javaagent.jar
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:?OTEL_SERVICE_NAME is required}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT is required}
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:?OTEL_EXPORTER_OTLP_PROTOCOL is required}
